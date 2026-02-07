@@ -128,7 +128,9 @@ html::-webkit-scrollbar {
 
 /* Smooth transitions on all interactive elements */
 .v-chip {
-  transition: box-shadow 0.15s ease, transform 0.15s ease !important;
+  transition:
+    box-shadow 0.15s ease,
+    transform 0.15s ease !important;
 }
 
 .v-chip:hover {

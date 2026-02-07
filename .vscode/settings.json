@@ -1,0 +1,8 @@
+{
+  "files.exclude": {
+    "tsconfig.node.json": true,
+    "tsconfig.renderer.json": true,
+    ".gitleaks.toml": true,
+    ".gitattributes": true
+  }
+}

@@ -6,7 +6,7 @@ import { getDatabaseService } from '../../database'
  * Case Metadata IPC handlers
  *
  * Channels: case-metadata:get, case-metadata:upsert, case-metadata:listCohorts,
- *           case-metadata:createCohort, case-metadata:deleteCohort, case-metadata:getCohortByName,
+ *           case-metadata:createCohort, case-metadata:updateCohort, case-metadata:deleteCohort, case-metadata:getCohortByName,
  *           case-metadata:getCaseCohorts, case-metadata:assignCohort, case-metadata:removeCohort,
  *           case-metadata:setCohorts, case-metadata:getHpoTerms, case-metadata:assignHpoTerm,
  *           case-metadata:removeHpoTerm, case-metadata:getFullMetadata
@@ -66,6 +66,19 @@ ipcMain.handle(
     return wrapHandler(async () => {
       const db = getDatabaseService()
       return db.createCohortGroup(name, description)
+    })
+  }
+)
+
+/**
+ * Update a cohort group
+ */
+ipcMain.handle(
+  'case-metadata:updateCohort',
+  async (_event, cohortId: number, updates: { name?: string; description?: string | null }) => {
+    return wrapHandler(async () => {
+      const db = getDatabaseService()
+      return db.updateCohortGroup(cohortId, updates)
     })
   }
 )

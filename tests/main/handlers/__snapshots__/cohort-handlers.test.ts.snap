@@ -17,8 +17,16 @@ exports[`cohort IPC handlers > getCarriers - IPC payload structure > returns car
 
 exports[`cohort IPC handlers > getCohortSummary - IPC payload structure > returns expected summary structure (snapshot) 1`] = `
 {
+  "acmg_counts": {
+    "benign": 0,
+    "likely_benign": 0,
+    "likely_pathogenic": 0,
+    "pathogenic": 0,
+    "vus": 0,
+  },
   "avg_variants_per_case": 1.5,
   "genes_with_variants": 2,
+  "starred_variants": 0,
   "total_cases": 2,
   "total_variants": 3,
   "unique_variants": 2,

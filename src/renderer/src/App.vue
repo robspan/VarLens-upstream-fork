@@ -93,6 +93,12 @@
         </template>
         <v-list density="compact">
           <v-list-item
+            prepend-icon="mdi-chart-box-outline"
+            title="Database Overview"
+            @click="databaseOverviewDialogRef?.show()"
+          />
+          <v-divider class="my-1" />
+          <v-list-item
             prepend-icon="mdi-link"
             title="External Links"
             @click="externalLinksSettingsRef?.show()"
@@ -221,6 +227,7 @@
     <FaqDialog ref="faqDialogRef" />
     <ExternalLinksSettings ref="externalLinksSettingsRef" />
     <TagManagementDialog ref="tagManagementDialogRef" />
+    <DatabaseOverviewDialog ref="databaseOverviewDialogRef" />
     <DeleteAllCasesDialog ref="deleteAllCasesDialogRef" />
     <CaseMetadataModal
       v-if="selectedCaseId"
@@ -247,6 +254,7 @@ import LogViewer from './components/LogViewer.vue'
 import AppFooter from './components/AppFooter.vue'
 import DisclaimerDialog from './components/DisclaimerDialog.vue'
 import FaqDialog from './components/FaqDialog.vue'
+import DatabaseOverviewDialog from './components/DatabaseOverviewDialog.vue'
 import DatabasePicker from './components/DatabasePicker.vue'
 import ExternalLinksSettings from './components/ExternalLinksSettings.vue'
 import TagManagementDialog from './components/TagManagementDialog.vue'
@@ -325,6 +333,7 @@ const faqDialogRef = ref<InstanceType<typeof FaqDialog> | null>(null)
 const externalLinksSettingsRef = ref<InstanceType<typeof ExternalLinksSettings> | null>(null)
 const tagManagementDialogRef = ref<InstanceType<typeof TagManagementDialog> | null>(null)
 const deleteAllCasesDialogRef = ref<InstanceType<typeof DeleteAllCasesDialog> | null>(null)
+const databaseOverviewDialogRef = ref<InstanceType<typeof DatabaseOverviewDialog> | null>(null)
 const caseMetadataModalRef = ref<InstanceType<typeof CaseMetadataModal> | null>(null)
 const cohortViewRef = ref<InstanceType<typeof CohortView> | null>(null)
 

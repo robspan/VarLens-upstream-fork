@@ -1,6 +1,5 @@
 <template>
   <div class="cohort-content">
-    <CohortDashboard ref="dashboardRef" />
     <CohortTable
       ref="cohortTableRef"
       @navigate-to-case="$emit('navigate-to-case', $event)"
@@ -11,7 +10,6 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import CohortDashboard from './CohortDashboard.vue'
 import CohortTable from './CohortTable.vue'
 import type { CohortVariant } from '../../../shared/types/cohort'
 
@@ -31,12 +29,10 @@ defineEmits<{
   'row-click': [variant: CohortVariant]
 }>()
 
-const dashboardRef = ref<InstanceType<typeof CohortDashboard> | null>(null)
 const cohortTableRef = ref<InstanceType<typeof CohortTable> | null>(null)
 
-// Refresh function that delegates to all child components
+// Refresh function that delegates to CohortTable
 const refresh = async (): Promise<void> => {
-  await dashboardRef.value?.refresh()
   await cohortTableRef.value?.refresh()
 }
 
@@ -51,10 +47,5 @@ defineExpose({ refresh })
   flex-direction: column;
   height: calc(100vh - 48px - 32px); /* viewport minus app-bar minus footer */
   overflow: hidden;
-}
-
-/* Dashboard takes only its natural height, no flex grow */
-.cohort-content > :first-child {
-  flex-shrink: 0;
 }
 </style>

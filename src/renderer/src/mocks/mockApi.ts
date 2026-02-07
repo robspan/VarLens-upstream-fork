@@ -153,7 +153,28 @@ export const mockApi: WindowAPI = {
     info: async () => ({ path: '/mock/database.db', name: 'Mock Database', encrypted: false }),
     recentList: async () => [
       { path: '/mock/database.db', name: 'Mock Database', lastOpened: Date.now() }
-    ]
+    ],
+    getOverview: async () => ({
+      summary: {
+        total_cases: 0,
+        total_variants: 0,
+        unique_variants: 0,
+        avg_variants_per_case: 0,
+        genes_with_variants: 0,
+        starred_variants: 0,
+        acmg_counts: {
+          pathogenic: 0,
+          likely_pathogenic: 0,
+          vus: 0,
+          likely_benign: 0,
+          benign: 0
+        }
+      },
+      cases: [],
+      cohortGroups: [],
+      tags: [],
+      topPhenotypes: []
+    })
   },
 
   batchImport: {
@@ -431,7 +452,15 @@ export const mockApi: WindowAPI = {
         total_variants: variants.length,
         unique_variants: uniqueKeys.size,
         avg_variants_per_case: cases.length > 0 ? variants.length / cases.length : 0,
-        genes_with_variants: uniqueGenes.size
+        genes_with_variants: uniqueGenes.size,
+        starred_variants: 0,
+        acmg_counts: {
+          pathogenic: 0,
+          likely_pathogenic: 0,
+          vus: 0,
+          likely_benign: 0,
+          benign: 0
+        }
       }
     },
 
@@ -576,6 +605,12 @@ export const mockApi: WindowAPI = {
       id: 1,
       name,
       description: description ?? null,
+      created_at: Date.now()
+    }),
+    updateCohort: async (cohortId, updates) => ({
+      id: cohortId,
+      name: updates.name ?? 'Group',
+      description: updates.description ?? null,
       created_at: Date.now()
     }),
     deleteCohort: async () => {},

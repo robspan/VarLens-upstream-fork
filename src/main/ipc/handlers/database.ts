@@ -6,7 +6,7 @@
  */
 
 import { ipcMain, dialog } from 'electron'
-import { getDatabaseManager } from '../../database'
+import { getDatabaseManager, getDatabaseService } from '../../database'
 import { WrongPasswordError } from '../../database/errors'
 import { wrapHandler } from '../errorHandler'
 import { mainLogger } from '../../services/MainLogger'
@@ -137,6 +137,20 @@ ipcMain.handle('database:recentList', async () => {
   return wrapHandler(async () => {
     const manager = getDatabaseManager()
     return manager.getRecentDatabases()
+  })
+})
+
+/**
+ * Get database overview (summary stats, cases, cohorts, tags, phenotypes)
+ */
+ipcMain.handle('database:overview', async () => {
+  return wrapHandler(async () => {
+    const db = getDatabaseService()
+    const overview = db.getDatabaseOverview()
+    // Deep clone for IPC serialization (handle BigInt)
+    return JSON.parse(
+      JSON.stringify(overview, (_key, value) => (typeof value === 'bigint' ? Number(value) : value))
+    )
   })
 })
 

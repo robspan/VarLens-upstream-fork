@@ -92,7 +92,13 @@
 
           <v-divider class="mb-4" />
 
-          <!-- Section 4: Comments -->
+          <!-- Section 4: Tags (case mode only) -->
+          <template v-if="mode === 'case' && caseId !== null && 'id' in variant">
+            <TagsSection :case-id="caseId" :variant-id="(variant as Variant).id" class="mb-4" />
+            <v-divider class="mb-4" />
+          </template>
+
+          <!-- Section 5: Comments -->
           <CommentsSection :variant="variant" :case-id="caseId" :mode="mode" class="mb-4" />
 
           <v-divider class="mb-4" />
@@ -118,6 +124,7 @@ import VariantIdentitySection from './VariantIdentitySection.vue'
 import AnnotationScoresSection from './AnnotationScoresSection.vue'
 import ExternalLinksSection from './ExternalLinksSection.vue'
 import CommentsSection from './CommentsSection.vue'
+import TagsSection from './TagsSection.vue'
 import AcmgMenu from './AcmgMenu.vue'
 import type { Variant } from '../../../shared/types/api'
 import type { CohortVariant } from '../../../shared/types/cohort'

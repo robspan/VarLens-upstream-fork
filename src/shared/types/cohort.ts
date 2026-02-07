@@ -78,6 +78,16 @@ export interface CohortSummary {
   avg_variants_per_case: number
   /** Number of distinct genes with variants */
   genes_with_variants: number
+  /** Number of starred variant annotations (global) */
+  starred_variants: number
+  /** ACMG classification distribution (global) */
+  acmg_counts: {
+    pathogenic: number
+    likely_pathogenic: number
+    vus: number
+    likely_benign: number
+    benign: number
+  }
 }
 
 /**

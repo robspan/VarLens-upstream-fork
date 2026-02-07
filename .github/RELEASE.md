@@ -35,21 +35,11 @@ The project uses GitHub Actions to automatically build and release the applicati
 
 **Actions:**
 
-- Builds production-ready installers for all platforms
-- Publishes artifacts to GitHub Releases (as draft)
-- Uploads installers as downloadable assets
+- Builds production-ready installers for all platforms (separate jobs per OS)
+- Signs Windows executables via SignPath (when configured)
+- Uploads all artifacts to the GitHub Release
 
 **Purpose:** Automates the release process when you tag a new version.
-
-#### 3. CodeQL Security Scanning (`.github/workflows/codeql.yml`)
-
-**Triggers:**
-
-- Push to `main`
-- Pull requests to `main`
-- Weekly scheduled scan (Monday 6 AM UTC)
-
-**Purpose:** Performs static analysis security testing (SAST) for JavaScript/TypeScript.
 
 ## Creating a Release
 
@@ -110,43 +100,30 @@ https://github.com/berntpopp/varlens/releases/latest
 - **Linux:** `Varlens-{version}.AppImage` (universal)
 - **Linux (Debian/Ubuntu):** `Varlens-{version}.deb`
 
-## Code Signing (Optional)
+## Code Signing
 
-Currently, releases are built without code signing. To enable code signing:
+Windows executables are signed via [SignPath Foundation](https://signpath.org) (free for open-source projects). See [docs/CODE-SIGNING.md](../docs/CODE-SIGNING.md) for the full code signing policy.
 
-### Windows Code Signing
+### How it works
 
-Add these secrets to your repository:
+The release workflow builds unsigned Windows executables, uploads them as GitHub Actions artifacts, and submits a signing request to SignPath. After the repository owner approves the request on SignPath.io, signed executables are published to the GitHub Release.
 
-- `WINDOWS_CERTS`: Base64-encoded `.pfx` certificate file
-- `WINDOWS_CERTS_PASSWORD`: Certificate password
+### Setup (one-time)
 
-Then uncomment these lines in `.github/workflows/release.yml`:
-
-```yaml
-WIN_CSC_LINK: ${{ secrets.WINDOWS_CERTS }}
-WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTS_PASSWORD }}
-```
+1. Apply to the [SignPath Foundation OSS program](https://signpath.org)
+2. Install the [SignPath GitHub App](https://github.com/apps/signpath-io) on the repository
+3. Configure the SignPath project with `test-signing` and `release-signing` policies
+4. Add the following to the GitHub repository:
+   - **Secret:** `SIGNPATH_API_TOKEN` -- API token for the submitter user
+   - **Variable:** `SIGNPATH_ORGANIZATION_ID` -- SignPath organization ID
+5. Enable MFA for all team members on GitHub and SignPath
 
 ### macOS Code Signing
 
-Add these secrets to your repository:
+macOS signing is not yet configured. When an Apple Developer certificate becomes available, add these secrets:
 
 - `MAC_CERTS`: Base64-encoded `.p12` certificate file
 - `MAC_CERTS_PASSWORD`: Certificate password
-
-Then uncomment these lines in `.github/workflows/release.yml`:
-
-```yaml
-CSC_LINK: ${{ secrets.MAC_CERTS }}
-CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
-```
-
-**To add secrets:**
-
-1. Go to Settings → Secrets and variables → Actions
-2. Click "New repository secret"
-3. Add each secret with its name and value
 
 ## Local Build Testing
 

@@ -309,10 +309,7 @@ export function resolveUrlTemplate(
   // Replace all variables in template
   let resolved = template
   for (const [key, value] of Object.entries(variables)) {
-    const placeholder = `{${key}}`
-    // Use regex with global flag for compatibility
-    const regex = new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g')
-    resolved = resolved.replace(regex, value)
+    resolved = resolved.split(`{${key}}`).join(value)
   }
 
   return resolved

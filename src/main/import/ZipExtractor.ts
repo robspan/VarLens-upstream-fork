@@ -1,6 +1,6 @@
 import AdmZip from 'adm-zip'
 import { writeFileSync } from 'node:fs'
-import { resolve, relative, join } from 'node:path'
+import { resolve, relative, basename, sep } from 'node:path'
 
 export interface ZipExtractionResult {
   extractedFiles: string[]
@@ -75,8 +75,13 @@ export class ZipExtractor {
         const data =
           password !== undefined && password !== '' ? getDataFn.getData(password) : entry.getData()
 
-        const basename = entryName.split('/').pop() ?? entryName
-        const extractedPath = join(targetDir, basename)
+        const fileName = basename(entryName)
+        const extractedPath = resolve(targetDir, fileName)
+        const normalizedTarget = resolve(targetDir)
+        if (!extractedPath.startsWith(normalizedTarget + sep)) {
+          result.errors.push(`Rejected path traversal attempt: ${entryName}`)
+          continue
+        }
         writeFileSync(extractedPath, data)
         result.extractedFiles.push(resolve(extractedPath))
       } catch (error) {

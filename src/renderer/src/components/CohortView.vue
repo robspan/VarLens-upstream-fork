@@ -1,12 +1,12 @@
 <template>
-  <v-container fluid class="pa-4">
+  <div class="cohort-content">
     <CohortDashboard ref="dashboardRef" />
     <CohortTable
       ref="cohortTableRef"
       @navigate-to-case="$emit('navigate-to-case', $event)"
       @row-click="$emit('row-click', $event)"
     />
-  </v-container>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -43,3 +43,13 @@ const refresh = async (): Promise<void> => {
 // Expose refresh method to parent
 defineExpose({ refresh })
 </script>
+
+<style scoped>
+/* Cohort content fills available height (mirrors .case-content in App.vue) */
+.cohort-content {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 48px - 32px); /* viewport minus app-bar minus footer */
+  overflow: hidden;
+}
+</style>

@@ -1,3 +1,12 @@
+/* Hide the main app scrollbar while keeping scroll functionality */
+html {
+  scrollbar-width: none; /* Firefox */
+}
+
+html::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Edge */
+}
+
 /* Monospace font for technical genomic data */
 .variant-data-mono {
   font-family: 'Roboto Mono', 'Courier New', monospace;

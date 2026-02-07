@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="cohort-table-container">
     <!-- IPC Error Banner (SOL-11) -->
     <v-alert
       v-if="error"
@@ -409,5 +409,12 @@ defineExpose({ refresh })
 </script>
 
 <style scoped>
-/* No component-specific styles - all moved to sub-components */
+/* CohortTable fills remaining height in flex parent */
+.cohort-table-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
 </style>

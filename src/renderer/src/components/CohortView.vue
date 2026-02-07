@@ -52,4 +52,9 @@ defineExpose({ refresh })
   height: calc(100vh - 48px - 32px); /* viewport minus app-bar minus footer */
   overflow: hidden;
 }
+
+/* Dashboard takes only its natural height, no flex grow */
+.cohort-content > :first-child {
+  flex-shrink: 0;
+}
 </style>

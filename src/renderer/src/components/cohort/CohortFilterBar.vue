@@ -895,8 +895,7 @@ onBeforeUnmount(() => {
 
 /* FilterToolbar-like styling for visual consistency */
 .filter-toolbar-container {
-  position: sticky;
-  top: 48px; /* Below tabs */
+  flex-shrink: 0;
   z-index: 3;
   border-bottom: 1px solid rgba(var(--v-border-color), 0.12);
   background: rgb(var(--v-theme-surface));

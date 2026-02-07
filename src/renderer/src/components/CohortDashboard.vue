@@ -1,5 +1,5 @@
 <template>
-  <v-expansion-panels v-model="expanded" class="mb-4">
+  <v-expansion-panels v-model="expanded">
     <v-expansion-panel>
       <v-expansion-panel-title>
         <v-icon start>mdi-chart-bar</v-icon>

@@ -9,12 +9,40 @@
     class="mx-2 mt-2"
   />
 
+  <div class="d-flex mx-2 mt-1 ga-1">
+    <v-select
+      v-model="selectedCohortFilter"
+      :items="cohortGroupsCache"
+      item-title="name"
+      item-value="id"
+      prepend-inner-icon="mdi-account-group"
+      label="Cohort"
+      density="compact"
+      hide-details
+      clearable
+      class="flex-1-1-0"
+    />
+    <v-autocomplete
+      v-model="selectedHpoFilter"
+      :items="availableHpoTerms"
+      item-title="label"
+      item-value="hpo_id"
+      prepend-inner-icon="mdi-human"
+      label="HPO"
+      density="compact"
+      hide-details
+      clearable
+      auto-select-first
+      class="flex-1-1-0"
+    />
+  </div>
+
   <v-list v-model:selected="selected" density="compact" select-strategy="single-leaf">
     <!-- Empty state -->
     <v-list-item v-if="filteredCases.length === 0 && !loading">
       <v-list-item-title class="text-grey text-center py-4">
-        <template v-if="search">
-          <v-icon class="mb-1">mdi-magnify</v-icon>
+        <template v-if="hasActiveFilters">
+          <v-icon class="mb-1">mdi-filter-off</v-icon>
           <div>No matching cases</div>
         </template>
         <template v-else>
@@ -98,6 +126,14 @@
     location-strategy="static"
   >
     <v-list density="compact">
+      <!-- Edit single case -->
+      <v-list-item @click="handleEdit">
+        <template #prepend>
+          <v-icon>mdi-pencil</v-icon>
+        </template>
+        <v-list-item-title>Edit</v-list-item-title>
+      </v-list-item>
+      <v-divider />
       <!-- Delete selected when multi-select active -->
       <v-list-item v-if="isMultiSelectMode" @click="handleDeleteSelected">
         <template #prepend>
@@ -143,12 +179,15 @@ const emit = defineEmits<{
   'case-selected': [caseId: number, caseName: string, variantCount: number, createdAt: number]
   'case-deleted': [caseId: number]
   'cases-loaded': [count: number]
+  'edit-case': [caseId: number, caseName: string, variantCount: number, createdAt: number]
 }>()
 
 // State
 const cases = ref<Case[]>([])
 const loading = ref(false)
 const search = ref('')
+const selectedCohortFilter = ref<number | null>(null)
+const selectedHpoFilter = ref<string | null>(null)
 const selected = ref<number[]>([])
 const contextMenuCase = ref<Case | null>(null)
 const contextMenu = useContextMenu()
@@ -160,7 +199,7 @@ const multiSelectedCount = computed(() => multiSelected.value.size)
 const isMultiSelected = (id: number): boolean => multiSelected.value.has(id)
 
 // Initialize case metadata composable
-const { loadMetadata, getMetadata, loadCohortGroups } = useCaseMetadata()
+const { loadMetadata, getMetadata, loadCohortGroups, cohortGroupsCache } = useCaseMetadata()
 
 // Component refs
 const dialogRef = ref<InstanceType<typeof DeleteCaseDialog> | null>(null)
@@ -190,13 +229,48 @@ const loadCases = async (): Promise<void> => {
   }
 }
 
-// Filter cases by search term, sorted by created_at DESC
+// Unique HPO terms across all loaded cases (for autocomplete suggestions)
+const availableHpoTerms = computed(() => {
+  const seen = new Map<string, string>()
+  for (const c of cases.value) {
+    const metadata = getMetadata(c.id)
+    for (const t of metadata?.hpoTerms ?? []) {
+      if (!seen.has(t.hpo_id)) {
+        seen.set(t.hpo_id, t.hpo_label)
+      }
+    }
+  }
+  return Array.from(seen, ([hpo_id, hpo_label]) => ({
+    hpo_id,
+    label: `${hpo_label} (${hpo_id})`
+  })).sort((a, b) => a.label.localeCompare(b.label))
+})
+
+// Whether any filter is active (for empty-state messaging)
+const hasActiveFilters = computed(
+  () => !!search.value || selectedCohortFilter.value != null || selectedHpoFilter.value != null
+)
+
+// Filter cases by search term, cohort, HPO — sorted by created_at DESC
 const filteredCases = computed(() => {
   let result = [...cases.value]
 
   if (search.value) {
     const query = search.value.toLowerCase()
     result = result.filter((c) => c.name.toLowerCase().includes(query))
+  }
+
+  if (selectedCohortFilter.value != null) {
+    const cohortId = selectedCohortFilter.value
+    result = result.filter((c) => getCaseCohorts(c.id).some((cohort) => cohort.id === cohortId))
+  }
+
+  if (selectedHpoFilter.value != null) {
+    const hpoId = selectedHpoFilter.value
+    result = result.filter((c) => {
+      const metadata = getMetadata(c.id)
+      return (metadata?.hpoTerms ?? []).some((t) => t.hpo_id === hpoId)
+    })
   }
 
   // Sort by created_at descending (newest first)
@@ -285,6 +359,13 @@ const clearMultiSelect = (): void => {
 const handleContextMenu = (event: MouseEvent, caseItem: Case): void => {
   contextMenuCase.value = caseItem
   contextMenu.open(event)
+}
+
+const handleEdit = (): void => {
+  contextMenu.close()
+  if (contextMenuCase.value == null) return
+  const c = contextMenuCase.value
+  emit('edit-case', c.id, c.name, c.variant_count, c.created_at)
 }
 
 const handleDelete = async (): Promise<void> => {

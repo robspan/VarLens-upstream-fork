@@ -148,6 +148,7 @@
           @case-selected="handleCaseSelected"
           @case-deleted="handleCaseDeleted"
           @cases-loaded="handleCasesLoaded"
+          @edit-case="handleEditCase"
         />
       </AppSidebar>
       <div
@@ -452,6 +453,19 @@ const handleCaseSelected = (
   selectedCreatedAt.value = createdAt
   // Auto-close sidebar on case selection (Material Design pattern)
   sidebarOpen.value = false
+}
+
+const handleEditCase = (
+  caseId: number,
+  caseName: string,
+  variantCount: number,
+  createdAt: number
+): void => {
+  selectedCaseId.value = caseId
+  selectedCaseName.value = caseName
+  selectedVariantCount.value = variantCount
+  selectedCreatedAt.value = createdAt
+  caseMetadataModalRef.value?.show()
 }
 
 const handleCasesLoaded = (count: number): void => {

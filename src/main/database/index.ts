@@ -1,0 +1,108 @@
+/**
+ * Database module barrel export
+ *
+ * Public API for the Varlens database layer.
+ * Now uses DatabaseManager for lifecycle management instead of singleton DatabaseService.
+ */
+
+import { DatabaseManager } from '../services/DatabaseManager'
+import { RecentDatabasesService } from '../services/RecentDatabasesService'
+import { app } from 'electron'
+import { join } from 'path'
+
+// Singleton instance of DatabaseManager
+let databaseManager: DatabaseManager | null = null
+
+/**
+ * Initialize the DatabaseManager singleton
+ *
+ * Creates manager and opens default database at userData/varlens.db.
+ * Should be called once during app initialization.
+ *
+ * @returns DatabaseManager singleton instance
+ */
+export function initDatabaseManager(): DatabaseManager {
+  if (!databaseManager) {
+    const settingsPath = join(app.getPath('userData'), 'varlens-settings.json')
+    const recentDatabases = new RecentDatabasesService(settingsPath)
+    databaseManager = new DatabaseManager(recentDatabases)
+
+    // Open default database
+    const dbPath = join(app.getPath('userData'), 'varlens.db')
+    databaseManager.open(dbPath)
+  }
+  return databaseManager
+}
+
+/**
+ * Get the DatabaseManager singleton
+ *
+ * @returns DatabaseManager singleton instance
+ * @throws Error if manager not initialized
+ */
+export function getDatabaseManager(): DatabaseManager {
+  if (!databaseManager) {
+    throw new Error('DatabaseManager not initialized. Call initDatabaseManager() first.')
+  }
+  return databaseManager
+}
+
+/**
+ * Get the current database service (backward compatibility)
+ *
+ * This function preserves backward compatibility with existing IPC handlers
+ * that call getDatabaseService(). They can continue working without changes.
+ *
+ * @returns Current DatabaseService instance
+ * @throws Error if no database is currently open
+ */
+export function getDatabaseService() {
+  return getDatabaseManager().getCurrent()
+}
+
+/**
+ * Close the database manager and clear singleton
+ *
+ * Call during application shutdown.
+ */
+export function closeDatabaseManager(): void {
+  if (databaseManager) {
+    databaseManager.close()
+    databaseManager = null
+  }
+}
+
+// Service
+export { DatabaseService } from './DatabaseService'
+export { DatabaseManager }
+export { RecentDatabasesService }
+
+// Types
+export type {
+  Case,
+  Variant,
+  VariantFilter,
+  PaginationCursor,
+  PaginatedResult,
+  AcmgClassification,
+  AcmgEvidence,
+  VariantAnnotation,
+  CaseVariantAnnotation,
+  CaseMetadata,
+  CohortGroup,
+  CaseCohortLink,
+  ApiCache,
+  Tag,
+  VariantTag,
+  CaseHpoTerm
+} from './types'
+
+// Errors
+export {
+  DatabaseError,
+  NotFoundError,
+  UniqueConstraintError,
+  TransactionError,
+  WrongPasswordError,
+  EncryptionError
+} from './errors'

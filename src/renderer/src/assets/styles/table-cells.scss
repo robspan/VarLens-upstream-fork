@@ -1,0 +1,73 @@
+/**
+ * Shared table cell styles
+ *
+ * Extracted from VariantTable.vue and CohortTableRow.vue
+ * to eliminate CSS duplication across table components.
+ */
+
+// Genomic data typography - tabular numbers for aligned columns
+.genomic-coordinate {
+  font-variant-numeric: tabular-nums;
+}
+
+// Monospace for variant data (ref, alt, cDNA, AA change)
+.variant-data-mono {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.85em;
+}
+
+// HGVS notation styling
+.hgvs-notation {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.85em;
+}
+
+// Allele cell truncation
+.allele-cell {
+  display: inline-block;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// External link styling (clickable with icon)
+.external-link {
+  cursor: pointer;
+  color: rgb(var(--v-theme-primary));
+  transition: background-color 0.2s ease;
+  white-space: nowrap;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &__icon {
+    opacity: 0.6;
+    margin-left: 2px;
+    vertical-align: middle;
+  }
+}
+
+// Gene symbol styling
+.gene-symbol {
+  font-weight: 500;
+}
+
+// Annotation icon wrapper with global indicator ring
+.annotation-icon-wrapper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  padding: 2px;
+
+  &.has-global {
+    box-shadow: 0 0 0 2px rgba(var(--v-theme-primary), 0.4);
+  }
+}
+
+// Common cursor utility
+.cursor-pointer {
+  cursor: pointer;
+}

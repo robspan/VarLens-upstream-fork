@@ -1,0 +1,69 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+out/
+release/
+
+# Playwright
+.playwright-mcp/
+playwright-report/
+playwright-output/
+test-results/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.db-journal
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# AppImage extraction artifacts
+squashfs-root/
+
+# Coverage
+coverage/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Sensitive genetic/clinical data - never commit
+test-data/
+plan/
+.planning/
+*.json.gz
+
+# Preventive: common genomic formats
+*.vcf
+*.vcf.gz
+*.bam
+*.sam
+*.cram
+*.bed
+*.fastq
+*.fq
+*.fastq.gz
+*.fq.gz
+*.ped

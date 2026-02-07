@@ -1,0 +1,12 @@
+/**
+ * Main stylesheet entry point
+ *
+ * Imports all global styles for the application.
+ * This file is loaded in main.ts to make styles available app-wide.
+ */
+
+// Shared table cell styles (extracted from VariantTable.vue and CohortTableRow.vue)
+@import './table-cells.scss';
+
+// Legacy custom styles (accessibility, ClinVar badges, etc.)
+@import './custom.css';

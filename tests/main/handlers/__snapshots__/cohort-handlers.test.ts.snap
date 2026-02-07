@@ -1,0 +1,78 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`cohort IPC handlers > getCarriers - IPC payload structure > returns carrier list with expected structure (snapshot) 1`] = `
+[
+  {
+    "case_id": 1,
+    "case_name": "Patient A",
+    "gt_num": "0/1",
+  },
+  {
+    "case_id": 2,
+    "case_name": "Patient B",
+    "gt_num": "1/1",
+  },
+]
+`;
+
+exports[`cohort IPC handlers > getCohortSummary - IPC payload structure > returns expected summary structure (snapshot) 1`] = `
+{
+  "avg_variants_per_case": 1.5,
+  "genes_with_variants": 2,
+  "total_cases": 2,
+  "total_variants": 3,
+  "unique_variants": 2,
+}
+`;
+
+exports[`cohort IPC handlers > getCohortVariants - IPC payload structure > returns expected payload structure (snapshot) 1`] = `
+{
+  "data": [
+    {
+      "aa_change": "p.Arg41His",
+      "alt": "G",
+      "cadd_phred": 25.5,
+      "carrier_count": 2,
+      "cdna": "c.123G>A",
+      "chr": "1",
+      "clinvar": "Pathogenic",
+      "cohort_frequency": 1,
+      "consequence": "HIGH",
+      "func": "missense_variant",
+      "gene_symbol": "BRCA1",
+      "gnomad_af": 0.0001,
+      "het_count": 2,
+      "hom_count": 0,
+      "omim_id": "113705",
+      "pos": 12345,
+      "ref": "A",
+      "total_cases": 2,
+      "transcript": "ENST00000357654",
+      "variant_key": "1:12345:A:G",
+    },
+    {
+      "aa_change": null,
+      "alt": "T",
+      "cadd_phred": null,
+      "carrier_count": 1,
+      "cdna": null,
+      "chr": "2",
+      "clinvar": null,
+      "cohort_frequency": 0.5,
+      "consequence": "MODERATE",
+      "func": null,
+      "gene_symbol": "TP53",
+      "gnomad_af": 0.05,
+      "het_count": 1,
+      "hom_count": 0,
+      "omim_id": null,
+      "pos": 54321,
+      "ref": "C",
+      "total_cases": 2,
+      "transcript": null,
+      "variant_key": "2:54321:C:T",
+    },
+  ],
+  "total_count": 2,
+}
+`;

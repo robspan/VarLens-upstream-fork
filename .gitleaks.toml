@@ -1,0 +1,11 @@
+# Gitleaks configuration
+# https://github.com/gitleaks/gitleaks
+
+title = "Varlens Gitleaks Config"
+
+[allowlist]
+  # Standard open-source project paths
+  paths = [
+    '''node_modules/''',
+    '''package-lock\.json''',
+  ]

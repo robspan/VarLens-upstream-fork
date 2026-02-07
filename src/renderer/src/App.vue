@@ -10,8 +10,15 @@
         class="sidebar-toggle-btn"
         @click="sidebarOpen = !sidebarOpen"
       />
-      <v-app-bar-title class="ml-2 text-subtitle-1 font-weight-bold flex-grow-0">
+      <v-app-bar-title
+        class="ml-2 text-subtitle-1 font-weight-bold flex-grow-0 app-title"
+        role="button"
+        tabindex="0"
+        @click="handleHomeClick"
+        @keydown.enter="handleHomeClick"
+      >
         VarLens
+        <v-tooltip activator="parent" location="bottom">Return to home</v-tooltip>
       </v-app-bar-title>
 
       <div class="context-indicator mx-3 d-flex align-center">
@@ -122,8 +129,9 @@
       </v-menu>
     </v-app-bar>
 
-    <v-navigation-drawer v-model="sidebarOpen" :width="280" :scrim="false">
+    <v-navigation-drawer v-model="sidebarOpen" :width="sidebarWidth" :scrim="false">
       <AppSidebar
+        :case-count="caseCount"
         @import-click="handleImportClick"
         @batch-import-files="handleBatchImportFiles"
         @batch-import-folder="handleBatchImportFolder"
@@ -136,6 +144,11 @@
           @cases-loaded="handleCasesLoaded"
         />
       </AppSidebar>
+      <div
+        class="sidebar-resize-handle"
+        @mousedown="startSidebarResize"
+        @dblclick="resetSidebarWidth"
+      />
     </v-navigation-drawer>
 
     <v-main>
@@ -146,7 +159,7 @@
             :has-cases="caseCount > 0"
             @import="handleImportClick"
           />
-          <template v-else>
+          <div v-else class="case-content">
             <div class="filter-bar-container">
               <FilterToolbar
                 :case-id="selectedCaseId"
@@ -170,7 +183,7 @@
               @update:has-sort="handleSortUpdate"
               @row-click="handleVariantRowClick"
             />
-          </template>
+          </div>
         </v-window-item>
 
         <v-window-item value="cohort">
@@ -241,6 +254,7 @@ import DeleteAllCasesDialog from './components/DeleteAllCasesDialog.vue'
 import CohortView from './components/CohortView.vue'
 import VariantDetailsPanel from './components/VariantDetailsPanel.vue'
 import CaseMetadataModal from './components/CaseMetadataModal.vue'
+import { usePanelResize } from './composables/usePanelResize'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useVersionGating } from './composables/useVersionGating'
 import { useDatabaseStore } from './stores/databaseStore'
@@ -313,6 +327,23 @@ const cohortViewRef = ref<InstanceType<typeof CohortView> | null>(null)
 // Sidebar state
 const sidebarOpen = ref(true)
 
+// Sidebar resize
+const {
+  panelWidth: sidebarWidth,
+  startResize: startSidebarResize,
+  resetWidth: resetSidebarWidth
+} = usePanelResize({
+  side: 'left',
+  storageKey: 'varlens_sidebar_width',
+  defaultWidth: 280,
+  minWidth: 200,
+  maxWidth: 450,
+  collapseThreshold: 180,
+  onCollapse: () => {
+    sidebarOpen.value = false
+  }
+})
+
 // Log viewer state
 const logViewerOpen = ref(false)
 
@@ -342,6 +373,13 @@ const initialSearch = ref<string | undefined>(undefined)
 
 // Computed panel mode
 const panelMode = computed(() => (activeTab.value === 'case' ? 'case' : 'cohort'))
+
+const handleHomeClick = (): void => {
+  selectedCaseId.value = null
+  selectedCaseName.value = ''
+  activeTab.value = 'case'
+  sidebarOpen.value = true
+}
 
 const handleImportClick = (): void => {
   importDialogRef.value?.show()
@@ -616,6 +654,14 @@ onMounted(async () => {
   text-decoration: underline;
 }
 
+.app-title {
+  cursor: pointer;
+}
+
+.app-title:hover {
+  text-decoration: underline;
+}
+
 .select-case-hint {
   cursor: pointer;
 }
@@ -629,7 +675,21 @@ onMounted(async () => {
 }
 
 .mode-toggle :deep(.v-btn--active) {
-  background-color: rgba(255, 255, 255, 0.2) !important;
+  background-color: rgba(255, 255, 255, 0.3) !important;
+  font-weight: 600;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.8);
+}
+
+.mode-toggle :deep(.v-btn:not(.v-btn--active)) {
+  opacity: 0.7;
+}
+
+/* Case content fills available height */
+.case-content {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 48px - 32px); /* viewport minus app-bar minus footer */
+  overflow: hidden;
 }
 
 /* Remove v-main automatic padding-top from app-bar */
@@ -638,8 +698,37 @@ onMounted(async () => {
   padding-top: 48px !important; /* Only app-bar height */
 }
 
+/* Ensure v-window and v-window-item fill available height */
+:deep(.v-window) {
+  height: 100%;
+}
+
+:deep(.v-window__container) {
+  height: 100%;
+}
+
+:deep(.v-window-item) {
+  height: 100%;
+}
+
 /* Sidebar toggle button animation */
 .sidebar-toggle-btn :deep(.v-icon) {
   transition: transform 0.2s ease-in-out;
+}
+
+/* Sidebar resize handle */
+.sidebar-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background-color 0.15s ease;
+}
+
+.sidebar-resize-handle:hover {
+  background-color: rgba(var(--v-theme-primary), 0.2);
 }
 </style>

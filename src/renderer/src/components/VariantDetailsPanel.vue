@@ -5,7 +5,7 @@
     temporary
     :persistent="true"
     :scrim="false"
-    :width="panelWidth"
+    :width="effectiveWidth"
     @update:model-value="emit('update:open', $event)"
   >
     <!-- Resize handle (left edge) -->
@@ -111,6 +111,7 @@
 /* global window */
 import { onMounted, onUnmounted, computed, watch } from 'vue'
 import { usePanelResize } from '../composables/usePanelResize'
+import { useResponsiveLayout } from '../composables/useResponsiveLayout'
 import { useAnnotations, ACMG_COLORS } from '../composables/useAnnotations'
 import { useVepEnrichment } from '../composables/useVepEnrichment'
 import VariantIdentitySection from './VariantIdentitySection.vue'
@@ -137,6 +138,12 @@ const emit = defineEmits<{
 
 // Use panel resize composable
 const { panelWidth, startResize } = usePanelResize()
+
+// Use responsive layout composable
+const { detailPanelFullWidth, width: displayWidth } = useResponsiveLayout()
+const effectiveWidth = computed(() =>
+  detailPanelFullWidth.value ? displayWidth.value : panelWidth.value
+)
 
 // Use annotations composable
 const {

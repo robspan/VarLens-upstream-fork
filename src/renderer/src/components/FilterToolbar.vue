@@ -102,8 +102,11 @@
                       placeholder="Search gene symbol (e.g. BRCA1)"
                       prepend-inner-icon="mdi-magnify"
                       class="filter-input"
-                      :class="{ 'filter-active': filters.geneSymbol !== '' }"
+                      :class="{
+                        'filter-active': filters.geneSymbol != null && filters.geneSymbol !== ''
+                      }"
                       @update:search="searchGeneSymbols"
+                      @click:clear="handleGeneClear"
                     />
                   </div>
 
@@ -367,119 +370,172 @@
           </draggable>
         </div>
 
-        <v-btn
-          v-if="canScrollRight"
-          icon="mdi-chevron-right"
-          size="x-small"
-          variant="text"
-          class="scroll-arrow scroll-arrow-right"
-          @click="scrollRight"
-        />
+        <div v-if="canScrollRight" class="scroll-arrow-wrapper">
+          <v-btn
+            icon="mdi-chevron-right"
+            size="x-small"
+            variant="text"
+            class="scroll-arrow scroll-arrow-right"
+            @click="scrollRight"
+          />
+          <span v-if="hiddenFilterCount > 0" class="hidden-filter-badge">
+            +{{ hiddenFilterCount }}
+          </span>
+        </div>
       </div>
 
-      <!-- RESULTS & ACTIONS (2x2 grid) -->
-      <div class="results-section ml-auto">
-        <v-chip
-          :color="hasActiveFilters ? 'primary' : 'default'"
-          :variant="hasActiveFilters ? 'flat' : 'tonal'"
-          size="small"
-          class="results-chip"
+      <!-- RESULTS & ACTIONS — 3-column grid, 2 rows -->
+      <div class="results-wrapper ml-auto" :class="{ compact: compactActions }">
+        <button
+          class="compact-toggle"
+          :title="compactActions ? 'Expand buttons' : 'Compact buttons'"
+          @click="toggleCompactActions"
         >
-          <v-icon start size="small">mdi-filter-variant</v-icon>
-          <strong>{{ filteredCount.toLocaleString() }}</strong>
-          <span class="mx-1 text-medium-emphasis">/</span>
-          <span class="text-medium-emphasis">{{ totalCount.toLocaleString() }}</span>
-        </v-chip>
+          <v-icon size="x-small">{{
+            compactActions ? 'mdi-chevron-double-left' : 'mdi-chevron-double-right'
+          }}</v-icon>
+        </button>
+        <div class="results-section">
+          <v-chip
+            :color="hasActiveFilters ? 'primary' : 'default'"
+            :variant="hasActiveFilters ? 'flat' : 'tonal'"
+            size="small"
+            class="results-chip"
+          >
+            <v-icon :start="!compactActions" size="small">mdi-filter-variant</v-icon>
+            <template v-if="!compactActions">
+              <strong>{{ filteredCount.toLocaleString() }}</strong>
+              <span class="mx-1 text-medium-emphasis">/</span>
+              <span class="text-medium-emphasis">{{ totalCount.toLocaleString() }}</span>
+            </template>
+            <v-tooltip v-if="compactActions" activator="parent" location="bottom">
+              {{ filteredCount.toLocaleString() }} / {{ totalCount.toLocaleString() }} variants
+            </v-tooltip>
+          </v-chip>
 
-        <v-btn
-          :disabled="!hasActiveFilters"
-          :color="hasActiveFilters ? 'error' : undefined"
-          :variant="hasActiveFilters ? 'tonal' : 'text'"
-          size="small"
-          prepend-icon="mdi-filter-off"
-          @click="clearAllFilters"
-        >
-          Clear
-        </v-btn>
+          <v-btn
+            :disabled="!hasActiveFilters"
+            :color="hasActiveFilters ? 'error' : undefined"
+            :variant="hasActiveFilters ? 'tonal' : compactActions ? 'tonal' : 'text'"
+            size="small"
+            @click="clearAllFilters"
+          >
+            <v-icon :start="!compactActions" size="small">mdi-filter-off</v-icon>
+            <template v-if="!compactActions">Clear</template>
+            <v-tooltip activator="parent" location="bottom">Clear all filters</v-tooltip>
+          </v-btn>
 
-        <!-- Filter visibility menu -->
-        <FilterVisibilityMenu
-          :filter-groups="filterGroupsWithLabels"
-          :active-filter-count="activeFilterCount"
-          @toggle-visible="toggleFilterGroupVisible"
-          @toggle-expand="toggleFilterGroupExpanded"
-          @reorder="handleFilterReorder"
-          @reset="resetFilterDefaults"
-          @show-all="showAllFilters"
-        />
+          <v-btn size="small" variant="tonal" @click="filterDrawerOpen = true">
+            <v-icon :start="!compactActions" size="small">mdi-filter-variant</v-icon>
+            <template v-if="!compactActions">All Filters</template>
+            <v-badge
+              v-if="activeFilterCount > 0 && !compactActions"
+              :content="activeFilterCount"
+              color="primary"
+              inline
+              class="ml-1"
+            />
+            <v-tooltip activator="parent" location="bottom">
+              Open full filter panel{{
+                activeFilterCount > 0 ? ` (${activeFilterCount} active)` : ''
+              }}
+            </v-tooltip>
+          </v-btn>
 
-        <!-- Column visibility menu -->
-        <ColumnVisibilityMenu
-          v-if="columns && columns.length > 0"
-          :columns="orderedColumns"
-          :visible-columns="visibleColumnKeys"
-          table-id="variant-table"
-          @toggle:column="toggleColumnVisibility"
-          @reorder="setColumnOrder"
-          @reset="resetColumnDefaults"
-        />
+          <FilterVisibilityMenu
+            :filter-groups="filterGroupsWithLabels"
+            :compact="compactActions"
+            @toggle-visible="toggleFilterGroupVisible"
+            @toggle-expand="toggleFilterGroupExpanded"
+            @reorder="handleFilterReorder"
+            @reset="resetFilterDefaults"
+            @show-all="showAllFilters"
+          />
 
-        <!-- Export to Excel button -->
-        <v-tooltip location="top">
-          <template #activator="{ props: tooltipProps }">
-            <v-btn
-              v-bind="tooltipProps"
-              :loading="exporting"
-              :disabled="filteredCount === 0"
-              color="success"
-              variant="tonal"
-              size="small"
-              prepend-icon="mdi-microsoft-excel"
-              @click="exportToExcel"
-            >
-              Export
-            </v-btn>
-          </template>
-          <span>Export {{ filteredCount.toLocaleString() }} variants to Excel</span>
-        </v-tooltip>
+          <v-btn
+            v-if="columns && columns.length > 0"
+            size="small"
+            variant="tonal"
+            @click="columnsDrawerOpen = true"
+          >
+            <v-icon :start="!compactActions" size="small">mdi-table-column</v-icon>
+            <template v-if="!compactActions">Columns</template>
+            <v-tooltip activator="parent" location="bottom">
+              Show/hide and reorder columns
+            </v-tooltip>
+          </v-btn>
+
+          <v-btn
+            :loading="exporting"
+            :disabled="filteredCount === 0"
+            color="success"
+            variant="tonal"
+            size="small"
+            @click="exportToExcel"
+          >
+            <v-icon :start="!compactActions" size="small">mdi-microsoft-excel</v-icon>
+            <template v-if="!compactActions">Export</template>
+            <v-tooltip activator="parent" location="bottom">
+              Export {{ filteredCount.toLocaleString() }} variants to Excel
+            </v-tooltip>
+          </v-btn>
+        </div>
       </div>
     </v-toolbar>
 
     <!-- Applied Filters Summary Bar -->
-    <div v-if="activeFiltersList.length > 0" class="applied-filters-bar">
-      <span class="text-caption text-medium-emphasis mr-2">Active:</span>
-      <v-chip
-        v-for="filter in activeFiltersList"
-        :key="filter.id"
-        size="small"
-        closable
-        variant="tonal"
-        color="primary"
-        class="mr-1"
-        @click:close="clearFilter(filter.id)"
-      >
-        <span class="font-weight-medium">{{ filter.label }}:</span>
-        <span class="ml-1">{{ filter.value }}</span>
-      </v-chip>
-      <v-btn variant="text" size="x-small" color="error" class="ml-1" @click="clearAllFilters">
-        Clear all
-      </v-btn>
-    </div>
+    <v-expand-transition>
+      <div v-if="activeFiltersList.length > 0" class="applied-filters-bar">
+        <span class="text-caption text-medium-emphasis mr-2">Active:</span>
+        <v-chip
+          v-for="filter in activeFiltersList"
+          :key="filter.id"
+          size="small"
+          closable
+          variant="tonal"
+          color="primary"
+          class="mr-1"
+          @click:close="clearFilter(filter.id)"
+        >
+          <span class="font-weight-medium">{{ filter.label }}:</span>
+          <span class="ml-1">{{ filter.value }}</span>
+        </v-chip>
+        <v-btn variant="text" size="x-small" color="error" class="ml-1" @click="clearAllFilters">
+          Clear all
+        </v-btn>
+      </div>
+    </v-expand-transition>
+
+    <!-- Filter drawer (right-side slide-out panel) -->
+    <FilterDrawer v-model:open="filterDrawerOpen" />
+
+    <!-- Columns drawer (right-side slide-out panel) -->
+    <ColumnsDrawer
+      v-if="columns && columns.length > 0"
+      v-model:open="columnsDrawerOpen"
+      :columns="orderedColumns"
+      :visible-columns="visibleColumnKeys"
+      table-id="variant-table"
+      @toggle:column="toggleColumnVisibility"
+      @reorder="setColumnOrder"
+      @reset="resetColumnDefaults"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, toRef, provide } from 'vue'
 import draggable from 'vuedraggable'
-import { useDebounce } from '../composables/useDebounce'
-import { useTags } from '../composables/useTags'
+import { useFilterState } from '../composables/useFilterState'
 import { useFilterPreferences } from '../composables/useFilterPreferences'
 import { useColumnPreferences } from '../composables/useColumnPreferences'
-import ColumnVisibilityMenu from './ColumnVisibilityMenu.vue'
+import ColumnsDrawer from './ColumnsDrawer.vue'
 import FilterVisibilityMenu from './FilterVisibilityMenu.vue'
+import FilterDrawer from './FilterDrawer.vue'
 import GroupedMultiSelect from './GroupedMultiSelect.vue'
 import { consequenceGroups, clinvarGroups } from '../config/filterGroups'
 import type { VariantFilter, Tag } from '../../../shared/types/api'
+import type { FilterDrawerState } from './filterDrawerTypes'
 
 interface ColumnDef {
   key: string
@@ -498,9 +554,6 @@ interface Props {
 
 const props = defineProps<Props>()
 
-// Export state
-const exporting = ref(false)
-
 interface Emits {
   (e: 'update:filters', filters: Omit<VariantFilter, 'case_id'>): void
   (e: 'reset-sort'): void
@@ -513,8 +566,110 @@ interface Emits {
 
 const emit = defineEmits<Emits>()
 
-// Tags composable
-const { loadTags, getTags } = useTags()
+// Filter state composable - single source of truth for all filter logic
+const hasSortRef = toRef(props, 'hasSort')
+const {
+  filters,
+  filterOptions,
+  geneSymbolSuggestions,
+  loadingSuggestions,
+  selectedImpactPresets,
+  selectedAfPreset,
+  selectedCaddPreset,
+  exporting,
+  afPresets,
+  caddPresets,
+  impactPresets,
+  availableTags,
+  hasActiveFilters,
+  activeFilterCount,
+  activeFiltersList,
+  isFilterGroupActive,
+  clearFilter,
+  removeTagFilter,
+  clearAllFilters,
+  handleGeneClear,
+  searchGeneSymbols,
+  loadFilterOptions,
+  setInitialSearch,
+  exportToExcel: composableExportToExcel
+} = useFilterState(
+  computed(() => props.caseId),
+  {
+    onFiltersUpdate: (f) => emit('update:filters', f),
+    onResetSort: () => emit('reset-sort'),
+    hasSortRef
+  }
+)
+
+// Drawer states
+const filterDrawerOpen = ref(false)
+const columnsDrawerOpen = ref(false)
+
+// Compact actions toggle (persisted in localStorage)
+const COMPACT_STORAGE_KEY = 'varlens_compact_actions_v1'
+// eslint-disable-next-line no-undef
+const compactActions = ref(localStorage.getItem(COMPACT_STORAGE_KEY) === 'true')
+const toggleCompactActions = () => {
+  compactActions.value = !compactActions.value
+  // eslint-disable-next-line no-undef
+  localStorage.setItem(COMPACT_STORAGE_KEY, String(compactActions.value))
+}
+
+// Provide shared filter state for FilterDrawer (via provide/inject)
+provide<FilterDrawerState>('filterDrawerState', {
+  filters,
+  filterOptions,
+  geneSymbolSuggestions,
+  loadingSuggestions,
+  selectedImpactPresets,
+  selectedAfPreset,
+  selectedCaddPreset,
+  afPresets,
+  caddPresets,
+  impactPresets,
+  availableTags,
+  hasActiveFilters,
+  activeFilterCount,
+  activeFiltersList,
+  isFilterGroupActive,
+  clearFilter,
+  removeTagFilter,
+  clearAllFilters,
+  handleGeneClear,
+  searchGeneSymbols
+})
+
+// Watch initialSearch prop to pre-populate search from cohort navigation
+watch(
+  () => props.initialSearch,
+  (newSearch) => {
+    if (newSearch !== undefined && newSearch !== '') {
+      setInitialSearch(newSearch)
+    }
+  },
+  { immediate: true }
+)
+
+// Export to Excel - wrapper that bridges composable result to emit events
+const exportToExcel = async () => {
+  const result = await composableExportToExcel(props.caseId, props.caseName)
+
+  if (result === null) return
+
+  if (!result.success && result.error !== undefined && result.error !== '') {
+    emit('export-error', result.error)
+  } else if (result.success && result.filePath !== undefined && result.filePath !== '') {
+    emit('export-success', {
+      filePath: result.filePath,
+      action: {
+        text: 'Open folder',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, no-undef
+        callback: () => (window as any).api.shell.showItemInFolder(result.filePath)
+      }
+    })
+  }
+}
 
 // Filter preferences composable
 const {
@@ -597,12 +752,27 @@ const orderedFilterGroups = computed({
   }
 })
 
+// Hidden filter count for right-scroll badge
+const hiddenFilterCount = ref(0)
+
 // Update scroll button visibility
 const updateScrollButtons = () => {
   if (!scrollContainer.value) return
   const el = scrollContainer.value
   canScrollLeft.value = el.scrollLeft > 0
   canScrollRight.value = el.scrollLeft < el.scrollWidth - el.clientWidth - 1
+
+  // Count filter groups whose right edge is beyond the visible area
+  const visibleRight = el.scrollLeft + el.clientWidth
+  const filterElements = el.querySelectorAll('.filter-section-wrapper')
+  let hidden = 0
+  filterElements.forEach((child) => {
+    const childEl = child as HTMLElement
+    if (childEl.offsetLeft + childEl.offsetWidth > visibleRight + 1) {
+      hidden++
+    }
+  })
+  hiddenFilterCount.value = hidden
 }
 
 // Scroll left
@@ -615,326 +785,25 @@ const scrollRight = () => {
   scrollContainer.value?.scrollBy({ left: 200, behavior: 'smooth' })
 }
 
-// Filter state
-const filters = ref({
-  searchQuery: '',
-  geneSymbol: '',
-  consequences: [] as string[],
-  funcs: [] as string[],
-  clinvars: [] as string[],
-  maxGnomadAf: null as number | null,
-  minCadd: null as number | null,
-  tagIds: [] as number[]
-})
-
-// Available tags for filter
-const availableTags = computed(() => getTags())
-
-// Filter options loaded from database
-const filterOptions = ref({
-  consequences: [] as string[],
-  funcs: [] as string[],
-  clinvars: [] as string[],
-  minCadd: null as number | null,
-  maxCadd: null as number | null,
-  minGnomadAf: null as number | null,
-  maxGnomadAf: null as number | null
-})
-
-// Gene autocomplete state
-const geneSymbolSuggestions = ref<string[]>([])
-const loadingSuggestions = ref(false)
-
-// Preset values
-const afPresets = [
-  { label: '1%', value: 0.01 },
-  { label: '0.1%', value: 0.001 },
-  { label: '0.01%', value: 0.0001 }
-]
-
-const caddPresets = [
-  { label: '10', value: 10 },
-  { label: '15', value: 15 },
-  { label: '20', value: 20 },
-  { label: '25', value: 25 }
-]
-
-// Impact level presets for quick filtering
-const impactPresets = [
-  { label: 'HIGH', value: 'HIGH', color: 'error' },
-  { label: 'MOD', value: 'MODERATE', color: 'warning' },
-  { label: 'LOW', value: 'LOW', color: 'info' }
-]
-
-// Selected impact presets (multi-select)
-const selectedImpactPresets = ref<string[]>([])
-
-// Selected preset values (synced bidirectionally)
-const selectedAfPreset = ref<number | null>(null)
-const selectedCaddPreset = ref<number | null>(null)
-
-// Computed properties
-const hasActiveFilters = computed(() => {
-  const afActive =
-    filters.value.maxGnomadAf !== null &&
-    Number.isNaN(filters.value.maxGnomadAf) === false &&
-    filters.value.maxGnomadAf > 0
-  const caddActive =
-    filters.value.minCadd !== null &&
-    Number.isNaN(filters.value.minCadd) === false &&
-    filters.value.minCadd >= 0
-
-  return (
-    filters.value.searchQuery !== '' ||
-    filters.value.geneSymbol !== '' ||
-    selectedImpactPresets.value.length > 0 ||
-    filters.value.consequences.length > 0 ||
-    filters.value.funcs.length > 0 ||
-    filters.value.clinvars.length > 0 ||
-    afActive ||
-    caddActive ||
-    filters.value.tagIds.length > 0 ||
-    props.hasSort === true
-  )
-})
-
-// Active filter count for badge
-const activeFilterCount = computed(() => {
-  let count = 0
-  if (filters.value.searchQuery !== '') count++
-  if (filters.value.geneSymbol !== '') count++
-  if (selectedImpactPresets.value.length > 0) count++
-  if (filters.value.consequences.length > 0) count++
-  if (filters.value.funcs.length > 0) count++
-  if (filters.value.clinvars.length > 0) count++
-  if (
-    filters.value.maxGnomadAf !== null &&
-    !Number.isNaN(filters.value.maxGnomadAf) &&
-    filters.value.maxGnomadAf > 0
-  )
-    count++
-  if (
-    filters.value.minCadd !== null &&
-    !Number.isNaN(filters.value.minCadd) &&
-    filters.value.minCadd >= 0
-  )
-    count++
-  if (filters.value.tagIds.length > 0) count++
-  return count
-})
-
-// Active filters as chip data for summary bar
-interface ActiveFilter {
-  id: string
-  label: string
-  value: string
-}
-
-const activeFiltersList = computed<ActiveFilter[]>(() => {
-  const list: ActiveFilter[] = []
-
-  if (filters.value.searchQuery !== '') {
-    list.push({ id: 'search', label: 'Search', value: filters.value.searchQuery })
-  }
-  if (filters.value.geneSymbol !== '') {
-    list.push({ id: 'gene', label: 'Gene', value: filters.value.geneSymbol })
-  }
-  if (selectedImpactPresets.value.length > 0) {
-    list.push({ id: 'impact', label: 'Impact', value: selectedImpactPresets.value.join(', ') })
-  }
-  if (filters.value.consequences.length > 0) {
-    list.push({
-      id: 'consequences',
-      label: 'Consequences',
-      value: `${filters.value.consequences.length} selected`
-    })
-  }
-  if (filters.value.funcs.length > 0) {
-    list.push({
-      id: 'funcs',
-      label: 'Consequence',
-      value: `${filters.value.funcs.length} selected`
-    })
-  }
-  if (filters.value.clinvars.length > 0) {
-    list.push({
-      id: 'clinvars',
-      label: 'ClinVar',
-      value: `${filters.value.clinvars.length} selected`
-    })
-  }
-  if (
-    filters.value.maxGnomadAf !== null &&
-    !Number.isNaN(filters.value.maxGnomadAf) &&
-    filters.value.maxGnomadAf > 0
-  ) {
-    const pct = (filters.value.maxGnomadAf * 100).toFixed(2)
-    list.push({ id: 'frequency', label: 'AF ≤', value: `${pct}%` })
-  }
-  if (
-    filters.value.minCadd !== null &&
-    !Number.isNaN(filters.value.minCadd) &&
-    filters.value.minCadd >= 0
-  ) {
-    list.push({ id: 'cadd', label: 'CADD ≥', value: String(filters.value.minCadd) })
-  }
-  if (filters.value.tagIds.length > 0) {
-    const tagNames = availableTags.value
-      .filter((t) => filters.value.tagIds.includes(t.id))
-      .map((t) => t.name)
-    list.push({ id: 'tags', label: 'Tags', value: tagNames.join(', ') })
-  }
-
-  return list
-})
-
-// Check if a specific filter group has active filters (for collapsed indicator)
-const isFilterGroupActive = (groupId: string): boolean => {
-  switch (groupId) {
-    case 'search':
-      return filters.value.searchQuery !== ''
-    case 'gene':
-      return filters.value.geneSymbol !== ''
-    case 'impact':
-      return selectedImpactPresets.value.length > 0 || filters.value.consequences.length > 0
-    case 'function':
-      return filters.value.funcs.length > 0
-    case 'clinvar':
-      return filters.value.clinvars.length > 0
-    case 'frequency':
-      return (
-        filters.value.maxGnomadAf !== null &&
-        !Number.isNaN(filters.value.maxGnomadAf) &&
-        filters.value.maxGnomadAf > 0
-      )
-    case 'cadd':
-      return (
-        filters.value.minCadd !== null &&
-        !Number.isNaN(filters.value.minCadd) &&
-        filters.value.minCadd >= 0
-      )
-    case 'tags':
-      return filters.value.tagIds.length > 0
-    default:
-      return false
-  }
-}
-
-// Clear a specific filter by ID
-const clearFilter = (filterId: string): void => {
-  switch (filterId) {
-    case 'search':
-      filters.value.searchQuery = ''
-      break
-    case 'gene':
-      filters.value.geneSymbol = ''
-      break
-    case 'impact':
-      selectedImpactPresets.value = []
-      break
-    case 'consequences':
-      filters.value.consequences = []
-      break
-    case 'funcs':
-      filters.value.funcs = []
-      break
-    case 'clinvars':
-      filters.value.clinvars = []
-      break
-    case 'frequency':
-      filters.value.maxGnomadAf = null
-      selectedAfPreset.value = null
-      break
-    case 'cadd':
-      filters.value.minCadd = null
-      selectedCaddPreset.value = null
-      break
-    case 'tags':
-      filters.value.tagIds = []
-      break
-  }
-}
-
-// Remove a tag from the filter
-const removeTagFilter = (tagId: number) => {
-  filters.value.tagIds = filters.value.tagIds.filter((id) => id !== tagId)
-}
-
-// Watch initialSearch prop to pre-populate search from cohort navigation
-watch(
-  () => props.initialSearch,
-  (newSearch) => {
-    if (newSearch !== undefined && newSearch !== '') {
-      filters.value.searchQuery = newSearch
-    }
-  },
-  { immediate: true }
-)
-
-// Watch caseId prop and reset filters when case changes
-watch(
-  () => props.caseId,
-  async (newCaseId, oldCaseId) => {
-    if (newCaseId !== oldCaseId && oldCaseId !== undefined) {
-      // Reset all filters when switching cases
-      filters.value.searchQuery = ''
-      filters.value.geneSymbol = ''
-      filters.value.consequences = []
-      filters.value.funcs = []
-      filters.value.clinvars = []
-      filters.value.maxGnomadAf = null
-      filters.value.minCadd = null
-      filters.value.tagIds = []
-      selectedAfPreset.value = null
-      selectedCaddPreset.value = null
-      selectedImpactPresets.value = []
-
-      // Emit reset filters immediately (bypass debounce for case switch)
-      emit('update:filters', {})
-
-      // Reload filter options for the new case
-      // eslint-disable-next-line no-undef
-      if (typeof window.api !== 'undefined') {
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any, no-undef
-          const options = await (window as any).api.variants.getFilterOptions(newCaseId)
-          filterOptions.value = options
-        } catch (error) {
-          // eslint-disable-next-line no-undef
-          console.error('Failed to load filter options for new case:', error)
-        }
-      }
-    }
-  }
-)
+// ResizeObserver to detect when the scroll container becomes visible (e.g., tab switch)
+let resizeObserver: ResizeObserver | null = null
 
 // Load filter options on mount
 onMounted(async () => {
-  // Guard for browser dev mode
-  // eslint-disable-next-line no-undef
-  if (typeof window.api === 'undefined') {
-    // eslint-disable-next-line no-undef
-    console.warn('window.api not available - running outside Electron')
-    return
-  }
-
-  try {
-    // Load filter options and tags in parallel
-    const [options] = await Promise.all([
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, no-undef
-      (window as any).api.variants.getFilterOptions(props.caseId),
-      loadTags()
-    ])
-    filterOptions.value = options
-  } catch (error) {
-    // eslint-disable-next-line no-undef
-    console.error('Failed to load filter options:', error)
-  }
+  await loadFilterOptions(props.caseId)
 
   // Setup scroll listeners
   scrollContainer.value?.addEventListener('scroll', updateScrollButtons)
   // eslint-disable-next-line no-undef
   window.addEventListener('resize', updateScrollButtons)
+
+  // Use ResizeObserver to re-calculate scroll buttons when the container
+  // transitions from hidden (0 dimensions) to visible (tab switch)
+  if (scrollContainer.value) {
+    resizeObserver = new ResizeObserver(() => updateScrollButtons())
+    resizeObserver.observe(scrollContainer.value)
+  }
+
   updateScrollButtons()
 })
 
@@ -942,247 +811,8 @@ onBeforeUnmount(() => {
   scrollContainer.value?.removeEventListener('scroll', updateScrollButtons)
   // eslint-disable-next-line no-undef
   window.removeEventListener('resize', updateScrollButtons)
+  resizeObserver?.disconnect()
 })
-
-// Gene symbol autocomplete using optimized LIKE query (faster than FTS5)
-const searchGeneSymbols = async (query: string) => {
-  if (!query || query.length < 2) {
-    geneSymbolSuggestions.value = []
-    return
-  }
-
-  loadingSuggestions.value = true
-  try {
-    // Use optimized geneSymbols API - direct LIKE query instead of FTS5
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, no-undef
-    const results: string[] = await (window as any).api.variants.geneSymbols(
-      props.caseId,
-      query,
-      50
-    )
-    geneSymbolSuggestions.value = results
-  } catch {
-    geneSymbolSuggestions.value = []
-  } finally {
-    loadingSuggestions.value = false
-  }
-}
-
-// Emit filter updates with debounce
-const emitFilters = () => {
-  const variantFilter: Omit<VariantFilter, 'case_id'> = {}
-
-  if (filters.value.searchQuery !== '') {
-    variantFilter.search_query = filters.value.searchQuery
-  }
-
-  if (filters.value.geneSymbol !== '') {
-    variantFilter.gene_symbol = filters.value.geneSymbol
-  }
-
-  // Combine impact presets with specific consequences (OR logic)
-  const allConsequences = [...selectedImpactPresets.value, ...filters.value.consequences]
-  if (allConsequences.length > 0) {
-    variantFilter.consequences = [...new Set(allConsequences)] // Dedupe
-  }
-
-  // Add funcs filter
-  if (filters.value.funcs.length > 0) {
-    variantFilter.funcs = filters.value.funcs
-  }
-
-  // Add clinvars filter
-  if (filters.value.clinvars.length > 0) {
-    variantFilter.clinvars = filters.value.clinvars
-  }
-
-  // Only include gnomAD AF if it's a valid positive number
-  const afValue = filters.value.maxGnomadAf
-  if (afValue !== null && Number.isNaN(afValue) === false && afValue > 0) {
-    variantFilter.gnomad_af_max = afValue
-  }
-
-  // Only include CADD if it's a valid non-negative number
-  const caddValue = filters.value.minCadd
-  if (caddValue !== null && Number.isNaN(caddValue) === false && caddValue >= 0) {
-    variantFilter.cadd_min = caddValue
-  }
-
-  // Add tag filter
-  if (filters.value.tagIds.length > 0) {
-    variantFilter.tag_ids = filters.value.tagIds
-  }
-
-  emit('update:filters', variantFilter)
-}
-
-// Create debounced version
-const { debouncedFn: debouncedEmit } = useDebounce(emitFilters, 300)
-
-// Watch filters and emit changes
-watch(
-  filters,
-  () => {
-    debouncedEmit()
-  },
-  { deep: true }
-)
-
-// Watch preset selections and sync with text inputs
-watch(selectedAfPreset, (value) => {
-  if (value !== null) {
-    filters.value.maxGnomadAf = value
-  }
-})
-
-watch(selectedCaddPreset, (value) => {
-  if (value !== null) {
-    filters.value.minCadd = value
-  }
-})
-
-// Watch impact presets and emit filter changes
-watch(selectedImpactPresets, () => {
-  debouncedEmit()
-})
-
-// Watch text inputs and sync with preset selections
-watch(
-  () => filters.value.maxGnomadAf,
-  (value) => {
-    if (value !== null) {
-      // Check if value matches a preset
-      const matchingPreset = afPresets.find((p) => p.value === value)
-      selectedAfPreset.value = matchingPreset !== undefined ? matchingPreset.value : null
-    } else {
-      selectedAfPreset.value = null
-    }
-  }
-)
-
-watch(
-  () => filters.value.minCadd,
-  (value) => {
-    if (value !== null) {
-      // Check if value matches a preset
-      const matchingPreset = caddPresets.find((p) => p.value === value)
-      selectedCaddPreset.value = matchingPreset !== undefined ? matchingPreset.value : null
-    } else {
-      selectedCaddPreset.value = null
-    }
-  }
-)
-
-// Clear all filters and reset sort
-const clearAllFilters = () => {
-  filters.value.searchQuery = ''
-  filters.value.geneSymbol = ''
-  filters.value.consequences = []
-  filters.value.funcs = []
-  filters.value.clinvars = []
-  filters.value.maxGnomadAf = null
-  filters.value.minCadd = null
-  filters.value.tagIds = []
-  selectedAfPreset.value = null
-  selectedCaddPreset.value = null
-  selectedImpactPresets.value = []
-  // Also reset sort order in parent
-  emit('reset-sort')
-}
-
-// Export to Excel
-const exportToExcel = async () => {
-  // Guard for browser dev mode
-  // eslint-disable-next-line no-undef
-  if (typeof window.api === 'undefined') {
-    // eslint-disable-next-line no-undef
-    console.warn('window.api not available - running outside Electron')
-    return
-  }
-
-  exporting.value = true
-  try {
-    // Build current filter state
-    const exportFilters: Omit<VariantFilter, 'case_id'> = {}
-
-    if (filters.value.searchQuery !== '') {
-      exportFilters.search_query = filters.value.searchQuery
-    }
-
-    if (filters.value.geneSymbol !== '') {
-      exportFilters.gene_symbol = filters.value.geneSymbol
-    }
-
-    const allConsequences = [...selectedImpactPresets.value, ...filters.value.consequences]
-    if (allConsequences.length > 0) {
-      exportFilters.consequences = [...new Set(allConsequences)]
-    }
-
-    if (filters.value.funcs.length > 0) {
-      exportFilters.funcs = filters.value.funcs
-    }
-
-    if (filters.value.clinvars.length > 0) {
-      exportFilters.clinvars = filters.value.clinvars
-    }
-
-    const afValue = filters.value.maxGnomadAf
-    if (afValue !== null && Number.isNaN(afValue) === false && afValue > 0) {
-      exportFilters.gnomad_af_max = afValue
-    }
-
-    const caddValue = filters.value.minCadd
-    if (caddValue !== null && Number.isNaN(caddValue) === false && caddValue >= 0) {
-      exportFilters.cadd_min = caddValue
-    }
-
-    if (filters.value.tagIds.length > 0) {
-      exportFilters.tag_ids = filters.value.tagIds
-    }
-
-    // eslint-disable-next-line no-undef
-    console.log('Exporting with caseName:', props.caseName, 'caseId:', props.caseId)
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, no-undef
-    const result = await (window as any).api.export.variants(
-      props.caseId,
-      exportFilters,
-      props.caseName !== '' ? props.caseName : `case_${props.caseId}`
-    )
-
-    // eslint-disable-next-line no-undef
-    console.log('Export result:', result)
-
-    // Check for error response (SerializableError has code property)
-    if (result !== null && result !== undefined && 'code' in result) {
-      emit('export-error', result.message ?? result.userMessage ?? 'Unknown error')
-      return
-    }
-
-    if (result !== null && result !== undefined && result.success === true) {
-      emit('export-success', {
-        filePath: result.filePath,
-        action: {
-          text: 'Open folder',
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any, no-undef
-          callback: () => (window as any).api.shell.showItemInFolder(result.filePath)
-        }
-      })
-    } else if (
-      result !== null &&
-      result !== undefined &&
-      typeof result.error === 'string' &&
-      result.error !== 'Export cancelled'
-    ) {
-      emit('export-error', result.error)
-    }
-  } catch (error) {
-    // eslint-disable-next-line no-undef
-    console.error('Export error:', error)
-  } finally {
-    exporting.value = false
-  }
-}
 </script>
 
 <style scoped>
@@ -1292,6 +922,26 @@ const exportToExcel = async () => {
   align-self: center;
 }
 
+.scroll-arrow-wrapper {
+  position: relative;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.hidden-filter-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background-color: rgb(var(--v-theme-primary));
+  color: white;
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 8px;
+  pointer-events: none;
+}
+
 .filter-section {
   display: flex;
   flex-direction: column;
@@ -1386,6 +1036,14 @@ const exportToExcel = async () => {
 
 .filter-input :deep(.v-field) {
   border-radius: 6px;
+  border-color: rgba(0, 0, 0, 0.15);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.filter-input :deep(.v-field--focused) {
+  box-shadow: 0 0 0 2px rgba(var(--v-theme-primary), 0.15);
 }
 
 .filter-input :deep(.v-field__input) {
@@ -1396,15 +1054,52 @@ const exportToExcel = async () => {
   font-size: 0.85rem;
 }
 
+.results-wrapper {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+.compact-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  background: rgba(var(--v-theme-on-surface), 0.06);
+  border-radius: 8px 0 0 8px;
+  border: none;
+  cursor: pointer;
+  color: rgba(var(--v-theme-on-surface), 0.35);
+  transition:
+    background 0.2s,
+    color 0.2s;
+}
+
+.compact-toggle:hover {
+  background: rgba(var(--v-theme-on-surface), 0.12);
+  color: rgba(var(--v-theme-on-surface), 0.7);
+}
+
 .results-section {
   display: grid;
   grid-template-columns: auto auto auto;
-  gap: 6px;
+  gap: 4px 6px;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: 0 8px 8px 0;
   background: rgba(var(--v-theme-on-surface), 0.03);
-  flex-shrink: 0;
-  align-self: flex-start;
+  align-items: center;
+}
+
+/* Compact mode: fixed-width grid cells prevent layout shift when filter state changes */
+.results-wrapper.compact .results-section {
+  justify-items: center;
+}
+
+.results-wrapper.compact .results-section > :deep(.v-btn),
+.results-wrapper.compact .results-section > :deep(.v-chip) {
+  min-width: 36px;
+  justify-content: center;
 }
 
 /* Collapsed filter group - just show small indicator */

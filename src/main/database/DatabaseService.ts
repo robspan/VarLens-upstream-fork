@@ -23,6 +23,14 @@ import type {
   CaseHpoTerm,
   Tag
 } from './types'
+import type {
+  DatabaseOverview,
+  OverviewCase,
+  OverviewCohortGroup,
+  OverviewTag,
+  OverviewPhenotype
+} from '../../shared/types/database-overview'
+import { CohortService } from './cohort'
 import { DatabaseError, NotFoundError, UniqueConstraintError, TransactionError } from './errors'
 import { mainLogger } from '../services/MainLogger'
 
@@ -1182,6 +1190,64 @@ export class DatabaseService {
   }
 
   /**
+   * Update a cohort group
+   *
+   * @param id - Cohort group ID
+   * @param updates - Partial cohort group updates
+   * @returns Updated CohortGroup
+   * @throws NotFoundError if cohort group does not exist
+   * @throws UniqueConstraintError if new name already exists
+   */
+  updateCohortGroup(
+    id: number,
+    updates: { name?: string; description?: string | null }
+  ): CohortGroup {
+    try {
+      // First verify cohort group exists
+      const existing = this.stmt('SELECT * FROM cohort_groups WHERE id = ?').get(id) as
+        | CohortGroup
+        | undefined
+      if (!existing) {
+        throw new NotFoundError('CohortGroup', id)
+      }
+
+      // Build update query dynamically
+      const setClauses: string[] = []
+      const params: (string | number | null)[] = []
+
+      if (updates.name !== undefined) {
+        setClauses.push('name = ?')
+        params.push(updates.name)
+      }
+      if (updates.description !== undefined) {
+        setClauses.push('description = ?')
+        params.push(updates.description)
+      }
+
+      if (setClauses.length === 0) {
+        return existing
+      }
+
+      params.push(id)
+      const sql = `UPDATE cohort_groups SET ${setClauses.join(', ')} WHERE id = ? RETURNING *`
+      const result = this.db.prepare(sql).get(...params) as CohortGroup
+
+      return result
+    } catch (error) {
+      if (error instanceof NotFoundError) {
+        throw error
+      }
+      if (error instanceof Error && error.message.includes('UNIQUE constraint failed') === true) {
+        throw new UniqueConstraintError('name', updates.name ?? '')
+      }
+      throw new DatabaseError(
+        `Failed to update cohort group: ${id}`,
+        error instanceof Error ? error : undefined
+      )
+    }
+  }
+
+  /**
    * Delete a cohort group
    *
    * Note: CASCADE handles automatic deletion of case_cohort_links
@@ -1536,6 +1602,70 @@ export class DatabaseService {
         insert.run(caseId, variantId, tagId, now)
       }
     })
+  }
+
+  // ============================================================
+  // Database Overview
+  // ============================================================
+
+  /**
+   * Get a full database overview (summary, cases, cohorts, tags, phenotypes)
+   *
+   * Aggregates data from multiple tables for the admin console dialog.
+   *
+   * @returns DatabaseOverview with summary stats, cases, cohort groups, tags, and top phenotypes
+   */
+  getDatabaseOverview(): DatabaseOverview {
+    // Reuse CohortService for summary stats
+    const cohortService = new CohortService(this.db)
+    const summary = cohortService.getCohortSummary()
+
+    // Cases with metadata
+    const cases = this.stmt(
+      `
+      SELECT c.id, c.name, c.variant_count, c.created_at, cm.affected_status
+      FROM cases c
+      LEFT JOIN case_metadata cm ON c.id = cm.case_id
+      ORDER BY c.created_at DESC
+    `
+    ).all() as OverviewCase[]
+
+    // Cohort groups with member counts
+    const cohortGroups = this.stmt(
+      `
+      SELECT cg.id, cg.name, cg.description, cg.created_at,
+             COUNT(ccl.case_id) as member_count
+      FROM cohort_groups cg
+      LEFT JOIN case_cohort_links ccl ON cg.id = ccl.cohort_id
+      GROUP BY cg.id
+      ORDER BY cg.name
+    `
+    ).all() as OverviewCohortGroup[]
+
+    // Tags with usage counts
+    const tags = this.stmt(
+      `
+      SELECT t.id, t.name, t.color,
+             COUNT(vt.variant_id) as usage_count
+      FROM tags t
+      LEFT JOIN variant_tags vt ON t.id = vt.tag_id
+      GROUP BY t.id
+      ORDER BY t.name
+    `
+    ).all() as OverviewTag[]
+
+    // Top phenotypes across all cases
+    const topPhenotypes = this.stmt(
+      `
+      SELECT hpo_id, hpo_label, COUNT(DISTINCT case_id) as case_count
+      FROM case_hpo_terms
+      GROUP BY hpo_id, hpo_label
+      ORDER BY case_count DESC
+      LIMIT 25
+    `
+    ).all() as OverviewPhenotype[]
+
+    return { summary, cases, cohortGroups, tags, topPhenotypes }
   }
 
   /**

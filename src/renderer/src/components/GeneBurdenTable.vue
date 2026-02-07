@@ -2,9 +2,9 @@
   <div>
     <v-progress-linear v-if="loading" indeterminate color="primary" class="mb-3" />
     <v-data-table
+      v-model:items-per-page="itemsPerPage"
       :headers="headers"
       :items="geneBurden"
-      :items-per-page="25"
       :items-per-page-options="[10, 25, 50, 100]"
       :sort-by="[{ key: 'affected_case_count', order: 'desc' }]"
       density="compact"
@@ -45,12 +45,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import type { GeneBurden } from '../../../shared/types/cohort'
+import { useSettingsStore } from '../stores/settingsStore'
+
+// Settings store for persisted items-per-page
+const settingsStore = useSettingsStore()
 
 // State
 const geneBurden = ref<GeneBurden[]>([])
 const loading = ref(false)
+const itemsPerPage = ref(settingsStore.itemsPerPage)
+
+// Sync items-per-page changes back to settings store
+watch(itemsPerPage, (v) => {
+  settingsStore.itemsPerPage = v
+})
 
 // Table headers
 const headers = [

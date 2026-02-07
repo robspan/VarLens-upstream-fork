@@ -23,34 +23,60 @@ export interface FilterPreferences {
 }
 
 /**
- * Default filter groups in standard order
+ * Default filter groups for case analysis (standard order)
  */
-const DEFAULT_FILTER_GROUPS: FilterGroupPreference[] = [
-  { id: 'search', order: 0, visible: true, expanded: true },
-  { id: 'gene', order: 1, visible: true, expanded: true },
-  { id: 'impact', order: 2, visible: true, expanded: true },
-  { id: 'function', order: 3, visible: true, expanded: true },
-  { id: 'clinvar', order: 4, visible: true, expanded: true },
-  { id: 'frequency', order: 5, visible: true, expanded: true },
+const DEFAULT_CASE_FILTER_GROUPS: FilterGroupPreference[] = [
+  { id: 'impact', order: 0, visible: true, expanded: true },
+  { id: 'clinvar', order: 1, visible: true, expanded: true },
+  { id: 'frequency', order: 2, visible: true, expanded: true },
+  { id: 'search', order: 3, visible: true, expanded: true },
+  { id: 'function', order: 4, visible: true, expanded: true },
+  { id: 'gene', order: 5, visible: true, expanded: true },
   { id: 'cadd', order: 6, visible: true, expanded: true },
   { id: 'tags', order: 7, visible: true, expanded: true }
 ]
 
 /**
- * Composable for managing filter group preferences with localStorage persistence
+ * Default filter groups for cohort analysis
  */
-export function useFilterPreferences() {
+export const DEFAULT_COHORT_FILTER_GROUPS: FilterGroupPreference[] = [
+  { id: 'search', order: 0, visible: true, expanded: true },
+  { id: 'gene', order: 1, visible: true, expanded: true },
+  { id: 'impact', order: 2, visible: true, expanded: true },
+  { id: 'function', order: 3, visible: true, expanded: true },
+  { id: 'clinvar', order: 4, visible: true, expanded: true },
+  { id: 'cohort-freq', order: 5, visible: true, expanded: true },
+  { id: 'frequency', order: 6, visible: true, expanded: true },
+  { id: 'cadd', order: 7, visible: true, expanded: true }
+]
+
+/**
+ * Options for configuring filter preferences
+ */
+export interface UseFilterPreferencesOptions {
+  /** Storage key for localStorage. Defaults to 'varlens_filter_groups_v2' */
+  storageKey?: string
+  /** Default filter groups. Defaults to case analysis groups */
+  defaultGroups?: FilterGroupPreference[]
+}
+
+/**
+ * Composable for managing filter group preferences with localStorage persistence
+ *
+ * @param options Optional configuration for storage key and default groups
+ */
+export function useFilterPreferences(options?: UseFilterPreferencesOptions) {
+  const storageKey = options?.storageKey ?? 'varlens_filter_groups_v2'
+  const defaultFilterGroups = options?.defaultGroups ?? DEFAULT_CASE_FILTER_GROUPS
+
   const defaultPrefs: FilterPreferences = {
-    groups: DEFAULT_FILTER_GROUPS
+    groups: defaultFilterGroups
   }
 
   // Reactive localStorage-backed preferences
-  const storedPrefs = useStorage<FilterPreferences>(
-    'varlens_filter_groups_v2',
-    defaultPrefs,
-    localStorage,
-    { mergeDefaults: true }
-  )
+  const storedPrefs = useStorage<FilterPreferences>(storageKey, defaultPrefs, localStorage, {
+    mergeDefaults: true
+  })
 
   /**
    * Merge stored groups with defaults
@@ -83,7 +109,7 @@ export function useFilterPreferences() {
     })
 
     // Find missing default groups
-    const missingGroups = DEFAULT_FILTER_GROUPS.filter((g) => !storedIds.has(g.id))
+    const missingGroups = defaultFilterGroups.filter((g) => !storedIds.has(g.id))
 
     if (missingGroups.length === 0) {
       return migrated
@@ -170,7 +196,7 @@ export function useFilterPreferences() {
    * Reset to default filter group order and all visible/expanded
    */
   const resetToDefaults = (): void => {
-    storedPrefs.value.groups = DEFAULT_FILTER_GROUPS
+    storedPrefs.value.groups = defaultFilterGroups
   }
 
   /**

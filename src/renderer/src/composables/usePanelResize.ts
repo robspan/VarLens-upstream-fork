@@ -1,17 +1,34 @@
 import { ref, onUnmounted } from 'vue'
 
-const STORAGE_KEY = 'varlens_panel_width'
-const DEFAULT_WIDTH = 400
-const MIN_WIDTH = 300
-const MAX_WIDTH = 800
+export interface PanelResizeOptions {
+  side: 'left' | 'right'
+  storageKey: string
+  defaultWidth: number
+  minWidth: number
+  maxWidth: number
+  collapseThreshold?: number
+  onCollapse?: () => void
+}
 
-export function usePanelResize() {
+const DEFAULT_OPTIONS: PanelResizeOptions = {
+  side: 'right',
+  storageKey: 'varlens_panel_width',
+  defaultWidth: 400,
+  minWidth: 300,
+  maxWidth: 800
+}
+
+export function usePanelResize(options?: Partial<PanelResizeOptions>) {
+  const opts: PanelResizeOptions = { ...DEFAULT_OPTIONS, ...options }
+
   // Load initial width from localStorage
-  const storedWidth = localStorage.getItem(STORAGE_KEY)
-  const initialWidth = storedWidth !== null ? parseInt(storedWidth, 10) : DEFAULT_WIDTH
+  const storedWidth = localStorage.getItem(opts.storageKey)
+  const initialWidth = storedWidth !== null ? parseInt(storedWidth, 10) : opts.defaultWidth
 
   const panelWidth = ref(
-    isNaN(initialWidth) ? DEFAULT_WIDTH : Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, initialWidth))
+    isNaN(initialWidth)
+      ? opts.defaultWidth
+      : Math.max(opts.minWidth, Math.min(opts.maxWidth, initialWidth))
   )
   const isResizing = ref(false)
 
@@ -21,10 +38,28 @@ export function usePanelResize() {
   const handleMouseMove = (e: MouseEvent): void => {
     if (!isResizing.value) return
 
-    // For right drawer, delta is startX - currentX (moving left increases width)
-    const delta = startX - e.clientX
-    const newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, startWidth + delta))
-    panelWidth.value = newWidth
+    // For left panel, moving right increases width; for right panel, moving left increases width
+    const delta = opts.side === 'left' ? e.clientX - startX : startX - e.clientX
+
+    const newWidth = startWidth + delta
+
+    // Check collapse threshold before clamping
+    if (
+      opts.collapseThreshold !== undefined &&
+      opts.onCollapse !== undefined &&
+      newWidth < opts.collapseThreshold
+    ) {
+      opts.onCollapse()
+      panelWidth.value = opts.minWidth
+      localStorage.setItem(opts.storageKey, opts.minWidth.toString())
+      // End resize immediately after collapse
+      isResizing.value = false
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      return
+    }
+
+    panelWidth.value = Math.max(opts.minWidth, Math.min(opts.maxWidth, newWidth))
   }
 
   const handleMouseUp = (): void => {
@@ -32,7 +67,7 @@ export function usePanelResize() {
 
     isResizing.value = false
     // Persist to localStorage
-    localStorage.setItem(STORAGE_KEY, panelWidth.value.toString())
+    localStorage.setItem(opts.storageKey, panelWidth.value.toString())
     // Remove event listeners
     document.removeEventListener('mousemove', handleMouseMove)
     document.removeEventListener('mouseup', handleMouseUp)
@@ -48,6 +83,11 @@ export function usePanelResize() {
     document.addEventListener('mouseup', handleMouseUp)
   }
 
+  const resetWidth = (): void => {
+    panelWidth.value = opts.defaultWidth
+    localStorage.setItem(opts.storageKey, opts.defaultWidth.toString())
+  }
+
   // Cleanup on component unmount
   onUnmounted(() => {
     document.removeEventListener('mousemove', handleMouseMove)
@@ -58,7 +98,8 @@ export function usePanelResize() {
     panelWidth,
     isResizing,
     startResize,
-    minWidth: MIN_WIDTH,
-    maxWidth: MAX_WIDTH
+    resetWidth,
+    minWidth: opts.minWidth,
+    maxWidth: opts.maxWidth
   }
 }

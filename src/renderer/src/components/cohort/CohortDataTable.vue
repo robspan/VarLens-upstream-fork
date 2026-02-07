@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="table-container">
     <!-- Top scrollbar (synced with table) -->
     <div ref="topScrollbarRef" class="top-scrollbar-container">
       <div ref="topScrollbarInnerRef" class="top-scrollbar-inner"></div>
@@ -14,7 +14,7 @@
       :items="variants"
       :items-length="totalCount"
       :loading="loading"
-      :items-per-page-options="[25, 50, 100]"
+      :items-per-page-options="[10, 25, 50, 100]"
       item-value="variant_key"
       density="compact"
       show-expand
@@ -177,6 +177,7 @@ import {
 } from '../table-cells'
 import CarrierExpandedRow from './CarrierExpandedRow.vue'
 import { useExternalLinksStore, type ExternalLinkConfig } from '../../stores/externalLinksStore'
+import { useSettingsStore } from '../../stores/settingsStore'
 import { resolveUrlTemplate, type VariantLinkData } from '../../utils/externalLinks'
 
 interface Props {
@@ -235,8 +236,9 @@ const { getRowProps } = useTableRowProps<CohortVariant>({
 })
 const { expandedRows, getCarriers, hasCarriers, clearCache: clearCarrierCache } = useCarriers()
 
-// External links store (for chr/pos links)
+// Stores
 const linksStore = useExternalLinksStore()
+const settingsStore = useSettingsStore()
 
 // ============================================================================
 // External link resolution helpers (same as VariantTable.vue)
@@ -304,8 +306,13 @@ const openExternalLink = async (url: string, event?: MouseEvent): Promise<void> 
 const dataTableRef = ref<InstanceType<typeof import('vuetify/components').VDataTableServer> | null>(
   null
 )
-const itemsPerPage = ref(50)
+const itemsPerPage = ref(settingsStore.itemsPerPage)
 const sortBy = ref<Array<{ key: string; order: 'asc' | 'desc' }>>([])
+
+// Sync items-per-page changes back to settings store
+watch(itemsPerPage, (v) => {
+  settingsStore.itemsPerPage = v
+})
 
 /**
  * Handle table options update (pagination, sorting)
@@ -369,6 +376,29 @@ defineExpose({ refresh })
 </script>
 
 <style scoped>
+/* Table container fills remaining height in flex parent */
+.table-container {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Make data table fill available space */
+:deep(.v-data-table) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+:deep(.v-table__wrapper) {
+  flex: 1;
+  overflow-y: auto;
+}
+
 /* Top scrollbar (synced with table) */
 .top-scrollbar-container {
   overflow-x: auto;

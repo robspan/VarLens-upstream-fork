@@ -1,13 +1,23 @@
 <template>
-  <span v-if="hasValue && hasLink" class="external-link" @click="handleClick">
-    <v-chip :color="chipColor" size="small" label>
-      {{ displayValue }}
-    </v-chip>
-    <v-icon size="x-small" class="external-link__icon">mdi-open-in-new</v-icon>
-  </span>
-  <v-chip v-else-if="hasValue" :color="chipColor" size="small" label>
-    {{ displayValue }}
-  </v-chip>
+  <v-tooltip v-if="hasValue && hasLink" location="top">
+    <template #activator="{ props: tooltipProps }">
+      <span v-bind="tooltipProps" class="external-link" @click="handleClick">
+        <v-chip :color="chipColor" size="small" label>
+          {{ displayValue }}
+        </v-chip>
+        <v-icon size="x-small" class="external-link__icon">mdi-open-in-new</v-icon>
+      </span>
+    </template>
+    {{ significance }}
+  </v-tooltip>
+  <v-tooltip v-else-if="hasValue" location="top">
+    <template #activator="{ props: tooltipProps }">
+      <v-chip v-bind="tooltipProps" :color="chipColor" size="small" label>
+        {{ displayValue }}
+      </v-chip>
+    </template>
+    {{ significance }}
+  </v-tooltip>
   <span v-else class="text-grey">--</span>
 </template>
 

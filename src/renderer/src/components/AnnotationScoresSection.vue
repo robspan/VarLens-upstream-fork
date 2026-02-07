@@ -27,9 +27,10 @@
       Loading enrichment data...
     </div>
 
-    <div v-else-if="isOffline" class="text-caption text-warning">
-      Enrichment unavailable - offline
-    </div>
+    <v-chip v-else-if="isOffline" size="x-small" variant="text" class="text-medium-emphasis">
+      <v-icon start size="small">mdi-cloud-off-outline</v-icon>
+      Online enrichment available when connected
+    </v-chip>
 
     <div v-else class="d-flex flex-wrap ga-1">
       <!-- REVEL (from myvariant.info) -->

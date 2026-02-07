@@ -10,7 +10,79 @@
         class="sidebar-toggle-btn"
         @click="sidebarOpen = !sidebarOpen"
       />
-      <v-app-bar-title class="ml-2 text-subtitle-1 font-weight-bold"> VarLens </v-app-bar-title>
+      <v-app-bar-title
+        class="ml-2 text-subtitle-1 font-weight-bold flex-grow-0 app-title"
+        role="button"
+        tabindex="0"
+        @click="handleHomeClick"
+        @keydown.enter="handleHomeClick"
+      >
+        VarLens
+        <v-tooltip activator="parent" location="bottom">Return to home</v-tooltip>
+      </v-app-bar-title>
+
+      <div v-if="showContextIndicator" class="context-indicator mx-3 d-flex align-center">
+        <v-icon size="small" class="mr-1">
+          {{ activeTab === 'cohort' ? 'mdi-account-group' : 'mdi-account' }}
+        </v-icon>
+        <template v-if="activeTab === 'case' && selectedCaseId">
+          <span
+            class="text-body-2 font-weight-medium text-truncate context-label clickable-case-name"
+            role="button"
+            tabindex="0"
+            @click="caseMetadataModalRef?.show()"
+            @keydown.enter="caseMetadataModalRef?.show()"
+          >
+            {{ selectedCaseName }}
+          </span>
+          <v-btn
+            icon
+            size="x-small"
+            variant="text"
+            class="ml-1"
+            @click="caseMetadataModalRef?.show()"
+          >
+            <v-icon size="small">mdi-information-outline</v-icon>
+            <v-tooltip activator="parent" location="bottom">Case details</v-tooltip>
+          </v-btn>
+        </template>
+        <template v-else-if="activeTab === 'cohort'">
+          <span class="text-body-2 font-weight-medium"> Cohort ({{ caseCount }} cases) </span>
+        </template>
+        <template v-else>
+          <span
+            class="text-body-2 text-medium-emphasis select-case-hint"
+            role="button"
+            tabindex="0"
+            @click="sidebarOpen = true"
+            @keydown.enter="sidebarOpen = true"
+          >
+            Select a case...
+          </span>
+        </template>
+      </div>
+
+      <v-spacer />
+
+      <v-btn-toggle
+        v-model="activeTab"
+        mandatory
+        density="compact"
+        variant="outlined"
+        divided
+        color="white"
+        class="mode-toggle mr-2"
+      >
+        <v-btn value="case" size="small">
+          <v-icon :start="showModeToggleLabels" size="small">mdi-account</v-icon>
+          <span v-if="showModeToggleLabels">Case</span>
+        </v-btn>
+        <v-btn value="cohort" size="small">
+          <v-icon :start="showModeToggleLabels" size="small">mdi-account-group</v-icon>
+          <span v-if="showModeToggleLabels">Cohort</span>
+        </v-btn>
+      </v-btn-toggle>
+
       <DatabasePicker @database-switched="handleDatabaseSwitched" @error="handleDatabaseError" />
       <v-menu>
         <template #activator="{ props }">
@@ -20,6 +92,12 @@
           </v-btn>
         </template>
         <v-list density="compact">
+          <v-list-item
+            prepend-icon="mdi-chart-box-outline"
+            title="Database Overview"
+            @click="databaseOverviewDialogRef?.show()"
+          />
+          <v-divider class="my-1" />
           <v-list-item
             prepend-icon="mdi-link"
             title="External Links"
@@ -57,8 +135,9 @@
       </v-menu>
     </v-app-bar>
 
-    <v-navigation-drawer v-model="sidebarOpen" :width="280" :scrim="false">
+    <v-navigation-drawer v-model="sidebarOpen" :width="sidebarWidth" :scrim="tier === 'narrow'">
       <AppSidebar
+        :case-count="caseCount"
         @import-click="handleImportClick"
         @batch-import-files="handleBatchImportFiles"
         @batch-import-folder="handleBatchImportFolder"
@@ -69,21 +148,17 @@
           @case-selected="handleCaseSelected"
           @case-deleted="handleCaseDeleted"
           @cases-loaded="handleCasesLoaded"
+          @edit-case="handleEditCase"
         />
       </AppSidebar>
+      <div
+        class="sidebar-resize-handle"
+        @mousedown="startSidebarResize"
+        @dblclick="resetSidebarWidth"
+      />
     </v-navigation-drawer>
 
     <v-main>
-      <v-tabs
-        v-model="activeTab"
-        bg-color="secondary"
-        density="compact"
-        class="border-b sticky-tabs"
-      >
-        <v-tab value="case" prepend-icon="mdi-account">Case Analysis</v-tab>
-        <v-tab value="cohort" prepend-icon="mdi-account-group">Cohort Analysis</v-tab>
-      </v-tabs>
-
       <v-window v-model="activeTab">
         <v-window-item value="case">
           <EmptyState
@@ -91,16 +166,8 @@
             :has-cases="caseCount > 0"
             @import="handleImportClick"
           />
-          <template v-else>
+          <div v-else class="case-content">
             <div class="filter-bar-container">
-              <div class="case-header d-flex align-center px-3 py-1 border-b">
-                <span class="text-subtitle-2 font-weight-medium">{{ selectedCaseName }}</span>
-                <CaseMetadataModal
-                  :case-id="selectedCaseId"
-                  :case-name="selectedCaseName"
-                  class="ml-2"
-                />
-              </div>
               <FilterToolbar
                 :case-id="selectedCaseId"
                 :case-name="selectedCaseName"
@@ -123,7 +190,7 @@
               @update:has-sort="handleSortUpdate"
               @row-click="handleVariantRowClick"
             />
-          </template>
+          </div>
         </v-window-item>
 
         <v-window-item value="cohort">
@@ -161,7 +228,16 @@
     <FaqDialog ref="faqDialogRef" />
     <ExternalLinksSettings ref="externalLinksSettingsRef" />
     <TagManagementDialog ref="tagManagementDialogRef" />
+    <DatabaseOverviewDialog ref="databaseOverviewDialogRef" />
     <DeleteAllCasesDialog ref="deleteAllCasesDialogRef" />
+    <CaseMetadataModal
+      v-if="selectedCaseId"
+      ref="caseMetadataModalRef"
+      :case-id="selectedCaseId"
+      :case-name="selectedCaseName"
+      :variant-count="selectedVariantCount"
+      :created-at="selectedCreatedAt"
+    />
   </v-app>
 </template>
 
@@ -179,6 +255,7 @@ import LogViewer from './components/LogViewer.vue'
 import AppFooter from './components/AppFooter.vue'
 import DisclaimerDialog from './components/DisclaimerDialog.vue'
 import FaqDialog from './components/FaqDialog.vue'
+import DatabaseOverviewDialog from './components/DatabaseOverviewDialog.vue'
 import DatabasePicker from './components/DatabasePicker.vue'
 import ExternalLinksSettings from './components/ExternalLinksSettings.vue'
 import TagManagementDialog from './components/TagManagementDialog.vue'
@@ -186,15 +263,20 @@ import DeleteAllCasesDialog from './components/DeleteAllCasesDialog.vue'
 import CohortView from './components/CohortView.vue'
 import VariantDetailsPanel from './components/VariantDetailsPanel.vue'
 import CaseMetadataModal from './components/CaseMetadataModal.vue'
+import { usePanelResize } from './composables/usePanelResize'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useVersionGating } from './composables/useVersionGating'
 import { useDatabaseStore } from './stores/databaseStore'
 import { useCaseMetadata } from './composables/useCaseMetadata'
 import { useColumnPreferences } from './composables/useColumnPreferences'
 import { useFilterPreferences } from './composables/useFilterPreferences'
+import { useResponsiveLayout } from './composables/useResponsiveLayout'
 import { logService } from './services/LogService'
 import type { VariantFilter, Variant } from '../../shared/types/api'
 import type { CohortVariant } from '../../shared/types/cohort'
+
+// Initialize responsive layout
+const { tier, showModeToggleLabels, showContextIndicator } = useResponsiveLayout()
 
 // Initialize database store
 const databaseStore = useDatabaseStore()
@@ -252,10 +334,29 @@ const faqDialogRef = ref<InstanceType<typeof FaqDialog> | null>(null)
 const externalLinksSettingsRef = ref<InstanceType<typeof ExternalLinksSettings> | null>(null)
 const tagManagementDialogRef = ref<InstanceType<typeof TagManagementDialog> | null>(null)
 const deleteAllCasesDialogRef = ref<InstanceType<typeof DeleteAllCasesDialog> | null>(null)
+const databaseOverviewDialogRef = ref<InstanceType<typeof DatabaseOverviewDialog> | null>(null)
+const caseMetadataModalRef = ref<InstanceType<typeof CaseMetadataModal> | null>(null)
 const cohortViewRef = ref<InstanceType<typeof CohortView> | null>(null)
 
 // Sidebar state
 const sidebarOpen = ref(true)
+
+// Sidebar resize
+const {
+  panelWidth: sidebarWidth,
+  startResize: startSidebarResize,
+  resetWidth: resetSidebarWidth
+} = usePanelResize({
+  side: 'left',
+  storageKey: 'varlens_sidebar_width',
+  defaultWidth: 280,
+  minWidth: 200,
+  maxWidth: 450,
+  collapseThreshold: 180,
+  onCollapse: () => {
+    sidebarOpen.value = false
+  }
+})
 
 // Log viewer state
 const logViewerOpen = ref(false)
@@ -269,6 +370,8 @@ const activeTab = ref<'case' | 'cohort'>('case')
 // Case selection state
 const selectedCaseId = ref<number | null>(null)
 const selectedCaseName = ref<string>('')
+const selectedVariantCount = ref(0)
+const selectedCreatedAt = ref(0)
 const caseCount = ref(0)
 
 // Panel state
@@ -284,6 +387,13 @@ const initialSearch = ref<string | undefined>(undefined)
 
 // Computed panel mode
 const panelMode = computed(() => (activeTab.value === 'case' ? 'case' : 'cohort'))
+
+const handleHomeClick = (): void => {
+  selectedCaseId.value = null
+  selectedCaseName.value = ''
+  activeTab.value = 'case'
+  sidebarOpen.value = true
+}
 
 const handleImportClick = (): void => {
   importDialogRef.value?.show()
@@ -331,11 +441,31 @@ const handleBatchImportComplete = async (result: { totalImported: number }): Pro
   snackbarRef.value?.show(message, 'success')
 }
 
-const handleCaseSelected = (caseId: number, caseName: string): void => {
+const handleCaseSelected = (
+  caseId: number,
+  caseName: string,
+  variantCount: number,
+  createdAt: number
+): void => {
   selectedCaseId.value = caseId
   selectedCaseName.value = caseName
+  selectedVariantCount.value = variantCount
+  selectedCreatedAt.value = createdAt
   // Auto-close sidebar on case selection (Material Design pattern)
   sidebarOpen.value = false
+}
+
+const handleEditCase = (
+  caseId: number,
+  caseName: string,
+  variantCount: number,
+  createdAt: number
+): void => {
+  selectedCaseId.value = caseId
+  selectedCaseName.value = caseName
+  selectedVariantCount.value = variantCount
+  selectedCreatedAt.value = createdAt
+  caseMetadataModalRef.value?.show()
 }
 
 const handleCasesLoaded = (count: number): void => {
@@ -531,20 +661,62 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.sticky-tabs {
-  position: sticky;
-  top: 0;
-  z-index: 4;
-  background: rgb(var(--v-theme-secondary));
-}
-
 .filter-bar-container {
   background: rgb(var(--v-theme-surface));
 }
 
-.case-header {
-  background: rgb(var(--v-theme-surface));
-  border-bottom: 1px solid rgba(var(--v-border-color), 0.12);
+.context-indicator {
+  min-width: 0;
+}
+
+.context-label {
+  max-width: 200px;
+}
+
+.clickable-case-name {
+  cursor: pointer;
+}
+
+.clickable-case-name:hover {
+  text-decoration: underline;
+}
+
+.app-title {
+  cursor: pointer;
+}
+
+.app-title:hover {
+  text-decoration: underline;
+}
+
+.select-case-hint {
+  cursor: pointer;
+}
+
+.select-case-hint:hover {
+  text-decoration: underline;
+}
+
+.mode-toggle {
+  height: 32px;
+}
+
+.mode-toggle :deep(.v-btn--active) {
+  background-color: rgba(255, 255, 255, 0.3) !important;
+  font-weight: 600;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.8);
+}
+
+.mode-toggle :deep(.v-btn:not(.v-btn--active)) {
+  opacity: 0.7;
+}
+
+/* Case content fills available height */
+.case-content {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 48px - 32px); /* viewport minus app-bar minus footer */
+  overflow: hidden;
 }
 
 /* Remove v-main automatic padding-top from app-bar */
@@ -553,8 +725,37 @@ onMounted(async () => {
   padding-top: 48px !important; /* Only app-bar height */
 }
 
+/* Ensure v-window and v-window-item fill available height */
+:deep(.v-window) {
+  height: 100%;
+}
+
+:deep(.v-window__container) {
+  height: 100%;
+}
+
+:deep(.v-window-item) {
+  height: 100%;
+}
+
 /* Sidebar toggle button animation */
 .sidebar-toggle-btn :deep(.v-icon) {
   transition: transform 0.2s ease-in-out;
+}
+
+/* Sidebar resize handle */
+.sidebar-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background-color 0.15s ease;
+}
+
+.sidebar-resize-handle:hover {
+  background-color: rgba(var(--v-theme-primary), 0.2);
 }
 </style>

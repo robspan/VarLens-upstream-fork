@@ -1,17 +1,11 @@
 <template>
   <v-menu :close-on-content-click="false" max-width="350">
     <template #activator="{ props }">
-      <v-btn v-bind="props" size="small" variant="tonal" prepend-icon="mdi-filter-cog">
-        Filters
-        <v-badge
-          v-if="activeFilterCount !== undefined && activeFilterCount > 0"
-          :content="activeFilterCount"
-          color="primary"
-          inline
-          class="ml-1"
-        />
+      <v-btn v-bind="props" size="small" variant="tonal">
+        <v-icon :start="!compact" size="small">mdi-cog</v-icon>
+        <template v-if="!compact">Customize</template>
         <v-tooltip activator="parent" location="bottom"
-          >Show/hide and reorder filter groups</v-tooltip
+          >Show, hide, and reorder filter groups</v-tooltip
         >
       </v-btn>
     </template>
@@ -83,7 +77,7 @@ interface FilterGroup {
 
 defineProps<{
   filterGroups: FilterGroup[]
-  activeFilterCount?: number
+  compact?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -105,7 +99,8 @@ const getFilterIcon = (id: string): string => {
     impact: 'mdi-flash',
     function: 'mdi-function',
     clinvar: 'mdi-hospital-box',
-    frequency: 'mdi-account-group',
+    frequency: 'mdi-earth',
+    'cohort-freq': 'mdi-account-group',
     cadd: 'mdi-alert-circle',
     tags: 'mdi-tag-multiple'
   }

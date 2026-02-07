@@ -342,12 +342,72 @@ export class CohortService {
     // Calculate average (handle division by zero)
     const avgVariantsPerCase = totalCases > 0 ? totalVariants / totalCases : 0
 
+    // Check if variant_annotations table exists (created in migration v2)
+    const annotationTableExists =
+      (
+        this.db
+          .prepare(
+            "SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name='variant_annotations'"
+          )
+          .get() as { count: number }
+      ).count > 0
+
+    // Starred variants (global annotations)
+    let starredVariants = 0
+    let acmgRows: Array<{ acmg_classification: string; count: number }> = []
+
+    if (annotationTableExists) {
+      const starredResult = this.db
+        .prepare('SELECT COUNT(*) as count FROM variant_annotations WHERE starred = 1')
+        .get() as { count: number }
+      starredVariants = starredResult.count
+
+      // ACMG distribution (global annotations)
+      acmgRows = this.db
+        .prepare(
+          `SELECT acmg_classification, COUNT(*) as count
+           FROM variant_annotations
+           WHERE acmg_classification IS NOT NULL
+           GROUP BY acmg_classification`
+        )
+        .all() as Array<{ acmg_classification: string; count: number }>
+    }
+
+    const acmgCounts = {
+      pathogenic: 0,
+      likely_pathogenic: 0,
+      vus: 0,
+      likely_benign: 0,
+      benign: 0
+    }
+    for (const row of acmgRows) {
+      switch (row.acmg_classification) {
+        case 'Pathogenic':
+          acmgCounts.pathogenic = row.count
+          break
+        case 'Likely Pathogenic':
+          acmgCounts.likely_pathogenic = row.count
+          break
+        case 'VUS':
+          acmgCounts.vus = row.count
+          break
+        case 'Likely Benign':
+          acmgCounts.likely_benign = row.count
+          break
+        case 'Benign':
+          acmgCounts.benign = row.count
+          break
+      }
+    }
+
     return {
       total_cases: totalCases,
       total_variants: totalVariants,
       unique_variants: uniqueVariants,
       avg_variants_per_case: avgVariantsPerCase,
-      genes_with_variants: genesWithVariants
+      genes_with_variants: genesWithVariants,
+      starred_variants: starredVariants,
+      acmg_counts: acmgCounts
     }
   }
 

@@ -103,7 +103,8 @@ const api = {
       ipcRenderer.invoke('database:create', path, password),
     rekey: (newPassword: string) => ipcRenderer.invoke('database:rekey', newPassword),
     info: () => ipcRenderer.invoke('database:info'),
-    recentList: () => ipcRenderer.invoke('database:recentList')
+    recentList: () => ipcRenderer.invoke('database:recentList'),
+    getOverview: () => ipcRenderer.invoke('database:overview')
   },
 
   batchImport: {
@@ -209,6 +210,9 @@ const api = {
 
     createCohort: (name: string, description?: string | null) =>
       ipcRenderer.invoke('case-metadata:createCohort', name, description),
+
+    updateCohort: (cohortId: number, updates: { name?: string; description?: string | null }) =>
+      ipcRenderer.invoke('case-metadata:updateCohort', cohortId, updates),
 
     deleteCohort: (cohortId: number) => ipcRenderer.invoke('case-metadata:deleteCohort', cohortId),
 

@@ -22,7 +22,7 @@
         :items="variants"
         :items-length="totalCount"
         :loading="loading"
-        :items-per-page-options="[25, 50, 100]"
+        :items-per-page-options="[10, 25, 50, 100]"
         density="compact"
         multi-sort
         class="elevation-1"
@@ -251,6 +251,7 @@ import type {
   SortItem
 } from '../../../shared/types/api'
 import { useExternalLinksStore, type ExternalLinkConfig } from '../stores/externalLinksStore'
+import { useSettingsStore } from '../stores/settingsStore'
 import { resolveUrlTemplate, buildOmimUrl, type VariantLinkData } from '../utils/externalLinks'
 import { useAnnotations } from '../composables/useAnnotations'
 import type { AcmgClassification } from '../../../main/database/types'
@@ -283,8 +284,9 @@ const emit = defineEmits<{
   'row-click': [variant: Variant]
 }>()
 
-// Initialize external links store
+// Initialize stores
 const linksStore = useExternalLinksStore()
+const settingsStore = useSettingsStore()
 
 // Initialize annotations composable
 const {
@@ -320,8 +322,13 @@ const variants = ref<Variant[]>([])
 const totalCount = ref(0)
 const loading = ref(false)
 const page = ref(1)
-const itemsPerPage = ref(50)
+const itemsPerPage = ref(settingsStore.itemsPerPage)
 const sortBy = ref<SortItem[]>([])
+
+// Sync items-per-page changes back to settings store
+watch(itemsPerPage, (v) => {
+  settingsStore.itemsPerPage = v
+})
 
 // Cursor cache for pagination - keyed by "page-sortKey-sortOrder"
 const cursorCache = ref<Map<string, PaginationCursor>>(new Map())
@@ -692,9 +699,27 @@ defineExpose({
 </script>
 
 <style scoped>
-/* Table container with top scrollbar */
+/* Table container fills remaining height in flex parent */
 .table-container {
   position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Make data table fill available space */
+:deep(.v-data-table) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+:deep(.v-table__wrapper) {
+  flex: 1;
+  overflow-y: auto;
 }
 
 /* Loading skeleton */
@@ -764,8 +789,9 @@ defineExpose({
 
 /* Selected row highlighting - prominent with left accent border */
 :deep(.v-data-table tbody tr.variant-row--selected) {
-  background-color: rgba(var(--v-theme-primary), 0.12) !important;
+  background-color: rgba(var(--v-theme-primary), 0.1) !important;
   border-left: 4px solid rgb(var(--v-theme-primary)) !important;
+  transition: background-color 0.15s ease;
 }
 
 :deep(.v-data-table tbody tr.variant-row--selected td:first-child) {

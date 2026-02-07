@@ -129,7 +129,18 @@ describe('useCohortData', () => {
   it('fetches summary successfully', async () => {
     const mockSummary: CohortSummary = {
       total_cases: 10,
-      total_variants: 100
+      total_variants: 100,
+      unique_variants: 0,
+      avg_variants_per_case: 0,
+      genes_with_variants: 0,
+      starred_variants: 0,
+      acmg_counts: {
+        pathogenic: 0,
+        likely_pathogenic: 0,
+        vus: 0,
+        likely_benign: 0,
+        benign: 0
+      }
     }
     window.api.cohort.getSummary = vi.fn().mockResolvedValue(mockSummary)
 

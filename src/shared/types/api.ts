@@ -32,6 +32,7 @@ import type {
   SpliceAIFetchResult
 } from './api-enrichment'
 import type { LogMessage } from './log'
+import type { DatabaseOverview } from './database-overview'
 
 // Re-export for convenience
 export type {
@@ -145,6 +146,7 @@ export interface DatabaseAPI {
   rekey: (newPassword: string) => Promise<{ success: boolean; error?: string }>
   info: () => Promise<DatabaseInfo | null>
   recentList: () => Promise<RecentDatabase[]>
+  getOverview: () => Promise<DatabaseOverview>
 }
 
 // Batch import types
@@ -306,6 +308,10 @@ export interface CaseMetadataAPI {
   // Cohort groups
   listCohorts: () => Promise<CohortGroup[]>
   createCohort: (name: string, description?: string | null) => Promise<CohortGroup>
+  updateCohort: (
+    cohortId: number,
+    updates: { name?: string; description?: string | null }
+  ) => Promise<CohortGroup>
   deleteCohort: (cohortId: number) => Promise<void>
   getCohortByName: (name: string) => Promise<CohortGroup | null>
 

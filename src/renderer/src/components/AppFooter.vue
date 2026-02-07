@@ -34,35 +34,65 @@
 
       <!-- Right section: Action buttons -->
       <div class="d-flex align-center ga-1">
-        <v-btn
-          icon="mdi-github"
-          size="small"
-          variant="text"
-          aria-label="Open GitHub repository"
-          @click="openGitHub"
-        />
-        <v-btn
-          icon="mdi-license"
-          size="small"
-          variant="text"
-          aria-label="View license"
-          @click="openLicense"
-        />
-        <v-btn
-          :icon="disclaimerAcknowledged ? 'mdi-shield-check' : 'mdi-shield-alert'"
-          :color="disclaimerAcknowledged ? 'success' : 'warning'"
-          size="small"
-          variant="text"
-          aria-label="View disclaimer"
-          @click="openDisclaimer"
-        />
-        <v-btn
-          icon="mdi-help-circle"
-          size="small"
-          variant="text"
-          aria-label="Open FAQ"
-          @click="openFAQ"
-        />
+        <template v-if="showFooterLinks">
+          <v-btn
+            icon="mdi-github"
+            size="small"
+            variant="text"
+            aria-label="Open GitHub repository"
+            @click="openGitHub"
+          >
+            <v-icon>mdi-github</v-icon>
+            <v-tooltip activator="parent" location="top">GitHub</v-tooltip>
+          </v-btn>
+          <v-btn
+            icon="mdi-license"
+            size="small"
+            variant="text"
+            aria-label="View license"
+            @click="openLicense"
+          >
+            <v-icon>mdi-license</v-icon>
+            <v-tooltip activator="parent" location="top">License</v-tooltip>
+          </v-btn>
+          <v-btn
+            :color="disclaimerAcknowledged ? 'success' : 'warning'"
+            size="small"
+            variant="text"
+            aria-label="View disclaimer"
+            @click="openDisclaimer"
+          >
+            <v-icon>{{ disclaimerAcknowledged ? 'mdi-shield-check' : 'mdi-shield-alert' }}</v-icon>
+            <v-tooltip activator="parent" location="top">Disclaimer</v-tooltip>
+          </v-btn>
+          <v-btn
+            icon="mdi-help-circle"
+            size="small"
+            variant="text"
+            aria-label="Open FAQ"
+            @click="openFAQ"
+          >
+            <v-icon>mdi-help-circle</v-icon>
+            <v-tooltip activator="parent" location="top">FAQ</v-tooltip>
+          </v-btn>
+        </template>
+        <v-menu v-else location="top">
+          <template #activator="{ props }">
+            <v-btn v-bind="props" icon size="small" variant="text" aria-label="More links">
+              <v-icon>mdi-dots-horizontal</v-icon>
+            </v-btn>
+          </template>
+          <v-list density="compact">
+            <v-list-item prepend-icon="mdi-github" title="GitHub" @click="openGitHub" />
+            <v-list-item prepend-icon="mdi-license" title="License" @click="openLicense" />
+            <v-list-item
+              :prepend-icon="disclaimerAcknowledged ? 'mdi-shield-check' : 'mdi-shield-alert'"
+              title="Disclaimer"
+              @click="openDisclaimer"
+            />
+            <v-list-item prepend-icon="mdi-help-circle" title="FAQ" @click="openFAQ" />
+          </v-list>
+        </v-menu>
         <v-btn
           icon
           size="small"
@@ -84,6 +114,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useLogStore } from '../stores/logStore'
+import { useResponsiveLayout } from '../composables/useResponsiveLayout'
 
 defineProps<{
   disclaimerAcknowledged: boolean
@@ -94,6 +125,9 @@ const emit = defineEmits<{
   'open-disclaimer': []
   'open-faq': []
 }>()
+
+// Responsive layout
+const { showFooterLinks } = useResponsiveLayout()
 
 // Version state
 const appVersion = ref('...')

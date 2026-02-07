@@ -673,16 +673,12 @@ export function useFilterState(
         exportFilters.tag_ids = filters.value.tagIds
       }
 
-      console.log('Exporting with caseName:', caseName, 'caseId:', caseId)
-
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await (window as any).api.export.variants(
         caseId,
         exportFilters,
         caseName !== '' ? caseName : `case_${caseId}`
       )
-
-      console.log('Export result:', result)
 
       // Check for error response (SerializableError has code property)
       if (result !== null && result !== undefined && 'code' in result) {

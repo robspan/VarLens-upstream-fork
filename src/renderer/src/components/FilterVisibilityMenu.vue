@@ -99,7 +99,7 @@ const getFilterIcon = (id: string): string => {
     impact: 'mdi-flash',
     function: 'mdi-function',
     clinvar: 'mdi-hospital-box',
-    frequency: 'mdi-account-group',
+    frequency: 'mdi-earth',
     'cohort-freq': 'mdi-account-group',
     cadd: 'mdi-alert-circle',
     tags: 'mdi-tag-multiple'

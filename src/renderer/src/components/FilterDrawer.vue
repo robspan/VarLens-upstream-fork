@@ -178,7 +178,7 @@
         <!-- Frequency -->
         <div class="filter-drawer-group mb-4">
           <div class="filter-drawer-group-header d-flex align-center mb-2">
-            <v-icon size="small" class="mr-2">mdi-account-group</v-icon>
+            <v-icon size="small" class="mr-2">mdi-earth</v-icon>
             <span class="text-subtitle-2 font-weight-medium">Frequency</span>
             <v-chip
               v-if="isFilterGroupActive('frequency')"

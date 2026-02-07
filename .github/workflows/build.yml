@@ -9,6 +9,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   secrets-scan:
     name: Secrets Scan
@@ -55,7 +58,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Rebuild native modules for Node.js (tests need Node-compatible binaries)
+      - name: Rebuild native modules for Node.js
         run: npm run rebuild:node
 
       - name: Run linter
@@ -67,12 +70,10 @@ jobs:
       - name: Run tests
         run: npm run test
 
-      - name: Rebuild native modules for Electron (force compile from source)
+      - name: Rebuild native modules for Electron
         run: npm run rebuild:electron
 
-      - name: Build Electron app (test build)
-        run: npm run dist
+      - name: Build Electron app
+        run: npx electron-vite build && npx electron-builder --publish never
         env:
-          # Disable code signing for test builds
           CSC_IDENTITY_AUTO_DISCOVERY: false
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

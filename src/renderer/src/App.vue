@@ -21,7 +21,7 @@
         <v-tooltip activator="parent" location="bottom">Return to home</v-tooltip>
       </v-app-bar-title>
 
-      <div class="context-indicator mx-3 d-flex align-center">
+      <div v-if="showContextIndicator" class="context-indicator mx-3 d-flex align-center">
         <v-icon size="small" class="mr-1">
           {{ activeTab === 'cohort' ? 'mdi-account-group' : 'mdi-account' }}
         </v-icon>
@@ -74,12 +74,12 @@
         class="mode-toggle mr-2"
       >
         <v-btn value="case" size="small">
-          <v-icon start size="small">mdi-account</v-icon>
-          Case
+          <v-icon :start="showModeToggleLabels" size="small">mdi-account</v-icon>
+          <span v-if="showModeToggleLabels">Case</span>
         </v-btn>
         <v-btn value="cohort" size="small">
-          <v-icon start size="small">mdi-account-group</v-icon>
-          Cohort
+          <v-icon :start="showModeToggleLabels" size="small">mdi-account-group</v-icon>
+          <span v-if="showModeToggleLabels">Cohort</span>
         </v-btn>
       </v-btn-toggle>
 
@@ -129,7 +129,7 @@
       </v-menu>
     </v-app-bar>
 
-    <v-navigation-drawer v-model="sidebarOpen" :width="sidebarWidth" :scrim="false">
+    <v-navigation-drawer v-model="sidebarOpen" :width="sidebarWidth" :scrim="tier === 'narrow'">
       <AppSidebar
         :case-count="caseCount"
         @import-click="handleImportClick"
@@ -261,9 +261,13 @@ import { useDatabaseStore } from './stores/databaseStore'
 import { useCaseMetadata } from './composables/useCaseMetadata'
 import { useColumnPreferences } from './composables/useColumnPreferences'
 import { useFilterPreferences } from './composables/useFilterPreferences'
+import { useResponsiveLayout } from './composables/useResponsiveLayout'
 import { logService } from './services/LogService'
 import type { VariantFilter, Variant } from '../../shared/types/api'
 import type { CohortVariant } from '../../shared/types/cohort'
+
+// Initialize responsive layout
+const { tier, showModeToggleLabels, showContextIndicator } = useResponsiveLayout()
 
 // Initialize database store
 const databaseStore = useDatabaseStore()

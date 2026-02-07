@@ -135,7 +135,7 @@ import DeleteCaseDialog from './DeleteCaseDialog.vue'
 import AppSnackbar from './AppSnackbar.vue'
 
 const emit = defineEmits<{
-  'case-selected': [caseId: number, caseName: string]
+  'case-selected': [caseId: number, caseName: string, variantCount: number, createdAt: number]
   'case-deleted': [caseId: number]
   'cases-loaded': [count: number]
 }>()
@@ -189,7 +189,7 @@ const loadCases = async (): Promise<void> => {
 const filteredCases = computed(() => {
   let result = [...cases.value]
 
-  if (search.value !== undefined && search.value !== '') {
+  if (search.value) {
     const query = search.value.toLowerCase()
     result = result.filter((c) => c.name.toLowerCase().includes(query))
   }
@@ -212,7 +212,13 @@ const formatDate = (timestamp: number): string => {
 watch(selected, (newSelection) => {
   if (newSelection.length > 0) {
     const selectedCase = cases.value.find((c) => c.id === newSelection[0])
-    emit('case-selected', newSelection[0], selectedCase?.name ?? '')
+    emit(
+      'case-selected',
+      newSelection[0],
+      selectedCase?.name ?? '',
+      selectedCase?.variant_count ?? 0,
+      selectedCase?.created_at ?? 0
+    )
   }
 })
 

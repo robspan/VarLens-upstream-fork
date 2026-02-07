@@ -367,14 +367,18 @@
           </draggable>
         </div>
 
-        <v-btn
-          v-if="canScrollRight"
-          icon="mdi-chevron-right"
-          size="x-small"
-          variant="text"
-          class="scroll-arrow scroll-arrow-right"
-          @click="scrollRight"
-        />
+        <div v-if="canScrollRight" class="scroll-arrow-wrapper">
+          <v-btn
+            icon="mdi-chevron-right"
+            size="x-small"
+            variant="text"
+            class="scroll-arrow scroll-arrow-right"
+            @click="scrollRight"
+          />
+          <span v-if="hiddenFilterCount > 0" class="hidden-filter-badge">
+            +{{ hiddenFilterCount }}
+          </span>
+        </div>
       </div>
 
       <!-- RESULTS & ACTIONS (2x2 grid) -->
@@ -597,12 +601,27 @@ const orderedFilterGroups = computed({
   }
 })
 
+// Hidden filter count for right-scroll badge
+const hiddenFilterCount = ref(0)
+
 // Update scroll button visibility
 const updateScrollButtons = () => {
   if (!scrollContainer.value) return
   const el = scrollContainer.value
   canScrollLeft.value = el.scrollLeft > 0
   canScrollRight.value = el.scrollLeft < el.scrollWidth - el.clientWidth - 1
+
+  // Count filter groups whose right edge is beyond the visible area
+  const visibleRight = el.scrollLeft + el.clientWidth
+  const filterElements = el.querySelectorAll('.filter-section-wrapper')
+  let hidden = 0
+  filterElements.forEach((child) => {
+    const childEl = child as HTMLElement
+    if (childEl.offsetLeft + childEl.offsetWidth > visibleRight + 1) {
+      hidden++
+    }
+  })
+  hiddenFilterCount.value = hidden
 }
 
 // Scroll left
@@ -1290,6 +1309,26 @@ const exportToExcel = async () => {
 .scroll-arrow {
   flex-shrink: 0;
   align-self: center;
+}
+
+.scroll-arrow-wrapper {
+  position: relative;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.hidden-filter-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background-color: rgb(var(--v-theme-primary));
+  color: white;
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 8px;
+  pointer-events: none;
 }
 
 .filter-section {

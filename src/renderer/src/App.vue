@@ -10,7 +10,72 @@
         class="sidebar-toggle-btn"
         @click="sidebarOpen = !sidebarOpen"
       />
-      <v-app-bar-title class="ml-2 text-subtitle-1 font-weight-bold"> VarLens </v-app-bar-title>
+      <v-app-bar-title class="ml-2 text-subtitle-1 font-weight-bold flex-grow-0">
+        VarLens
+      </v-app-bar-title>
+
+      <div class="context-indicator mx-3 d-flex align-center">
+        <v-icon size="small" class="mr-1">
+          {{ activeTab === 'cohort' ? 'mdi-account-group' : 'mdi-account' }}
+        </v-icon>
+        <template v-if="activeTab === 'case' && selectedCaseId">
+          <span
+            class="text-body-2 font-weight-medium text-truncate context-label clickable-case-name"
+            role="button"
+            tabindex="0"
+            @click="caseMetadataModalRef?.show()"
+            @keydown.enter="caseMetadataModalRef?.show()"
+          >
+            {{ selectedCaseName }}
+          </span>
+          <v-btn
+            icon
+            size="x-small"
+            variant="text"
+            class="ml-1"
+            @click="caseMetadataModalRef?.show()"
+          >
+            <v-icon size="small">mdi-information-outline</v-icon>
+            <v-tooltip activator="parent" location="bottom">Case details</v-tooltip>
+          </v-btn>
+        </template>
+        <template v-else-if="activeTab === 'cohort'">
+          <span class="text-body-2 font-weight-medium"> Cohort ({{ caseCount }} cases) </span>
+        </template>
+        <template v-else>
+          <span
+            class="text-body-2 text-medium-emphasis select-case-hint"
+            role="button"
+            tabindex="0"
+            @click="sidebarOpen = true"
+            @keydown.enter="sidebarOpen = true"
+          >
+            Select a case...
+          </span>
+        </template>
+      </div>
+
+      <v-spacer />
+
+      <v-btn-toggle
+        v-model="activeTab"
+        mandatory
+        density="compact"
+        variant="outlined"
+        divided
+        color="white"
+        class="mode-toggle mr-2"
+      >
+        <v-btn value="case" size="small">
+          <v-icon start size="small">mdi-account</v-icon>
+          Case
+        </v-btn>
+        <v-btn value="cohort" size="small">
+          <v-icon start size="small">mdi-account-group</v-icon>
+          Cohort
+        </v-btn>
+      </v-btn-toggle>
+
       <DatabasePicker @database-switched="handleDatabaseSwitched" @error="handleDatabaseError" />
       <v-menu>
         <template #activator="{ props }">
@@ -74,16 +139,6 @@
     </v-navigation-drawer>
 
     <v-main>
-      <v-tabs
-        v-model="activeTab"
-        bg-color="secondary"
-        density="compact"
-        class="border-b sticky-tabs"
-      >
-        <v-tab value="case" prepend-icon="mdi-account">Case Analysis</v-tab>
-        <v-tab value="cohort" prepend-icon="mdi-account-group">Cohort Analysis</v-tab>
-      </v-tabs>
-
       <v-window v-model="activeTab">
         <v-window-item value="case">
           <EmptyState
@@ -93,14 +148,6 @@
           />
           <template v-else>
             <div class="filter-bar-container">
-              <div class="case-header d-flex align-center px-3 py-1 border-b">
-                <span class="text-subtitle-2 font-weight-medium">{{ selectedCaseName }}</span>
-                <CaseMetadataModal
-                  :case-id="selectedCaseId"
-                  :case-name="selectedCaseName"
-                  class="ml-2"
-                />
-              </div>
               <FilterToolbar
                 :case-id="selectedCaseId"
                 :case-name="selectedCaseName"
@@ -162,6 +209,14 @@
     <ExternalLinksSettings ref="externalLinksSettingsRef" />
     <TagManagementDialog ref="tagManagementDialogRef" />
     <DeleteAllCasesDialog ref="deleteAllCasesDialogRef" />
+    <CaseMetadataModal
+      v-if="selectedCaseId"
+      ref="caseMetadataModalRef"
+      :case-id="selectedCaseId"
+      :case-name="selectedCaseName"
+      :variant-count="selectedVariantCount"
+      :created-at="selectedCreatedAt"
+    />
   </v-app>
 </template>
 
@@ -252,6 +307,7 @@ const faqDialogRef = ref<InstanceType<typeof FaqDialog> | null>(null)
 const externalLinksSettingsRef = ref<InstanceType<typeof ExternalLinksSettings> | null>(null)
 const tagManagementDialogRef = ref<InstanceType<typeof TagManagementDialog> | null>(null)
 const deleteAllCasesDialogRef = ref<InstanceType<typeof DeleteAllCasesDialog> | null>(null)
+const caseMetadataModalRef = ref<InstanceType<typeof CaseMetadataModal> | null>(null)
 const cohortViewRef = ref<InstanceType<typeof CohortView> | null>(null)
 
 // Sidebar state
@@ -269,6 +325,8 @@ const activeTab = ref<'case' | 'cohort'>('case')
 // Case selection state
 const selectedCaseId = ref<number | null>(null)
 const selectedCaseName = ref<string>('')
+const selectedVariantCount = ref(0)
+const selectedCreatedAt = ref(0)
 const caseCount = ref(0)
 
 // Panel state
@@ -331,9 +389,16 @@ const handleBatchImportComplete = async (result: { totalImported: number }): Pro
   snackbarRef.value?.show(message, 'success')
 }
 
-const handleCaseSelected = (caseId: number, caseName: string): void => {
+const handleCaseSelected = (
+  caseId: number,
+  caseName: string,
+  variantCount: number,
+  createdAt: number
+): void => {
   selectedCaseId.value = caseId
   selectedCaseName.value = caseName
+  selectedVariantCount.value = variantCount
+  selectedCreatedAt.value = createdAt
   // Auto-close sidebar on case selection (Material Design pattern)
   sidebarOpen.value = false
 }
@@ -531,20 +596,40 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.sticky-tabs {
-  position: sticky;
-  top: 0;
-  z-index: 4;
-  background: rgb(var(--v-theme-secondary));
-}
-
 .filter-bar-container {
   background: rgb(var(--v-theme-surface));
 }
 
-.case-header {
-  background: rgb(var(--v-theme-surface));
-  border-bottom: 1px solid rgba(var(--v-border-color), 0.12);
+.context-indicator {
+  min-width: 0;
+}
+
+.context-label {
+  max-width: 200px;
+}
+
+.clickable-case-name {
+  cursor: pointer;
+}
+
+.clickable-case-name:hover {
+  text-decoration: underline;
+}
+
+.select-case-hint {
+  cursor: pointer;
+}
+
+.select-case-hint:hover {
+  text-decoration: underline;
+}
+
+.mode-toggle {
+  height: 32px;
+}
+
+.mode-toggle :deep(.v-btn--active) {
+  background-color: rgba(255, 255, 255, 0.2) !important;
 }
 
 /* Remove v-main automatic padding-top from app-bar */

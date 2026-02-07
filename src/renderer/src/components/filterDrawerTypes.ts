@@ -1,0 +1,44 @@
+/**
+ * Type definition for the filter state shared between FilterToolbar and FilterDrawer
+ * via Vue provide/inject. This avoids circular imports and keeps the injection key typed.
+ */
+
+import type { Ref, ComputedRef } from 'vue'
+import type { FilterState, ActiveFilter } from '../composables/useFilterState'
+import type { Tag, FilterOptions } from '../../../shared/types/api'
+
+/**
+ * Shape of the object provided by FilterToolbar under the 'filterDrawerState' key.
+ * FilterDrawer injects this to access the same reactive filter state.
+ */
+export interface FilterDrawerState {
+  // Reactive state
+  filters: Ref<FilterState>
+  filterOptions: Ref<FilterOptions>
+  geneSymbolSuggestions: Ref<string[]>
+  loadingSuggestions: Ref<boolean>
+  selectedImpactPresets: Ref<string[]>
+  selectedAfPreset: Ref<number | null>
+  selectedCaddPreset: Ref<number | null>
+
+  // Preset constants
+  afPresets: readonly { label: string; value: number }[]
+  caddPresets: readonly { label: string; value: number }[]
+  impactPresets: readonly { label: string; value: string; color: string }[]
+
+  // Tags
+  availableTags: ComputedRef<Tag[]>
+
+  // Computed
+  hasActiveFilters: ComputedRef<boolean>
+  activeFilterCount: ComputedRef<number>
+  activeFiltersList: ComputedRef<ActiveFilter[]>
+
+  // Methods
+  isFilterGroupActive: (groupId: string) => boolean
+  clearFilter: (filterId: string) => void
+  removeTagFilter: (tagId: number) => void
+  clearAllFilters: () => void
+  handleGeneClear: () => void
+  searchGeneSymbols: (query: string) => Promise<void>
+}

@@ -409,7 +409,25 @@
           Clear
         </v-btn>
 
-        <!-- Filter visibility menu (All Filters) -->
+        <!-- Filter drawer toggle (slide-out panel showing all filters) -->
+        <v-btn
+          size="small"
+          variant="tonal"
+          prepend-icon="mdi-filter-variant"
+          @click="filterDrawerOpen = true"
+        >
+          All Filters
+          <v-badge
+            v-if="activeFilterCount > 0"
+            :content="activeFilterCount"
+            color="primary"
+            inline
+            class="ml-1"
+          />
+          <v-tooltip activator="parent" location="bottom"> Open full filter panel </v-tooltip>
+        </v-btn>
+
+        <!-- Filter visibility/reorder menu (gear icon) -->
         <FilterVisibilityMenu
           :filter-groups="filterGroupsWithLabels"
           :active-filter-count="activeFilterCount"
@@ -420,16 +438,17 @@
           @show-all="showAllFilters"
         />
 
-        <!-- Column visibility menu -->
-        <ColumnVisibilityMenu
+        <!-- Column visibility drawer toggle -->
+        <v-btn
           v-if="columns && columns.length > 0"
-          :columns="orderedColumns"
-          :visible-columns="visibleColumnKeys"
-          table-id="variant-table"
-          @toggle:column="toggleColumnVisibility"
-          @reorder="setColumnOrder"
-          @reset="resetColumnDefaults"
-        />
+          size="small"
+          variant="tonal"
+          prepend-icon="mdi-table-column"
+          @click="columnsDrawerOpen = true"
+        >
+          Columns
+          <v-tooltip activator="parent" location="bottom">Show/hide and reorder columns</v-tooltip>
+        </v-btn>
 
         <!-- Export to Excel button -->
         <v-tooltip location="top">
@@ -474,20 +493,37 @@
         </v-btn>
       </div>
     </v-expand-transition>
+
+    <!-- Filter drawer (right-side slide-out panel) -->
+    <FilterDrawer v-model:open="filterDrawerOpen" />
+
+    <!-- Columns drawer (right-side slide-out panel) -->
+    <ColumnsDrawer
+      v-if="columns && columns.length > 0"
+      v-model:open="columnsDrawerOpen"
+      :columns="orderedColumns"
+      :visible-columns="visibleColumnKeys"
+      table-id="variant-table"
+      @toggle:column="toggleColumnVisibility"
+      @reorder="setColumnOrder"
+      @reset="resetColumnDefaults"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount, toRef } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, toRef, provide } from 'vue'
 import draggable from 'vuedraggable'
 import { useFilterState } from '../composables/useFilterState'
 import { useFilterPreferences } from '../composables/useFilterPreferences'
 import { useColumnPreferences } from '../composables/useColumnPreferences'
-import ColumnVisibilityMenu from './ColumnVisibilityMenu.vue'
+import ColumnsDrawer from './ColumnsDrawer.vue'
 import FilterVisibilityMenu from './FilterVisibilityMenu.vue'
+import FilterDrawer from './FilterDrawer.vue'
 import GroupedMultiSelect from './GroupedMultiSelect.vue'
 import { consequenceGroups, clinvarGroups } from '../config/filterGroups'
 import type { VariantFilter, Tag } from '../../../shared/types/api'
+import type { FilterDrawerState } from './filterDrawerTypes'
 
 interface ColumnDef {
   key: string
@@ -553,6 +589,34 @@ const {
     hasSortRef
   }
 )
+
+// Drawer states
+const filterDrawerOpen = ref(false)
+const columnsDrawerOpen = ref(false)
+
+// Provide shared filter state for FilterDrawer (via provide/inject)
+provide<FilterDrawerState>('filterDrawerState', {
+  filters,
+  filterOptions,
+  geneSymbolSuggestions,
+  loadingSuggestions,
+  selectedImpactPresets,
+  selectedAfPreset,
+  selectedCaddPreset,
+  afPresets,
+  caddPresets,
+  impactPresets,
+  availableTags,
+  hasActiveFilters,
+  activeFilterCount,
+  activeFiltersList,
+  isFilterGroupActive,
+  clearFilter,
+  removeTagFilter,
+  clearAllFilters,
+  handleGeneClear,
+  searchGeneSymbols
+})
 
 // Watch initialSearch prop to pre-populate search from cohort navigation
 watch(

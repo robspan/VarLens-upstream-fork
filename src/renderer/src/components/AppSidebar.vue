@@ -1,7 +1,12 @@
 <template>
   <div>
     <v-toolbar density="compact" color="primary" dark>
-      <span class="ml-2 text-subtitle-1 font-weight-medium">Cases</span>
+      <span class="ml-2 text-subtitle-1 font-weight-medium">
+        Cases
+        <span v-if="(caseCount ?? 0) > 0" class="text-caption ml-1" style="opacity: 0.8"
+          >({{ caseCount }})</span
+        >
+      </span>
       <v-spacer />
       <v-menu>
         <template #activator="{ props }">
@@ -44,6 +49,10 @@
 </template>
 
 <script setup lang="ts">
+defineProps<{
+  caseCount?: number
+}>()
+
 defineEmits<{
   'import-click': []
   'batch-import-files': []

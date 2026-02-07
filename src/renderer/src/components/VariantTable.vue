@@ -692,9 +692,27 @@ defineExpose({
 </script>
 
 <style scoped>
-/* Table container with top scrollbar */
+/* Table container fills remaining height in flex parent */
 .table-container {
   position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Make data table fill available space */
+:deep(.v-data-table) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+:deep(.v-table__wrapper) {
+  flex: 1;
+  overflow-y: auto;
 }
 
 /* Loading skeleton */
@@ -764,8 +782,9 @@ defineExpose({
 
 /* Selected row highlighting - prominent with left accent border */
 :deep(.v-data-table tbody tr.variant-row--selected) {
-  background-color: rgba(var(--v-theme-primary), 0.12) !important;
+  background-color: rgba(var(--v-theme-primary), 0.1) !important;
   border-left: 4px solid rgb(var(--v-theme-primary)) !important;
+  transition: background-color 0.15s ease;
 }
 
 :deep(.v-data-table tbody tr.variant-row--selected td:first-child) {

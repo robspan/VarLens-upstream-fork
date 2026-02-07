@@ -2,14 +2,29 @@
   <div class="external-links-section">
     <div class="text-subtitle-2 mb-2">External Links</div>
     <div class="d-flex flex-wrap ga-1">
-      <v-tooltip v-for="link in visibleLinks" :key="link.id" location="top">
-        <template #activator="{ props: tooltipProps }">
-          <v-btn v-bind="tooltipProps" icon size="small" variant="tonal" @click="openLink(link.id)">
-            <v-icon>{{ getLinkIcon(link.id) }}</v-icon>
-          </v-btn>
-        </template>
-        {{ link.name }}
-      </v-tooltip>
+      <div
+        v-for="link in visibleLinks"
+        :key="link.id"
+        class="d-flex flex-column align-center external-link-item"
+      >
+        <v-tooltip location="top">
+          <template #activator="{ props: tooltipProps }">
+            <v-btn
+              v-bind="tooltipProps"
+              icon
+              size="small"
+              variant="tonal"
+              @click="openLink(link.id)"
+            >
+              <v-icon>{{ getLinkIcon(link.id) }}</v-icon>
+            </v-btn>
+          </template>
+          {{ link.name }}
+        </v-tooltip>
+        <span class="text-caption text-center text-truncate external-link-label">
+          {{ getLinkLabel(link.id) }}
+        </span>
+      </div>
     </div>
   </div>
 </template>
@@ -47,6 +62,26 @@ function getLinkIcon(linkId: string): string {
   }
 
   return iconMap[linkId] ?? 'mdi-open-in-new'
+}
+
+/**
+ * Map link IDs to short display labels
+ */
+function getLinkLabel(linkId: string): string {
+  const labelMap: Record<string, string> = {
+    gnomad: 'gnomAD',
+    ucsc: 'UCSC',
+    clinvar: 'ClinVar',
+    varsome: 'VarSome',
+    franklin: 'Franklin',
+    pubtator: 'PubTator',
+    litvar: 'LitVar',
+    decipher: 'DECIPHER',
+    clingen: 'ClinGen',
+    ensembl: 'Ensembl'
+  }
+
+  return labelMap[linkId] ?? linkId
 }
 
 /**
@@ -96,3 +131,16 @@ async function openLink(linkId: string): Promise<void> {
   }
 }
 </script>
+
+<style scoped>
+.external-link-item {
+  width: 72px;
+}
+
+.external-link-label {
+  max-width: 72px;
+  font-size: 11px;
+  line-height: 1.2;
+  margin-top: 2px;
+}
+</style>

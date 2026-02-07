@@ -384,90 +384,102 @@
         </div>
       </div>
 
-      <!-- RESULTS & ACTIONS (2x2 grid) -->
-      <div class="results-section ml-auto">
-        <v-chip
-          :color="hasActiveFilters ? 'primary' : 'default'"
-          :variant="hasActiveFilters ? 'flat' : 'tonal'"
-          size="small"
-          class="results-chip"
+      <!-- RESULTS & ACTIONS — 3-column grid, 2 rows -->
+      <div class="results-wrapper ml-auto" :class="{ compact: compactActions }">
+        <button
+          class="compact-toggle"
+          :title="compactActions ? 'Expand buttons' : 'Compact buttons'"
+          @click="toggleCompactActions"
         >
-          <v-icon start size="small">mdi-filter-variant</v-icon>
-          <strong>{{ filteredCount.toLocaleString() }}</strong>
-          <span class="mx-1 text-medium-emphasis">/</span>
-          <span class="text-medium-emphasis">{{ totalCount.toLocaleString() }}</span>
-        </v-chip>
+          <v-icon size="x-small">{{
+            compactActions ? 'mdi-chevron-double-left' : 'mdi-chevron-double-right'
+          }}</v-icon>
+        </button>
+        <div class="results-section">
+          <v-chip
+            :color="hasActiveFilters ? 'primary' : 'default'"
+            :variant="hasActiveFilters ? 'flat' : 'tonal'"
+            size="small"
+            class="results-chip"
+          >
+            <v-icon :start="!compactActions" size="small">mdi-filter-variant</v-icon>
+            <template v-if="!compactActions">
+              <strong>{{ filteredCount.toLocaleString() }}</strong>
+              <span class="mx-1 text-medium-emphasis">/</span>
+              <span class="text-medium-emphasis">{{ totalCount.toLocaleString() }}</span>
+            </template>
+            <v-tooltip v-if="compactActions" activator="parent" location="bottom">
+              {{ filteredCount.toLocaleString() }} / {{ totalCount.toLocaleString() }} variants
+            </v-tooltip>
+          </v-chip>
 
-        <v-btn
-          :disabled="!hasActiveFilters"
-          :color="hasActiveFilters ? 'error' : undefined"
-          :variant="hasActiveFilters ? 'tonal' : 'text'"
-          size="small"
-          prepend-icon="mdi-filter-off"
-          @click="clearAllFilters"
-        >
-          Clear
-        </v-btn>
+          <v-btn
+            :disabled="!hasActiveFilters"
+            :color="hasActiveFilters ? 'error' : undefined"
+            :variant="hasActiveFilters ? 'tonal' : compactActions ? 'tonal' : 'text'"
+            size="small"
+            @click="clearAllFilters"
+          >
+            <v-icon :start="!compactActions" size="small">mdi-filter-off</v-icon>
+            <template v-if="!compactActions">Clear</template>
+            <v-tooltip activator="parent" location="bottom">Clear all filters</v-tooltip>
+          </v-btn>
 
-        <!-- Filter drawer toggle (slide-out panel showing all filters) -->
-        <v-btn
-          size="small"
-          variant="tonal"
-          prepend-icon="mdi-filter-variant"
-          @click="filterDrawerOpen = true"
-        >
-          All Filters
-          <v-badge
-            v-if="activeFilterCount > 0"
-            :content="activeFilterCount"
-            color="primary"
-            inline
-            class="ml-1"
+          <v-btn size="small" variant="tonal" @click="filterDrawerOpen = true">
+            <v-icon :start="!compactActions" size="small">mdi-filter-variant</v-icon>
+            <template v-if="!compactActions">All Filters</template>
+            <v-badge
+              v-if="activeFilterCount > 0 && !compactActions"
+              :content="activeFilterCount"
+              color="primary"
+              inline
+              class="ml-1"
+            />
+            <v-tooltip activator="parent" location="bottom">
+              Open full filter panel{{
+                activeFilterCount > 0 ? ` (${activeFilterCount} active)` : ''
+              }}
+            </v-tooltip>
+          </v-btn>
+
+          <FilterVisibilityMenu
+            :filter-groups="filterGroupsWithLabels"
+            :compact="compactActions"
+            @toggle-visible="toggleFilterGroupVisible"
+            @toggle-expand="toggleFilterGroupExpanded"
+            @reorder="handleFilterReorder"
+            @reset="resetFilterDefaults"
+            @show-all="showAllFilters"
           />
-          <v-tooltip activator="parent" location="bottom"> Open full filter panel </v-tooltip>
-        </v-btn>
 
-        <!-- Filter visibility/reorder menu (gear icon) -->
-        <FilterVisibilityMenu
-          :filter-groups="filterGroupsWithLabels"
-          :active-filter-count="activeFilterCount"
-          @toggle-visible="toggleFilterGroupVisible"
-          @toggle-expand="toggleFilterGroupExpanded"
-          @reorder="handleFilterReorder"
-          @reset="resetFilterDefaults"
-          @show-all="showAllFilters"
-        />
+          <v-btn
+            v-if="columns && columns.length > 0"
+            size="small"
+            variant="tonal"
+            @click="columnsDrawerOpen = true"
+          >
+            <v-icon :start="!compactActions" size="small">mdi-table-column</v-icon>
+            <template v-if="!compactActions">Columns</template>
+            <v-tooltip activator="parent" location="bottom">
+              Show/hide and reorder columns
+            </v-tooltip>
+          </v-btn>
 
-        <!-- Column visibility drawer toggle -->
-        <v-btn
-          v-if="columns && columns.length > 0"
-          size="small"
-          variant="tonal"
-          prepend-icon="mdi-table-column"
-          @click="columnsDrawerOpen = true"
-        >
-          Columns
-          <v-tooltip activator="parent" location="bottom">Show/hide and reorder columns</v-tooltip>
-        </v-btn>
-
-        <!-- Export to Excel button -->
-        <v-tooltip location="top">
-          <template #activator="{ props: tooltipProps }">
-            <v-btn
-              v-bind="tooltipProps"
-              :loading="exporting"
-              :disabled="filteredCount === 0"
-              color="success"
-              variant="tonal"
-              size="small"
-              prepend-icon="mdi-microsoft-excel"
-              @click="exportToExcel"
-            >
-              Export
-            </v-btn>
-          </template>
-          <span>Export {{ filteredCount.toLocaleString() }} variants to Excel</span>
-        </v-tooltip>
+          <v-btn
+            :loading="exporting"
+            :disabled="filteredCount === 0"
+            color="success"
+            variant="tonal"
+            size="small"
+            @click="exportToExcel"
+          >
+            <v-icon :start="!compactActions" size="small">mdi-microsoft-excel</v-icon>
+            <template v-if="!compactActions">Export</template>
+            <v-tooltip activator="parent" location="bottom">
+              Export {{ filteredCount.toLocaleString() }} variants to Excel
+            </v-tooltip>
+          </v-btn>
+        </div>
       </div>
     </v-toolbar>
 
@@ -593,6 +605,16 @@ const {
 // Drawer states
 const filterDrawerOpen = ref(false)
 const columnsDrawerOpen = ref(false)
+
+// Compact actions toggle (persisted in localStorage)
+const COMPACT_STORAGE_KEY = 'varlens_compact_actions_v1'
+// eslint-disable-next-line no-undef
+const compactActions = ref(localStorage.getItem(COMPACT_STORAGE_KEY) === 'true')
+const toggleCompactActions = () => {
+  compactActions.value = !compactActions.value
+  // eslint-disable-next-line no-undef
+  localStorage.setItem(COMPACT_STORAGE_KEY, String(compactActions.value))
+}
 
 // Provide shared filter state for FilterDrawer (via provide/inject)
 provide<FilterDrawerState>('filterDrawerState', {
@@ -763,6 +785,9 @@ const scrollRight = () => {
   scrollContainer.value?.scrollBy({ left: 200, behavior: 'smooth' })
 }
 
+// ResizeObserver to detect when the scroll container becomes visible (e.g., tab switch)
+let resizeObserver: ResizeObserver | null = null
+
 // Load filter options on mount
 onMounted(async () => {
   await loadFilterOptions(props.caseId)
@@ -771,6 +796,14 @@ onMounted(async () => {
   scrollContainer.value?.addEventListener('scroll', updateScrollButtons)
   // eslint-disable-next-line no-undef
   window.addEventListener('resize', updateScrollButtons)
+
+  // Use ResizeObserver to re-calculate scroll buttons when the container
+  // transitions from hidden (0 dimensions) to visible (tab switch)
+  if (scrollContainer.value) {
+    resizeObserver = new ResizeObserver(() => updateScrollButtons())
+    resizeObserver.observe(scrollContainer.value)
+  }
+
   updateScrollButtons()
 })
 
@@ -778,6 +811,7 @@ onBeforeUnmount(() => {
   scrollContainer.value?.removeEventListener('scroll', updateScrollButtons)
   // eslint-disable-next-line no-undef
   window.removeEventListener('resize', updateScrollButtons)
+  resizeObserver?.disconnect()
 })
 </script>
 
@@ -1020,15 +1054,52 @@ onBeforeUnmount(() => {
   font-size: 0.85rem;
 }
 
+.results-wrapper {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+.compact-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  background: rgba(var(--v-theme-on-surface), 0.06);
+  border-radius: 8px 0 0 8px;
+  border: none;
+  cursor: pointer;
+  color: rgba(var(--v-theme-on-surface), 0.35);
+  transition:
+    background 0.2s,
+    color 0.2s;
+}
+
+.compact-toggle:hover {
+  background: rgba(var(--v-theme-on-surface), 0.12);
+  color: rgba(var(--v-theme-on-surface), 0.7);
+}
+
 .results-section {
   display: grid;
   grid-template-columns: auto auto auto;
-  gap: 6px;
+  gap: 4px 6px;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: 0 8px 8px 0;
   background: rgba(var(--v-theme-on-surface), 0.03);
-  flex-shrink: 0;
-  align-self: flex-start;
+  align-items: center;
+}
+
+/* Compact mode: fixed-width grid cells prevent layout shift when filter state changes */
+.results-wrapper.compact .results-section {
+  justify-items: center;
+}
+
+.results-wrapper.compact .results-section > :deep(.v-btn),
+.results-wrapper.compact .results-section > :deep(.v-chip) {
+  min-width: 36px;
+  justify-content: center;
 }
 
 /* Collapsed filter group - just show small indicator */

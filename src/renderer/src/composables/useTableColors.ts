@@ -32,6 +32,7 @@ export function useTableColors(): UseTableColorsReturn {
     if (lower.includes('pathogenic') && !lower.includes('benign')) {
       return lower.includes('likely') ? 'orange' : 'error'
     }
+    if (lower.includes('conflicting')) return 'deep-purple'
     if (lower.includes('uncertain') || lower.includes('vus')) return 'warning'
     if (lower.includes('likely benign')) return 'light-green'
     if (lower.includes('benign')) return 'success'

@@ -59,7 +59,12 @@
       <v-list-item-title>{{ caseItem.name }}</v-list-item-title>
       <v-list-item-subtitle>
         {{ caseItem.variant_count.toLocaleString() }} variants •
-        {{ formatDate(caseItem.created_at) }}
+        <v-tooltip location="top">
+          <template #activator="{ props: dateProps }">
+            <span v-bind="dateProps">{{ formatDate(caseItem.created_at) }}</span>
+          </template>
+          {{ formatFullDate(caseItem.created_at) }}
+        </v-tooltip>
       </v-list-item-subtitle>
 
       <!-- Cohort chips (show max 3, then +N more) -->
@@ -200,11 +205,37 @@ const filteredCases = computed(() => {
   return result
 })
 
-// Format date as "Jan 26" style
+// Format date as relative time ("2 days ago") with full date on hover
 const formatDate = (timestamp: number): string => {
+  const now = Date.now()
+  const diff = now - timestamp
+  const seconds = Math.floor(diff / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+  const days = Math.floor(hours / 24)
+  const weeks = Math.floor(days / 7)
+
+  if (seconds < 60) return 'Just now'
+  if (minutes < 60) return `${minutes}m ago`
+  if (hours < 24) return `${hours}h ago`
+  if (days < 7) return `${days}d ago`
+  if (weeks < 4) return `${weeks}w ago`
+
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
-    day: 'numeric'
+    day: 'numeric',
+    year: 'numeric'
+  }).format(new Date(timestamp))
+}
+
+const formatFullDate = (timestamp: number): string => {
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
   }).format(new Date(timestamp))
 }
 

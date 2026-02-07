@@ -1,8 +1,18 @@
 <template>
-  <v-chip v-if="asChip && hasValue" :color="chipColor" size="small" label>
-    {{ displayValue }}
-  </v-chip>
-  <span v-else-if="hasValue">{{ displayValue }}</span>
+  <v-tooltip v-if="asChip && hasValue" location="top">
+    <template #activator="{ props: tooltipProps }">
+      <v-chip v-bind="tooltipProps" :color="chipColor" size="small" label>
+        {{ displayValue }}
+      </v-chip>
+    </template>
+    {{ consequence }}
+  </v-tooltip>
+  <v-tooltip v-else-if="hasValue" location="top">
+    <template #activator="{ props: tooltipProps }">
+      <span v-bind="tooltipProps">{{ displayValue }}</span>
+    </template>
+    {{ consequence }}
+  </v-tooltip>
   <span v-else>--</span>
 </template>
 

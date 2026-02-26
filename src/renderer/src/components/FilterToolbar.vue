@@ -1,259 +1,168 @@
 <template>
-  <div class="filter-toolbar-container">
-    <!-- Slim single-row toolbar -->
-    <v-defaults-provider
-      :defaults="{ VBtn: { size: 'small' }, VTextField: { density: 'compact' } }"
-    >
-      <v-toolbar
-        density="compact"
-        flat
-        class="filter-toolbar px-2"
-        role="toolbar"
-        aria-label="Variant filters"
-      >
-        <!-- Search field — always visible -->
-        <v-text-field
-          v-model="filters.searchQuery"
-          variant="outlined"
-          hide-details
-          clearable
-          placeholder="Gene, chr:pos, c./p. HGVS..."
-          prepend-inner-icon="mdi-magnify"
-          class="filter-search-input mr-2"
-          :class="{ 'filter-active': filters.searchQuery !== '' }"
-        />
+  <SlimFilterToolbar
+    :filtered-count="filteredCount"
+    :total-count="totalCount"
+    :has-active-filters="hasActiveFilters"
+    :active-filter-count="activeFilterCount"
+    :active-filters-list="activeFiltersList"
+    :exporting="exporting"
+    :columns="columns"
+    @clear-all="clearAllFilters"
+    @clear-filter="clearFilter"
+    @open-filter-drawer="filterDrawerOpen = true"
+    @open-columns-drawer="columnsDrawerOpen = true"
+    @export="exportToExcel"
+  >
+    <template #filters>
+      <!-- Search field -->
+      <v-text-field
+        v-model="filters.searchQuery"
+        variant="outlined"
+        hide-details
+        clearable
+        placeholder="Gene, chr:pos, c./p. HGVS..."
+        prepend-inner-icon="mdi-magnify"
+        class="filter-search-input mr-2"
+        :class="{ 'filter-active': filters.searchQuery !== '' }"
+      />
 
-        <!-- Star toggle -->
-        <v-tooltip location="bottom">
-          <template #activator="{ props: tooltipProps }">
-            <v-btn
-              v-bind="tooltipProps"
-              :color="filters.starredOnly ? 'amber-darken-2' : undefined"
-              :variant="filters.starredOnly ? 'flat' : 'text'"
-              density="compact"
-              icon
-              @click="toggleStarred"
-            >
-              <v-icon size="small">{{
-                filters.starredOnly ? 'mdi-star' : 'mdi-star-outline'
-              }}</v-icon>
-            </v-btn>
-          </template>
-          {{
-            filters.starredOnly
-              ? 'Showing starred only — click to clear'
-              : 'Show starred variants only'
-          }}
-        </v-tooltip>
-
-        <!-- Comment toggle -->
-        <v-tooltip location="bottom">
-          <template #activator="{ props: tooltipProps }">
-            <v-btn
-              v-bind="tooltipProps"
-              :color="filters.hasCommentOnly ? 'primary' : undefined"
-              :variant="filters.hasCommentOnly ? 'flat' : 'text'"
-              density="compact"
-              icon
-              @click="toggleCommented"
-            >
-              <v-icon size="small">{{
-                filters.hasCommentOnly ? 'mdi-comment-text' : 'mdi-comment-text-outline'
-              }}</v-icon>
-            </v-btn>
-          </template>
-          {{
-            filters.hasCommentOnly
-              ? 'Showing commented only — click to clear'
-              : 'Show variants with comments only'
-          }}
-        </v-tooltip>
-
-        <!-- ACMG classification chips -->
-        <v-chip-group v-model="filters.acmgClassifications" multiple class="ml-2 flex-nowrap">
-          <v-chip
-            v-for="cls in acmgFilterOptions"
-            :key="cls.value"
-            :value="cls.value"
-            :color="cls.color"
-            filter
-            variant="outlined"
-            size="small"
+      <!-- Star toggle -->
+      <v-tooltip location="bottom">
+        <template #activator="{ props: tooltipProps }">
+          <v-btn
+            v-bind="tooltipProps"
+            :color="filters.starredOnly ? 'amber-darken-2' : undefined"
+            :variant="filters.starredOnly ? 'flat' : 'text'"
+            density="compact"
+            icon
+            @click="toggleStarred"
           >
-            {{ cls.label }}
-          </v-chip>
-        </v-chip-group>
+            <v-icon size="small">{{
+              filters.starredOnly ? 'mdi-star' : 'mdi-star-outline'
+            }}</v-icon>
+          </v-btn>
+        </template>
+        {{
+          filters.starredOnly
+            ? 'Showing starred only — click to clear'
+            : 'Show starred variants only'
+        }}
+      </v-tooltip>
 
-        <!-- Tag filter -->
-        <v-select
-          v-if="availableTags.length > 0"
-          v-model="filters.tagIds"
-          :items="availableTags"
-          item-title="name"
-          item-value="id"
-          multiple
-          chips
-          closable-chips
-          density="compact"
+      <!-- Comment toggle -->
+      <v-tooltip location="bottom">
+        <template #activator="{ props: tooltipProps }">
+          <v-btn
+            v-bind="tooltipProps"
+            :color="filters.hasCommentOnly ? 'primary' : undefined"
+            :variant="filters.hasCommentOnly ? 'flat' : 'text'"
+            density="compact"
+            icon
+            @click="toggleCommented"
+          >
+            <v-icon size="small">{{
+              filters.hasCommentOnly ? 'mdi-comment-text' : 'mdi-comment-text-outline'
+            }}</v-icon>
+          </v-btn>
+        </template>
+        {{
+          filters.hasCommentOnly
+            ? 'Showing commented only — click to clear'
+            : 'Show variants with comments only'
+        }}
+      </v-tooltip>
+
+      <!-- ACMG classification chips -->
+      <v-chip-group v-model="filters.acmgClassifications" multiple class="ml-2 flex-nowrap">
+        <v-chip
+          v-for="cls in acmgFilterOptions"
+          :key="cls.value"
+          :value="cls.value"
+          :color="cls.color"
+          filter
           variant="outlined"
-          hide-details
-          clearable
-          placeholder="Tags..."
-          prepend-inner-icon="mdi-tag-multiple"
-          class="filter-tag-input ml-1"
-          :class="{ 'filter-active': filters.tagIds.length > 0 }"
-        >
-          <template #chip="{ item }">
-            <v-chip
-              closable
-              size="x-small"
-              :color="(item.raw as Tag).color"
-              variant="flat"
-              @click:close="removeTagFilter((item.raw as Tag).id)"
-            >
-              {{ (item.raw as Tag).name }}
-            </v-chip>
-          </template>
-          <template #item="{ item, props: itemProps }">
-            <v-list-item v-bind="itemProps" :title="undefined">
-              <template #prepend>
-                <v-icon :color="(item.raw as Tag).color" size="small">mdi-circle</v-icon>
-              </template>
-              <v-list-item-title>{{ (item.raw as Tag).name }}</v-list-item-title>
-            </v-list-item>
-          </template>
-        </v-select>
-
-        <v-spacer />
-
-        <!-- Result count chip -->
-        <v-chip
-          :color="hasActiveFilters ? 'primary' : 'default'"
-          :variant="hasActiveFilters ? 'flat' : 'tonal'"
           size="small"
-          class="results-chip mr-1"
         >
-          <v-icon start size="small">mdi-filter-variant</v-icon>
-          <strong>{{ filteredCount.toLocaleString() }}</strong>
-          <span class="mx-1 text-medium-emphasis">/</span>
-          <span class="text-medium-emphasis">{{ totalCount.toLocaleString() }}</span>
+          {{ cls.label }}
         </v-chip>
+      </v-chip-group>
 
-        <!-- Clear filters -->
-        <v-btn
-          :disabled="!hasActiveFilters"
-          :color="hasActiveFilters ? 'error' : undefined"
-          :variant="hasActiveFilters ? 'tonal' : 'text'"
-          @click="clearAllFilters"
-        >
-          <v-icon start size="small">mdi-filter-off</v-icon>
-          Clear
-          <v-tooltip activator="parent" location="bottom">Clear all filters</v-tooltip>
-        </v-btn>
-
-        <!-- Open filter drawer -->
-        <v-btn variant="tonal" @click="filterDrawerOpen = true">
-          <v-icon start size="small">mdi-filter-variant</v-icon>
-          Filters
-          <v-badge
-            v-if="activeFilterCount > 0"
-            :content="activeFilterCount"
-            color="primary"
-            inline
-            class="ml-1"
-          />
-          <v-tooltip activator="parent" location="bottom">
-            Open full filter panel{{
-              activeFilterCount > 0 ? ` (${activeFilterCount} active)` : ''
-            }}
-          </v-tooltip>
-        </v-btn>
-
-        <!-- Columns drawer -->
-        <v-btn
-          v-if="columns && columns.length > 0"
-          variant="tonal"
-          @click="columnsDrawerOpen = true"
-        >
-          <v-icon start size="small">mdi-table-column</v-icon>
-          Columns
-          <v-tooltip activator="parent" location="bottom">Show/hide and reorder columns</v-tooltip>
-        </v-btn>
-
-        <!-- Export -->
-        <v-btn
-          :loading="exporting"
-          :disabled="filteredCount === 0"
-          color="success"
-          variant="tonal"
-          @click="exportToExcel"
-        >
-          <v-icon start size="small">mdi-microsoft-excel</v-icon>
-          Export
-          <v-tooltip activator="parent" location="bottom">
-            Export {{ filteredCount.toLocaleString() }} variants to Excel
-          </v-tooltip>
-        </v-btn>
-      </v-toolbar>
-    </v-defaults-provider>
-
-    <!-- Applied Filters Summary Bar -->
-    <v-expand-transition>
-      <div v-if="activeFiltersList.length > 0" class="applied-filters-bar">
-        <span class="text-caption text-medium-emphasis mr-2">Active:</span>
-        <v-chip
-          v-for="filter in activeFiltersList"
-          :key="filter.id"
-          size="small"
-          closable
-          variant="tonal"
-          color="primary"
-          class="mr-1"
-          @click:close="clearFilter(filter.id)"
-        >
-          <span class="font-weight-medium">{{ filter.label }}:</span>
-          <span class="ml-1">{{ filter.value }}</span>
-        </v-chip>
-        <v-btn variant="text" size="x-small" color="error" class="ml-1" @click="clearAllFilters">
-          Clear all
-        </v-btn>
-      </div>
-    </v-expand-transition>
-
-    <!-- Annotation filter hint when active but 0 results -->
-    <v-expand-transition>
-      <div
-        v-if="(filters.starredOnly || filters.hasCommentOnly) && filteredCount === 0"
-        class="annotation-hint-bar"
+      <!-- Tag filter -->
+      <v-select
+        v-if="availableTags.length > 0"
+        v-model="filters.tagIds"
+        :items="availableTags"
+        item-title="name"
+        item-value="id"
+        multiple
+        chips
+        closable-chips
+        density="compact"
+        variant="outlined"
+        hide-details
+        clearable
+        placeholder="Tags..."
+        prepend-inner-icon="mdi-tag-multiple"
+        class="filter-tag-input ml-1"
+        :class="{ 'filter-active': filters.tagIds.length > 0 }"
       >
-        <v-icon size="small" class="mr-1">mdi-information-outline</v-icon>
-        <span class="text-caption">
-          No variants match the annotation filter. Star or comment on variants first, then filter.
-        </span>
-      </div>
-    </v-expand-transition>
+        <template #chip="{ item }">
+          <v-chip
+            closable
+            size="x-small"
+            :color="(item.raw as Tag).color"
+            variant="flat"
+            @click:close="removeTagFilter((item.raw as Tag).id)"
+          >
+            {{ (item.raw as Tag).name }}
+          </v-chip>
+        </template>
+        <template #item="{ item, props: itemProps }">
+          <v-list-item v-bind="itemProps" :title="undefined">
+            <template #prepend>
+              <v-icon :color="(item.raw as Tag).color" size="small">mdi-circle</v-icon>
+            </template>
+            <v-list-item-title>{{ (item.raw as Tag).name }}</v-list-item-title>
+          </v-list-item>
+        </template>
+      </v-select>
+    </template>
 
-    <!-- Filter drawer (right-side slide-out panel) -->
-    <FilterDrawer v-model:open="filterDrawerOpen" />
+    <template #hints>
+      <v-expand-transition>
+        <div
+          v-if="(filters.starredOnly || filters.hasCommentOnly) && filteredCount === 0"
+          class="annotation-hint-bar"
+        >
+          <v-icon size="small" class="mr-1">mdi-information-outline</v-icon>
+          <span class="text-caption">
+            No variants match the annotation filter. Star or comment on variants first, then filter.
+          </span>
+        </div>
+      </v-expand-transition>
+    </template>
 
-    <!-- Columns drawer (right-side slide-out panel) -->
-    <ColumnsDrawer
-      v-if="columns && columns.length > 0"
-      v-model:open="columnsDrawerOpen"
-      :columns="orderedColumns"
-      :visible-columns="visibleColumnKeys"
-      table-id="variant-table"
-      @toggle:column="toggleColumnVisibility"
-      @reorder="setColumnOrder"
-      @reset="resetColumnDefaults"
-    />
-  </div>
+    <template #drawers>
+      <FilterDrawer v-model:open="filterDrawerOpen" />
+      <ColumnsDrawer
+        v-if="columns && columns.length > 0"
+        v-model:open="columnsDrawerOpen"
+        :columns="orderedColumns"
+        :visible-columns="visibleColumnKeys"
+        table-id="variant-table"
+        @toggle:column="toggleColumnVisibility"
+        @reorder="setColumnOrder"
+        @reset="resetColumnDefaults"
+      />
+    </template>
+  </SlimFilterToolbar>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, toRef, provide } from 'vue'
 import { useFilterState } from '../composables/useFilterState'
 import { useColumnPreferences } from '../composables/useColumnPreferences'
+import SlimFilterToolbar from './SlimFilterToolbar.vue'
 import ColumnsDrawer from './ColumnsDrawer.vue'
 import FilterDrawer from './FilterDrawer.vue'
 import type { VariantFilter, Tag } from '../../../shared/types/api'
@@ -324,7 +233,7 @@ const {
   }
 )
 
-// Toggle methods for star/comment (explicit methods avoid template reactivity issues)
+// Toggle methods for star/comment
 const toggleStarred = () => {
   filters.value.starredOnly = !filters.value.starredOnly
 }
@@ -437,15 +346,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.filter-toolbar-container {
-  border-bottom: 1px solid rgba(var(--v-border-color), 0.12);
-  background: rgb(var(--v-theme-surface));
-}
-
-.filter-toolbar {
-  background: transparent !important;
-}
-
 .filter-search-input {
   max-width: 240px;
   flex-shrink: 1;
@@ -488,31 +388,6 @@ onMounted(async () => {
   border-color: rgb(var(--v-theme-primary));
   border-width: 2px;
   background: rgba(var(--v-theme-primary), 0.04);
-}
-
-.results-chip {
-  font-size: 0.85rem;
-}
-
-/* Applied filters summary bar */
-.applied-filters-bar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 6px 16px;
-  background: rgba(var(--v-theme-primary), 0.04);
-  border-top: 1px solid rgba(var(--v-border-color), 0.08);
-}
-
-.applied-filters-bar .v-chip {
-  max-width: 200px;
-}
-
-.applied-filters-bar .v-chip span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* Annotation hint bar */

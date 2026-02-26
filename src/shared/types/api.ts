@@ -194,8 +194,12 @@ export interface DuplicateCheckResult {
 export interface BatchImportAPI {
   selectFiles: () => Promise<string[]>
   selectFolder: () => Promise<string[]>
-  checkDuplicates: (filePaths: string[]) => Promise<DuplicateCheckResult>
-  start: (filePaths: string[], duplicateStrategy: DuplicateChoice) => Promise<BatchResult>
+  checkDuplicates: (filePaths: string[], stripText?: string) => Promise<DuplicateCheckResult>
+  start: (
+    filePaths: string[],
+    duplicateStrategy: DuplicateChoice,
+    stripText?: string
+  ) => Promise<BatchResult>
   cancel: () => Promise<void>
   onProgress: (callback: (progress: BatchProgress) => void) => () => void
   selectZip: () => Promise<{ filePath: string; isEncrypted: boolean } | null>

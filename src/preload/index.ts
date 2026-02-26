@@ -110,10 +110,10 @@ const api = {
   batchImport: {
     selectFiles: () => ipcRenderer.invoke('batch-import:selectFiles'),
     selectFolder: () => ipcRenderer.invoke('batch-import:selectFolder'),
-    checkDuplicates: (filePaths: string[]): Promise<DuplicateCheckResult> =>
-      ipcRenderer.invoke('batch-import:checkDuplicates', filePaths),
-    start: (filePaths: string[], duplicateStrategy: DuplicateChoice) =>
-      ipcRenderer.invoke('batch-import:start', filePaths, duplicateStrategy),
+    checkDuplicates: (filePaths: string[], stripText?: string): Promise<DuplicateCheckResult> =>
+      ipcRenderer.invoke('batch-import:checkDuplicates', filePaths, stripText),
+    start: (filePaths: string[], duplicateStrategy: DuplicateChoice, stripText?: string) =>
+      ipcRenderer.invoke('batch-import:start', filePaths, duplicateStrategy, stripText),
     cancel: () => ipcRenderer.invoke('batch-import:cancel'),
 
     selectZip: () => ipcRenderer.invoke('batch-import:selectZip'),

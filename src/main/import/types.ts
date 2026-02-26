@@ -53,6 +53,7 @@ export type DuplicateChoice = 'skip' | 'overwrite'
 
 export interface BatchImportOptions {
   duplicateStrategy: DuplicateChoice
+  stripText?: string
   onBatchProgress?: (progress: {
     currentIndex: number
     totalFiles: number

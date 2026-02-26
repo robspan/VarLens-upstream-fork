@@ -101,6 +101,12 @@ export interface VariantFilter {
   alt?: string
   /** Filter by tag IDs (OR logic) */
   tag_ids?: number[]
+  /** Filter to variants starred in this case */
+  starred_only?: boolean
+  /** Filter to variants with per-case or global comments */
+  has_comment?: boolean
+  /** Filter by ACMG classification (OR logic) */
+  acmg_classifications?: string[]
 }
 
 /**

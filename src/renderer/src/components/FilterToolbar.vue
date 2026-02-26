@@ -364,6 +364,51 @@
                       </template>
                     </v-select>
                   </div>
+
+                  <!-- ANNOTATIONS GROUP -->
+                  <div v-if="group.id === 'annotations'" class="filter-section annotations-section">
+                    <div class="section-label">
+                      <v-icon size="small" class="mr-1">mdi-star-circle</v-icon>
+                      <span>Annotated</span>
+                    </div>
+                    <div class="d-flex align-center ga-1 flex-wrap">
+                      <v-btn
+                        :color="filters.starredOnly ? 'amber-darken-2' : undefined"
+                        :variant="filters.starredOnly ? 'flat' : 'outlined'"
+                        size="small"
+                        density="compact"
+                        rounded="pill"
+                        @click="filters.starredOnly = !filters.starredOnly"
+                      >
+                        <v-icon size="small" start>mdi-star</v-icon>
+                        Starred
+                      </v-btn>
+                      <v-btn
+                        :color="filters.hasCommentOnly ? 'primary' : undefined"
+                        :variant="filters.hasCommentOnly ? 'flat' : 'outlined'"
+                        size="small"
+                        density="compact"
+                        rounded="pill"
+                        @click="filters.hasCommentOnly = !filters.hasCommentOnly"
+                      >
+                        <v-icon size="small" start>mdi-comment-text</v-icon>
+                        Commented
+                      </v-btn>
+                    </div>
+                    <v-chip-group v-model="filters.acmgClassifications" multiple column>
+                      <v-chip
+                        v-for="cls in acmgFilterOptions"
+                        :key="cls.value"
+                        :value="cls.value"
+                        :color="cls.color"
+                        filter
+                        variant="outlined"
+                        size="small"
+                      >
+                        {{ cls.label }}
+                      </v-chip>
+                    </v-chip-group>
+                  </div>
                 </div>
               </div>
             </template>
@@ -396,6 +441,48 @@
           }}</v-icon>
         </button>
         <div class="results-section">
+          <!-- Annotation quick toggles — always visible -->
+          <div class="annotation-toggles d-flex align-center ga-1">
+            <v-btn
+              :color="filters.starredOnly ? 'amber-darken-2' : undefined"
+              :variant="filters.starredOnly ? 'flat' : 'text'"
+              size="small"
+              density="compact"
+              icon
+              @click="filters.starredOnly = !filters.starredOnly"
+            >
+              <v-icon size="small">{{
+                filters.starredOnly ? 'mdi-star' : 'mdi-star-outline'
+              }}</v-icon>
+              <v-tooltip activator="parent" location="bottom">
+                {{
+                  filters.starredOnly
+                    ? 'Showing starred only — click to clear'
+                    : 'Show starred variants only'
+                }}
+              </v-tooltip>
+            </v-btn>
+            <v-btn
+              :color="filters.hasCommentOnly ? 'primary' : undefined"
+              :variant="filters.hasCommentOnly ? 'flat' : 'text'"
+              size="small"
+              density="compact"
+              icon
+              @click="filters.hasCommentOnly = !filters.hasCommentOnly"
+            >
+              <v-icon size="small">{{
+                filters.hasCommentOnly ? 'mdi-comment-text' : 'mdi-comment-text-outline'
+              }}</v-icon>
+              <v-tooltip activator="parent" location="bottom">
+                {{
+                  filters.hasCommentOnly
+                    ? 'Showing commented only — click to clear'
+                    : 'Show variants with comments only'
+                }}
+              </v-tooltip>
+            </v-btn>
+          </div>
+
           <v-chip
             :color="hasActiveFilters ? 'primary' : 'default'"
             :variant="hasActiveFilters ? 'flat' : 'tonal'"
@@ -726,8 +813,18 @@ const filterGroupLabels: Record<string, string> = {
   clinvar: 'ClinVar',
   frequency: 'Frequency',
   cadd: 'CADD',
-  tags: 'Tags'
+  tags: 'Tags',
+  annotations: 'Annotated'
 }
+
+// ACMG classification options for the annotation filter
+const acmgFilterOptions = [
+  { value: 'Pathogenic', label: 'P', color: 'error' },
+  { value: 'Likely Pathogenic', label: 'LP', color: 'deep-orange' },
+  { value: 'VUS', label: 'VUS', color: 'warning' },
+  { value: 'Likely Benign', label: 'LB', color: 'blue-grey' },
+  { value: 'Benign', label: 'B', color: 'success' }
+] as const
 
 // Filter groups with labels for FilterVisibilityMenu (all groups, not just visible)
 const filterGroupsWithLabels = computed(() =>
@@ -843,7 +940,7 @@ onBeforeUnmount(() => {
 .filter-groups-scroll {
   flex: 1;
   overflow-x: auto;
-  overflow-y: clip;
+  overflow-y: visible;
   min-width: 0;
   scrollbar-width: thin;
   /* Add top padding to prevent clipping of filter labels */
@@ -853,7 +950,7 @@ onBeforeUnmount(() => {
 .filter-groups-container {
   display: flex;
   flex-wrap: nowrap;
-  gap: 4px;
+  gap: 8px;
   padding: 6px 2px 4px 2px;
   width: max-content;
 }
@@ -897,6 +994,23 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 0;
   padding-top: 2px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  width: 0;
+  overflow: hidden;
+}
+
+.filter-section-wrapper:hover .filter-group-header {
+  opacity: 1;
+  width: auto;
+  overflow: visible;
+}
+
+/* Always show header when collapsed (needed for expand button) */
+.filter-section-wrapper.collapsed .filter-group-header {
+  opacity: 1;
+  width: auto;
+  overflow: visible;
 }
 
 .drag-handle {
@@ -930,16 +1044,17 @@ onBeforeUnmount(() => {
 
 .hidden-filter-badge {
   position: absolute;
-  top: -4px;
-  right: -4px;
+  top: -6px;
+  right: -6px;
   background-color: rgb(var(--v-theme-primary));
   color: white;
-  font-size: 0.6rem;
+  font-size: 0.65rem;
   font-weight: 700;
   line-height: 1;
-  padding: 2px 4px;
-  border-radius: 8px;
+  padding: 3px 5px;
+  border-radius: 10px;
   pointer-events: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .filter-section {
@@ -1082,8 +1197,8 @@ onBeforeUnmount(() => {
 }
 
 .results-section {
-  display: grid;
-  grid-template-columns: auto auto auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 4px 6px;
   padding: 8px 10px;
   border-radius: 0 8px 8px 0;
@@ -1120,6 +1235,14 @@ onBeforeUnmount(() => {
 
 .applied-filters-bar .v-chip {
   max-width: 200px;
+}
+
+.annotations-section {
+  min-width: 140px;
+}
+
+.annotation-toggles {
+  flex-shrink: 0;
 }
 
 .applied-filters-bar .v-chip span {

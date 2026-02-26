@@ -33,7 +33,8 @@ const DEFAULT_CASE_FILTER_GROUPS: FilterGroupPreference[] = [
   { id: 'function', order: 4, visible: true, expanded: true },
   { id: 'gene', order: 5, visible: true, expanded: true },
   { id: 'cadd', order: 6, visible: true, expanded: true },
-  { id: 'tags', order: 7, visible: true, expanded: true }
+  { id: 'tags', order: 7, visible: true, expanded: true },
+  { id: 'annotations', order: 8, visible: true, expanded: true }
 ]
 
 /**

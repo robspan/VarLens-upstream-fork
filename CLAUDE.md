@@ -67,6 +67,43 @@ make dist             # build + package for current platform
 - IPC channels use `domain:action` naming (e.g., `cases:list`, `variants:query`)
 - Vue components use `<script setup lang="ts">` with Composition API
 
+## E2E Testing: Playwright + Electron
+
+Playwright has native Electron support via `_electron`. It connects directly to the Electron app via CDP — no Chrome browser needed. This is the modern recommended approach (used by VS Code).
+
+### How it works
+
+- Playwright launches the **compiled** Electron app (`out/main/index.js`), not the dev server
+- Returns a standard Playwright `Page` object with full locator API, auto-wait, assertions, screenshots
+- Can evaluate code in the main Electron process (access `app`, `BrowserWindow`, etc.)
+- Uses its own `@playwright/test` runner — no conflict with existing Vitest unit tests
+
+### Setup
+
+```bash
+npm install -D @playwright/test playwright
+```
+
+### Minimal example
+
+```typescript
+import { _electron as electron } from 'playwright';
+
+const app = await electron.launch({
+  args: ['./out/main/index.js'],
+});
+const window = await app.firstWindow();
+await window.waitForSelector('.v-application');
+await app.close();
+```
+
+### Key considerations
+
+- **Build before test**: must run `electron-vite build` before E2E tests
+- **Native modules**: `better-sqlite3` needs Electron rebuild (handled by `postinstall`)
+- **CI on Linux**: needs `xvfb-run` for real window rendering
+- **File dialogs**: mock at IPC level or use `electron-playwright-helpers` package
+
 ## UI / Vuetify Theme Notes
 
 See [docs/UI-PATTERNS.md](docs/UI-PATTERNS.md) for comprehensive Vuetify component patterns.

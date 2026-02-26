@@ -41,6 +41,9 @@ export interface FilterState {
   maxGnomadAf: number | null
   minCadd: number | null
   tagIds: number[]
+  starredOnly: boolean
+  hasCommentOnly: boolean
+  acmgClassifications: string[]
 }
 
 /**
@@ -170,7 +173,10 @@ export function useFilterState(
     clinvars: [] as string[],
     maxGnomadAf: null as number | null,
     minCadd: null as number | null,
-    tagIds: [] as number[]
+    tagIds: [] as number[],
+    starredOnly: false,
+    hasCommentOnly: false,
+    acmgClassifications: [] as string[]
   })
 
   // Filter options loaded from database
@@ -223,6 +229,9 @@ export function useFilterState(
       afActive ||
       caddActive ||
       filters.value.tagIds.length > 0 ||
+      filters.value.starredOnly ||
+      filters.value.hasCommentOnly ||
+      filters.value.acmgClassifications.length > 0 ||
       (hasSortRef !== undefined && hasSortRef.value === true)
     )
   })
@@ -248,6 +257,9 @@ export function useFilterState(
     )
       count++
     if (filters.value.tagIds.length > 0) count++
+    if (filters.value.starredOnly) count++
+    if (filters.value.hasCommentOnly) count++
+    if (filters.value.acmgClassifications.length > 0) count++
     return count
   })
 
@@ -305,6 +317,19 @@ export function useFilterState(
         .map((t) => t.name)
       list.push({ id: 'tags', label: 'Tags', value: tagNames.join(', ') })
     }
+    if (filters.value.starredOnly) {
+      list.push({ id: 'starred', label: 'Starred', value: 'only' })
+    }
+    if (filters.value.hasCommentOnly) {
+      list.push({ id: 'commented', label: 'Commented', value: 'only' })
+    }
+    if (filters.value.acmgClassifications.length > 0) {
+      list.push({
+        id: 'acmg',
+        label: 'ACMG',
+        value: filters.value.acmgClassifications.join(', ')
+      })
+    }
 
     return list
   })
@@ -339,6 +364,12 @@ export function useFilterState(
         )
       case 'tags':
         return filters.value.tagIds.length > 0
+      case 'annotations':
+        return (
+          filters.value.starredOnly ||
+          filters.value.hasCommentOnly ||
+          filters.value.acmgClassifications.length > 0
+        )
       default:
         return false
     }
@@ -379,6 +410,15 @@ export function useFilterState(
       case 'tags':
         filters.value.tagIds = []
         break
+      case 'starred':
+        filters.value.starredOnly = false
+        break
+      case 'commented':
+        filters.value.hasCommentOnly = false
+        break
+      case 'acmg':
+        filters.value.acmgClassifications = []
+        break
     }
   }
 
@@ -395,6 +435,9 @@ export function useFilterState(
     filters.value.maxGnomadAf = null
     filters.value.minCadd = null
     filters.value.tagIds = []
+    filters.value.starredOnly = false
+    filters.value.hasCommentOnly = false
+    filters.value.acmgClassifications = []
     selectedAfPreset.value = null
     selectedCaddPreset.value = null
     selectedImpactPresets.value = []
@@ -485,6 +528,17 @@ export function useFilterState(
       variantFilter.tag_ids = filters.value.tagIds
     }
 
+    // Annotation filters
+    if (filters.value.starredOnly) {
+      variantFilter.starred_only = true
+    }
+    if (filters.value.hasCommentOnly) {
+      variantFilter.has_comment = true
+    }
+    if (filters.value.acmgClassifications.length > 0) {
+      variantFilter.acmg_classifications = filters.value.acmgClassifications
+    }
+
     onFiltersUpdate(variantFilter)
   }
 
@@ -565,6 +619,9 @@ export function useFilterState(
     filters.value.maxGnomadAf = null
     filters.value.minCadd = null
     filters.value.tagIds = []
+    filters.value.starredOnly = false
+    filters.value.hasCommentOnly = false
+    filters.value.acmgClassifications = []
     selectedAfPreset.value = null
     selectedCaddPreset.value = null
     selectedImpactPresets.value = []
@@ -671,6 +728,16 @@ export function useFilterState(
 
       if (filters.value.tagIds.length > 0) {
         exportFilters.tag_ids = filters.value.tagIds
+      }
+
+      if (filters.value.starredOnly) {
+        exportFilters.starred_only = true
+      }
+      if (filters.value.hasCommentOnly) {
+        exportFilters.has_comment = true
+      }
+      if (filters.value.acmgClassifications.length > 0) {
+        exportFilters.acmg_classifications = filters.value.acmgClassifications
       }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

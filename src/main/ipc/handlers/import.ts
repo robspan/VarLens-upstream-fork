@@ -1,5 +1,5 @@
 import { ipcMain, dialog, BrowserWindow, app } from 'electron'
-import { join } from 'path'
+import { join, dirname } from 'path'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { wrapHandler } from '../errorHandler'
 import { getDatabaseService } from '../../database'
@@ -63,8 +63,7 @@ ipcMain.handle('import:selectFile', async () => {
 
   // Save directory for next time
   const filePath = result.filePaths[0]
-  const directory = filePath.substring(0, filePath.lastIndexOf('/'))
-  saveSettings({ ...settings, lastImportDirectory: directory })
+  saveSettings({ ...settings, lastImportDirectory: dirname(filePath) })
 
   return filePath
 })

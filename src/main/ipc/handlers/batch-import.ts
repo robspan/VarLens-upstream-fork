@@ -1,5 +1,5 @@
 import { ipcMain, dialog, BrowserWindow, app } from 'electron'
-import { join } from 'path'
+import { join, dirname, basename } from 'path'
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
 import { getDatabaseService } from '../../database'
 import { ImportService, BatchImportService, ZipExtractor, TempDirectoryManager } from '../../import'
@@ -75,8 +75,7 @@ ipcMain.handle('batch-import:selectFiles', async () => {
 
   // Save directory for next time (use first file's directory)
   const firstFile = result.filePaths[0]
-  const directory = firstFile.substring(0, firstFile.lastIndexOf('/'))
-  saveSettings({ ...settings, lastImportDirectory: directory })
+  saveSettings({ ...settings, lastImportDirectory: dirname(firstFile) })
 
   return result.filePaths
 })
@@ -129,35 +128,38 @@ ipcMain.handle('batch-import:selectFolder', async () => {
  * Check which files have duplicate case names in the database.
  * Called before start() so user can review duplicates and choose a strategy.
  */
-ipcMain.handle('batch-import:checkDuplicates', async (_event, filePaths: string[]) => {
-  try {
-    const db = getDatabaseService()
-    const importService = new ImportService(db)
-    const batchImportService = new BatchImportService(db, importService)
-    const result = batchImportService.checkDuplicates(filePaths)
+ipcMain.handle(
+  'batch-import:checkDuplicates',
+  async (_event, filePaths: string[], stripText?: string) => {
+    try {
+      const db = getDatabaseService()
+      const importService = new ImportService(db)
+      const batchImportService = new BatchImportService(db, importService)
+      const result = batchImportService.checkDuplicates(filePaths, stripText)
 
-    // Return plain object (class instances may fail structured clone)
-    return {
-      files: result.files.map((f) => ({
-        filePath: f.filePath,
-        fileName: f.fileName,
-        caseName: f.caseName,
-        isDuplicate: f.isDuplicate
-      })),
-      duplicateCount: result.duplicateCount
+      // Return plain object (class instances may fail structured clone)
+      return {
+        files: result.files.map((f) => ({
+          filePath: f.filePath,
+          fileName: f.fileName,
+          caseName: f.caseName,
+          isDuplicate: f.isDuplicate
+        })),
+        duplicateCount: result.duplicateCount
+      }
+    } catch (error) {
+      mainLogger.error(`checkDuplicates error: ${error}`, 'import')
+      return { files: [], duplicateCount: 0 }
     }
-  } catch (error) {
-    mainLogger.error(`checkDuplicates error: ${error}`, 'import')
-    return { files: [], duplicateCount: 0 }
   }
-})
+)
 
 /**
  * Start batch import with a pre-determined duplicate strategy
  */
 ipcMain.handle(
   'batch-import:start',
-  async (_event, filePaths: string[], duplicateStrategy: DuplicateChoice) => {
+  async (_event, filePaths: string[], duplicateStrategy: DuplicateChoice, stripText?: string) => {
     try {
       const db = getDatabaseService()
       const importService = new ImportService(db)
@@ -225,6 +227,7 @@ ipcMain.handle(
 
       const result = await batchImportService.processBatch(filePaths, {
         duplicateStrategy,
+        stripText,
         onBatchProgress,
         onFileProgress,
         signal: currentBatchAbortController.signal
@@ -251,7 +254,7 @@ ipcMain.handle(
         cancelled: false,
         details: filePaths.map((fp) => ({
           filePath: fp,
-          fileName: fp.split('/').pop() ?? fp.split('\\').pop() ?? 'unknown',
+          fileName: basename(fp) || 'unknown',
           status: 'failed' as const,
           error: error instanceof Error ? error.message : 'Unknown error'
         }))
@@ -295,8 +298,7 @@ ipcMain.handle('batch-import:selectZip', async () => {
     const filePath = result.filePaths[0]
 
     // Save directory for next time
-    const directory = filePath.substring(0, filePath.lastIndexOf('/'))
-    saveSettings({ ...settings, lastImportDirectory: directory })
+    saveSettings({ ...settings, lastImportDirectory: dirname(filePath) })
 
     const isEncrypted = zipExtractor.isEncrypted(filePath)
 

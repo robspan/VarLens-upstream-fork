@@ -1,45 +1,59 @@
 <template>
-  <v-dialog v-model="dialog" max-width="650" :persistent="phase === 'importing'">
+  <v-dialog v-model="dialog" max-width="700" :persistent="phase === 'importing'">
     <v-card>
       <v-card-title>Batch Import</v-card-title>
 
       <v-card-text>
-        <!-- Duplicate review phase (shown before import if duplicates found) -->
-        <div v-if="phase === 'duplicate-review'">
-          <v-alert type="warning" variant="tonal" class="mb-4">
-            {{ duplicateCount }} of {{ fileCount }} selected files already exist as cases in the
-            database.
+        <!-- Review phase (always shown before import) -->
+        <div v-if="phase === 'review'">
+          <v-text-field
+            v-model="stripText"
+            label="Remove from names"
+            placeholder="e.g. _results, LB24-"
+            variant="outlined"
+            density="compact"
+            clearable
+            hide-details
+            class="mb-3"
+            prepend-inner-icon="mdi-text-search-variant"
+          />
+
+          <v-alert v-if="duplicateCount > 0" type="warning" variant="tonal" class="mb-3">
+            {{ duplicateCount }} of {{ fileCount }} files already exist as cases.
           </v-alert>
 
-          <div class="text-body-2 font-weight-medium mb-2">How should duplicates be handled?</div>
-          <v-radio-group v-model="duplicateStrategy" class="mb-4">
-            <v-radio value="skip" color="primary">
-              <template #label>
-                <div>
-                  <strong>Skip duplicates</strong>
-                  <div class="text-caption text-medium-emphasis">
-                    Only import new files, leave existing cases unchanged
+          <div v-if="duplicateCount > 0">
+            <v-radio-group v-model="duplicateStrategy" class="mb-3" hide-details>
+              <v-radio value="skip" color="primary">
+                <template #label>
+                  <div>
+                    <strong>Skip duplicates</strong>
+                    <div class="text-caption text-medium-emphasis">
+                      Only import new files, leave existing cases unchanged
+                    </div>
                   </div>
-                </div>
-              </template>
-            </v-radio>
-            <v-radio value="overwrite" color="warning">
-              <template #label>
-                <div>
-                  <strong>Overwrite duplicates</strong>
-                  <div class="text-caption text-medium-emphasis">
-                    Replace existing cases with data from the selected files
+                </template>
+              </v-radio>
+              <v-radio value="overwrite" color="warning">
+                <template #label>
+                  <div>
+                    <strong>Overwrite duplicates</strong>
+                    <div class="text-caption text-medium-emphasis">
+                      Replace existing cases with data from the selected files
+                    </div>
                   </div>
-                </div>
-              </template>
-            </v-radio>
-          </v-radio-group>
+                </template>
+              </v-radio>
+            </v-radio-group>
+            <v-divider class="mb-3" />
+          </div>
 
-          <v-divider class="mb-3" />
-          <div class="text-caption text-medium-emphasis mb-2">Files to import:</div>
-          <v-list density="compact" class="pa-0">
+          <div class="text-caption text-medium-emphasis mb-2">
+            {{ fileCount }} file{{ fileCount !== 1 ? 's' : '' }} to import:
+          </div>
+          <v-list density="compact" class="pa-0" max-height="300" style="overflow-y: auto">
             <v-list-item
-              v-for="(file, i) in duplicateCheckFiles"
+              v-for="(file, i) in reviewFiles"
               :key="i"
               :class="file.isDuplicate ? 'text-warning' : ''"
             >
@@ -50,13 +64,26 @@
                 <v-icon v-else color="success" size="small"> mdi-new-box </v-icon>
               </template>
               <v-list-item-title class="text-body-2">
-                {{ file.fileName }}
+                {{ file.caseName }}
                 <span v-if="file.isDuplicate" class="text-caption text-warning ml-1">
                   (exists)
                 </span>
               </v-list-item-title>
+              <v-list-item-subtitle v-if="file.caseName !== file.fileName" class="text-caption">
+                {{ file.fileName }}
+              </v-list-item-subtitle>
             </v-list-item>
           </v-list>
+
+          <v-alert
+            v-if="hasEmptyCaseNames"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="mt-3"
+          >
+            Some case names are empty after stripping. Adjust the text to remove.
+          </v-alert>
         </div>
 
         <!-- ZIP password phase -->
@@ -72,35 +99,6 @@
             @click:append-inner="showZipPassword = !showZipPassword"
             @keyup.enter="handleZipUnlock"
           />
-        </div>
-
-        <!-- ZIP preview phase -->
-        <div v-if="phase === 'zip-preview'">
-          <div class="text-body-2 mb-2">
-            {{ extractedFilePaths.length }} file{{ extractedFilePaths.length !== 1 ? 's' : '' }}
-            ready to import:
-          </div>
-          <v-list density="compact" class="pa-0 mb-3" max-height="300" style="overflow-y: auto">
-            <v-list-item v-for="(fp, i) in extractedFilePaths" :key="i">
-              <template #prepend>
-                <v-icon color="success" size="small">mdi-file-check</v-icon>
-              </template>
-              <v-list-item-title class="text-body-2">
-                {{ fp.split('/').pop() ?? fp.split('\\').pop() ?? fp }}
-              </v-list-item-title>
-            </v-list-item>
-          </v-list>
-          <v-alert
-            v-if="zipExtractionErrors.length > 0"
-            type="warning"
-            variant="tonal"
-            class="mb-3"
-          >
-            <div class="text-body-2 font-weight-medium mb-1">Extraction warnings:</div>
-            <div v-for="(err, i) in zipExtractionErrors" :key="i" class="text-caption">
-              {{ err }}
-            </div>
-          </v-alert>
         </div>
 
         <!-- Importing phase -->
@@ -171,13 +169,12 @@
 
       <v-card-actions>
         <v-spacer />
-        <v-btn v-if="phase === 'duplicate-review'" variant="text" @click="closeDialog">
-          Cancel
-        </v-btn>
+        <v-btn v-if="phase === 'review'" variant="text" @click="closeDialog"> Cancel </v-btn>
         <v-btn
-          v-if="phase === 'duplicate-review'"
+          v-if="phase === 'review'"
           color="primary"
           variant="flat"
+          :disabled="hasEmptyCaseNames"
           @click="confirmAndStartImport"
         >
           Start Import
@@ -194,17 +191,6 @@
         >
           Unlock
         </v-btn>
-        <v-btn v-if="phase === 'zip-preview'" variant="text" @click="handleZipCancel">
-          Cancel
-        </v-btn>
-        <v-btn
-          v-if="phase === 'zip-preview'"
-          color="primary"
-          variant="flat"
-          @click="startZipImport"
-        >
-          Start Import
-        </v-btn>
         <v-btn v-if="phase === 'importing'" @click="handleCancel"> Cancel </v-btn>
         <v-btn v-if="phase === 'summary'" @click="handleCancel"> Close </v-btn>
       </v-card-actions>
@@ -213,7 +199,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import type {
   BatchProgress,
   BatchResult,
@@ -221,7 +207,7 @@ import type {
   DuplicateCheckItem
 } from '../../../shared/types/api'
 
-type Phase = 'idle' | 'duplicate-review' | 'importing' | 'summary' | 'zip-password' | 'zip-preview'
+type Phase = 'idle' | 'review' | 'importing' | 'summary' | 'zip-password'
 
 const dialog = ref(false)
 const phase = ref<Phase>('idle')
@@ -229,11 +215,13 @@ const phase = ref<Phase>('idle')
 // File selection state
 const selectedFilePaths = ref<string[]>([])
 
-// Duplicate check state
+// Review state
 const duplicateCheckFiles = ref<DuplicateCheckItem[]>([])
 const duplicateCount = ref(0)
 const fileCount = ref(0)
 const duplicateStrategy = ref<DuplicateChoice>('skip')
+const stripText = ref('')
+const isZipImport = ref(false)
 
 // ZIP state
 const zipPath = ref('')
@@ -241,8 +229,6 @@ const zipPassword = ref('')
 const showZipPassword = ref(false)
 const zipErrorMessage = ref('')
 const testingPassword = ref(false)
-const extractedFilePaths = ref<string[]>([])
-const zipExtractionErrors = ref<string[]>([])
 
 // Progress state
 const currentIndex = ref(0)
@@ -264,10 +250,56 @@ const summary = ref<BatchResult>({
 let cleanupProgress: (() => void) | null = null
 
 /**
+ * Derive case name from file name (mirrors backend logic for live preview)
+ */
+const deriveCaseName = (fileName: string, strip: string): string => {
+  let name = fileName
+  if (name.endsWith('.gz') === true) name = name.slice(0, -3)
+  if (name.endsWith('.json') === true) name = name.slice(0, -5)
+  if (strip !== '') {
+    name = name.split(strip).join('').trim()
+  }
+  return name
+}
+
+/**
+ * Computed review files with live case name preview
+ */
+const reviewFiles = computed(() =>
+  duplicateCheckFiles.value.map((file) => ({
+    ...file,
+    caseName: deriveCaseName(file.fileName, stripText.value)
+  }))
+)
+
+const hasEmptyCaseNames = computed(() => reviewFiles.value.some((f) => f.caseName === ''))
+
+/**
+ * Re-check duplicates when stripText changes (debounced via watch)
+ */
+// eslint-disable-next-line no-undef
+let recheckTimeout: ReturnType<typeof setTimeout> | null = null
+
+watch(stripText, () => {
+  // eslint-disable-next-line no-undef
+  if (recheckTimeout !== null) clearTimeout(recheckTimeout)
+  // eslint-disable-next-line no-undef
+  recheckTimeout = setTimeout(async () => {
+    if (selectedFilePaths.value.length === 0) return
+    // eslint-disable-next-line no-undef
+    const checkResult = await window.api.batchImport.checkDuplicates(
+      [...selectedFilePaths.value],
+      stripText.value || undefined
+    )
+    duplicateCheckFiles.value = checkResult.files
+    duplicateCount.value = checkResult.duplicateCount
+  }, 300)
+})
+
+/**
  * Show dialog and start the batch import flow
  */
 const show = async (mode: 'files' | 'folder' | 'zip'): Promise<void> => {
-  // Reset all state
   resetState()
 
   if (mode === 'zip') {
@@ -276,19 +308,19 @@ const show = async (mode: 'files' | 'folder' | 'zip'): Promise<void> => {
     if (result === null) return
 
     zipPath.value = result.filePath
+    isZipImport.value = true
     dialog.value = true
 
     if (result.isEncrypted === true) {
       phase.value = 'zip-password'
     } else {
-      await extractAndPreview(result.filePath)
+      await extractAndShowReview(result.filePath)
     }
     return
   }
 
   let filePaths: string[] = []
 
-  // Select files based on mode
   if (mode === 'files') {
     // eslint-disable-next-line no-undef
     filePaths = await window.api.batchImport.selectFiles()
@@ -297,49 +329,76 @@ const show = async (mode: 'files' | 'folder' | 'zip'): Promise<void> => {
     filePaths = await window.api.batchImport.selectFolder()
   }
 
-  // User cancelled or no files found
-  if (filePaths.length === 0) {
-    return
-  }
+  if (filePaths.length === 0) return
 
   selectedFilePaths.value = filePaths
   fileCount.value = filePaths.length
   dialog.value = true
 
-  // Check for duplicates before importing
   // eslint-disable-next-line no-undef
   const checkResult = await window.api.batchImport.checkDuplicates(filePaths)
+  duplicateCheckFiles.value = checkResult.files
+  duplicateCount.value = checkResult.duplicateCount
+  phase.value = 'review'
+}
 
-  if (checkResult.duplicateCount > 0) {
-    // Duplicates found — show review phase
+/**
+ * Extract ZIP and show review phase
+ */
+const extractAndShowReview = async (zipFilePath: string, password?: string): Promise<void> => {
+  try {
+    // eslint-disable-next-line no-undef
+    const result = await window.api.batchImport.extractZip(zipFilePath, password)
+
+    if (result.files.length === 0) {
+      zipErrorMessage.value = 'No importable files found in archive.'
+      if (result.errors.length > 0) {
+        zipErrorMessage.value += ' Errors: ' + result.errors.join('; ')
+      }
+      // eslint-disable-next-line no-undef
+      await window.api.batchImport.cleanupZipTemp()
+      return
+    }
+
+    selectedFilePaths.value = result.files
+    fileCount.value = result.files.length
+
+    // eslint-disable-next-line no-undef
+    const checkResult = await window.api.batchImport.checkDuplicates(result.files)
     duplicateCheckFiles.value = checkResult.files
     duplicateCount.value = checkResult.duplicateCount
-    phase.value = 'duplicate-review'
-  } else {
-    // No duplicates — start importing immediately
-    phase.value = 'importing'
-    await startImport(filePaths, 'skip')
+    phase.value = 'review'
+  } catch (error) {
+    zipErrorMessage.value = error instanceof Error ? error.message : 'Failed to extract archive'
+    // eslint-disable-next-line no-undef
+    await window.api.batchImport.cleanupZipTemp()
   }
 }
 
 /**
- * User confirmed strategy in duplicate-review phase, start import
+ * User confirmed in review phase, start import
  */
 const confirmAndStartImport = async (): Promise<void> => {
   phase.value = 'importing'
-  // Spread to plain array — Vue reactive Proxy can't be structured-cloned by Electron IPC
-  await startImport([...selectedFilePaths.value], duplicateStrategy.value)
+  const filePaths = [...selectedFilePaths.value]
+  const strategy = duplicateCount.value > 0 ? duplicateStrategy.value : 'skip'
+  const strip = stripText.value || undefined
+  await startImport(filePaths, strategy, strip)
 }
 
 /**
  * Start the batch import process
  */
-const startImport = async (filePaths: string[], strategy: DuplicateChoice): Promise<void> => {
+const startImport = async (
+  filePaths: string[],
+  strategy: DuplicateChoice,
+  strip?: string
+): Promise<void> => {
   totalFiles.value = filePaths.length
 
   try {
     // eslint-disable-next-line no-undef
-    const result = await window.api.batchImport.start(filePaths, strategy)
+    const result = await window.api.batchImport.start(filePaths, strategy, strip)
 
     summary.value = result
     phase.value = 'summary'
@@ -363,34 +422,6 @@ const startImport = async (filePaths: string[], strategy: DuplicateChoice): Prom
 }
 
 /**
- * Extract ZIP and show preview of files
- */
-const extractAndPreview = async (zipFilePath: string, password?: string): Promise<void> => {
-  try {
-    // eslint-disable-next-line no-undef
-    const result = await window.api.batchImport.extractZip(zipFilePath, password)
-    extractedFilePaths.value = result.files
-    zipExtractionErrors.value = result.errors
-
-    if (result.files.length === 0) {
-      zipErrorMessage.value = 'No importable files found in archive.'
-      if (result.errors.length > 0) {
-        zipErrorMessage.value += ' Errors: ' + result.errors.join('; ')
-      }
-      // eslint-disable-next-line no-undef
-      await window.api.batchImport.cleanupZipTemp()
-      return
-    }
-
-    phase.value = 'zip-preview'
-  } catch (error) {
-    zipErrorMessage.value = error instanceof Error ? error.message : 'Failed to extract archive'
-    // eslint-disable-next-line no-undef
-    await window.api.batchImport.cleanupZipTemp()
-  }
-}
-
-/**
  * Test ZIP password and extract if correct
  */
 const handleZipUnlock = async (): Promise<void> => {
@@ -401,7 +432,7 @@ const handleZipUnlock = async (): Promise<void> => {
     // eslint-disable-next-line no-undef
     const result = await window.api.batchImport.testZipPassword(zipPath.value, zipPassword.value)
     if (result.success === true) {
-      await extractAndPreview(zipPath.value, zipPassword.value)
+      await extractAndShowReview(zipPath.value, zipPassword.value)
     } else {
       zipErrorMessage.value = 'Incorrect password. Please try again.'
     }
@@ -409,45 +440,6 @@ const handleZipUnlock = async (): Promise<void> => {
     zipErrorMessage.value = error instanceof Error ? error.message : 'Failed to test password'
   } finally {
     testingPassword.value = false
-  }
-}
-
-/**
- * Start importing extracted ZIP files
- */
-const startZipImport = async (): Promise<void> => {
-  phase.value = 'importing'
-  totalFiles.value = extractedFilePaths.value.length
-
-  try {
-    // Spread to plain array to avoid Vue reactive Proxy IPC issue
-    // eslint-disable-next-line no-undef
-    const batchResult = await window.api.batchImport.start(
-      [...extractedFilePaths.value],
-      'skip' // ZIP files are freshly extracted, no duplicates expected - default to skip
-    )
-    summary.value = batchResult
-    phase.value = 'summary'
-  } catch (error) {
-    summary.value = {
-      succeeded: 0,
-      failed: 1,
-      skipped: 0,
-      cancelled: false,
-      details: [
-        {
-          filePath: '',
-          fileName: 'ZIP Import',
-          status: 'failed',
-          error: error instanceof Error ? error.message : 'Unknown error'
-        }
-      ]
-    }
-    phase.value = 'summary'
-  } finally {
-    // Always clean up temp directory
-    // eslint-disable-next-line no-undef
-    await window.api.batchImport.cleanupZipTemp()
   }
 }
 
@@ -469,9 +461,10 @@ const handleCancel = async (): Promise<void> => {
     await window.api.batchImport.cancel()
   } else if (phase.value === 'summary') {
     dialog.value = false
-    // Cleanup temp directory in case it's a ZIP import (idempotent)
-    // eslint-disable-next-line no-undef
-    await window.api.batchImport.cleanupZipTemp()
+    if (isZipImport.value === true) {
+      // eslint-disable-next-line no-undef
+      await window.api.batchImport.cleanupZipTemp()
+    }
 
     if (summary.value.succeeded > 0) {
       emit('batch-import-complete', { totalImported: summary.value.succeeded })
@@ -482,7 +475,11 @@ const handleCancel = async (): Promise<void> => {
 /**
  * Close dialog without importing
  */
-const closeDialog = (): void => {
+const closeDialog = async (): Promise<void> => {
+  if (isZipImport.value === true) {
+    // eslint-disable-next-line no-undef
+    await window.api.batchImport.cleanupZipTemp()
+  }
   dialog.value = false
 }
 
@@ -496,6 +493,8 @@ const resetState = (): void => {
   duplicateCount.value = 0
   fileCount.value = 0
   duplicateStrategy.value = 'skip'
+  stripText.value = ''
+  isZipImport.value = false
   currentIndex.value = 0
   totalFiles.value = 0
   currentFileName.value = ''
@@ -507,8 +506,6 @@ const resetState = (): void => {
   showZipPassword.value = false
   zipErrorMessage.value = ''
   testingPassword.value = false
-  extractedFilePaths.value = []
-  zipExtractionErrors.value = []
 }
 
 // Setup IPC listeners
@@ -529,6 +526,8 @@ onMounted(() => {
 // Cleanup IPC listeners
 onUnmounted(() => {
   cleanupProgress?.()
+  // eslint-disable-next-line no-undef
+  if (recheckTimeout !== null) clearTimeout(recheckTimeout)
 })
 
 // Define emits

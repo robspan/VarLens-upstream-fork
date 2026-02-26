@@ -113,14 +113,10 @@ const progressText = computed(() => {
   return `${phaseLabel}... ${count}`
 })
 
-// Extract case name from file path
+// Extract case name from file path (cross-platform)
 const extractCaseName = (path: string): string => {
-  const parts = path.split('/')
-  let name = parts[parts.length - 1]
-  if (name === undefined || name === '') {
-    const backslashParts = path.split('\\')
-    name = backslashParts[backslashParts.length - 1] ?? 'import'
-  }
+  const parts = path.split(/[/\\]/)
+  let name = parts[parts.length - 1] ?? 'import'
   if (name.endsWith('.gz') === true) name = name.slice(0, -3)
   if (name.endsWith('.json') === true) name = name.slice(0, -5)
   return name

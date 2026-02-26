@@ -149,7 +149,12 @@ export const VariantFilterPartialSchema = z.object({
   alt: nullishString(),
 
   // Tag filters
-  tag_ids: nullishNumberArray()
+  tag_ids: nullishNumberArray(),
+
+  // Annotation filters
+  starred_only: z.boolean().optional(),
+  has_comment: z.boolean().optional(),
+  acmg_classifications: nullishStringArray()
 })
 
 /**

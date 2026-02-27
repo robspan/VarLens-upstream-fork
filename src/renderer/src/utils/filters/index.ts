@@ -28,7 +28,7 @@ export {
 } from './customHandlers'
 
 // Shared constants
-export { ACMG_FILTER_OPTIONS } from './constants'
+export { ACMG_FILTER_OPTIONS, ACMG_FILTER_OPTIONS_LONG } from './constants'
 
 // Preset sync watchers
 export {

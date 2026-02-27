@@ -15,3 +15,15 @@ export const ACMG_FILTER_OPTIONS = [
   { value: 'Likely Benign', label: 'LB', color: 'blue-grey' },
   { value: 'Benign', label: 'B', color: 'success' }
 ] as const
+
+/**
+ * ACMG classification filter options with full labels
+ * Used by filter drawers where space allows longer labels
+ */
+export const ACMG_FILTER_OPTIONS_LONG = [
+  { value: 'Pathogenic', label: 'Pathogenic', color: 'error' },
+  { value: 'Likely Pathogenic', label: 'Likely Pathogenic', color: 'deep-orange' },
+  { value: 'VUS', label: 'VUS', color: 'warning' },
+  { value: 'Likely Benign', label: 'Likely Benign', color: 'blue-grey' },
+  { value: 'Benign', label: 'Benign', color: 'success' }
+] as const

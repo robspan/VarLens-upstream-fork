@@ -47,12 +47,12 @@ describe('CohortFilterBar', () => {
         global: { plugins: [vuetify], stubs: drawerStubs }
       })
 
-      const text = wrapper.text()
-      expect(text).toContain('P')
-      expect(text).toContain('LP')
-      expect(text).toContain('VUS')
-      expect(text).toContain('LB')
-      expect(text).toContain('B')
+      // Find chips within the ACMG chip-group
+      const chipGroup = wrapper.find('.v-chip-group')
+      expect(chipGroup.exists()).toBe(true)
+      const chipLabels = chipGroup.findAll('.v-chip').map((c) => c.text())
+      expect(chipLabels).toEqual(expect.arrayContaining(['P', 'LP', 'VUS', 'LB', 'B']))
+      expect(chipLabels).toHaveLength(5)
     })
   })
 

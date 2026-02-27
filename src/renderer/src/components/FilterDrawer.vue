@@ -387,6 +387,7 @@
 import { inject } from 'vue'
 import GroupedMultiSelect from './GroupedMultiSelect.vue'
 import { consequenceGroups, clinvarGroups } from '../config/filterGroups'
+import { ACMG_FILTER_OPTIONS_LONG } from '../utils/filters'
 import type { Tag } from '../../../shared/types/api'
 import type { FilterDrawerState } from './filterDrawerTypes'
 
@@ -426,14 +427,7 @@ const {
   removeTagFilter
 } = state
 
-// ACMG classification options
-const acmgFilterOptions = [
-  { value: 'Pathogenic', label: 'Pathogenic', color: 'error' },
-  { value: 'Likely Pathogenic', label: 'Likely Pathogenic', color: 'deep-orange' },
-  { value: 'VUS', label: 'VUS', color: 'warning' },
-  { value: 'Likely Benign', label: 'Likely Benign', color: 'blue-grey' },
-  { value: 'Benign', label: 'Benign', color: 'success' }
-] as const
+const acmgFilterOptions = ACMG_FILTER_OPTIONS_LONG
 
 /**
  * Toggle an impact preset chip on/off.

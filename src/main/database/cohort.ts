@@ -148,6 +148,35 @@ export class CohortService {
       params_array.push(params.cadd_min)
     }
 
+    // Annotation filters (via variant_annotations table)
+    if (params.starred_only === true) {
+      whereConditions.push(
+        `EXISTS (SELECT 1 FROM variant_annotations va
+          WHERE va.chr = variants.chr AND va.pos = variants.pos
+          AND va.ref = variants.ref AND va.alt = variants.alt AND va.starred = 1)`
+      )
+    }
+
+    if (params.has_comment === true) {
+      whereConditions.push(
+        `EXISTS (SELECT 1 FROM variant_annotations va
+          WHERE va.chr = variants.chr AND va.pos = variants.pos
+          AND va.ref = variants.ref AND va.alt = variants.alt
+          AND va.global_comment IS NOT NULL AND va.global_comment != '')`
+      )
+    }
+
+    if (params.acmg_classifications !== undefined && params.acmg_classifications.length > 0) {
+      const placeholders = params.acmg_classifications.map(() => '?').join(', ')
+      whereConditions.push(
+        `EXISTS (SELECT 1 FROM variant_annotations va
+          WHERE va.chr = variants.chr AND va.pos = variants.pos
+          AND va.ref = variants.ref AND va.alt = variants.alt
+          AND va.acmg_classification IN (${placeholders}))`
+      )
+      params_array.push(...params.acmg_classifications)
+    }
+
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : ''
 
     // Build HAVING clause for aggregate filters (applied after GROUP BY)

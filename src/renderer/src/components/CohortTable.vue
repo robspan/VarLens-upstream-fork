@@ -229,7 +229,13 @@ const buildQueryParams = () => ({
   clinvars: filters.value.clinvars.length > 0 ? filters.value.clinvars : undefined,
   gnomad_af_max: filters.value.maxGnomadAf ?? undefined,
   cadd_min: filters.value.minCadd ?? undefined,
-  cohort_frequency_min: filters.value.minCohortFrequency ?? undefined
+  cohort_frequency_min: filters.value.minCohortFrequency ?? undefined,
+  starred_only: filters.value.starredOnly || undefined,
+  has_comment: filters.value.hasCommentOnly || undefined,
+  acmg_classifications:
+    filters.value.acmgClassifications.length > 0
+      ? [...filters.value.acmgClassifications]
+      : undefined
 })
 
 // Event handlers

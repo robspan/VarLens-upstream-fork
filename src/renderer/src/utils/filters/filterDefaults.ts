@@ -27,5 +27,8 @@ export const FILTER_DEFAULTS: Readonly<FilterState> = Object.freeze({
   maxGnomadAf: null,
   minCadd: null,
   minCohortFrequency: null,
-  minCarriers: null
+  minCarriers: null,
+  starredOnly: false,
+  hasCommentOnly: false,
+  acmgClassifications: []
 })

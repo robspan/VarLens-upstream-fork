@@ -1,0 +1,189 @@
+<template>
+  <div class="filter-toolbar-container">
+    <v-defaults-provider
+      :defaults="{ VBtn: { size: 'small' }, VTextField: { density: 'compact' } }"
+    >
+      <v-toolbar
+        density="compact"
+        flat
+        class="filter-toolbar px-2"
+        role="toolbar"
+        aria-label="Variant filters"
+      >
+        <!-- Variable filter inputs provided by consumer -->
+        <slot name="filters" />
+
+        <v-spacer />
+
+        <!-- Result count chip -->
+        <v-chip
+          :color="hasActiveFilters ? 'primary' : 'default'"
+          :variant="hasActiveFilters ? 'flat' : 'tonal'"
+          size="small"
+          class="results-chip mr-1"
+        >
+          <v-icon start size="small">mdi-filter-variant</v-icon>
+          <strong>{{ filteredCount.toLocaleString() }}</strong>
+          <template v-if="totalCount !== null">
+            <span class="mx-1 text-medium-emphasis">/</span>
+            <span class="text-medium-emphasis">{{ totalCount.toLocaleString() }}</span>
+          </template>
+        </v-chip>
+
+        <!-- Clear filters -->
+        <v-btn
+          :disabled="!hasActiveFilters"
+          :color="hasActiveFilters ? 'error' : undefined"
+          :variant="hasActiveFilters ? 'tonal' : 'text'"
+          @click="emit('clear-all')"
+        >
+          <v-icon start size="small">mdi-filter-off</v-icon>
+          Clear
+          <v-tooltip activator="parent" location="bottom">Clear all filters</v-tooltip>
+        </v-btn>
+
+        <!-- Open filter drawer -->
+        <v-btn variant="tonal" @click="emit('open-filter-drawer')">
+          <v-icon start size="small">mdi-filter-variant</v-icon>
+          Filters
+          <v-badge
+            v-if="activeFilterCount > 0"
+            :content="activeFilterCount"
+            color="primary"
+            inline
+            class="ml-1"
+          />
+          <v-tooltip activator="parent" location="bottom">
+            Open full filter panel{{
+              activeFilterCount > 0 ? ` (${activeFilterCount} active)` : ''
+            }}
+          </v-tooltip>
+        </v-btn>
+
+        <!-- Columns drawer -->
+        <v-btn
+          v-if="columns && columns.length > 0"
+          variant="tonal"
+          @click="emit('open-columns-drawer')"
+        >
+          <v-icon start size="small">mdi-table-column</v-icon>
+          Columns
+          <v-tooltip activator="parent" location="bottom">Show/hide and reorder columns</v-tooltip>
+        </v-btn>
+
+        <!-- Export -->
+        <v-btn
+          :loading="exporting"
+          :disabled="filteredCount === 0"
+          color="success"
+          variant="tonal"
+          @click="emit('export')"
+        >
+          <v-icon start size="small">mdi-microsoft-excel</v-icon>
+          Export
+          <v-tooltip activator="parent" location="bottom">
+            Export {{ filteredCount.toLocaleString() }} variants to Excel
+          </v-tooltip>
+        </v-btn>
+      </v-toolbar>
+    </v-defaults-provider>
+
+    <!-- Applied Filters Summary Bar -->
+    <v-expand-transition>
+      <div v-if="activeFiltersList.length > 0" class="applied-filters-bar">
+        <span class="text-caption text-medium-emphasis mr-2">Active:</span>
+        <v-chip
+          v-for="filter in activeFiltersList"
+          :key="filter.id"
+          size="small"
+          closable
+          variant="tonal"
+          color="primary"
+          class="mr-1"
+          @click:close="emit('clear-filter', filter.id)"
+        >
+          <span class="font-weight-medium">{{ filter.label }}:</span>
+          <span class="ml-1">{{ filter.value }}</span>
+        </v-chip>
+        <v-btn variant="text" size="x-small" color="error" class="ml-1" @click="emit('clear-all')">
+          Clear all
+        </v-btn>
+      </div>
+    </v-expand-transition>
+
+    <!-- Optional hint bar (e.g. annotation filter hint) -->
+    <slot name="hints" />
+
+    <!-- Drawers rendered here so they stay in correct DOM position -->
+    <slot name="drawers" />
+  </div>
+</template>
+
+<script setup lang="ts">
+interface ActiveFilter {
+  id: string
+  label: string
+  value: string
+}
+
+interface ColumnDef {
+  key: string
+  title: string
+}
+
+interface Props {
+  filteredCount: number
+  totalCount: number | null
+  hasActiveFilters: boolean
+  activeFilterCount: number
+  activeFiltersList: ActiveFilter[]
+  exporting?: boolean
+  columns?: ColumnDef[]
+}
+
+defineProps<Props>()
+
+const emit = defineEmits<{
+  'clear-all': []
+  'clear-filter': [filterId: string]
+  'open-filter-drawer': []
+  'open-columns-drawer': []
+  export: []
+}>()
+</script>
+
+<style scoped>
+.filter-toolbar-container {
+  border-bottom: 1px solid rgba(var(--v-border-color), 0.12);
+  background: rgb(var(--v-theme-surface));
+}
+
+.filter-toolbar {
+  background: transparent !important;
+}
+
+.results-chip {
+  font-size: 0.85rem;
+}
+
+/* Applied filters summary bar */
+.applied-filters-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 16px;
+  background: rgba(var(--v-theme-primary), 0.04);
+  border-top: 1px solid rgba(var(--v-border-color), 0.08);
+}
+
+.applied-filters-bar .v-chip {
+  max-width: 200px;
+}
+
+.applied-filters-bar .v-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+</style>

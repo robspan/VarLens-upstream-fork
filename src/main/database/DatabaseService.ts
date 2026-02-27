@@ -630,6 +630,37 @@ export class DatabaseService {
       params.push(filter.case_id, ...filter.tag_ids)
     }
 
+    // Filter by starred status (per-case annotations)
+    if (filter.starred_only === true) {
+      conditions.push(
+        `id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND starred = 1)`
+      )
+      params.push(filter.case_id)
+    }
+
+    // Filter by has comment (per-case OR global)
+    if (filter.has_comment === true) {
+      conditions.push(
+        `(id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND per_case_comment IS NOT NULL AND per_case_comment != '')
+          OR EXISTS (
+            SELECT 1 FROM variant_annotations va
+            WHERE va.chr = variants.chr AND va.pos = variants.pos
+              AND va.ref = variants.ref AND va.alt = variants.alt
+              AND va.global_comment IS NOT NULL AND va.global_comment != ''
+          ))`
+      )
+      params.push(filter.case_id)
+    }
+
+    // Filter by ACMG classification (OR logic, per-case annotations)
+    if (filter.acmg_classifications !== undefined && filter.acmg_classifications.length > 0) {
+      const placeholders = filter.acmg_classifications.map(() => '?').join(', ')
+      conditions.push(
+        `id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND acmg_classification IN (${placeholders}))`
+      )
+      params.push(filter.case_id, ...filter.acmg_classifications)
+    }
+
     // Build ORDER BY clause
     const orderByClause = this.buildSortClause(sortBy)
 
@@ -819,6 +850,37 @@ export class DatabaseService {
         `id IN (SELECT variant_id FROM variant_tags WHERE case_id = ? AND tag_id IN (${placeholders}))`
       )
       params.push(filter.case_id, ...filter.tag_ids)
+    }
+
+    // Filter by starred status (per-case annotations)
+    if (filter.starred_only === true) {
+      conditions.push(
+        `id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND starred = 1)`
+      )
+      params.push(filter.case_id)
+    }
+
+    // Filter by has comment (per-case OR global)
+    if (filter.has_comment === true) {
+      conditions.push(
+        `(id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND per_case_comment IS NOT NULL AND per_case_comment != '')
+          OR EXISTS (
+            SELECT 1 FROM variant_annotations va
+            WHERE va.chr = variants.chr AND va.pos = variants.pos
+              AND va.ref = variants.ref AND va.alt = variants.alt
+              AND va.global_comment IS NOT NULL AND va.global_comment != ''
+          ))`
+      )
+      params.push(filter.case_id)
+    }
+
+    // Filter by ACMG classification (OR logic, per-case annotations)
+    if (filter.acmg_classifications !== undefined && filter.acmg_classifications.length > 0) {
+      const placeholders = filter.acmg_classifications.map(() => '?').join(', ')
+      conditions.push(
+        `id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND acmg_classification IN (${placeholders}))`
+      )
+      params.push(filter.case_id, ...filter.acmg_classifications)
     }
 
     const whereClause = conditions.join(' AND ')

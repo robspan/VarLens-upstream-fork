@@ -1,6 +1,6 @@
 {
   "name": "varlens",
-  "version": "0.9.3",
+  "version": "0.10.0",
   "description": "Offline variant analysis tool for external collaborators",
   "main": "./out/main/index.js",
   "author": "Bernt Popp <bernt.popp@gmail.com>",
@@ -29,6 +29,7 @@
     "@electron-toolkit/utils": "^4.0.0",
     "@electron/rebuild": "^4.0.3",
     "@mdi/font": "^7.4.47",
+    "@playwright/test": "^1.58.2",
     "@types/adm-zip": "^0.5.7",
     "@types/better-sqlite3": "^7.6.13",
     "@types/file-saver": "^2.0.7",
@@ -47,6 +48,7 @@
     "eslint-plugin-vue": "^10.7.0",
     "happy-dom": "^20.5.0",
     "nock": "^14.0.10",
+    "playwright": "^1.58.2",
     "png2icons": "^2.0.1",
     "prettier": "^3.8.1",
     "sass-embedded": "^1.97.3",

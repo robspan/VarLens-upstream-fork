@@ -28,6 +28,9 @@ export interface CohortFilterDrawerState {
     maxGnomadAf: number | null
     minCadd: number | null
     minCohortFrequency: number | null
+    starredOnly: boolean
+    hasCommentOnly: boolean
+    acmgClassifications: string[]
   }>
   searchTerm: Ref<string>
 
@@ -51,6 +54,7 @@ export interface CohortFilterDrawerState {
   cohortFreqPresets: readonly { label: string; value: number }[]
   afPresets: readonly { label: string; value: number }[]
   caddPresets: readonly { label: string; value: number }[]
+  acmgFilterOptions: readonly { value: string; label: string; color: string }[]
 
   // Computed
   hasActiveFilters: ComputedRef<boolean>

@@ -48,6 +48,12 @@ export interface CohortQueryParams {
   cohort_frequency_min?: number
   /** Minimum carrier count */
   carrier_count_min?: number
+  /** Show only starred variants (global annotations) */
+  starred_only?: boolean
+  /** Show only variants with comments (global annotations) */
+  has_comment?: boolean
+  /** Filter by ACMG classifications (global annotations) */
+  acmg_classifications?: string[]
 }
 
 /**
@@ -175,6 +181,15 @@ export function useCohortData(): UseCohortDataReturn {
       }
       if (params.carrier_count_min !== undefined) {
         ipcParams.carrier_count_min = params.carrier_count_min
+      }
+      if (params.starred_only === true) {
+        ipcParams.starred_only = true
+      }
+      if (params.has_comment === true) {
+        ipcParams.has_comment = true
+      }
+      if (params.acmg_classifications !== undefined && params.acmg_classifications.length > 0) {
+        ipcParams.acmg_classifications = [...params.acmg_classifications]
       }
 
       // Deep clone for IPC (structured clone rejects Vue proxies)

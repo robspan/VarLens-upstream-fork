@@ -309,6 +309,59 @@
             </template>
           </v-select>
         </div>
+
+        <!-- Annotations -->
+        <div class="filter-drawer-group mb-4">
+          <div class="filter-drawer-group-header d-flex align-center mb-2">
+            <v-icon size="small" class="mr-2">mdi-star-circle</v-icon>
+            <span class="text-subtitle-2 font-weight-medium">Annotations</span>
+            <v-chip
+              v-if="isFilterGroupActive('annotations')"
+              size="x-small"
+              color="primary"
+              class="ml-2"
+              label
+            >
+              Active
+            </v-chip>
+          </div>
+          <div class="d-flex ga-2 mb-3">
+            <v-btn
+              :color="filters.starredOnly ? 'amber-darken-2' : undefined"
+              :variant="filters.starredOnly ? 'flat' : 'outlined'"
+              size="small"
+              rounded="pill"
+              @click="filters.starredOnly = !filters.starredOnly"
+            >
+              <v-icon size="small" start>mdi-star</v-icon>
+              Starred
+            </v-btn>
+            <v-btn
+              :color="filters.hasCommentOnly ? 'primary' : undefined"
+              :variant="filters.hasCommentOnly ? 'flat' : 'outlined'"
+              size="small"
+              rounded="pill"
+              @click="filters.hasCommentOnly = !filters.hasCommentOnly"
+            >
+              <v-icon size="small" start>mdi-comment-text</v-icon>
+              Commented
+            </v-btn>
+          </div>
+          <div class="text-caption text-medium-emphasis mb-1">ACMG Classification</div>
+          <div class="d-flex flex-wrap ga-1">
+            <v-chip
+              v-for="cls in acmgFilterOptions"
+              :key="cls.value"
+              :color="filters.acmgClassifications.includes(cls.value) ? cls.color : undefined"
+              :variant="filters.acmgClassifications.includes(cls.value) ? 'flat' : 'outlined'"
+              size="small"
+              label
+              @click="toggleAcmgFilter(cls.value)"
+            >
+              {{ cls.label }}
+            </v-chip>
+          </div>
+        </div>
       </div>
 
       <!-- Footer -->
@@ -334,6 +387,7 @@
 import { inject } from 'vue'
 import GroupedMultiSelect from './GroupedMultiSelect.vue'
 import { consequenceGroups, clinvarGroups } from '../config/filterGroups'
+import { ACMG_FILTER_OPTIONS_LONG } from '../utils/filters'
 import type { Tag } from '../../../shared/types/api'
 import type { FilterDrawerState } from './filterDrawerTypes'
 
@@ -373,6 +427,8 @@ const {
   removeTagFilter
 } = state
 
+const acmgFilterOptions = ACMG_FILTER_OPTIONS_LONG
+
 /**
  * Toggle an impact preset chip on/off.
  * Mutates the shared ref directly (safe because it's the same instance via provide/inject).
@@ -383,6 +439,18 @@ const toggleImpactPreset = (value: string): void => {
     selectedImpactPresets.value = current.filter((v) => v !== value)
   } else {
     selectedImpactPresets.value = [...current, value]
+  }
+}
+
+/**
+ * Toggle ACMG classification filter chip on/off.
+ */
+const toggleAcmgFilter = (value: string): void => {
+  const current = filters.value.acmgClassifications
+  if (current.includes(value)) {
+    filters.value.acmgClassifications = current.filter((v) => v !== value)
+  } else {
+    filters.value.acmgClassifications = [...current, value]
   }
 }
 </script>

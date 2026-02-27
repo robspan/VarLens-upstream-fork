@@ -45,6 +45,12 @@ export interface FilterState {
   minCohortFrequency: number | null
   /** Minimum carrier count - cohort view only */
   minCarriers: number | null
+  /** Show only starred variants */
+  starredOnly: boolean
+  /** Show only variants with comments */
+  hasCommentOnly: boolean
+  /** Filter by ACMG classifications */
+  acmgClassifications: string[]
 }
 
 /**
@@ -61,4 +67,7 @@ export interface FilterIpcParams {
   cadd_min?: number
   cohort_frequency_min?: number
   carrier_count_min?: number
+  starred_only?: boolean
+  has_comment?: boolean
+  acmg_classifications?: string[]
 }

@@ -81,5 +81,16 @@ export function buildIpcParams(filters: FilterState): FilterIpcParams {
     params.carrier_count_min = filters.minCarriers
   }
 
+  // Annotation filters
+  if (filters.starredOnly) {
+    params.starred_only = true
+  }
+  if (filters.hasCommentOnly) {
+    params.has_comment = true
+  }
+  if (filters.acmgClassifications.length > 0) {
+    params.acmg_classifications = [...filters.acmgClassifications]
+  }
+
   return params
 }

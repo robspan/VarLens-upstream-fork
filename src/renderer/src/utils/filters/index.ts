@@ -27,6 +27,9 @@ export {
   type HandleCustomChangeParams
 } from './customHandlers'
 
+// Shared constants
+export { ACMG_FILTER_OPTIONS } from './constants'
+
 // Preset sync watchers
 export {
   createPresetWatcher,

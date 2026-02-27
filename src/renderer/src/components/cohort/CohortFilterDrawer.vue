@@ -160,6 +160,65 @@
           />
         </div>
 
+        <!-- Annotations (starred, comments, ACMG) -->
+        <div class="filter-drawer-group mb-4">
+          <div class="filter-drawer-group-header d-flex align-center mb-2">
+            <v-icon size="small" class="mr-2">mdi-star</v-icon>
+            <span class="text-subtitle-2 font-weight-medium">Annotations</span>
+            <v-chip
+              v-if="isFilterGroupActive('annotations')"
+              size="x-small"
+              color="primary"
+              class="ml-2"
+              label
+            >
+              Active
+            </v-chip>
+          </div>
+
+          <!-- Starred toggle -->
+          <div class="d-flex align-center mb-2">
+            <v-switch
+              v-model="filters.starredOnly"
+              density="compact"
+              hide-details
+              color="amber-darken-2"
+              class="mr-2"
+            />
+            <v-icon size="small" class="mr-1">mdi-star</v-icon>
+            <span class="text-body-2">Starred only</span>
+          </div>
+
+          <!-- Comment toggle -->
+          <div class="d-flex align-center mb-3">
+            <v-switch
+              v-model="filters.hasCommentOnly"
+              density="compact"
+              hide-details
+              color="primary"
+              class="mr-2"
+            />
+            <v-icon size="small" class="mr-1">mdi-comment-text</v-icon>
+            <span class="text-body-2">With comments only</span>
+          </div>
+
+          <!-- ACMG chips -->
+          <div class="text-caption mb-1 text-medium-emphasis">ACMG Classification</div>
+          <div class="d-flex ga-1 flex-wrap">
+            <v-chip
+              v-for="cls in acmgFilterOptions"
+              :key="cls.value"
+              :color="filters.acmgClassifications.includes(cls.value) ? cls.color : undefined"
+              :variant="filters.acmgClassifications.includes(cls.value) ? 'flat' : 'outlined'"
+              size="small"
+              label
+              @click="toggleAcmgClassification(cls.value)"
+            >
+              {{ cls.label }}
+            </v-chip>
+          </div>
+        </div>
+
         <!-- Cohort Frequency (unique to cohort view) -->
         <div class="filter-drawer-group mb-4">
           <div class="filter-drawer-group-header d-flex align-center mb-2">
@@ -351,6 +410,7 @@ const {
   cohortFreqPresets,
   afPresets,
   caddPresets,
+  acmgFilterOptions,
   activeFilterCount,
   isFilterGroupActive,
   clearAllFilters,
@@ -367,6 +427,18 @@ const toggleImpactPreset = (value: string): void => {
     selectedImpactPresets.value = current.filter((v) => v !== value)
   } else {
     selectedImpactPresets.value = [...current, value]
+  }
+}
+
+/**
+ * Toggle an ACMG classification chip on/off.
+ */
+const toggleAcmgClassification = (value: string): void => {
+  const current = filters.value.acmgClassifications
+  if (current.includes(value)) {
+    filters.value.acmgClassifications = current.filter((v: string) => v !== value)
+  } else {
+    filters.value.acmgClassifications = [...current, value]
   }
 }
 </script>

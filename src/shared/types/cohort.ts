@@ -138,4 +138,10 @@ export interface CohortSearchParams {
   cohort_frequency_min?: number
   /** Minimum carrier count */
   carrier_count_min?: number
+  /** Show only starred variants (global annotations) */
+  starred_only?: boolean
+  /** Show only variants with comments (global annotations) */
+  has_comment?: boolean
+  /** Filter by ACMG classifications (global annotations) */
+  acmg_classifications?: string[]
 }

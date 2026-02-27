@@ -77,6 +77,12 @@ export interface FilterState {
   minCohortFrequency: number | null
   /** Minimum carrier count */
   minCarriers: number | null
+  /** Show only starred variants */
+  starredOnly: boolean
+  /** Show only variants with comments */
+  hasCommentOnly: boolean
+  /** Filter by ACMG classifications */
+  acmgClassifications: string[]
 }
 
 /**
@@ -137,7 +143,10 @@ function createInitialFilterState(): FilterState {
     maxGnomadAf: null,
     minCadd: null,
     minCohortFrequency: null,
-    minCarriers: null
+    minCarriers: null,
+    starredOnly: false,
+    hasCommentOnly: false,
+    acmgClassifications: []
   }
 }
 
@@ -306,6 +315,11 @@ function clearFilter(filterId: string): void {
     case 'impact':
       selectedImpactPresets.value = []
       break
+    case 'starred':
+    case 'comments':
+    case 'acmg':
+      // Already handled by clearFilterUtil above
+      break
   }
 }
 
@@ -334,6 +348,9 @@ const hasActiveFilters = computed(() => {
     caddActive ||
     cohortFreqActive ||
     (filters.value.minCarriers !== null && filters.value.minCarriers > 0) ||
+    filters.value.starredOnly ||
+    filters.value.hasCommentOnly ||
+    filters.value.acmgClassifications.length > 0 ||
     // Preset selections
     selectedImpactPresets.value.length > 0 ||
     selectedCohortFreqPreset.value !== null ||

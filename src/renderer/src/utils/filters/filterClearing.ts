@@ -23,6 +23,9 @@ export type FilterId =
   | 'cadd'
   | 'cohortFreq'
   | 'carriers'
+  | 'starred'
+  | 'comments'
+  | 'acmg'
 
 /**
  * Clear a specific filter, returning partial state update
@@ -59,6 +62,12 @@ export function clearFilter(filterId: FilterId): Partial<FilterState> {
       return { minCohortFrequency: FILTER_DEFAULTS.minCohortFrequency }
     case 'carriers':
       return { minCarriers: FILTER_DEFAULTS.minCarriers }
+    case 'starred':
+      return { starredOnly: FILTER_DEFAULTS.starredOnly }
+    case 'comments':
+      return { hasCommentOnly: FILTER_DEFAULTS.hasCommentOnly }
+    case 'acmg':
+      return { acmgClassifications: [...FILTER_DEFAULTS.acmgClassifications] }
     default:
       return {}
   }
@@ -86,6 +95,9 @@ export function clearAllFilters(): FilterState {
     maxGnomadAf: FILTER_DEFAULTS.maxGnomadAf,
     minCadd: FILTER_DEFAULTS.minCadd,
     minCohortFrequency: FILTER_DEFAULTS.minCohortFrequency,
-    minCarriers: FILTER_DEFAULTS.minCarriers
+    minCarriers: FILTER_DEFAULTS.minCarriers,
+    starredOnly: FILTER_DEFAULTS.starredOnly,
+    hasCommentOnly: FILTER_DEFAULTS.hasCommentOnly,
+    acmgClassifications: [...FILTER_DEFAULTS.acmgClassifications]
   }
 }

@@ -70,5 +70,16 @@ export function buildActiveFiltersList(
     list.push({ id: 'carriers', label: 'Carriers >=', value: String(filters.minCarriers) })
   }
 
+  // Annotation filters
+  if (filters.starredOnly) {
+    list.push({ id: 'starred', label: 'Starred', value: 'only' })
+  }
+  if (filters.hasCommentOnly) {
+    list.push({ id: 'comments', label: 'Comments', value: 'only' })
+  }
+  if (filters.acmgClassifications.length > 0) {
+    list.push({ id: 'acmg', label: 'ACMG', value: filters.acmgClassifications.join(', ') })
+  }
+
   return list
 }

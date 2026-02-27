@@ -41,16 +41,18 @@ describe('CohortFilterBar', () => {
       expect(searchInput.exists()).toBe(true)
     })
 
-    it('renders impact preset chips', () => {
+    it('renders ACMG classification chips in toolbar', () => {
       const wrapper = mount(CohortFilterBar, {
         props: defaultProps,
         global: { plugins: [vuetify], stubs: drawerStubs }
       })
 
       const text = wrapper.text()
-      expect(text).toContain('HIGH')
-      expect(text).toContain('MOD')
-      expect(text).toContain('LOW')
+      expect(text).toContain('P')
+      expect(text).toContain('LP')
+      expect(text).toContain('VUS')
+      expect(text).toContain('LB')
+      expect(text).toContain('B')
     })
   })
 

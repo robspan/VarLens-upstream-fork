@@ -167,6 +167,7 @@ import ColumnsDrawer from './ColumnsDrawer.vue'
 import FilterDrawer from './FilterDrawer.vue'
 import type { VariantFilter, Tag } from '../../../shared/types/api'
 import type { FilterDrawerState } from './filterDrawerTypes'
+import { ACMG_FILTER_OPTIONS } from '../utils/filters'
 
 interface ColumnDef {
   key: string
@@ -241,14 +242,8 @@ const toggleCommented = () => {
   filters.value.hasCommentOnly = !filters.value.hasCommentOnly
 }
 
-// ACMG classification options
-const acmgFilterOptions = [
-  { value: 'Pathogenic', label: 'P', color: 'error' },
-  { value: 'Likely Pathogenic', label: 'LP', color: 'deep-orange' },
-  { value: 'VUS', label: 'VUS', color: 'warning' },
-  { value: 'Likely Benign', label: 'LB', color: 'blue-grey' },
-  { value: 'Benign', label: 'B', color: 'success' }
-] as const
+// ACMG classification options (shared constant)
+const acmgFilterOptions = ACMG_FILTER_OPTIONS
 
 // Drawer states
 const filterDrawerOpen = ref(false)

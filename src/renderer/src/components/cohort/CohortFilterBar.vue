@@ -27,20 +27,68 @@
         @update:model-value="handleSearchChange"
       />
 
-      <!-- Impact preset chips -->
-      <v-chip-group v-model="selectedImpactPresets" multiple class="flex-nowrap">
+      <!-- Star toggle -->
+      <v-tooltip location="bottom">
+        <template #activator="{ props: tooltipProps }">
+          <v-btn
+            v-bind="tooltipProps"
+            :color="filters.starredOnly ? 'amber-darken-2' : undefined"
+            :variant="filters.starredOnly ? 'flat' : 'text'"
+            density="compact"
+            icon
+            @click="filters.starredOnly = !filters.starredOnly"
+          >
+            <v-icon size="small">{{
+              filters.starredOnly ? 'mdi-star' : 'mdi-star-outline'
+            }}</v-icon>
+          </v-btn>
+        </template>
+        {{
+          filters.starredOnly
+            ? 'Showing starred only \u2014 click to clear'
+            : 'Show starred variants only'
+        }}
+      </v-tooltip>
+
+      <!-- Comment toggle -->
+      <v-tooltip location="bottom">
+        <template #activator="{ props: tooltipProps }">
+          <v-btn
+            v-bind="tooltipProps"
+            :color="filters.hasCommentOnly ? 'primary' : undefined"
+            :variant="filters.hasCommentOnly ? 'flat' : 'text'"
+            density="compact"
+            icon
+            @click="filters.hasCommentOnly = !filters.hasCommentOnly"
+          >
+            <v-icon size="small">{{
+              filters.hasCommentOnly ? 'mdi-comment-text' : 'mdi-comment-text-outline'
+            }}</v-icon>
+          </v-btn>
+        </template>
+        {{
+          filters.hasCommentOnly
+            ? 'Showing commented only \u2014 click to clear'
+            : 'Show variants with comments only'
+        }}
+      </v-tooltip>
+
+      <!-- ACMG classification chips -->
+      <v-chip-group v-model="filters.acmgClassifications" multiple class="flex-nowrap">
         <v-chip
-          v-for="preset in impactPresets"
-          :key="preset.value"
-          :value="preset.value"
-          :color="preset.color"
+          v-for="cls in acmgFilterOptions"
+          :key="cls.value"
+          :value="cls.value"
+          :color="cls.color"
           filter
           variant="outlined"
           size="small"
         >
-          {{ preset.label }}
+          {{ cls.label }}
         </v-chip>
       </v-chip-group>
+
+      <!-- Impact preset chips moved to filter drawer only -->
     </template>
 
     <template #drawers>
@@ -68,6 +116,7 @@ import ColumnsDrawer from '../ColumnsDrawer.vue'
 import CohortFilterDrawer from './CohortFilterDrawer.vue'
 import type { CohortVariant } from '../../../../shared/types/cohort'
 import type { CohortFilterDrawerState } from './cohortFilterDrawerTypes'
+import { ACMG_FILTER_OPTIONS } from '../../utils/filters'
 
 interface Props {
   totalCount: number | null
@@ -109,6 +158,9 @@ const {
 // Drawer state
 const columnsDrawerOpen = ref(false)
 const filterDrawerOpen = ref(false)
+
+// ACMG filter options (shared constant)
+const acmgFilterOptions = ACMG_FILTER_OPTIONS
 
 // Impact presets
 const impactPresets = [
@@ -179,6 +231,18 @@ const isFilterGroupActive = (groupId: string): boolean => {
         !Number.isNaN(filters.value.minCadd) &&
         filters.value.minCadd >= 0
       )
+    case 'starred':
+      return filters.value.starredOnly
+    case 'comments':
+      return filters.value.hasCommentOnly
+    case 'acmg':
+      return filters.value.acmgClassifications.length > 0
+    case 'annotations':
+      return (
+        filters.value.starredOnly ||
+        filters.value.hasCommentOnly ||
+        filters.value.acmgClassifications.length > 0
+      )
     default:
       return false
   }
@@ -239,6 +303,7 @@ provide<CohortFilterDrawerState>('cohortFilterDrawerState', {
   cohortFreqPresets,
   afPresets,
   caddPresets,
+  acmgFilterOptions,
   hasActiveFilters,
   activeFilterCount,
   activeFiltersList,

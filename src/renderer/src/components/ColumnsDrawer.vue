@@ -69,7 +69,9 @@
                         @click.stop="emit('toggle:column', column.key)"
                       />
                     </template>
-                    <v-list-item-title class="text-body-medium">{{ column.title }}</v-list-item-title>
+                    <v-list-item-title class="text-body-medium">{{
+                      column.title
+                    }}</v-list-item-title>
                   </v-list-item>
                 </template>
               </draggable>

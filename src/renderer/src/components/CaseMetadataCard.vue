@@ -30,7 +30,9 @@
 
         <!-- HPO Terms row -->
         <div class="d-flex align-start">
-          <span class="text-body-medium text-grey mr-2 mt-2" style="min-width: 60px">Phenotypes</span>
+          <span class="text-body-medium text-grey mr-2 mt-2" style="min-width: 60px"
+            >Phenotypes</span
+          >
           <div class="flex-grow-1">
             <HpoTermSelector
               :model-value="currentHpoTerms"

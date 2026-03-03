@@ -18,7 +18,7 @@
         size="small"
         class="mr-1"
       />
-      {{ item.title }}
+      {{ item.label }}
     </template>
     <template #item="{ item, props }">
       <v-list-item v-bind="props">

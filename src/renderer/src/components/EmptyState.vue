@@ -3,7 +3,9 @@
     <v-row class="align-center justify-center">
       <v-col cols="12" sm="8" md="6" class="text-center">
         <v-icon size="220" class="mb-4" icon="custom:varlens-dna" />
-        <h2 class="text-headline-large font-weight-medium text-grey-darken-2">Welcome to VarLens</h2>
+        <h2 class="text-headline-large font-weight-medium text-grey-darken-2">
+          Welcome to VarLens
+        </h2>
         <p class="text-body-large mt-3 text-grey-darken-1">
           Analyze genetic variants with a data-dense interface designed for research analysis.
         </p>
@@ -18,7 +20,9 @@
           </p>
         </template>
         <template v-else>
-          <p class="text-body-medium text-grey mb-4">Get started by importing your first variant file</p>
+          <p class="text-body-medium text-grey mb-4">
+            Get started by importing your first variant file
+          </p>
           <v-btn color="primary" size="large" prepend-icon="mdi-upload" @click="$emit('import')">
             Import Variants
           </v-btn>

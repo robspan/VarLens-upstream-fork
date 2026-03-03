@@ -70,9 +70,10 @@ describe('insertVariantsBatch with transcripts', () => {
 
     db.insertVariantsBatch(caseId, variants)
 
-    const txRows = db.database
-      .prepare('SELECT * FROM variant_transcripts')
-      .all() as Record<string, unknown>[]
+    const txRows = db.database.prepare('SELECT * FROM variant_transcripts').all() as Record<
+      string,
+      unknown
+    >[]
     expect(txRows).toHaveLength(2)
     expect(txRows[0].transcript_id).toBe('NM_007294.4')
     expect(txRows[0].is_selected).toBe(1)

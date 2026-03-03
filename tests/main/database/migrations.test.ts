@@ -528,9 +528,7 @@ describe('Schema Migrations', () => {
     it('should create variant_transcripts table', () => {
       const db = new DatabaseService(':memory:')
       const tables = db.database
-        .prepare(
-          "SELECT name FROM sqlite_master WHERE type='table' AND name='variant_transcripts'"
-        )
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='variant_transcripts'")
         .all()
       expect(tables).toHaveLength(1)
       db.close()

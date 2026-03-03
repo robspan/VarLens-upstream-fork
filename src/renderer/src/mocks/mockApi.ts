@@ -632,7 +632,8 @@ export const mockApi: WindowAPI = {
 
   transcripts: {
     list: async () => [],
-    switch: async () => ({ success: true })
+    switch: async () => ({ success: true }),
+    insertAndSwitch: async () => ({ success: true })
   },
 
   tags: {

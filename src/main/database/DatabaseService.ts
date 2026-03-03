@@ -386,14 +386,16 @@ export class DatabaseService {
    * Get all transcripts for a variant, selected first
    */
   getVariantTranscripts(variantId: number): TranscriptAnnotation[] {
-    const rows = this.stmt(`
+    const rows = this.stmt(
+      `
       SELECT id, variant_id, transcript_id, gene_symbol, consequence,
              cdna, aa_change, hpo_sim_score, moi, is_selected,
              is_mane_select, is_canonical
       FROM variant_transcripts
       WHERE variant_id = ?
       ORDER BY is_selected DESC, transcript_id ASC
-    `).all(variantId) as {
+    `
+    ).all(variantId) as {
       id: number
       variant_id: number
       transcript_id: string
@@ -424,9 +426,9 @@ export class DatabaseService {
   switchSelectedTranscript(variantId: number, transcriptId: string): void {
     const switchTx = this.db.transaction(() => {
       // Clear all selected flags for this variant
-      this.stmt(
-        'UPDATE variant_transcripts SET is_selected = 0 WHERE variant_id = ?'
-      ).run(variantId)
+      this.stmt('UPDATE variant_transcripts SET is_selected = 0 WHERE variant_id = ?').run(
+        variantId
+      )
 
       // Set the new selected transcript
       const result = this.stmt(
@@ -450,11 +452,13 @@ export class DatabaseService {
       }
 
       // Update denormalized fields on variants table
-      this.stmt(`
+      this.stmt(
+        `
         UPDATE variants
         SET transcript = ?, gene_symbol = ?, consequence = ?, cdna = ?, aa_change = ?, hpo_sim_score = ?, moi = ?
         WHERE id = ?
-      `).run(
+      `
+      ).run(
         transcriptId,
         transcript.gene_symbol,
         transcript.consequence,
@@ -467,6 +471,34 @@ export class DatabaseService {
     })
 
     switchTx()
+  }
+
+  /**
+   * Insert a transcript row (if not already present) and switch to it.
+   * Uses INSERT OR IGNORE to safely handle duplicates, then delegates
+   * to switchSelectedTranscript for selection + denormalization.
+   */
+  insertTranscriptAndSwitch(variantId: number, transcript: TranscriptInsertRow): void {
+    const tx = this.db.transaction(() => {
+      this.stmt(
+        `INSERT OR IGNORE INTO variant_transcripts
+           (variant_id, transcript_id, gene_symbol, consequence, cdna, aa_change, hpo_sim_score, moi, is_selected)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`
+      ).run(
+        variantId,
+        transcript.transcript_id,
+        transcript.gene_symbol,
+        transcript.consequence,
+        transcript.cdna,
+        transcript.aa_change,
+        transcript.hpo_sim_score,
+        transcript.moi
+      )
+
+      this.switchSelectedTranscript(variantId, transcript.transcript_id)
+    })
+
+    tx()
   }
 
   /**

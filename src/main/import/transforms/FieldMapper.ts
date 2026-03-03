@@ -245,13 +245,9 @@ export class FieldMapper extends Transform {
           true,
           this.dictionaries.gene
         ) as string | null,
-        consequence: this.extractValue(
-          row,
-          COLUMN_INDICES.IMPACT,
-          i,
-          true,
-          IMPACT_DICTIONARY
-        ) as string | null,
+        consequence: this.extractValue(row, COLUMN_INDICES.IMPACT, i, true, IMPACT_DICTIONARY) as
+          | string
+          | null,
         cdna: this.extractValue(row, COLUMN_INDICES.CDNA, i, false) as string | null,
         aa_change: this.extractValue(row, COLUMN_INDICES.AA_CHANGE, i, false) as string | null,
         hpo_sim_score: this.extractNumericFromDict(
@@ -260,13 +256,9 @@ export class FieldMapper extends Transform {
           i,
           this.dictionaries.hpoSimScore
         ),
-        moi: this.extractValue(
-          row,
-          COLUMN_INDICES.MOI,
-          i,
-          true,
-          this.dictionaries.moi
-        ) as string | null,
+        moi: this.extractValue(row, COLUMN_INDICES.MOI, i, true, this.dictionaries.moi) as
+          | string
+          | null,
         is_selected: i === selectedTranscript ? 1 : 0
       })
     }

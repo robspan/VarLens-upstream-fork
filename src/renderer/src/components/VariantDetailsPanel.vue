@@ -32,14 +32,20 @@
             class="mb-4"
           />
 
-          <!-- Transcript Section (case mode only) -->
-          <template v-if="mode === 'case' && 'id' in variant">
-            <TranscriptSection
-              :variant-id="(variant as Variant).id"
-              class="mb-4"
-              @transcript-switched="emit('variant-updated')"
-            />
-          </template>
+          <!-- Transcript Section (case + cohort mode) -->
+          <TranscriptSection
+            :variant-id="mode === 'case' && 'id' in variant ? (variant as Variant).id : null"
+            :vep-transcripts="allTranscripts"
+            :vep-loading="vepLoading"
+            :mode="mode"
+            :variant-chr="variant.chr"
+            :variant-pos="variant.pos"
+            :variant-ref="variant.ref"
+            :variant-alt="variant.alt"
+            :fetch-vep="fetchVep"
+            class="mb-4"
+            @transcript-switched="emit('variant-updated')"
+          />
 
           <v-divider class="mb-4" />
 
@@ -180,6 +186,7 @@ const {
   isCached,
   cachedAt,
   preferredTranscript,
+  allTranscripts,
   colocatedVariants,
   mostSevereConsequence,
   revelScore,
@@ -273,8 +280,7 @@ watch(
         await loadGlobalAnnotations(newVariant.chr, newVariant.pos, newVariant.ref, newVariant.alt)
       }
 
-      // Fetch VEP enrichment
-      await fetchVep(newVariant.chr, newVariant.pos, newVariant.ref, newVariant.alt)
+      // VEP enrichment is now fetched on-demand via TranscriptSection button
     }
   },
   { immediate: true }

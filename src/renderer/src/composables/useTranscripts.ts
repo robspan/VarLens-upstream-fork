@@ -1,5 +1,5 @@
 import { ref, watch, type Ref } from 'vue'
-import type { TranscriptAnnotation } from '../../../shared/types/transcript'
+import type { TranscriptAnnotation, TranscriptInsertRow } from '../../../shared/types/transcript'
 
 /**
  * Composable for loading and switching variant transcripts.
@@ -38,6 +38,18 @@ export function useTranscripts(variantId: Ref<number | null>) {
     }
   }
 
+  async function insertAndSwitch(transcript: TranscriptInsertRow): Promise<boolean> {
+    if (variantId.value === null) return false
+    try {
+      await window.api.transcripts.insertAndSwitch(variantId.value, transcript)
+      await loadTranscripts(variantId.value)
+      return true
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e)
+      return false
+    }
+  }
+
   watch(
     variantId,
     async (newId) => {
@@ -54,6 +66,7 @@ export function useTranscripts(variantId: Ref<number | null>) {
     transcripts,
     loading,
     error,
-    switchTranscript
+    switchTranscript,
+    insertAndSwitch
   }
 }

@@ -196,5 +196,4 @@ export function runMigrations(db: Database.Database): void {
     // Update version to 3
     db.exec('PRAGMA user_version = 3')
   }
-
 }

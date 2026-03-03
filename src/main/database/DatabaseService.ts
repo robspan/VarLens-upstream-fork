@@ -30,7 +30,7 @@ import type {
   OverviewTag,
   OverviewPhenotype
 } from '../../shared/types/database-overview'
-import type { TranscriptAnnotation } from '../../shared/types/transcript'
+import type { TranscriptAnnotation, TranscriptInsertRow } from '../../shared/types/transcript'
 import { CohortService } from './cohort'
 import { DatabaseError, NotFoundError, UniqueConstraintError, TransactionError } from './errors'
 import { mainLogger } from '../services/MainLogger'
@@ -310,7 +310,10 @@ export class DatabaseService {
    * @returns Total number of variants inserted
    * @throws NotFoundError if case does not exist
    */
-  insertVariantsBatch(caseId: number, variants: Omit<Variant, 'id' | 'case_id'>[]): number {
+  insertVariantsBatch(
+    caseId: number,
+    variants: (Omit<Variant, 'id' | 'case_id'> & { _transcripts?: TranscriptInsertRow[] })[]
+  ): number {
     // Verify case exists (throws NotFoundError if not)
     this.getCase(caseId)
 
@@ -319,31 +322,56 @@ export class DatabaseService {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
-    const insertBatch = this.db.transaction((batch: Omit<Variant, 'id' | 'case_id'>[]) => {
-      for (const v of batch) {
-        insert.run(
-          caseId,
-          v.chr,
-          v.pos,
-          v.ref,
-          v.alt,
-          v.gene_symbol,
-          v.omim_mim_number,
-          v.consequence,
-          v.gnomad_af,
-          v.cadd,
-          v.clinvar,
-          v.gt_num,
-          v.func,
-          v.qual,
-          v.hpo_sim_score,
-          v.transcript,
-          v.cdna,
-          v.aa_change,
-          v.moi
-        )
+    const insertTranscript = this.stmt(`
+      INSERT INTO variant_transcripts (variant_id, transcript_id, gene_symbol, consequence, cdna, aa_change, hpo_sim_score, moi, is_selected)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    const insertBatch = this.db.transaction(
+      (batch: (Omit<Variant, 'id' | 'case_id'> & { _transcripts?: TranscriptInsertRow[] })[]) => {
+        for (const v of batch) {
+          const result = insert.run(
+            caseId,
+            v.chr,
+            v.pos,
+            v.ref,
+            v.alt,
+            v.gene_symbol,
+            v.omim_mim_number,
+            v.consequence,
+            v.gnomad_af,
+            v.cadd,
+            v.clinvar,
+            v.gt_num,
+            v.func,
+            v.qual,
+            v.hpo_sim_score,
+            v.transcript,
+            v.cdna,
+            v.aa_change,
+            v.moi
+          )
+
+          // Insert transcript rows if present
+          if (v._transcripts !== undefined && v._transcripts.length > 0) {
+            const variantId = result.lastInsertRowid as number
+            for (const t of v._transcripts) {
+              insertTranscript.run(
+                variantId,
+                t.transcript_id,
+                t.gene_symbol,
+                t.consequence,
+                t.cdna,
+                t.aa_change,
+                t.hpo_sim_score,
+                t.moi,
+                t.is_selected
+              )
+            }
+          }
+        }
       }
-    })
+    )
 
     for (let i = 0; i < variants.length; i += BATCH_SIZE) {
       const batch = variants.slice(i, i + BATCH_SIZE)

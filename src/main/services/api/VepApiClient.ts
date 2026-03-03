@@ -216,7 +216,7 @@ export class VepApiClient {
     // - sift=b: Request SIFT prediction and score (b = both)
     // - polyphen=b: Request PolyPhen prediction and score (b = both)
     // Note: REVEL and SpliceAI are NOT available via REST API (require VEP plugins)
-    const url = `${this.baseUrl}/vep/human/region/${chr}:${pos}:${pos}/${alt}?content-type=application/json&CADD=1&sift=b&polyphen=b`
+    const url = `${this.baseUrl}/vep/human/region/${chr}:${pos}:${pos}/${alt}?content-type=application/json&CADD=1&sift=b&polyphen=b&merged=1`
 
     const response = await fetch(url, {
       signal,

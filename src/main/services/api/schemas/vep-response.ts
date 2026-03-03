@@ -28,6 +28,8 @@ export const VepTranscriptConsequenceSchema = z.object({
   canonical: z.number().optional(),
   /** Biotype (e.g., protein_coding, lincRNA) */
   biotype: z.string().optional(),
+  /** Transcript source: "Ensembl" or "RefSeq" (present when merged=1) */
+  source: z.string().optional(),
 
   // Prediction scores - all optional as availability varies by variant type
   /** CADD PHRED score (pathogenic >= 20) */
@@ -73,8 +75,8 @@ export type VepTranscriptConsequence = z.infer<typeof VepTranscriptConsequenceSc
 export const VepColocatedVariantSchema = z.object({
   /** rsID from dbSNP (e.g., rs123456) */
   id: z.string().optional(),
-  /** Allele frequencies from various sources */
-  frequencies: z.record(z.string(), z.number()).optional(),
+  /** Allele frequencies keyed by allele, then by population (e.g., { C: { gnomade_sas: 0.39, ... } }) */
+  frequencies: z.record(z.string(), z.record(z.string(), z.number())).optional(),
   /** ClinVar clinical significance */
   clin_sig: z.array(z.string()).optional()
 })

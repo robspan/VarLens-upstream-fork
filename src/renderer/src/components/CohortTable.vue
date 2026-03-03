@@ -159,6 +159,7 @@ const baseHeaders = [
   { title: 'Ref', key: 'ref', sortable: false, width: '80px' },
   { title: 'Alt', key: 'alt', sortable: false, width: '80px' },
   { title: 'Gene', key: 'gene_symbol', sortable: true },
+  { title: 'Transcript', key: 'transcript', sortable: true },
   { title: 'cDNA', key: 'cdna', sortable: true },
   { title: 'AA Change', key: 'aa_change', sortable: true },
   { title: 'Consequence', key: 'consequence', sortable: true },

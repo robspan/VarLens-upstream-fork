@@ -67,47 +67,26 @@ async function handleSwitch(transcript: TranscriptAnnotation): Promise<void> {
       hide-default-footer
       class="transcript-table"
     >
-      <template #item.consequence="{ value }">
+      <template #[`item.consequence`]="{ value }">
         <v-chip v-if="value" :color="consequenceColor(value)" size="x-small" label>
           {{ value }}
         </v-chip>
         <span v-else class="text-medium-emphasis">-</span>
       </template>
 
-      <template #item.cdna="{ value }">
+      <template #[`item.cdna`]="{ value }">
         <span class="text-body-2">{{ value ?? '-' }}</span>
       </template>
 
-      <template #item.aa_change="{ value }">
+      <template #[`item.aa_change`]="{ value }">
         <span class="text-body-2">{{ value ?? '-' }}</span>
       </template>
 
-      <template #item.status="{ item }">
+      <template #[`item.status`]="{ item }">
         <div class="d-flex ga-1 align-center">
-          <v-chip
-            v-if="item.is_selected"
-            size="x-small"
-            color="primary"
-            label
-          >
-            Selected
-          </v-chip>
-          <v-chip
-            v-if="item.is_mane_select"
-            size="x-small"
-            color="teal"
-            label
-          >
-            MANE
-          </v-chip>
-          <v-chip
-            v-if="item.is_canonical"
-            size="x-small"
-            color="grey"
-            label
-          >
-            Canonical
-          </v-chip>
+          <v-chip v-if="item.is_selected" size="x-small" color="primary" label> Selected </v-chip>
+          <v-chip v-if="item.is_mane_select" size="x-small" color="teal" label> MANE </v-chip>
+          <v-chip v-if="item.is_canonical" size="x-small" color="grey" label> Canonical </v-chip>
           <v-btn
             v-if="!item.is_selected"
             size="x-small"

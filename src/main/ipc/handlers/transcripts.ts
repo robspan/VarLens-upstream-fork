@@ -21,13 +21,10 @@ ipcMain.handle('transcripts:list', async (_event, variantId: number) => {
 /**
  * Switch the selected transcript for a variant
  */
-ipcMain.handle(
-  'transcripts:switch',
-  async (_event, variantId: number, transcriptId: string) => {
-    return wrapHandler(async () => {
-      const db = getDatabaseService()
-      db.switchSelectedTranscript(variantId, transcriptId)
-      return { success: true }
-    })
-  }
-)
+ipcMain.handle('transcripts:switch', async (_event, variantId: number, transcriptId: string) => {
+  return wrapHandler(async () => {
+    const db = getDatabaseService()
+    db.switchSelectedTranscript(variantId, transcriptId)
+    return { success: true }
+  })
+})

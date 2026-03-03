@@ -36,8 +36,8 @@
           <template v-if="mode === 'case' && 'id' in variant">
             <TranscriptSection
               :variant-id="(variant as Variant).id"
-              @transcript-switched="emit('variant-updated')"
               class="mb-4"
+              @transcript-switched="emit('variant-updated')"
             />
           </template>
 

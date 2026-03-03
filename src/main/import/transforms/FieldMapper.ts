@@ -7,8 +7,13 @@ import {
   type DataDictionaries
 } from '../config/fieldMapping'
 import type { RawVariantRow } from '../types'
+import type { TranscriptInsertRow } from '../../../shared/types/transcript'
 
 type MappedVariant = Omit<Variant, 'id' | 'case_id'>
+
+type MappedVariantWithTranscripts = MappedVariant & {
+  _transcripts?: TranscriptInsertRow[]
+}
 
 interface FieldMapperOptions {
   dictionaries: DataDictionaries
@@ -103,6 +108,9 @@ export class FieldMapper extends Transform {
         ) as string | null
       }
 
+      // Extract all transcript annotations
+      const transcripts = this.extractAllTranscripts(row, selectedTranscript)
+
       // Validate required fields
       if (
         mapped.chr === undefined ||
@@ -122,7 +130,11 @@ export class FieldMapper extends Transform {
         return
       }
 
-      this.push(mapped)
+      const output: MappedVariantWithTranscripts = mapped
+      if (transcripts.length > 0) {
+        output._transcripts = transcripts
+      }
+      this.push(output)
       callback()
     } catch (error) {
       callback(error instanceof Error ? error : new Error(String(error)))
@@ -196,6 +208,62 @@ export class FieldMapper extends Transform {
     const key = String(selected)
     const result = dictionary[key]
     return result !== undefined ? result : null
+  }
+
+  /**
+   * Extract all transcript annotations from multi-value arrays.
+   * Returns one TranscriptInsertRow per transcript in the source data.
+   */
+  private extractAllTranscripts(
+    row: RawVariantRow,
+    selectedTranscript: number
+  ): TranscriptInsertRow[] {
+    const transcriptCol = row[COLUMN_INDICES.TRANSCRIPT]
+    const isArray = Array.isArray(transcriptCol)
+    const count = isArray ? (transcriptCol as unknown[]).length : transcriptCol != null ? 1 : 0
+
+    if (count === 0) return []
+
+    const transcripts: TranscriptInsertRow[] = []
+
+    for (let i = 0; i < count; i++) {
+      const transcriptId = this.extractValue(
+        row,
+        COLUMN_INDICES.TRANSCRIPT,
+        i,
+        true,
+        this.dictionaries.transcript
+      ) as string | null
+      if (transcriptId === null) continue
+
+      transcripts.push({
+        transcript_id: transcriptId,
+        gene_symbol: this.extractValue(
+          row,
+          COLUMN_INDICES.GENE,
+          i,
+          true,
+          this.dictionaries.gene
+        ) as string | null,
+        consequence: this.extractValue(row, COLUMN_INDICES.IMPACT, i, true, IMPACT_DICTIONARY) as
+          | string
+          | null,
+        cdna: this.extractValue(row, COLUMN_INDICES.CDNA, i, false) as string | null,
+        aa_change: this.extractValue(row, COLUMN_INDICES.AA_CHANGE, i, false) as string | null,
+        hpo_sim_score: this.extractNumericFromDict(
+          row,
+          COLUMN_INDICES.HPO_SIM_SCORE,
+          i,
+          this.dictionaries.hpoSimScore
+        ),
+        moi: this.extractValue(row, COLUMN_INDICES.MOI, i, true, this.dictionaries.moi) as
+          | string
+          | null,
+        is_selected: i === selectedTranscript ? 1 : 0
+      })
+    }
+
+    return transcripts
   }
 }
 

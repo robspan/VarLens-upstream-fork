@@ -630,6 +630,12 @@ export const mockApi: WindowAPI = {
     removeHpoTerm: async () => {}
   },
 
+  transcripts: {
+    list: async () => [],
+    switch: async () => ({ success: true }),
+    insertAndSwitch: async () => ({ success: true })
+  },
+
   tags: {
     list: async () => [
       { id: 1, name: 'Candidate', color: '#4CAF50', created_at: Date.now() },

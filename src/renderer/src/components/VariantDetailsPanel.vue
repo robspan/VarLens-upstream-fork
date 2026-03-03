@@ -32,6 +32,21 @@
             class="mb-4"
           />
 
+          <!-- Transcript Section (case + cohort mode) -->
+          <TranscriptSection
+            :variant-id="mode === 'case' && 'id' in variant ? (variant as Variant).id : null"
+            :vep-transcripts="allTranscripts"
+            :vep-loading="vepLoading"
+            :mode="mode"
+            :variant-chr="variant.chr"
+            :variant-pos="variant.pos"
+            :variant-ref="variant.ref"
+            :variant-alt="variant.alt"
+            :fetch-vep="fetchVep"
+            class="mb-4"
+            @transcript-switched="emit('variant-updated')"
+          />
+
           <v-divider class="mb-4" />
 
           <!-- Section 2: Annotation Scores -->
@@ -125,6 +140,7 @@ import AnnotationScoresSection from './AnnotationScoresSection.vue'
 import ExternalLinksSection from './ExternalLinksSection.vue'
 import CommentsSection from './CommentsSection.vue'
 import TagsSection from './TagsSection.vue'
+import TranscriptSection from './TranscriptSection.vue'
 import AcmgMenu from './AcmgMenu.vue'
 import type { Variant } from '../../../shared/types/api'
 import type { CohortVariant } from '../../../shared/types/cohort'
@@ -141,6 +157,7 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
+  'variant-updated': []
 }>()
 
 // Use panel resize composable
@@ -169,6 +186,7 @@ const {
   isCached,
   cachedAt,
   preferredTranscript,
+  allTranscripts,
   colocatedVariants,
   mostSevereConsequence,
   revelScore,
@@ -262,8 +280,7 @@ watch(
         await loadGlobalAnnotations(newVariant.chr, newVariant.pos, newVariant.ref, newVariant.alt)
       }
 
-      // Fetch VEP enrichment
-      await fetchVep(newVariant.chr, newVariant.pos, newVariant.ref, newVariant.alt)
+      // VEP enrichment is now fetched on-demand via TranscriptSection button
     }
   },
   { immediate: true }

@@ -67,6 +67,12 @@ export function useVepEnrichment() {
     return vepData.value.preferredTranscript
   })
 
+  // Get all transcript consequences from VEP response
+  const allTranscripts = computed<VepTranscriptConsequence[]>(() => {
+    if (vepData.value === null || !vepData.value.success) return []
+    return vepData.value.allTranscripts
+  })
+
   // Get colocated variants (for rsID)
   const colocatedVariants = computed<VepColocatedVariant[]>(() => {
     if (vepData.value === null || !vepData.value.success) return []
@@ -153,6 +159,7 @@ export function useVepEnrichment() {
     isCached,
     cachedAt,
     preferredTranscript,
+    allTranscripts,
     colocatedVariants,
     mostSevereConsequence,
 

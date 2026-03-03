@@ -18,6 +18,18 @@ const mockDictionaries: DataDictionaries = {
     '2': 'MODERATE',
     '3': 'LOW',
     '4': 'MODIFIER'
+  },
+  transcript: {
+    '1': 'NM_007294.4',
+    '2': 'NM_007299.4'
+  },
+  hpoSimScore: {
+    '100': 0.85,
+    '200': 0.42
+  },
+  moi: {
+    '1': 'AD',
+    '2': 'AR'
   }
 }
 
@@ -312,6 +324,75 @@ describe('FieldMapper', () => {
       expect(mapper).toBeInstanceOf(FieldMapper)
       expect(mapper).toBeInstanceOf(Readable)
       expect(mapper).toBeInstanceOf(Writable)
+    })
+  })
+
+  describe('extractAllTranscripts (multi-transcript output)', () => {
+    it('should emit _transcripts array with all transcript entries', async () => {
+      const row = createTestRow({
+        1: 0, // selectedTranscript = 0
+        28: ['1', '2'], // Transcript IDs (use dictionary)
+        24: ['29808', '32952'], // Gene IDs (use dictionary)
+        21: ['2', '3'], // Impact codes (use dictionary)
+        29: ['c.123A>G', 'c.456C>T'], // cDNA
+        30: ['p.His41Arg', null] // AA change
+      })
+
+      const results = await runTransform([row])
+      expect(results).toHaveLength(1)
+
+      const variant = results[0] as Record<string, unknown>
+      const transcripts = variant._transcripts as Record<string, unknown>[]
+      expect(transcripts).toHaveLength(2)
+      expect(transcripts[0].is_selected).toBe(1)
+      expect(transcripts[1].is_selected).toBe(0)
+    })
+
+    it('should resolve dictionaries for transcript fields', async () => {
+      const row = createTestRow({
+        1: 0,
+        28: ['1', '2'], // → transcript dict lookup
+        24: ['29808', '32952'], // → gene dict lookup
+        21: ['1', '2'] // → IMPACT_DICTIONARY: 1=HIGH, 2=MODERATE
+      })
+
+      const results = await runTransform([row])
+      const variant = results[0] as Record<string, unknown>
+      const transcripts = variant._transcripts as Record<string, unknown>[]
+
+      // Transcript IDs should be resolved via transcript dictionary
+      expect(transcripts[0].transcript_id).toBe('NM_007294.4')
+      expect(transcripts[1].transcript_id).toBe('NM_007299.4')
+      // Gene symbols should be resolved via gene dictionary
+      expect(transcripts[0].gene_symbol).toBe('LOC100132287')
+      expect(transcripts[1].gene_symbol).toBe('LOC101928626')
+      // Consequences should be resolved via IMPACT_DICTIONARY
+      expect(transcripts[0].consequence).toBe('HIGH')
+      expect(transcripts[1].consequence).toBe('MODERATE')
+    })
+
+    it('should emit single transcript for non-array columns', async () => {
+      const row = createTestRow({
+        1: 0,
+        28: '1' // Not an array — single value (dict key)
+      })
+
+      const results = await runTransform([row])
+      const variant = results[0] as Record<string, unknown>
+      const transcripts = variant._transcripts as Record<string, unknown>[]
+      expect(transcripts).toHaveLength(1)
+      expect(transcripts[0].is_selected).toBe(1)
+    })
+
+    it('should not emit _transcripts when transcript column is null', async () => {
+      const row = createTestRow({
+        1: 0,
+        28: null
+      })
+
+      const results = await runTransform([row])
+      const variant = results[0] as Record<string, unknown>
+      expect(variant._transcripts).toBeUndefined()
     })
   })
 

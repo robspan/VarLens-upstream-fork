@@ -240,6 +240,14 @@ const api = {
       ipcRenderer.invoke('case-metadata:removeHpoTerm', caseId, hpoId)
   },
 
+  transcripts: {
+    list: (variantId: number) => ipcRenderer.invoke('transcripts:list', variantId),
+    switch: (variantId: number, transcriptId: string) =>
+      ipcRenderer.invoke('transcripts:switch', variantId, transcriptId),
+    insertAndSwitch: (variantId: number, transcript: Record<string, unknown>) =>
+      ipcRenderer.invoke('transcripts:insertAndSwitch', variantId, transcript)
+  },
+
   tags: {
     // Tag CRUD
     list: () => ipcRenderer.invoke('tags:list'),

@@ -43,6 +43,23 @@ CREATE TABLE IF NOT EXISTS variants (
   moi TEXT,
   FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS variant_transcripts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  variant_id INTEGER NOT NULL,
+  transcript_id TEXT NOT NULL,
+  gene_symbol TEXT,
+  consequence TEXT,
+  cdna TEXT,
+  aa_change TEXT,
+  hpo_sim_score REAL,
+  moi TEXT,
+  is_selected INTEGER NOT NULL DEFAULT 0,
+  is_mane_select INTEGER,
+  is_canonical INTEGER,
+  FOREIGN KEY (variant_id) REFERENCES variants(id) ON DELETE CASCADE,
+  UNIQUE(variant_id, transcript_id)
+);
 `
 
 /**
@@ -54,6 +71,9 @@ CREATE INDEX IF NOT EXISTS idx_variants_gene ON variants(gene_symbol);
 CREATE INDEX IF NOT EXISTS idx_variants_pos ON variants(chr, pos);
 CREATE INDEX IF NOT EXISTS idx_variants_filters ON variants(gnomad_af, cadd);
 CREATE INDEX IF NOT EXISTS idx_variants_chr_pos_ref_alt ON variants(chr, pos, ref, alt);
+CREATE INDEX IF NOT EXISTS idx_vt_variant_id ON variant_transcripts(variant_id);
+CREATE INDEX IF NOT EXISTS idx_vt_selected ON variant_transcripts(variant_id, is_selected);
+CREATE INDEX IF NOT EXISTS idx_vt_transcript ON variant_transcripts(transcript_id);
 `
 
 /**

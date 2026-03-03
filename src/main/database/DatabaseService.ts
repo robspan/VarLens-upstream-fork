@@ -30,6 +30,7 @@ import type {
   OverviewTag,
   OverviewPhenotype
 } from '../../shared/types/database-overview'
+import type { TranscriptAnnotation, TranscriptInsertRow } from '../../shared/types/transcript'
 import { CohortService } from './cohort'
 import { DatabaseError, NotFoundError, UniqueConstraintError, TransactionError } from './errors'
 import { mainLogger } from '../services/MainLogger'
@@ -309,7 +310,10 @@ export class DatabaseService {
    * @returns Total number of variants inserted
    * @throws NotFoundError if case does not exist
    */
-  insertVariantsBatch(caseId: number, variants: Omit<Variant, 'id' | 'case_id'>[]): number {
+  insertVariantsBatch(
+    caseId: number,
+    variants: (Omit<Variant, 'id' | 'case_id'> & { _transcripts?: TranscriptInsertRow[] })[]
+  ): number {
     // Verify case exists (throws NotFoundError if not)
     this.getCase(caseId)
 
@@ -318,31 +322,56 @@ export class DatabaseService {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
-    const insertBatch = this.db.transaction((batch: Omit<Variant, 'id' | 'case_id'>[]) => {
-      for (const v of batch) {
-        insert.run(
-          caseId,
-          v.chr,
-          v.pos,
-          v.ref,
-          v.alt,
-          v.gene_symbol,
-          v.omim_mim_number,
-          v.consequence,
-          v.gnomad_af,
-          v.cadd,
-          v.clinvar,
-          v.gt_num,
-          v.func,
-          v.qual,
-          v.hpo_sim_score,
-          v.transcript,
-          v.cdna,
-          v.aa_change,
-          v.moi
-        )
+    const insertTranscript = this.stmt(`
+      INSERT INTO variant_transcripts (variant_id, transcript_id, gene_symbol, consequence, cdna, aa_change, hpo_sim_score, moi, is_selected)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    const insertBatch = this.db.transaction(
+      (batch: (Omit<Variant, 'id' | 'case_id'> & { _transcripts?: TranscriptInsertRow[] })[]) => {
+        for (const v of batch) {
+          const result = insert.run(
+            caseId,
+            v.chr,
+            v.pos,
+            v.ref,
+            v.alt,
+            v.gene_symbol,
+            v.omim_mim_number,
+            v.consequence,
+            v.gnomad_af,
+            v.cadd,
+            v.clinvar,
+            v.gt_num,
+            v.func,
+            v.qual,
+            v.hpo_sim_score,
+            v.transcript,
+            v.cdna,
+            v.aa_change,
+            v.moi
+          )
+
+          // Insert transcript rows if present
+          if (v._transcripts !== undefined && v._transcripts.length > 0) {
+            const variantId = result.lastInsertRowid as number
+            for (const t of v._transcripts) {
+              insertTranscript.run(
+                variantId,
+                t.transcript_id,
+                t.gene_symbol,
+                t.consequence,
+                t.cdna,
+                t.aa_change,
+                t.hpo_sim_score,
+                t.moi,
+                t.is_selected
+              )
+            }
+          }
+        }
       }
-    })
+    )
 
     for (let i = 0; i < variants.length; i += BATCH_SIZE) {
       const batch = variants.slice(i, i + BATCH_SIZE)
@@ -351,6 +380,125 @@ export class DatabaseService {
 
     this.updateCaseVariantCount(caseId, variants.length)
     return variants.length
+  }
+
+  /**
+   * Get all transcripts for a variant, selected first
+   */
+  getVariantTranscripts(variantId: number): TranscriptAnnotation[] {
+    const rows = this.stmt(
+      `
+      SELECT id, variant_id, transcript_id, gene_symbol, consequence,
+             cdna, aa_change, hpo_sim_score, moi, is_selected,
+             is_mane_select, is_canonical
+      FROM variant_transcripts
+      WHERE variant_id = ?
+      ORDER BY is_selected DESC, transcript_id ASC
+    `
+    ).all(variantId) as {
+      id: number
+      variant_id: number
+      transcript_id: string
+      gene_symbol: string | null
+      consequence: string | null
+      cdna: string | null
+      aa_change: string | null
+      hpo_sim_score: number | null
+      moi: string | null
+      is_selected: number
+      is_mane_select: number | null
+      is_canonical: number | null
+    }[]
+
+    return rows.map((r) => ({
+      ...r,
+      is_selected: r.is_selected === 1,
+      is_mane_select: r.is_mane_select === null ? null : r.is_mane_select === 1,
+      is_canonical: r.is_canonical === null ? null : r.is_canonical === 1
+    }))
+  }
+
+  /**
+   * Switch the selected transcript for a variant.
+   * Updates both variant_transcripts flags and denormalized fields on variants.
+   * Throws if transcriptId not found (transaction rolls back).
+   */
+  switchSelectedTranscript(variantId: number, transcriptId: string): void {
+    const switchTx = this.db.transaction(() => {
+      // Clear all selected flags for this variant
+      this.stmt('UPDATE variant_transcripts SET is_selected = 0 WHERE variant_id = ?').run(
+        variantId
+      )
+
+      // Set the new selected transcript
+      const result = this.stmt(
+        'UPDATE variant_transcripts SET is_selected = 1 WHERE variant_id = ? AND transcript_id = ?'
+      ).run(variantId, transcriptId)
+
+      if (result.changes === 0) {
+        throw new Error(`Transcript ${transcriptId} not found for variant ${variantId}`)
+      }
+
+      // Read the new transcript data
+      const transcript = this.stmt(
+        'SELECT gene_symbol, consequence, cdna, aa_change, hpo_sim_score, moi FROM variant_transcripts WHERE variant_id = ? AND transcript_id = ?'
+      ).get(variantId, transcriptId) as {
+        gene_symbol: string | null
+        consequence: string | null
+        cdna: string | null
+        aa_change: string | null
+        hpo_sim_score: number | null
+        moi: string | null
+      }
+
+      // Update denormalized fields on variants table
+      this.stmt(
+        `
+        UPDATE variants
+        SET transcript = ?, gene_symbol = ?, consequence = ?, cdna = ?, aa_change = ?, hpo_sim_score = ?, moi = ?
+        WHERE id = ?
+      `
+      ).run(
+        transcriptId,
+        transcript.gene_symbol,
+        transcript.consequence,
+        transcript.cdna,
+        transcript.aa_change,
+        transcript.hpo_sim_score,
+        transcript.moi,
+        variantId
+      )
+    })
+
+    switchTx()
+  }
+
+  /**
+   * Insert a transcript row (if not already present) and switch to it.
+   * Uses INSERT OR IGNORE to safely handle duplicates, then delegates
+   * to switchSelectedTranscript for selection + denormalization.
+   */
+  insertTranscriptAndSwitch(variantId: number, transcript: TranscriptInsertRow): void {
+    const tx = this.db.transaction(() => {
+      this.stmt(
+        `INSERT OR IGNORE INTO variant_transcripts
+           (variant_id, transcript_id, gene_symbol, consequence, cdna, aa_change, hpo_sim_score, moi, is_selected)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`
+      ).run(
+        variantId,
+        transcript.transcript_id,
+        transcript.gene_symbol,
+        transcript.consequence,
+        transcript.cdna,
+        transcript.aa_change,
+        transcript.hpo_sim_score,
+        transcript.moi
+      )
+
+      this.switchSelectedTranscript(variantId, transcript.transcript_id)
+    })
+
+    tx()
   }
 
   /**

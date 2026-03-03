@@ -106,11 +106,13 @@ describe('VepApiClient', () => {
     })
   })
 
+  // VEP endpoint path used in nock mocks (extracted to stay within print width)
+  const vepPath =
+    '/vep/human/region/1:100:100/T?content-type=application/json&CADD=1&sift=b&polyphen=b&merged=1'
+
   describe('fetchVariantAnnotation', () => {
     it('should fetch and validate VEP response', async () => {
-      nock('https://rest.ensembl.org')
-        .get('/vep/human/region/1:100:100/T?content-type=application/json&CADD=1&sift=b&polyphen=b')
-        .reply(200, mockVepResponse)
+      nock('https://rest.ensembl.org').get(vepPath).reply(200, mockVepResponse)
 
       const result = await client.fetchVariantAnnotation('1', 100, 'A', 'T')
 
@@ -128,9 +130,7 @@ describe('VepApiClient', () => {
     })
 
     it('should normalize chromosome in cache key', async () => {
-      nock('https://rest.ensembl.org')
-        .get('/vep/human/region/1:100:100/T?content-type=application/json&CADD=1&sift=b&polyphen=b')
-        .reply(200, mockVepResponse)
+      nock('https://rest.ensembl.org').get(vepPath).reply(200, mockVepResponse)
 
       await client.fetchVariantAnnotation('chr1', 100, 'A', 'T')
 
@@ -164,9 +164,9 @@ describe('VepApiClient', () => {
     it('should handle 429 rate limit response', async () => {
       // Mock 429 response followed by success
       nock('https://rest.ensembl.org')
-        .get('/vep/human/region/1:100:100/T?content-type=application/json&CADD=1&sift=b&polyphen=b')
+        .get(vepPath)
         .reply(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '1' })
-        .get('/vep/human/region/1:100:100/T?content-type=application/json&CADD=1&sift=b&polyphen=b')
+        .get(vepPath)
         .reply(200, mockVepResponse)
 
       // Should retry after backoff
@@ -179,9 +179,7 @@ describe('VepApiClient', () => {
     }, 10000) // Increase timeout for retry delays
 
     it('should handle network errors', async () => {
-      nock('https://rest.ensembl.org')
-        .get('/vep/human/region/1:100:100/T?content-type=application/json&CADD=1&sift=b&polyphen=b')
-        .replyWithError('Network error')
+      nock('https://rest.ensembl.org').get(vepPath).replyWithError('Network error')
 
       const result = await client.fetchVariantAnnotation('1', 100, 'A', 'T')
 
@@ -193,9 +191,7 @@ describe('VepApiClient', () => {
     })
 
     it('should handle invalid response format', async () => {
-      nock('https://rest.ensembl.org')
-        .get('/vep/human/region/1:100:100/T?content-type=application/json&CADD=1&sift=b&polyphen=b')
-        .reply(200, { invalid: 'format' })
+      nock('https://rest.ensembl.org').get(vepPath).reply(200, { invalid: 'format' })
 
       const result = await client.fetchVariantAnnotation('1', 100, 'A', 'T')
 
@@ -206,9 +202,7 @@ describe('VepApiClient', () => {
     })
 
     it('should handle API error responses', async () => {
-      nock('https://rest.ensembl.org')
-        .get('/vep/human/region/1:100:100/T?content-type=application/json&CADD=1&sift=b&polyphen=b')
-        .reply(500, { error: 'Internal server error' })
+      nock('https://rest.ensembl.org').get(vepPath).reply(500, { error: 'Internal server error' })
 
       const result = await client.fetchVariantAnnotation('1', 100, 'A', 'T')
 
@@ -222,10 +216,7 @@ describe('VepApiClient', () => {
   describe('cancelPendingRequest', () => {
     it('should abort in-flight request', async () => {
       // Mock slow response
-      nock('https://rest.ensembl.org')
-        .get('/vep/human/region/1:100:100/T?content-type=application/json&CADD=1&sift=b&polyphen=b')
-        .delay(1000)
-        .reply(200, mockVepResponse)
+      nock('https://rest.ensembl.org').get(vepPath).delay(1000).reply(200, mockVepResponse)
 
       // Start request
       const promise = client.fetchVariantAnnotation('1', 100, 'A', 'T')

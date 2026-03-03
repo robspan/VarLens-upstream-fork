@@ -17,7 +17,7 @@
             <v-icon size="small" class="mr-1">mdi-chart-bar</v-icon>
             At a Glance
           </div>
-          <v-row dense class="mb-2">
+          <v-row density="compact" class="mb-2">
             <v-col cols="3">
               <v-card variant="tonal" class="text-center pa-3">
                 <v-icon size="24" class="mb-1">mdi-account-group</v-icon>
@@ -57,7 +57,7 @@
           </v-row>
 
           <!-- Annotation stat cards: Starred + ACMG -->
-          <v-row dense class="mb-4 annotation-stats-row">
+          <v-row density="compact" class="mb-4 annotation-stats-row">
             <v-col cols="6" class="d-flex">
               <v-card
                 variant="tonal"

@@ -1,6 +1,6 @@
 <template>
-  <v-container class="fill-height">
-    <v-row align="center" justify="center">
+  <v-container class="fill-height d-flex align-center flex-wrap">
+    <v-row class="align-center justify-center">
       <v-col cols="12" sm="8" md="6" class="text-center">
         <v-icon size="220" class="mb-4" icon="custom:varlens-dna" />
         <h2 class="text-headline-large font-weight-medium text-grey-darken-2">Welcome to VarLens</h2>

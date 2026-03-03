@@ -337,7 +337,7 @@ onUnmounted(() => {
 }
 
 .resize-handle:hover {
-  background: rgba(var(--v-theme-primary), 0.2);
+  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 20%, transparent);
 }
 
 .cursor-pointer {

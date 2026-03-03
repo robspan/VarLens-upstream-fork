@@ -447,7 +447,7 @@ const toggleAcmgClassification = (value: string): void => {
 .filter-drawer-group {
   padding: 12px;
   border-radius: 8px;
-  background: rgba(var(--v-theme-on-surface), 0.03);
+  background: color-mix(in srgb, rgb(var(--v-theme-on-surface)) 3%, transparent);
 }
 
 .filter-drawer-group-header {

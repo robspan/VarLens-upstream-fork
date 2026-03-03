@@ -75,7 +75,7 @@ const cancelEdit = () => {
 }
 
 .editable-text:hover {
-  background: rgba(var(--v-theme-primary), 0.05);
+  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 5%, transparent);
 }
 
 .edit-icon {

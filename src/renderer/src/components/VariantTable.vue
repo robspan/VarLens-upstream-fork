@@ -736,7 +736,7 @@ defineExpose({
   overflow-x: auto;
   overflow-y: hidden;
   height: 12px;
-  background: rgba(var(--v-theme-on-surface), 0.03);
+  background: color-mix(in srgb, rgb(var(--v-theme-on-surface)) 3%, transparent);
   border-bottom: 1px solid rgba(var(--v-border-color), 0.12);
 }
 
@@ -750,20 +750,20 @@ defineExpose({
 }
 
 .top-scrollbar-container::-webkit-scrollbar-track {
-  background: rgba(var(--v-theme-on-surface), 0.05);
+  background: color-mix(in srgb, rgb(var(--v-theme-on-surface)) 5%, transparent);
 }
 
 .top-scrollbar-container::-webkit-scrollbar-thumb {
-  background: rgba(var(--v-theme-on-surface), 0.2);
+  background: color-mix(in srgb, rgb(var(--v-theme-on-surface)) 20%, transparent);
   border-radius: 5px;
 }
 
 .top-scrollbar-container::-webkit-scrollbar-thumb:hover {
-  background: rgba(var(--v-theme-on-surface), 0.35);
+  background: color-mix(in srgb, rgb(var(--v-theme-on-surface)) 35%, transparent);
 }
 
 .external-link--clicked {
-  background-color: rgba(var(--v-theme-primary), 0.1);
+  background-color: color-mix(in srgb, rgb(var(--v-theme-primary)) 10%, transparent);
   border-radius: 2px;
 }
 
@@ -785,12 +785,12 @@ defineExpose({
 
 /* Zebra striping for better scanability */
 :deep(.v-data-table tbody tr.variant-row--striped) {
-  background-color: rgba(var(--v-theme-on-surface), 0.035);
+  background-color: color-mix(in srgb, rgb(var(--v-theme-on-surface)) 3.5%, transparent);
 }
 
 /* Selected row highlighting - prominent with left accent border */
 :deep(.v-data-table tbody tr.variant-row--selected) {
-  background-color: rgba(var(--v-theme-primary), 0.1) !important;
+  background-color: color-mix(in srgb, rgb(var(--v-theme-primary)) 10%, transparent) !important;
   border-left: 4px solid rgb(var(--v-theme-primary)) !important;
   transition: background-color 0.15s ease;
 }
@@ -801,12 +801,12 @@ defineExpose({
 
 /* Hover state - visible but subtle */
 :deep(.v-data-table tbody tr:hover) {
-  background-color: rgba(var(--v-theme-primary), 0.08) !important;
+  background-color: color-mix(in srgb, rgb(var(--v-theme-primary)) 8%, transparent) !important;
 }
 
 /* Selected + hover - slightly darker */
 :deep(.v-data-table tbody tr.variant-row--selected:hover) {
-  background-color: rgba(var(--v-theme-primary), 0.18) !important;
+  background-color: color-mix(in srgb, rgb(var(--v-theme-primary)) 18%, transparent) !important;
 }
 
 /* Column max-width with ellipsis and horizontal scroll */
@@ -829,15 +829,15 @@ defineExpose({
 }
 
 :deep(.v-table__wrapper)::-webkit-scrollbar-track {
-  background: rgba(var(--v-theme-on-surface), 0.05);
+  background: color-mix(in srgb, rgb(var(--v-theme-on-surface)) 5%, transparent);
 }
 
 :deep(.v-table__wrapper)::-webkit-scrollbar-thumb {
-  background: rgba(var(--v-theme-on-surface), 0.2);
+  background: color-mix(in srgb, rgb(var(--v-theme-on-surface)) 20%, transparent);
   border-radius: 5px;
 }
 
 :deep(.v-table__wrapper)::-webkit-scrollbar-thumb:hover {
-  background: rgba(var(--v-theme-on-surface), 0.35);
+  background: color-mix(in srgb, rgb(var(--v-theme-on-surface)) 35%, transparent);
 }
 </style>

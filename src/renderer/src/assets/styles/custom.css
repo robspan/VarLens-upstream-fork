@@ -59,12 +59,12 @@ html::-webkit-scrollbar-thumb {
 .v-btn:focus-visible {
   outline: 2px solid rgb(var(--v-theme-primary)) !important;
   outline-offset: 2px !important;
-  box-shadow: 0 0 0 4px rgba(var(--v-theme-primary), 0.2) !important;
+  box-shadow: 0 0 0 4px color-mix(in srgb, rgb(var(--v-theme-primary)) 20%, transparent) !important;
 }
 
 /* Focus ring for text inputs */
 .v-field--focused {
-  box-shadow: 0 0 0 3px rgba(var(--v-theme-primary), 0.15) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, rgb(var(--v-theme-primary)) 15%, transparent) !important;
 }
 
 /* Focus ring for chips */
@@ -77,7 +77,7 @@ html::-webkit-scrollbar-thumb {
 .v-data-table tbody tr:focus-visible {
   outline: 2px solid rgb(var(--v-theme-primary)) !important;
   outline-offset: 2px !important;
-  background-color: rgba(var(--v-theme-primary), 0.08) !important;
+  background-color: color-mix(in srgb, rgb(var(--v-theme-primary)) 8%, transparent) !important;
 }
 
 /* Improved skip link for accessibility */

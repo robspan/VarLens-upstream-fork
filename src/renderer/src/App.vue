@@ -757,6 +757,6 @@ onMounted(async () => {
 }
 
 .sidebar-resize-handle:hover {
-  background-color: rgba(var(--v-theme-primary), 0.2);
+  background-color: color-mix(in srgb, rgb(var(--v-theme-primary)) 20%, transparent);
 }
 </style>

@@ -173,7 +173,7 @@ const emit = defineEmits<{
   flex-wrap: wrap;
   gap: 4px;
   padding: 6px 16px;
-  background: rgba(var(--v-theme-primary), 0.04);
+  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 4%, transparent);
   border-top: 1px solid rgba(var(--v-border-color), 0.08);
 }
 

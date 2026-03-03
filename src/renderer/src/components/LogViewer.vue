@@ -348,7 +348,7 @@ onBeforeUnmount(() => {
 }
 
 .log-entry:hover {
-  background-color: rgba(var(--v-theme-on-surface), 0.04);
+  background-color: color-mix(in srgb, rgb(var(--v-theme-on-surface)) 4%, transparent);
 }
 
 .scroll-to-latest-fab {

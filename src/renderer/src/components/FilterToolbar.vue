@@ -110,19 +110,19 @@
           <v-chip
             closable
             size="x-small"
-            :color="(item.raw as Tag).color"
+            :color="(item as unknown as Tag).color"
             variant="flat"
-            @click:close="removeTagFilter((item.raw as Tag).id)"
+            @click:close="removeTagFilter((item as unknown as Tag).id)"
           >
-            {{ (item.raw as Tag).name }}
+            {{ (item as unknown as Tag).name }}
           </v-chip>
         </template>
         <template #item="{ item, props: itemProps }">
           <v-list-item v-bind="itemProps" :title="undefined">
             <template #prepend>
-              <v-icon :color="(item.raw as Tag).color" size="small">mdi-circle</v-icon>
+              <v-icon :color="(item as unknown as Tag).color" size="small">mdi-circle</v-icon>
             </template>
-            <v-list-item-title>{{ (item.raw as Tag).name }}</v-list-item-title>
+            <v-list-item-title>{{ (item as unknown as Tag).name }}</v-list-item-title>
           </v-list-item>
         </template>
       </v-select>

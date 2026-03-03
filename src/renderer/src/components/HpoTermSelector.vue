@@ -41,7 +41,7 @@
       <template #item="{ item, props: itemProps }">
         <v-list-item v-bind="itemProps">
           <template #subtitle>
-            {{ item.raw.id }}
+            {{ item.id }}
           </template>
         </v-list-item>
       </template>

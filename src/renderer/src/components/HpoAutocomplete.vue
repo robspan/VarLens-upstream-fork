@@ -20,9 +20,9 @@
     <template #item="{ item, props: itemProps }">
       <v-list-item v-bind="itemProps" :title="undefined" :subtitle="undefined">
         <v-list-item-title class="text-body-medium">
-          <span class="text-primary font-weight-medium">{{ item.raw.id }}</span>
+          <span class="text-primary font-weight-medium">{{ item.id }}</span>
           <span class="mx-1">-</span>
-          <span>{{ item.raw.name }}</span>
+          <span>{{ item.name }}</span>
         </v-list-item-title>
       </v-list-item>
     </template>

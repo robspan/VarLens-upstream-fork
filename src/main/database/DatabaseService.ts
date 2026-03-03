@@ -30,6 +30,7 @@ import type {
   OverviewTag,
   OverviewPhenotype
 } from '../../shared/types/database-overview'
+import type { TranscriptAnnotation } from '../../shared/types/transcript'
 import { CohortService } from './cohort'
 import { DatabaseError, NotFoundError, UniqueConstraintError, TransactionError } from './errors'
 import { mainLogger } from '../services/MainLogger'
@@ -351,6 +352,93 @@ export class DatabaseService {
 
     this.updateCaseVariantCount(caseId, variants.length)
     return variants.length
+  }
+
+  /**
+   * Get all transcripts for a variant, selected first
+   */
+  getVariantTranscripts(variantId: number): TranscriptAnnotation[] {
+    const rows = this.stmt(`
+      SELECT id, variant_id, transcript_id, gene_symbol, consequence,
+             cdna, aa_change, hpo_sim_score, moi, is_selected,
+             is_mane_select, is_canonical
+      FROM variant_transcripts
+      WHERE variant_id = ?
+      ORDER BY is_selected DESC, transcript_id ASC
+    `).all(variantId) as {
+      id: number
+      variant_id: number
+      transcript_id: string
+      gene_symbol: string | null
+      consequence: string | null
+      cdna: string | null
+      aa_change: string | null
+      hpo_sim_score: number | null
+      moi: string | null
+      is_selected: number
+      is_mane_select: number | null
+      is_canonical: number | null
+    }[]
+
+    return rows.map((r) => ({
+      ...r,
+      is_selected: r.is_selected === 1,
+      is_mane_select: r.is_mane_select === null ? null : r.is_mane_select === 1,
+      is_canonical: r.is_canonical === null ? null : r.is_canonical === 1
+    }))
+  }
+
+  /**
+   * Switch the selected transcript for a variant.
+   * Updates both variant_transcripts flags and denormalized fields on variants.
+   * Throws if transcriptId not found (transaction rolls back).
+   */
+  switchSelectedTranscript(variantId: number, transcriptId: string): void {
+    const switchTx = this.db.transaction(() => {
+      // Clear all selected flags for this variant
+      this.stmt(
+        'UPDATE variant_transcripts SET is_selected = 0 WHERE variant_id = ?'
+      ).run(variantId)
+
+      // Set the new selected transcript
+      const result = this.stmt(
+        'UPDATE variant_transcripts SET is_selected = 1 WHERE variant_id = ? AND transcript_id = ?'
+      ).run(variantId, transcriptId)
+
+      if (result.changes === 0) {
+        throw new Error(`Transcript ${transcriptId} not found for variant ${variantId}`)
+      }
+
+      // Read the new transcript data
+      const transcript = this.stmt(
+        'SELECT gene_symbol, consequence, cdna, aa_change, hpo_sim_score, moi FROM variant_transcripts WHERE variant_id = ? AND transcript_id = ?'
+      ).get(variantId, transcriptId) as {
+        gene_symbol: string | null
+        consequence: string | null
+        cdna: string | null
+        aa_change: string | null
+        hpo_sim_score: number | null
+        moi: string | null
+      }
+
+      // Update denormalized fields on variants table
+      this.stmt(`
+        UPDATE variants
+        SET transcript = ?, gene_symbol = ?, consequence = ?, cdna = ?, aa_change = ?, hpo_sim_score = ?, moi = ?
+        WHERE id = ?
+      `).run(
+        transcriptId,
+        transcript.gene_symbol,
+        transcript.consequence,
+        transcript.cdna,
+        transcript.aa_change,
+        transcript.hpo_sim_score,
+        transcript.moi,
+        variantId
+      )
+    })
+
+    switchTx()
   }
 
   /**

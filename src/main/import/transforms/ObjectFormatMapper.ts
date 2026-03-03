@@ -1,7 +1,12 @@
 import { Transform, TransformCallback } from 'node:stream'
 import type { Variant } from '../../database/types'
+import type { TranscriptInsertRow } from '../../../shared/types/transcript'
 
 type MappedVariant = Omit<Variant, 'id' | 'case_id'>
+
+type MappedVariantWithTranscripts = MappedVariant & {
+  _transcripts?: TranscriptInsertRow[]
+}
 
 /**
  * Mode of inheritance object from object-based export format
@@ -124,6 +129,22 @@ export class ObjectFormatMapper extends Transform {
         moi: moiString
       }
 
+      // Build single transcript row if transcript is present
+      if (mapped.transcript !== null) {
+        ;(mapped as MappedVariantWithTranscripts)._transcripts = [
+          {
+            transcript_id: mapped.transcript,
+            gene_symbol: mapped.gene_symbol,
+            consequence: mapped.consequence,
+            cdna: mapped.cdna,
+            aa_change: mapped.aa_change,
+            hpo_sim_score: mapped.hpo_sim_score,
+            moi: mapped.moi,
+            is_selected: 1
+          }
+        ]
+      }
+
       // Validate required fields
       if (
         mapped.chr === undefined ||
@@ -143,7 +164,7 @@ export class ObjectFormatMapper extends Transform {
         return
       }
 
-      this.push(mapped)
+      this.push(mapped as MappedVariantWithTranscripts)
       callback()
     } catch (error) {
       callback(error instanceof Error ? error : new Error(String(error)))

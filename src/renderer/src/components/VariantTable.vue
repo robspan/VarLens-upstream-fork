@@ -694,6 +694,7 @@ onMounted(async () => {
 // Expose resetSort for parent components
 defineExpose({
   resetSort,
+  refresh: loadVariants,
   columns: computed(() => headers.value.map((h) => ({ key: h.key, title: h.title })))
 })
 </script>

@@ -208,6 +208,7 @@
       :variant="selectedPanelVariant"
       :case-id="activeTab === 'case' ? selectedCaseId : null"
       :mode="panelMode"
+      @variant-updated="variantTableRef?.refresh()"
     />
 
     <AppFooter

@@ -32,6 +32,15 @@
             class="mb-4"
           />
 
+          <!-- Transcript Section (case mode only) -->
+          <template v-if="mode === 'case' && 'id' in variant">
+            <TranscriptSection
+              :variant-id="(variant as Variant).id"
+              @transcript-switched="emit('variant-updated')"
+              class="mb-4"
+            />
+          </template>
+
           <v-divider class="mb-4" />
 
           <!-- Section 2: Annotation Scores -->
@@ -125,6 +134,7 @@ import AnnotationScoresSection from './AnnotationScoresSection.vue'
 import ExternalLinksSection from './ExternalLinksSection.vue'
 import CommentsSection from './CommentsSection.vue'
 import TagsSection from './TagsSection.vue'
+import TranscriptSection from './TranscriptSection.vue'
 import AcmgMenu from './AcmgMenu.vue'
 import type { Variant } from '../../../shared/types/api'
 import type { CohortVariant } from '../../../shared/types/cohort'
@@ -141,6 +151,7 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
+  'variant-updated': []
 }>()
 
 // Use panel resize composable

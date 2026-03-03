@@ -32,6 +32,7 @@ import type {
   SpliceAIFetchResult
 } from './api-enrichment'
 import type { LogMessage } from './log'
+import type { TranscriptAnnotation } from './transcript'
 import type { DatabaseOverview } from './database-overview'
 
 // Re-export for convenience
@@ -346,6 +347,11 @@ export interface TagsAPI {
   setVariantTags: (caseId: number, variantId: number, tagIds: number[]) => Promise<void>
 }
 
+export interface TranscriptsAPI {
+  list: (variantId: number) => Promise<TranscriptAnnotation[]>
+  switch: (variantId: number, transcriptId: string) => Promise<{ success: boolean }>
+}
+
 export interface LogsAPI {
   onMessage: (callback: (log: LogMessage) => void) => () => void
 }
@@ -366,6 +372,7 @@ export interface WindowAPI {
   myvariant: MyVariantAPI
   spliceai: SpliceAIAPI
   caseMetadata: CaseMetadataAPI
+  transcripts: TranscriptsAPI
   tags: TagsAPI
   logs: LogsAPI
 }

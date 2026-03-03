@@ -524,6 +524,31 @@ describe('Schema Migrations', () => {
     })
   })
 
+  describe('Schema: variant_transcripts table', () => {
+    it('should create variant_transcripts table', () => {
+      const db = new DatabaseService(':memory:')
+      const tables = db.database
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='variant_transcripts'"
+        )
+        .all()
+      expect(tables).toHaveLength(1)
+      db.close()
+    })
+
+    it('should create indexes on variant_transcripts', () => {
+      const db = new DatabaseService(':memory:')
+      const indexes = db.database
+        .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_vt_%'")
+        .all() as { name: string }[]
+      const indexNames = indexes.map((i) => i.name)
+      expect(indexNames).toContain('idx_vt_variant_id')
+      expect(indexNames).toContain('idx_vt_selected')
+      expect(indexNames).toContain('idx_vt_transcript')
+      db.close()
+    })
+  })
+
   describe('Foreign keys pragma verification', () => {
     it('verifies foreign_keys pragma is ON', () => {
       const dbPath = tempDbPath()

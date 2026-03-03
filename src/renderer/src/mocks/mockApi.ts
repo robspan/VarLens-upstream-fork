@@ -372,8 +372,8 @@ export const mockApi: WindowAPI = {
       const sortBy = params?.sort_by ?? 'carrier_count'
       const sortOrder = params?.sort_order ?? 'desc'
       cohortVariants.sort((a, b) => {
-        let aVal: string | number | null = null
-        let bVal: string | number | null = null
+        let aVal: string | number | null
+        let bVal: string | number | null
 
         switch (sortBy) {
           case 'chr':

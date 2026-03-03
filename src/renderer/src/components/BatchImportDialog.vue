@@ -319,7 +319,7 @@ const show = async (mode: 'files' | 'folder' | 'zip'): Promise<void> => {
     return
   }
 
-  let filePaths: string[] = []
+  let filePaths: string[]
 
   if (mode === 'files') {
     // eslint-disable-next-line no-undef

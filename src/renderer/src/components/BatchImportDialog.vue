@@ -28,7 +28,7 @@
                 <template #label>
                   <div>
                     <strong>Skip duplicates</strong>
-                    <div class="text-caption text-medium-emphasis">
+                    <div class="text-body-small text-medium-emphasis">
                       Only import new files, leave existing cases unchanged
                     </div>
                   </div>
@@ -38,7 +38,7 @@
                 <template #label>
                   <div>
                     <strong>Overwrite duplicates</strong>
-                    <div class="text-caption text-medium-emphasis">
+                    <div class="text-body-small text-medium-emphasis">
                       Replace existing cases with data from the selected files
                     </div>
                   </div>
@@ -48,7 +48,7 @@
             <v-divider class="mb-3" />
           </div>
 
-          <div class="text-caption text-medium-emphasis mb-2">
+          <div class="text-body-small text-medium-emphasis mb-2">
             {{ fileCount }} file{{ fileCount !== 1 ? 's' : '' }} to import:
           </div>
           <v-list density="compact" class="pa-0" max-height="300" style="overflow-y: auto">
@@ -63,13 +63,13 @@
                 </v-icon>
                 <v-icon v-else color="success" size="small"> mdi-new-box </v-icon>
               </template>
-              <v-list-item-title class="text-body-2">
+              <v-list-item-title class="text-body-medium">
                 {{ file.caseName }}
-                <span v-if="file.isDuplicate" class="text-caption text-warning ml-1">
+                <span v-if="file.isDuplicate" class="text-body-small text-warning ml-1">
                   (exists)
                 </span>
               </v-list-item-title>
-              <v-list-item-subtitle v-if="file.caseName !== file.fileName" class="text-caption">
+              <v-list-item-subtitle v-if="file.caseName !== file.fileName" class="text-body-small">
                 {{ file.fileName }}
               </v-list-item-subtitle>
             </v-list-item>
@@ -88,7 +88,7 @@
 
         <!-- ZIP password phase -->
         <div v-if="phase === 'zip-password'">
-          <div class="text-body-2 mb-4">This archive is password-protected.</div>
+          <div class="text-body-medium mb-4">This archive is password-protected.</div>
           <v-text-field
             v-model="zipPassword"
             label="Password"
@@ -103,13 +103,13 @@
 
         <!-- Importing phase -->
         <div v-if="phase === 'importing'" class="mt-4">
-          <div class="text-body-2 mb-2">
+          <div class="text-body-medium mb-2">
             Importing {{ currentFileName }} ({{ currentIndex + 1 }} of {{ totalFiles }})
           </div>
           <v-progress-linear :model-value="overallPercent" color="primary" height="25" class="mb-2">
             <template #default>{{ overallPercent }}%</template>
           </v-progress-linear>
-          <div v-if="variantCount > 0" class="text-caption">
+          <div v-if="variantCount > 0" class="text-body-small">
             Variants processed: {{ variantCount.toLocaleString() }}
           </div>
         </div>
@@ -147,7 +147,7 @@
                   </v-icon>
                   <v-icon v-else color="secondary" size="small"> mdi-skip-next </v-icon>
                   <span>{{ detail.fileName }}</span>
-                  <span v-if="detail.variantCount !== undefined" class="text-caption ml-2">
+                  <span v-if="detail.variantCount !== undefined" class="text-body-small ml-2">
                     ({{ detail.variantCount.toLocaleString() }} variants)
                   </span>
                 </div>

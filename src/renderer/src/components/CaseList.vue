@@ -48,7 +48,7 @@
         <template v-else>
           <v-icon class="mb-1">mdi-folder-open-outline</v-icon>
           <div>No cases yet</div>
-          <div class="text-caption mt-1">Click + to import</div>
+          <div class="text-body-small mt-1">Click + to import</div>
         </template>
       </v-list-item-title>
     </v-list-item>

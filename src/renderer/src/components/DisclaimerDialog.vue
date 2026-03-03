@@ -17,7 +17,7 @@
             </v-list-item-subtitle>
           </v-list-item>
         </v-list>
-        <p class="mt-4 text-caption font-italic text-medium-emphasis">{{ config.footer }}</p>
+        <p class="mt-4 text-body-small font-italic text-medium-emphasis">{{ config.footer }}</p>
       </v-card-text>
       <v-card-actions>
         <v-spacer />

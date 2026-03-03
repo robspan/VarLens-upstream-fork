@@ -5,7 +5,7 @@
       <v-card-text>
         <!-- Genome Build Selector -->
         <div class="mb-4">
-          <div class="text-subtitle-2 mb-2">Genome Build</div>
+          <div class="text-title-small mb-2">Genome Build</div>
           <v-btn-toggle
             v-model="buildSelection"
             color="primary"
@@ -16,7 +16,7 @@
             <v-btn value="GRCh37">GRCh37</v-btn>
             <v-btn value="GRCh38">GRCh38</v-btn>
           </v-btn-toggle>
-          <div class="text-caption text-medium-emphasis mt-1">
+          <div class="text-body-small text-medium-emphasis mt-1">
             Affects build-dependent URLs (gnomAD dataset, UCSC db)
           </div>
         </div>
@@ -25,7 +25,7 @@
 
         <!-- Link List -->
         <div class="mb-4">
-          <div class="text-subtitle-2 mb-2">Configured Links</div>
+          <div class="text-title-small mb-2">Configured Links</div>
 
           <v-list density="compact">
             <v-list-item
@@ -82,7 +82,7 @@
         <v-expand-transition>
           <v-card v-if="editingLink !== null" variant="outlined" class="mt-4">
             <v-card-text>
-              <div class="text-subtitle-2 mb-3">
+              <div class="text-title-small mb-3">
                 {{ isAddMode ? 'Add Custom Link' : `Edit ${editingLink.name}` }}
               </div>
 
@@ -131,7 +131,7 @@
                 <v-expansion-panel>
                   <v-expansion-panel-title>Available Variables</v-expansion-panel-title>
                   <v-expansion-panel-text>
-                    <div class="text-caption">
+                    <div class="text-body-small">
                       <div><code>{chr}</code> - Chromosome (e.g., "1", "X")</div>
                       <div><code>{pos}</code> - Position (e.g., 12345)</div>
                       <div><code>{ref}</code> - Reference allele (e.g., "A")</div>

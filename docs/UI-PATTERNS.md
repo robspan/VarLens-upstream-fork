@@ -143,7 +143,7 @@ Side panels use `v-navigation-drawer > v-card`:
   <v-card flat class="h-100 d-flex flex-column">
     <!-- Header with close button -->
     <v-toolbar color="transparent" density="compact" flat>
-      <v-toolbar-title class="text-subtitle-1">Panel Title</v-toolbar-title>
+      <v-toolbar-title class="text-body-large">Panel Title</v-toolbar-title>
       <v-btn icon size="small" @click="emit('update:open', false)">
         <v-icon>mdi-close</v-icon>
       </v-btn>

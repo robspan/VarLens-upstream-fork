@@ -135,7 +135,7 @@
           class="annotation-hint-bar"
         >
           <v-icon size="small" class="mr-1">mdi-information-outline</v-icon>
-          <span class="text-caption">
+          <span class="text-body-small">
             No variants match the annotation filter. Star or comment on variants first, then filter.
           </span>
         </div>

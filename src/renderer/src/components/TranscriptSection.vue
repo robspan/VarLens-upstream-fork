@@ -160,7 +160,7 @@ async function handleUse(row: UnifiedTranscriptRow): Promise<void> {
 
 <template>
   <v-card variant="outlined" class="mb-4">
-    <v-card-title class="d-flex align-center text-subtitle-1 py-2 px-4">
+    <v-card-title class="d-flex align-center text-body-large py-2 px-4">
       Transcripts
       <v-chip v-if="hasTranscripts" size="x-small" class="ml-2" color="secondary">
         {{ mergedRows.length }}
@@ -198,7 +198,7 @@ async function handleUse(row: UnifiedTranscriptRow): Promise<void> {
 
     <v-progress-linear v-if="isLoading" indeterminate color="primary" />
 
-    <div v-if="!isLoading && !hasTranscripts" class="pa-4 text-body-2 text-medium-emphasis">
+    <div v-if="!isLoading && !hasTranscripts" class="pa-4 text-body-medium text-medium-emphasis">
       No transcript annotations available for this variant.
     </div>
 
@@ -216,7 +216,7 @@ async function handleUse(row: UnifiedTranscriptRow): Promise<void> {
         class="transcript-table"
       >
         <template #[`item.transcript_id`]="{ item }">
-          <span class="text-body-2">{{ item.transcript_id }}</span>
+          <span class="text-body-medium">{{ item.transcript_id }}</span>
           <v-chip
             v-if="item.vep_source"
             :color="vepSourceColor(item.vep_source)"
@@ -256,11 +256,11 @@ async function handleUse(row: UnifiedTranscriptRow): Promise<void> {
         </template>
 
         <template #[`item.cdna`]="{ value }">
-          <span class="text-body-2">{{ value ?? '-' }}</span>
+          <span class="text-body-medium">{{ value ?? '-' }}</span>
         </template>
 
         <template #[`item.aa_change`]="{ value }">
-          <span class="text-body-2">{{ value ?? '-' }}</span>
+          <span class="text-body-medium">{{ value ?? '-' }}</span>
         </template>
 
         <template #[`item.status`]="{ item }">

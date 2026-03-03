@@ -1241,7 +1241,7 @@ async function handleSwitch(transcript: TranscriptAnnotation): Promise<void> {
 
 <template>
   <v-card variant="outlined" class="mb-4">
-    <v-card-title class="d-flex align-center text-subtitle-1 py-2 px-4">
+    <v-card-title class="d-flex align-center text-body-large py-2 px-4">
       Transcripts
       <v-chip v-if="hasTranscripts" size="x-small" class="ml-2" color="secondary">
         {{ transcripts.length }}
@@ -1252,7 +1252,7 @@ async function handleSwitch(transcript: TranscriptAnnotation): Promise<void> {
 
     <v-progress-linear v-if="loading" indeterminate color="primary" />
 
-    <div v-if="!loading && !hasTranscripts" class="pa-4 text-body-2 text-medium-emphasis">
+    <div v-if="!loading && !hasTranscripts" class="pa-4 text-body-medium text-medium-emphasis">
       No transcript annotations available for this variant.
     </div>
 
@@ -1273,11 +1273,11 @@ async function handleSwitch(transcript: TranscriptAnnotation): Promise<void> {
       </template>
 
       <template #item.cdna="{ value }">
-        <span class="text-body-2">{{ value ?? '-' }}</span>
+        <span class="text-body-medium">{{ value ?? '-' }}</span>
       </template>
 
       <template #item.aa_change="{ value }">
-        <span class="text-body-2">{{ value ?? '-' }}</span>
+        <span class="text-body-medium">{{ value ?? '-' }}</span>
       </template>
 
       <template #item.status="{ item }">

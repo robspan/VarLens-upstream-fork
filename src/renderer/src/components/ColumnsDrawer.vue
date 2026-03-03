@@ -9,7 +9,7 @@
     <v-card flat class="d-flex flex-column h-100">
       <!-- Header -->
       <v-toolbar density="compact" flat>
-        <v-toolbar-title class="text-subtitle-1 font-weight-medium">
+        <v-toolbar-title class="text-body-large font-weight-medium">
           <v-icon size="small" class="mr-1">mdi-table-column</v-icon>
           Columns
         </v-toolbar-title>
@@ -25,7 +25,7 @@
             <!-- Group header -->
             <div class="group-header d-flex align-center px-2 py-1 rounded bg-grey-lighten-3">
               <v-icon size="small" class="mr-2">{{ groupIcon(groupId) }}</v-icon>
-              <span class="text-caption font-weight-bold text-uppercase">
+              <span class="text-body-small font-weight-bold text-uppercase">
                 {{ groupLabel(groupId) }}
               </span>
               <v-spacer />
@@ -41,7 +41,7 @@
             <!-- Empty state for links group -->
             <div
               v-if="groupCols.length === 0"
-              class="text-caption text-medium-emphasis pa-2 text-center"
+              class="text-body-small text-medium-emphasis pa-2 text-center"
             >
               No external link columns configured
             </div>
@@ -69,7 +69,7 @@
                         @click.stop="emit('toggle:column', column.key)"
                       />
                     </template>
-                    <v-list-item-title class="text-body-2">{{ column.title }}</v-list-item-title>
+                    <v-list-item-title class="text-body-medium">{{ column.title }}</v-list-item-title>
                   </v-list-item>
                 </template>
               </draggable>
@@ -81,7 +81,7 @@
       <!-- Footer -->
       <v-divider />
       <div class="pa-3 d-flex align-center">
-        <span class="text-caption text-medium-emphasis">
+        <span class="text-body-small text-medium-emphasis">
           {{ visibleColumns.length }} of {{ columns.length }} columns visible
         </span>
         <v-spacer />

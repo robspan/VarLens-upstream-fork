@@ -23,7 +23,7 @@
 
         <template v-else>
           <div v-for="(group, category) in groupedFaq" :key="category">
-            <div class="text-overline text-medium-emphasis mb-1 mt-3">{{ category }}</div>
+            <div class="text-label-medium text-medium-emphasis mb-1 mt-3">{{ category }}</div>
             <v-expansion-panels multiple>
               <v-expansion-panel v-for="item in group" :key="item.question">
                 <v-expansion-panel-title>{{ item.question }}</v-expansion-panel-title>

@@ -18,7 +18,7 @@
         </v-tooltip>
       </v-chip>
     </div>
-    <div v-else class="text-grey text-body-2 mb-2">No phenotype terms assigned</div>
+    <div v-else class="text-grey text-body-medium mb-2">No phenotype terms assigned</div>
 
     <!-- Autocomplete for adding new terms -->
     <v-autocomplete

@@ -9,7 +9,7 @@
     <v-card flat class="h-100 d-flex flex-column">
       <!-- Header -->
       <v-toolbar color="transparent" density="compact" flat>
-        <v-toolbar-title class="text-subtitle-1 font-weight-medium"> All Filters </v-toolbar-title>
+        <v-toolbar-title class="text-body-large font-weight-medium"> All Filters </v-toolbar-title>
         <v-chip
           v-if="activeFilterCount > 0"
           size="small"
@@ -31,7 +31,7 @@
         <div class="filter-drawer-group mb-4">
           <div class="filter-drawer-group-header d-flex align-center mb-2">
             <v-icon size="small" class="mr-2">mdi-magnify</v-icon>
-            <span class="text-subtitle-2 font-weight-medium">Search</span>
+            <span class="text-title-small font-weight-medium">Search</span>
             <v-chip
               v-if="isFilterGroupActive('search')"
               size="x-small"
@@ -57,7 +57,7 @@
         <div class="filter-drawer-group mb-4">
           <div class="filter-drawer-group-header d-flex align-center mb-2">
             <v-icon size="small" class="mr-2">mdi-dna</v-icon>
-            <span class="text-subtitle-2 font-weight-medium">Gene</span>
+            <span class="text-title-small font-weight-medium">Gene</span>
             <v-chip
               v-if="isFilterGroupActive('gene')"
               size="x-small"
@@ -87,7 +87,7 @@
         <div class="filter-drawer-group mb-4">
           <div class="filter-drawer-group-header d-flex align-center mb-2">
             <v-icon size="small" class="mr-2">mdi-flash</v-icon>
-            <span class="text-subtitle-2 font-weight-medium">Impact</span>
+            <span class="text-title-small font-weight-medium">Impact</span>
             <v-chip
               v-if="isFilterGroupActive('impact')"
               size="x-small"
@@ -129,7 +129,7 @@
         <div class="filter-drawer-group mb-4">
           <div class="filter-drawer-group-header d-flex align-center mb-2">
             <v-icon size="small" class="mr-2">mdi-function</v-icon>
-            <span class="text-subtitle-2 font-weight-medium">Consequence</span>
+            <span class="text-title-small font-weight-medium">Consequence</span>
             <v-chip
               v-if="isFilterGroupActive('function')"
               size="x-small"
@@ -154,7 +154,7 @@
         <div class="filter-drawer-group mb-4">
           <div class="filter-drawer-group-header d-flex align-center mb-2">
             <v-icon size="small" class="mr-2">mdi-hospital-box</v-icon>
-            <span class="text-subtitle-2 font-weight-medium">ClinVar</span>
+            <span class="text-title-small font-weight-medium">ClinVar</span>
             <v-chip
               v-if="isFilterGroupActive('clinvar')"
               size="x-small"
@@ -179,7 +179,7 @@
         <div class="filter-drawer-group mb-4">
           <div class="filter-drawer-group-header d-flex align-center mb-2">
             <v-icon size="small" class="mr-2">mdi-earth</v-icon>
-            <span class="text-subtitle-2 font-weight-medium">Frequency</span>
+            <span class="text-title-small font-weight-medium">Frequency</span>
             <v-chip
               v-if="isFilterGroupActive('frequency')"
               size="x-small"
@@ -221,7 +221,7 @@
         <div class="filter-drawer-group mb-4">
           <div class="filter-drawer-group-header d-flex align-center mb-2">
             <v-icon size="small" class="mr-2">mdi-alert-circle</v-icon>
-            <span class="text-subtitle-2 font-weight-medium">CADD</span>
+            <span class="text-title-small font-weight-medium">CADD</span>
             <v-chip
               v-if="isFilterGroupActive('cadd')"
               size="x-small"
@@ -264,7 +264,7 @@
         <div class="filter-drawer-group mb-4">
           <div class="filter-drawer-group-header d-flex align-center mb-2">
             <v-icon size="small" class="mr-2">mdi-tag-multiple</v-icon>
-            <span class="text-subtitle-2 font-weight-medium">Tags</span>
+            <span class="text-title-small font-weight-medium">Tags</span>
             <v-chip
               v-if="isFilterGroupActive('tags')"
               size="x-small"
@@ -314,7 +314,7 @@
         <div class="filter-drawer-group mb-4">
           <div class="filter-drawer-group-header d-flex align-center mb-2">
             <v-icon size="small" class="mr-2">mdi-star-circle</v-icon>
-            <span class="text-subtitle-2 font-weight-medium">Annotations</span>
+            <span class="text-title-small font-weight-medium">Annotations</span>
             <v-chip
               v-if="isFilterGroupActive('annotations')"
               size="x-small"
@@ -347,7 +347,7 @@
               Commented
             </v-btn>
           </div>
-          <div class="text-caption text-medium-emphasis mb-1">ACMG Classification</div>
+          <div class="text-body-small text-medium-emphasis mb-1">ACMG Classification</div>
           <div class="d-flex flex-wrap ga-1">
             <v-chip
               v-for="cls in acmgFilterOptions"

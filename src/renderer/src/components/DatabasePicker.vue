@@ -10,7 +10,7 @@
           class="mr-2"
         />
         <v-icon v-else-if="databaseStore.isEncrypted" icon="mdi-lock" size="small" class="mr-2" />
-        <span class="text-body-2">{{ databaseStore.currentName || 'No database' }}</span>
+        <span class="text-body-medium">{{ databaseStore.currentName || 'No database' }}</span>
         <v-tooltip activator="parent" location="bottom">
           {{ databaseStore.currentPath || 'No database' }}
         </v-tooltip>
@@ -34,7 +34,7 @@
         </v-list-item>
       </template>
       <v-list-item v-else disabled>
-        <v-list-item-title class="text-caption text-disabled"
+        <v-list-item-title class="text-body-small text-disabled"
           >No recent databases</v-list-item-title
         >
       </v-list-item>

@@ -91,7 +91,7 @@
     <!-- Applied Filters Summary Bar -->
     <v-expand-transition>
       <div v-if="activeFiltersList.length > 0" class="applied-filters-bar">
-        <span class="text-caption text-medium-emphasis mr-2">Active:</span>
+        <span class="text-body-small text-medium-emphasis mr-2">Active:</span>
         <v-chip
           v-for="filter in activeFiltersList"
           :key="filter.id"

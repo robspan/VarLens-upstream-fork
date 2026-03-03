@@ -7,11 +7,11 @@
       </v-btn>
     </template>
     <v-card>
-      <v-card-title class="text-subtitle-2 py-2"> Column Settings </v-card-title>
+      <v-card-title class="text-title-small py-2"> Column Settings </v-card-title>
       <v-divider />
       <v-card-text class="pa-0">
         <v-list density="compact" max-height="400" class="overflow-y-auto">
-          <v-list-subheader class="text-caption">
+          <v-list-subheader class="text-body-small">
             Drag to reorder, click checkbox to show/hide
           </v-list-subheader>
           <draggable
@@ -31,7 +31,7 @@
                     @click.stop="emit('toggle:column', column.key)"
                   />
                 </template>
-                <v-list-item-title class="text-body-2">{{ column.title }}</v-list-item-title>
+                <v-list-item-title class="text-body-medium">{{ column.title }}</v-list-item-title>
               </v-list-item>
             </template>
           </draggable>

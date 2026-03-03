@@ -47,7 +47,7 @@
         <!-- Progress section -->
         <div v-if="isImporting" class="mt-4">
           <v-progress-linear indeterminate color="primary" height="25" class="mb-2" />
-          <div class="text-center text-body-2">
+          <div class="text-center text-body-medium">
             {{ progressText }}
           </div>
         </div>

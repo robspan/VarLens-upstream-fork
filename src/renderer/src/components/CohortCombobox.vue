@@ -29,7 +29,7 @@
     </template>
     <template #no-data>
       <v-list-item>
-        <v-list-item-title class="text-grey text-body-2">
+        <v-list-item-title class="text-grey text-body-medium">
           Type to create a new cohort
         </v-list-item-title>
       </v-list-item>

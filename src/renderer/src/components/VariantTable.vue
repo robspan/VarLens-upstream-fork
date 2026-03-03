@@ -151,7 +151,7 @@
                 {{ formatConsequence(value) }}
               </span>
             </template>
-            <span class="text-caption">{{ value }}</span>
+            <span class="text-body-small">{{ value }}</span>
           </v-tooltip>
           <span v-else>-</span>
         </template>

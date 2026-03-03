@@ -1,10 +1,10 @@
 <template>
   <div class="variant-identity-section">
-    <div class="text-h6 mb-2">{{ variant.gene_symbol ?? 'Unknown Gene' }}</div>
+    <div class="text-title-large mb-2">{{ variant.gene_symbol ?? 'Unknown Gene' }}</div>
 
     <div
       v-if="isFullVariant && (variant as Variant).transcript"
-      class="text-caption text-grey mb-1"
+      class="text-body-small text-grey mb-1"
     >
       {{ (variant as Variant).transcript }}
     </div>
@@ -45,7 +45,7 @@
 
     <!-- rsID - From VEP colocated_variants -->
     <div class="d-flex align-center mt-2">
-      <span class="text-caption text-grey">rsID:</span>
+      <span class="text-body-small text-grey">rsID:</span>
       <template v-if="rsId">
         <span class="ml-1 variant-data-mono">{{ rsId }}</span>
         <v-btn icon size="x-small" variant="text" @click="copyRsId">

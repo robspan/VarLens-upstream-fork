@@ -1,9 +1,9 @@
 <template>
   <div>
     <v-toolbar density="compact" color="primary" dark>
-      <span class="ml-2 text-subtitle-1 font-weight-medium">
+      <span class="ml-2 text-body-large font-weight-medium">
         Cases
-        <span v-if="(caseCount ?? 0) > 0" class="text-caption ml-1" style="opacity: 0.8"
+        <span v-if="(caseCount ?? 0) > 0" class="text-body-small ml-1" style="opacity: 0.8"
           >({{ caseCount }})</span
         >
       </span>

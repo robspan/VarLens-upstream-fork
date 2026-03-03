@@ -3,12 +3,12 @@
     <div v-if="isOpen" class="log-viewer-panel d-flex flex-column">
       <!-- Compact toolbar with stats and actions -->
       <v-toolbar density="compact" color="surface" class="flex-grow-0">
-        <v-toolbar-title class="text-subtitle-2">Log Viewer</v-toolbar-title>
+        <v-toolbar-title class="text-title-small">Log Viewer</v-toolbar-title>
 
         <v-spacer />
 
         <!-- Buffer + memory stats inline -->
-        <div class="d-flex align-center text-caption text-medium-emphasis mr-1">
+        <div class="d-flex align-center text-body-small text-medium-emphasis mr-1">
           <span>{{ bufferUsage.current }}/{{ bufferUsage.max }}</span>
           <span v-if="stats.totalDropped > 0" class="text-warning ml-1">
             ({{ stats.totalDropped }} dropped)
@@ -91,10 +91,10 @@
                   {{ item.level }}
                 </v-chip>
                 <!-- eslint-disable-next-line vue/no-v-html -- safe: text and search term are HTML-escaped before interpolation -->
-                <span class="text-body-2" v-html="highlightSearch(item.message)" />
+                <span class="text-body-medium" v-html="highlightSearch(item.message)" />
               </div>
               <!-- Second line: timestamp + source -->
-              <div class="text-caption text-medium-emphasis">
+              <div class="text-body-small text-medium-emphasis">
                 {{ formatTimestamp(item.timestamp) }}
                 <span v-if="item.source" class="font-italic ml-2">{{ item.source }}</span>
               </div>
@@ -105,7 +105,7 @@
         <!-- Empty state -->
         <div
           v-else
-          class="d-flex align-center justify-center fill-height text-medium-emphasis text-body-2"
+          class="d-flex align-center justify-center fill-height text-medium-emphasis text-body-medium"
         >
           {{ entries.length === 0 ? 'No log entries' : 'No matching entries' }}
         </div>

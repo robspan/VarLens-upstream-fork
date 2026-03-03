@@ -7,7 +7,7 @@
       <template v-else>
         <!-- Status row -->
         <div class="d-flex align-center mb-3">
-          <span class="text-body-2 text-grey mr-2" style="min-width: 60px">Status</span>
+          <span class="text-body-medium text-grey mr-2" style="min-width: 60px">Status</span>
           <StatusSelector
             :model-value="currentStatus"
             style="max-width: 180px"
@@ -17,7 +17,7 @@
 
         <!-- Cohorts row -->
         <div class="d-flex align-start mb-3">
-          <span class="text-body-2 text-grey mr-2 mt-2" style="min-width: 60px">Cohorts</span>
+          <span class="text-body-medium text-grey mr-2 mt-2" style="min-width: 60px">Cohorts</span>
           <div class="flex-grow-1">
             <CohortCombobox
               :model-value="currentCohorts"
@@ -30,7 +30,9 @@
 
         <!-- HPO Terms row -->
         <div class="d-flex align-start">
-          <span class="text-body-2 text-grey mr-2 mt-2" style="min-width: 60px">Phenotypes</span>
+          <span class="text-body-medium text-grey mr-2 mt-2" style="min-width: 60px"
+            >Phenotypes</span
+          >
           <div class="flex-grow-1">
             <HpoTermSelector
               :model-value="currentHpoTerms"

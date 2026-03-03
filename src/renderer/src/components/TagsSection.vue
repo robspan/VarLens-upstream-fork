@@ -1,7 +1,7 @@
 <template>
   <div class="tags-section">
     <div class="d-flex align-center justify-space-between mb-2">
-      <span class="text-subtitle-2">Tags</span>
+      <span class="text-title-small">Tags</span>
       <v-menu v-model="menuOpen" :close-on-content-click="false" location="bottom end">
         <template #activator="{ props: menuProps }">
           <v-btn v-bind="menuProps" icon size="x-small" variant="text" :loading="loading">
@@ -10,7 +10,7 @@
         </template>
         <v-card min-width="200" max-width="280">
           <v-card-text class="pa-2">
-            <div v-if="availableTags.length === 0" class="text-caption text-grey pa-2">
+            <div v-if="availableTags.length === 0" class="text-body-small text-grey pa-2">
               No tags available. Create tags in Settings.
             </div>
             <v-list v-else density="compact" class="pa-0">
@@ -27,7 +27,7 @@
                     }}
                   </v-icon>
                 </template>
-                <v-list-item-title class="text-body-2">{{ tag.name }}</v-list-item-title>
+                <v-list-item-title class="text-body-medium">{{ tag.name }}</v-list-item-title>
                 <template #append>
                   <div class="tag-color-dot" :style="{ backgroundColor: tag.color }"></div>
                 </template>
@@ -40,7 +40,7 @@
 
     <!-- Assigned tags display -->
     <div class="tags-container">
-      <div v-if="assignedTags.length === 0" class="text-caption text-grey">No tags assigned</div>
+      <div v-if="assignedTags.length === 0" class="text-body-small text-grey">No tags assigned</div>
       <div v-else class="d-flex flex-wrap ga-1">
         <v-chip
           v-for="tag in assignedTags"

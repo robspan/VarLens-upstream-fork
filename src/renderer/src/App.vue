@@ -11,7 +11,7 @@
         @click="sidebarOpen = !sidebarOpen"
       />
       <v-app-bar-title
-        class="ml-2 text-subtitle-1 font-weight-bold flex-grow-0 app-title"
+        class="ml-2 text-body-large font-weight-bold flex-grow-0 app-title"
         role="button"
         tabindex="0"
         @click="handleHomeClick"
@@ -27,7 +27,7 @@
         </v-icon>
         <template v-if="activeTab === 'case' && selectedCaseId">
           <span
-            class="text-body-2 font-weight-medium text-truncate context-label clickable-case-name"
+            class="text-body-medium font-weight-medium text-truncate context-label clickable-case-name"
             role="button"
             tabindex="0"
             @click="caseMetadataModalRef?.show()"
@@ -47,11 +47,11 @@
           </v-btn>
         </template>
         <template v-else-if="activeTab === 'cohort'">
-          <span class="text-body-2 font-weight-medium"> Cohort ({{ caseCount }} cases) </span>
+          <span class="text-body-medium font-weight-medium"> Cohort ({{ caseCount }} cases) </span>
         </template>
         <template v-else>
           <span
-            class="text-body-2 text-medium-emphasis select-case-hint"
+            class="text-body-medium text-medium-emphasis select-case-hint"
             role="button"
             tabindex="0"
             @click="sidebarOpen = true"
@@ -757,6 +757,6 @@ onMounted(async () => {
 }
 
 .sidebar-resize-handle:hover {
-  background-color: rgba(var(--v-theme-primary), 0.2);
+  background-color: color-mix(in srgb, rgb(var(--v-theme-primary)) 20%, transparent);
 }
 </style>

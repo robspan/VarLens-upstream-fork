@@ -91,7 +91,7 @@
     <!-- Applied Filters Summary Bar -->
     <v-expand-transition>
       <div v-if="activeFiltersList.length > 0" class="applied-filters-bar">
-        <span class="text-caption text-medium-emphasis mr-2">Active:</span>
+        <span class="text-body-small text-medium-emphasis mr-2">Active:</span>
         <v-chip
           v-for="filter in activeFiltersList"
           :key="filter.id"
@@ -173,7 +173,7 @@ const emit = defineEmits<{
   flex-wrap: wrap;
   gap: 4px;
   padding: 6px 16px;
-  background: rgba(var(--v-theme-primary), 0.04);
+  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 4%, transparent);
   border-top: 1px solid rgba(var(--v-border-color), 0.08);
 }
 

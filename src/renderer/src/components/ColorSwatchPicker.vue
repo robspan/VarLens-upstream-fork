@@ -1,6 +1,6 @@
 <template>
   <div class="color-swatch-picker">
-    <div class="text-caption text-medium-emphasis mb-2">{{ label }}</div>
+    <div class="text-body-small text-medium-emphasis mb-2">{{ label }}</div>
     <div class="d-flex flex-wrap ga-2">
       <div
         v-for="color in colors"

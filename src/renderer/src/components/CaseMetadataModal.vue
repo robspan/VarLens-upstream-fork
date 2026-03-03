@@ -8,7 +8,7 @@
 
       <v-divider />
 
-      <div class="d-flex ga-4 px-4 py-2 text-body-2 text-medium-emphasis bg-grey-lighten-4">
+      <div class="d-flex ga-4 px-4 py-2 text-body-medium text-medium-emphasis bg-grey-lighten-4">
         <span>
           <v-icon size="x-small" class="mr-1">mdi-dna</v-icon>
           {{ variantCount.toLocaleString() }} variants

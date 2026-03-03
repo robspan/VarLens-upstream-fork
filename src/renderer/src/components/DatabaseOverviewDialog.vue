@@ -13,70 +13,70 @@
 
         <template v-else-if="overview">
           <!-- At a Glance: 4 tonal stat cards -->
-          <div class="text-subtitle-2 mb-2">
+          <div class="text-title-small mb-2">
             <v-icon size="small" class="mr-1">mdi-chart-bar</v-icon>
             At a Glance
           </div>
-          <v-row dense class="mb-2">
+          <v-row density="compact" class="mb-2">
             <v-col cols="3">
               <v-card variant="tonal" class="text-center pa-3">
                 <v-icon size="24" class="mb-1">mdi-account-group</v-icon>
-                <div class="text-h6">
+                <div class="text-title-large">
                   {{ overview.summary.total_cases.toLocaleString() }}
                 </div>
-                <div class="text-caption text-medium-emphasis">Total Cases</div>
+                <div class="text-body-small text-medium-emphasis">Total Cases</div>
               </v-card>
             </v-col>
             <v-col cols="3">
               <v-card variant="tonal" class="text-center pa-3">
                 <v-icon size="24" class="mb-1">mdi-dna</v-icon>
-                <div class="text-h6">
+                <div class="text-title-large">
                   {{ overview.summary.total_variants.toLocaleString() }}
                 </div>
-                <div class="text-caption text-medium-emphasis">Total Variants</div>
+                <div class="text-body-small text-medium-emphasis">Total Variants</div>
               </v-card>
             </v-col>
             <v-col cols="3">
               <v-card variant="tonal" class="text-center pa-3">
                 <v-icon size="24" class="mb-1">mdi-fingerprint</v-icon>
-                <div class="text-h6">
+                <div class="text-title-large">
                   {{ overview.summary.unique_variants.toLocaleString() }}
                 </div>
-                <div class="text-caption text-medium-emphasis">Unique Variants</div>
+                <div class="text-body-small text-medium-emphasis">Unique Variants</div>
               </v-card>
             </v-col>
             <v-col cols="3">
               <v-card variant="tonal" class="text-center pa-3">
                 <v-icon size="24" class="mb-1">mdi-set-none</v-icon>
-                <div class="text-h6">
+                <div class="text-title-large">
                   {{ overview.summary.genes_with_variants.toLocaleString() }}
                 </div>
-                <div class="text-caption text-medium-emphasis">Genes with Variants</div>
+                <div class="text-body-small text-medium-emphasis">Genes with Variants</div>
               </v-card>
             </v-col>
           </v-row>
 
           <!-- Annotation stat cards: Starred + ACMG -->
-          <v-row dense class="mb-4 annotation-stats-row">
+          <v-row density="compact" class="mb-4 annotation-stats-row">
             <v-col cols="6" class="d-flex">
               <v-card
                 variant="tonal"
                 class="text-center pa-3 d-flex flex-column align-center justify-center flex-grow-1"
               >
                 <v-icon size="24" class="mb-1">mdi-star</v-icon>
-                <div class="text-h6">
+                <div class="text-title-large">
                   {{ (overview.summary.starred_variants ?? 0).toLocaleString() }}
                 </div>
-                <div class="text-caption text-medium-emphasis">Starred Variants</div>
+                <div class="text-body-small text-medium-emphasis">Starred Variants</div>
               </v-card>
             </v-col>
             <v-col cols="6" class="d-flex">
               <v-card variant="tonal" class="text-center pa-3 flex-grow-1">
                 <v-icon size="24" class="mb-1">mdi-tag-check</v-icon>
-                <div class="text-h6">
+                <div class="text-title-large">
                   {{ totalAcmgClassified.toLocaleString() }}
                 </div>
-                <div class="text-caption text-medium-emphasis">ACMG Classified</div>
+                <div class="text-body-small text-medium-emphasis">ACMG Classified</div>
                 <div
                   v-if="totalAcmgClassified > 0"
                   class="mt-1 d-flex justify-center ga-1 flex-wrap"
@@ -129,7 +129,7 @@
           <!-- Cohort Groups Section -->
           <div class="mb-4">
             <div
-              class="text-subtitle-2 mb-2 d-flex align-center cursor-pointer"
+              class="text-title-small mb-2 d-flex align-center cursor-pointer"
               @click="cohortGroupsExpanded = !cohortGroupsExpanded"
             >
               <v-icon size="small" class="mr-1">
@@ -186,7 +186,7 @@
                 <v-expand-transition>
                   <v-card v-if="editingCohort !== null" variant="outlined" class="mt-2 mx-2">
                     <v-card-text>
-                      <div class="text-subtitle-2 mb-3">Edit "{{ editingCohort.name }}"</div>
+                      <div class="text-title-small mb-3">Edit "{{ editingCohort.name }}"</div>
                       <v-text-field
                         v-model="cohortEditForm.name"
                         label="Group Name"
@@ -227,7 +227,7 @@
 
                 <div
                   v-if="overview.cohortGroups.length === 0"
-                  class="text-medium-emphasis text-body-2 py-4"
+                  class="text-medium-emphasis text-body-medium py-4"
                 >
                   No cohort groups defined.
                 </div>
@@ -280,7 +280,7 @@
           <!-- Tags Section -->
           <div class="mb-4">
             <div
-              class="text-subtitle-2 mb-2 d-flex align-center cursor-pointer"
+              class="text-title-small mb-2 d-flex align-center cursor-pointer"
               @click="tagsExpanded = !tagsExpanded"
             >
               <v-icon size="small" class="mr-1">
@@ -330,7 +330,7 @@
                 <v-expand-transition>
                   <v-card v-if="editingTag !== null" variant="outlined" class="mt-2 mx-2">
                     <v-card-text>
-                      <div class="text-subtitle-2 mb-3">Edit "{{ editingTag.name }}"</div>
+                      <div class="text-title-small mb-3">Edit "{{ editingTag.name }}"</div>
                       <v-text-field
                         v-model="tagEditForm.name"
                         label="Tag Name"
@@ -378,7 +378,7 @@
 
                 <div
                   v-if="overview.tags.length === 0"
-                  class="text-medium-emphasis text-body-2 py-4"
+                  class="text-medium-emphasis text-body-medium py-4"
                 >
                   No tags defined.
                 </div>
@@ -428,7 +428,7 @@
           <!-- Phenotypes Section -->
           <div class="mb-4">
             <div
-              class="text-subtitle-2 mb-2 d-flex align-center cursor-pointer"
+              class="text-title-small mb-2 d-flex align-center cursor-pointer"
               @click="phenotypesExpanded = !phenotypesExpanded"
             >
               <v-icon size="small" class="mr-1">
@@ -453,7 +453,7 @@
                     </span>
                   </template>
                 </v-data-table>
-                <div v-else class="text-medium-emphasis text-body-2 py-4">
+                <div v-else class="text-medium-emphasis text-body-medium py-4">
                   No phenotypes assigned to any case.
                 </div>
               </div>
@@ -462,7 +462,7 @@
         </template>
 
         <!-- Error / empty fallback -->
-        <div v-else-if="error" class="text-error text-body-2 py-4">
+        <div v-else-if="error" class="text-error text-body-medium py-4">
           <v-icon size="small" class="mr-1">mdi-alert-circle</v-icon>
           {{ error }}
         </div>

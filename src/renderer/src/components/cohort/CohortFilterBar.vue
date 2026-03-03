@@ -365,7 +365,7 @@ const handleExport = () => {
 }
 
 .filter-search-input :deep(.v-field--focused) {
-  box-shadow: 0 0 0 2px rgba(var(--v-theme-primary), 0.15);
+  box-shadow: 0 0 0 2px color-mix(in srgb, rgb(var(--v-theme-primary)) 15%, transparent);
 }
 
 .filter-search-input :deep(.v-field__input) {
@@ -375,6 +375,6 @@ const handleExport = () => {
 .filter-search-input.filter-active :deep(.v-field) {
   border-color: rgb(var(--v-theme-primary));
   border-width: 2px;
-  background: rgba(var(--v-theme-primary), 0.04);
+  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 4%, transparent);
 }
 </style>

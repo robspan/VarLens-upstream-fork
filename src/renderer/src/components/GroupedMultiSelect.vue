@@ -115,7 +115,7 @@
                     @click.stop="toggleItem(item.value)"
                   />
                 </template>
-                <v-list-item-title class="text-body-2">
+                <v-list-item-title class="text-body-medium">
                   {{ item.label }}
                 </v-list-item-title>
               </v-list-item>

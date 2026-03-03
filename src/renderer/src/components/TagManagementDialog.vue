@@ -5,7 +5,7 @@
       <v-card-text>
         <!-- Tag List -->
         <div class="mb-4">
-          <div class="text-subtitle-2 mb-2">Defined Tags</div>
+          <div class="text-title-small mb-2">Defined Tags</div>
 
           <v-list v-if="tags.length > 0" density="compact">
             <v-list-item v-for="tag in tags" :key="tag.id">
@@ -27,7 +27,7 @@
             </v-list-item>
           </v-list>
 
-          <div v-else class="text-medium-emphasis text-body-2 py-4">
+          <div v-else class="text-medium-emphasis text-body-medium py-4">
             No custom tags defined. Create one below.
           </div>
 
@@ -46,7 +46,7 @@
         <v-expand-transition>
           <v-card v-if="editingTag !== null" variant="outlined" class="mt-4">
             <v-card-text>
-              <div class="text-subtitle-2 mb-3">
+              <div class="text-title-small mb-3">
                 {{ isAddMode ? 'Add Tag' : `Edit "${editingTag.name}"` }}
               </div>
 

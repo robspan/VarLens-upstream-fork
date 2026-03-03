@@ -1,6 +1,6 @@
 <template>
   <div class="external-links-section">
-    <div class="text-subtitle-2 mb-2">External Links</div>
+    <div class="text-title-small mb-2">External Links</div>
     <div class="d-flex flex-wrap ga-1">
       <div
         v-for="link in visibleLinks"
@@ -21,7 +21,7 @@
           </template>
           {{ link.name }}
         </v-tooltip>
-        <span class="text-caption text-center text-truncate external-link-label">
+        <span class="text-body-small text-center text-truncate external-link-label">
           {{ getLinkLabel(link.id) }}
         </span>
       </div>

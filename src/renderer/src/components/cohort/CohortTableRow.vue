@@ -145,7 +145,7 @@
     </span>
 
     <!-- Het / Hom combined column -->
-    <span v-else-if="column === 'het_count'" class="text-caption">
+    <span v-else-if="column === 'het_count'" class="text-body-small">
       <template v-if="item.hom_count > 0">
         {{ item.het_count }} het / {{ item.hom_count }} hom
       </template>

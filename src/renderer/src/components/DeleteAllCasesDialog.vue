@@ -10,7 +10,7 @@
           This will permanently delete <strong>{{ caseCount }}</strong>
           {{ caseCount === 1 ? 'case' : 'cases' }} and all their variants.
         </p>
-        <p class="text-body-2 mb-2">Type <strong>DELETE</strong> to confirm:</p>
+        <p class="text-body-medium mb-2">Type <strong>DELETE</strong> to confirm:</p>
         <v-text-field
           v-model="confirmText"
           density="compact"

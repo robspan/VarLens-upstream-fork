@@ -14,7 +14,7 @@
     <v-card flat class="h-100 d-flex flex-column">
       <!-- Header with title and close button -->
       <v-toolbar color="transparent" density="compact" flat>
-        <v-toolbar-title class="text-subtitle-1"> Variant Details </v-toolbar-title>
+        <v-toolbar-title class="text-body-large"> Variant Details </v-toolbar-title>
         <v-btn icon size="small" @click="emit('update:open', false)">
           <v-icon>mdi-close</v-icon>
         </v-btn>
@@ -63,13 +63,13 @@
           />
 
           <!-- VEP metadata (consequence + cache indicator) -->
-          <div v-if="mostSevereConsequence" class="text-caption mb-2">
+          <div v-if="mostSevereConsequence" class="text-body-small mb-2">
             <v-chip size="x-small" :color="getConsequenceColor(mostSevereConsequence)" label>
               {{ formatConsequence(mostSevereConsequence) }}
             </v-chip>
           </div>
 
-          <div v-if="isCached && cachedAt" class="text-caption text-grey mb-2">
+          <div v-if="isCached && cachedAt" class="text-body-small text-grey mb-2">
             Cached from {{ cachedAt.toLocaleDateString() }}
           </div>
 
@@ -77,7 +77,7 @@
 
           <!-- Section 3: ACMG Classification -->
           <div class="acmg-section mb-4">
-            <div class="text-subtitle-2 mb-2">ACMG Classification</div>
+            <div class="text-title-small mb-2">ACMG Classification</div>
             <AcmgMenu @select="handleAcmgSelect">
               <template #activator="{ props: menuProps }">
                 <v-chip
@@ -100,7 +100,7 @@
                 </v-btn>
               </template>
             </AcmgMenu>
-            <div v-if="hasGlobalAcmg && mode === 'case'" class="text-caption text-grey mt-1">
+            <div v-if="hasGlobalAcmg && mode === 'case'" class="text-body-small text-grey mt-1">
               Global: {{ globalAcmgClassification }}
             </div>
           </div>
@@ -337,7 +337,7 @@ onUnmounted(() => {
 }
 
 .resize-handle:hover {
-  background: rgba(var(--v-theme-primary), 0.2);
+  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 20%, transparent);
 }
 
 .cursor-pointer {

@@ -1,11 +1,11 @@
 <template>
   <div class="comments-section">
-    <div class="text-subtitle-2 mb-2">Comments</div>
+    <div class="text-title-small mb-2">Comments</div>
 
     <!-- Global comment -->
     <div class="comment-block mb-3">
       <div class="d-flex align-center justify-space-between mb-1">
-        <span class="text-caption font-weight-medium">Global Comment</span>
+        <span class="text-body-small font-weight-medium">Global Comment</span>
         <v-btn
           v-if="globalComment"
           icon
@@ -23,7 +23,7 @@
         :loading="globalSaving"
         @update:model-value="handleGlobalSave"
       />
-      <div v-if="globalTimestamps" class="text-caption text-grey mt-1">
+      <div v-if="globalTimestamps" class="text-body-small text-grey mt-1">
         {{ formatTimestamp(globalTimestamps.created_at) }}
         <span v-if="globalTimestamps.updated_at !== globalTimestamps.created_at">
           (edited {{ formatTimestamp(globalTimestamps.updated_at) }})
@@ -34,7 +34,7 @@
     <!-- Per-case comment (only in case mode) -->
     <div v-if="mode === 'case' && caseId" class="comment-block">
       <div class="d-flex align-center justify-space-between mb-1">
-        <span class="text-caption font-weight-medium">Case Comment</span>
+        <span class="text-body-small font-weight-medium">Case Comment</span>
         <v-btn
           v-if="perCaseComment"
           icon
@@ -52,7 +52,7 @@
         :loading="perCaseSaving"
         @update:model-value="handlePerCaseSave"
       />
-      <div v-if="perCaseTimestamps" class="text-caption text-grey mt-1">
+      <div v-if="perCaseTimestamps" class="text-body-small text-grey mt-1">
         {{ formatTimestamp(perCaseTimestamps.created_at) }}
         <span v-if="perCaseTimestamps.updated_at !== perCaseTimestamps.created_at">
           (edited {{ formatTimestamp(perCaseTimestamps.updated_at) }})
@@ -63,7 +63,7 @@
     <!-- Delete confirmation dialog -->
     <v-dialog v-model="deleteDialogOpen" max-width="300">
       <v-card>
-        <v-card-title class="text-h6">Delete Comment</v-card-title>
+        <v-card-title class="text-title-large">Delete Comment</v-card-title>
         <v-card-text>
           Are you sure you want to delete this {{ deleteTarget }} comment?
         </v-card-text>

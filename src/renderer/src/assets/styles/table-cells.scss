@@ -63,7 +63,7 @@
   padding: 2px;
 
   &.has-global {
-    box-shadow: 0 0 0 2px rgba(var(--v-theme-primary), 0.4);
+    box-shadow: 0 0 0 2px color-mix(in srgb, rgb(var(--v-theme-primary)) 40%, transparent);
   }
 }
 

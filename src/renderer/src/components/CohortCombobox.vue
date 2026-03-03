@@ -16,20 +16,20 @@
     @update:model-value="handleSelectionChange"
   >
     <template #chip="{ item, props }">
-      <v-chip v-bind="props" :color="getCohortColor(item.raw.name)" size="small" label>
-        {{ item.raw.name }}
+      <v-chip v-bind="props" :color="getCohortColor(item.name)" size="small" label>
+        {{ item.name }}
       </v-chip>
     </template>
     <template #item="{ item, props }">
       <v-list-item v-bind="props">
         <template #prepend>
-          <v-icon :color="getCohortColor(item.raw.name)" size="small">mdi-tag</v-icon>
+          <v-icon :color="getCohortColor(item.name)" size="small">mdi-tag</v-icon>
         </template>
       </v-list-item>
     </template>
     <template #no-data>
       <v-list-item>
-        <v-list-item-title class="text-grey text-body-2">
+        <v-list-item-title class="text-grey text-body-medium">
           Type to create a new cohort
         </v-list-item-title>
       </v-list-item>

@@ -1,10 +1,12 @@
 <template>
-  <v-container class="fill-height">
-    <v-row align="center" justify="center">
+  <v-container class="fill-height d-flex align-center flex-wrap">
+    <v-row class="align-center justify-center">
       <v-col cols="12" sm="8" md="6" class="text-center">
         <v-icon size="220" class="mb-4" icon="custom:varlens-dna" />
-        <h2 class="text-h4 font-weight-medium text-grey-darken-2">Welcome to VarLens</h2>
-        <p class="text-body-1 mt-3 text-grey-darken-1">
+        <h2 class="text-headline-large font-weight-medium text-grey-darken-2">
+          Welcome to VarLens
+        </h2>
+        <p class="text-body-large mt-3 text-grey-darken-1">
           Analyze genetic variants with a data-dense interface designed for research analysis.
         </p>
 
@@ -12,17 +14,19 @@
 
         <!-- Show different content based on whether cases exist -->
         <template v-if="hasCases">
-          <p class="text-body-2 text-grey">
+          <p class="text-body-medium text-grey">
             <v-icon size="small" class="mr-1">mdi-arrow-left</v-icon>
             Select a case from the sidebar to view variants
           </p>
         </template>
         <template v-else>
-          <p class="text-body-2 text-grey mb-4">Get started by importing your first variant file</p>
+          <p class="text-body-medium text-grey mb-4">
+            Get started by importing your first variant file
+          </p>
           <v-btn color="primary" size="large" prepend-icon="mdi-upload" @click="$emit('import')">
             Import Variants
           </v-btn>
-          <p class="text-caption text-grey mt-4">Supports .json and .json.gz files</p>
+          <p class="text-body-small text-grey mt-4">Supports .json and .json.gz files</p>
         </template>
       </v-col>
     </v-row>

@@ -110,19 +110,19 @@
           <v-chip
             closable
             size="x-small"
-            :color="(item.raw as Tag).color"
+            :color="(item as unknown as Tag).color"
             variant="flat"
-            @click:close="removeTagFilter((item.raw as Tag).id)"
+            @click:close="removeTagFilter((item as unknown as Tag).id)"
           >
-            {{ (item.raw as Tag).name }}
+            {{ (item as unknown as Tag).name }}
           </v-chip>
         </template>
         <template #item="{ item, props: itemProps }">
           <v-list-item v-bind="itemProps" :title="undefined">
             <template #prepend>
-              <v-icon :color="(item.raw as Tag).color" size="small">mdi-circle</v-icon>
+              <v-icon :color="(item as unknown as Tag).color" size="small">mdi-circle</v-icon>
             </template>
-            <v-list-item-title>{{ (item.raw as Tag).name }}</v-list-item-title>
+            <v-list-item-title>{{ (item as unknown as Tag).name }}</v-list-item-title>
           </v-list-item>
         </template>
       </v-select>
@@ -135,7 +135,7 @@
           class="annotation-hint-bar"
         >
           <v-icon size="small" class="mr-1">mdi-information-outline</v-icon>
-          <span class="text-caption">
+          <span class="text-body-small">
             No variants match the annotation filter. Star or comment on variants first, then filter.
           </span>
         </div>
@@ -352,7 +352,7 @@ onMounted(async () => {
 }
 
 .filter-search-input :deep(.v-field--focused) {
-  box-shadow: 0 0 0 2px rgba(var(--v-theme-primary), 0.15);
+  box-shadow: 0 0 0 2px color-mix(in srgb, rgb(var(--v-theme-primary)) 15%, transparent);
 }
 
 .filter-search-input :deep(.v-field__input) {
@@ -362,7 +362,7 @@ onMounted(async () => {
 .filter-search-input.filter-active :deep(.v-field) {
   border-color: rgb(var(--v-theme-primary));
   border-width: 2px;
-  background: rgba(var(--v-theme-primary), 0.04);
+  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 4%, transparent);
 }
 
 .filter-tag-input {
@@ -382,7 +382,7 @@ onMounted(async () => {
 .filter-tag-input.filter-active :deep(.v-field) {
   border-color: rgb(var(--v-theme-primary));
   border-width: 2px;
-  background: rgba(var(--v-theme-primary), 0.04);
+  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 4%, transparent);
 }
 
 /* Annotation hint bar */
@@ -390,8 +390,8 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   padding: 6px 16px;
-  background: rgba(var(--v-theme-warning), 0.08);
+  background: color-mix(in srgb, rgb(var(--v-theme-warning)) 8%, transparent);
   border-top: 1px solid rgba(var(--v-border-color), 0.08);
-  color: rgba(var(--v-theme-on-surface), 0.7);
+  color: color-mix(in srgb, rgb(var(--v-theme-on-surface)) 70%, transparent);
 }
 </style>

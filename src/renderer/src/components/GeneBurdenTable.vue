@@ -34,7 +34,7 @@
 
       <!-- Case frequency -->
       <template #[`item.case_frequency`]="{ item }">
-        <span class="text-caption">
+        <span class="text-body-small">
           {{ item.affected_case_count }} / {{ item.total_cases }} ({{
             formatPercentage(item.affected_case_count / item.total_cases)
           }})

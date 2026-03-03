@@ -5,7 +5,7 @@
       <div class="d-flex align-center">
         <v-menu>
           <template #activator="{ props }">
-            <v-btn v-bind="props" variant="text" size="small" class="text-caption">
+            <v-btn v-bind="props" variant="text" size="small" class="text-body-small">
               v{{ appVersion }}
             </v-btn>
           </template>

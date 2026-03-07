@@ -1,3 +1,35 @@
+// Auto-update types
+export type UpdateState =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'not-available'
+  | 'downloading'
+  | 'downloaded'
+  | 'error'
+
+export interface UpdateProgress {
+  percent: number
+  bytesPerSecond: number
+  transferred: number
+  total: number
+}
+
+export interface UpdateStatus {
+  state: UpdateState
+  version?: string
+  releaseNotes?: string
+  progress?: UpdateProgress
+  error?: string
+}
+
+export interface UpdaterAPI {
+  checkForUpdate: () => Promise<void>
+  downloadUpdate: () => Promise<void>
+  installUpdate: () => Promise<void>
+  onStatusChange: (callback: (status: UpdateStatus) => void) => () => void
+}
+
 // Import database and import types for reuse
 import type {
   Case,
@@ -380,4 +412,5 @@ export interface WindowAPI {
   transcripts: TranscriptsAPI
   tags: TagsAPI
   logs: LogsAPI
+  updater: UpdaterAPI
 }

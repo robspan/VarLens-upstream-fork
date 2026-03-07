@@ -106,9 +106,7 @@ describe('AutoUpdater service', () => {
 
   it('registers event listeners for all update events', () => {
     autoUpdaterService.initAutoUpdater()
-    const eventNames = mockAutoUpdater.on.mock.calls.map(
-      (call: [string, ...unknown[]]) => call[0]
-    )
+    const eventNames = mockAutoUpdater.on.mock.calls.map((call: [string, ...unknown[]]) => call[0])
     expect(eventNames).toContain('checking-for-update')
     expect(eventNames).toContain('update-available')
     expect(eventNames).toContain('update-not-available')

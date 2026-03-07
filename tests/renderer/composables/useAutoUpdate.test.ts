@@ -1,7 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// Track the registered callback for simulating status changes
-let statusCallback: ((status: unknown) => void) | null = null
 const cleanupFn = vi.fn()
 
 // Mock window.api
@@ -11,8 +9,7 @@ const mockApi = {
     downloadUpdate: vi.fn(),
     installUpdate: vi.fn(),
     getStatus: vi.fn().mockResolvedValue({ state: 'idle' }),
-    onStatusChange: vi.fn((cb: (status: unknown) => void) => {
-      statusCallback = cb
+    onStatusChange: vi.fn(() => {
       return cleanupFn
     })
   }
@@ -30,7 +27,6 @@ describe('useAutoUpdate', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
-    statusCallback = null
     mockApi.updater.getStatus.mockResolvedValue({ state: 'idle' })
     const mod = await import('../../../src/renderer/src/composables/useAutoUpdate')
     useAutoUpdate = mod.useAutoUpdate

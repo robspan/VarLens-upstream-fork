@@ -30,6 +30,99 @@
             />
           </template>
         </v-tooltip>
+
+        <!-- Update indicator -->
+        <template v-if="updateStatus.state === 'checking'">
+          <v-tooltip text="Checking for updates...">
+            <template #activator="{ props: tooltipProps }">
+              <v-btn
+                v-bind="tooltipProps"
+                icon
+                size="x-small"
+                variant="text"
+                class="ml-1"
+                :loading="true"
+              >
+                <v-icon size="x-small">mdi-refresh</v-icon>
+              </v-btn>
+            </template>
+          </v-tooltip>
+        </template>
+
+        <template v-else-if="updateStatus.state === 'available'">
+          <v-tooltip :text="`Update v${updateStatus.version} available — click to download`">
+            <template #activator="{ props: tooltipProps }">
+              <v-btn
+                v-bind="tooltipProps"
+                icon
+                size="x-small"
+                variant="text"
+                color="info"
+                class="ml-1"
+                @click="downloadUpdate"
+              >
+                <v-icon size="x-small">mdi-arrow-up-circle</v-icon>
+              </v-btn>
+            </template>
+          </v-tooltip>
+        </template>
+
+        <template v-else-if="updateStatus.state === 'downloading'">
+          <v-tooltip
+            :text="`Downloading update... ${Math.round(updateStatus.progress?.percent ?? 0)}%`"
+          >
+            <template #activator="{ props: tooltipProps }">
+              <v-btn
+                v-bind="tooltipProps"
+                icon
+                size="x-small"
+                variant="text"
+                class="ml-1"
+                :loading="true"
+              >
+                <v-icon size="x-small">mdi-download</v-icon>
+              </v-btn>
+            </template>
+          </v-tooltip>
+        </template>
+
+        <template v-else-if="updateStatus.state === 'downloaded'">
+          <v-tooltip text="Update ready — click to restart">
+            <template #activator="{ props: tooltipProps }">
+              <v-btn
+                v-bind="tooltipProps"
+                icon
+                size="x-small"
+                variant="text"
+                color="primary"
+                class="ml-1"
+                @click="installUpdate"
+              >
+                <v-badge dot color="success" floating>
+                  <v-icon size="x-small">mdi-restart</v-icon>
+                </v-badge>
+              </v-btn>
+            </template>
+          </v-tooltip>
+        </template>
+
+        <template v-else-if="updateStatus.state === 'error'">
+          <v-tooltip :text="`Update error: ${updateStatus.error ?? 'Unknown'} — click to retry`">
+            <template #activator="{ props: tooltipProps }">
+              <v-btn
+                v-bind="tooltipProps"
+                icon
+                size="x-small"
+                variant="text"
+                color="warning"
+                class="ml-1"
+                @click="checkForUpdate"
+              >
+                <v-icon size="x-small">mdi-alert-circle</v-icon>
+              </v-btn>
+            </template>
+          </v-tooltip>
+        </template>
       </div>
 
       <!-- Right section: Action buttons -->
@@ -115,6 +208,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useLogStore } from '../stores/logStore'
 import { useResponsiveLayout } from '../composables/useResponsiveLayout'
+import { useAutoUpdate } from '../composables/useAutoUpdate'
 
 defineProps<{
   disclaimerAcknowledged: boolean
@@ -128,6 +222,9 @@ const emit = defineEmits<{
 
 // Responsive layout
 const { showFooterLinks } = useResponsiveLayout()
+
+// Auto-update
+const { updateStatus, checkForUpdate, downloadUpdate, installUpdate } = useAutoUpdate()
 
 // Version state
 const appVersion = ref('...')

@@ -1,4 +1,3 @@
-/* eslint-disable no-undef */
 import { ref, computed, onUnmounted } from 'vue'
 import type { Ref, ComputedRef } from 'vue'
 import type { UpdateStatus } from '../../../shared/types/api'

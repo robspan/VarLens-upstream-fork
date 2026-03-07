@@ -114,10 +114,7 @@ export function getUpdateStatus(): UpdateStatus {
  * @param delayMs — initial delay before first check (default 30s)
  * @param intervalMs — interval between checks (default 4 hours)
  */
-export function scheduleUpdateChecks(
-  delayMs = 30_000,
-  intervalMs = 4 * 60 * 60 * 1000
-): void {
+export function scheduleUpdateChecks(delayMs = 30_000, intervalMs = 4 * 60 * 60 * 1000): void {
   if (is.dev) return
 
   setTimeout(() => {

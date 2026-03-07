@@ -51,6 +51,7 @@
       @comment-click="openCommentDialog"
       @navigate-to-case="handleNavigateToCase"
       @load-carriers="handleLoadCarriers"
+      @column-filters-change="handleColumnFiltersChange"
     />
 
     <!-- Comment Dialog -->
@@ -131,6 +132,9 @@ const {
 } = useAnnotations()
 const { prefs, resetToDefaults, toggleColumnVisibility, setColumnOrder } =
   useColumnPreferences('cohort-table')
+
+// Per-column text filters from CohortDataTable
+const cohortColumnFilters = ref<Record<string, string> | undefined>(undefined)
 
 // Local state
 // dataTableRef is used in template via ref="dataTableRef"
@@ -236,7 +240,8 @@ const buildQueryParams = () => ({
   acmg_classifications:
     filters.value.acmgClassifications.length > 0
       ? [...filters.value.acmgClassifications]
-      : undefined
+      : undefined,
+  column_filters: cohortColumnFilters.value
 })
 
 // Event handlers
@@ -273,6 +278,13 @@ const handleTableOptions = async (options: {
 const handleRowClick = (variant: CohortVariant) => {
   selectedVariantKey.value = variant.variant_key
   emit('row-click', variant)
+}
+
+const handleColumnFiltersChange = async (
+  filters: Record<string, string> | undefined
+): Promise<void> => {
+  cohortColumnFilters.value = filters
+  await fetchVariants(buildQueryParams())
 }
 
 const handleRetry = async () => {

@@ -23,6 +23,75 @@
       @update:options="handleTableOptions"
       @click:row="handleRowClick"
     >
+      <!-- Custom header slots with per-column filter icons -->
+      <template
+        v-for="col in filterableColumns"
+        :key="`header-${col.key}`"
+        #[`header.${col.key}`]="{ column: headerColumn, getSortIcon, toggleSort, isSorted }"
+      >
+        <div class="d-flex align-center justify-space-between header-wrapper">
+          <div
+            class="d-flex align-center flex-grow-1 sortable-header"
+            @click="toggleSort(headerColumn)"
+          >
+            <span class="header-title">{{ headerColumn.title }}</span>
+            <v-icon v-if="isSorted(headerColumn)" size="x-small" class="ml-1">
+              {{ getSortIcon(headerColumn) }}
+            </v-icon>
+            <v-icon v-else size="x-small" class="ml-1 sort-icon-inactive">mdi-sort</v-icon>
+          </div>
+          <v-menu :close-on-content-click="false" location="bottom">
+            <template #activator="{ props: menuProps }">
+              <v-btn
+                v-bind="menuProps"
+                icon
+                size="x-small"
+                variant="text"
+                :color="hasColumnFilter(col.key) ? 'primary' : undefined"
+                @click.stop
+              >
+                <v-icon size="x-small">
+                  {{ hasColumnFilter(col.key) ? 'mdi-filter' : 'mdi-filter-outline' }}
+                </v-icon>
+              </v-btn>
+            </template>
+            <v-card min-width="250" max-width="350">
+              <v-card-title class="text-subtitle-2 py-2">
+                Filter: {{ headerColumn.title }}
+              </v-card-title>
+              <v-divider />
+              <v-card-text class="pa-3">
+                <v-text-field
+                  :model-value="(columnFilters as Record<string, string>)[col.key] || ''"
+                  label="Filter value"
+                  placeholder="Type to filter..."
+                  density="compact"
+                  variant="outlined"
+                  clearable
+                  hide-details
+                  autofocus
+                  @update:model-value="(v: string | null) => setColumnFilter(col.key, v)"
+                >
+                  <template #prepend-inner>
+                    <v-icon size="small">mdi-magnify</v-icon>
+                  </template>
+                </v-text-field>
+                <div class="text-caption text-medium-emphasis mt-2">
+                  Case-insensitive partial match
+                </div>
+              </v-card-text>
+              <v-divider />
+              <v-card-actions class="pa-2">
+                <v-spacer />
+                <v-btn size="small" variant="text" @click="clearColumnFilter(col.key)">
+                  Clear
+                </v-btn>
+              </v-card-actions>
+            </v-card>
+          </v-menu>
+        </div>
+      </template>
+
       <!-- Annotations column (star, ACMG, comment) -->
       <template #[`item.annotations`]="{ item }">
         <AnnotationsCell
@@ -158,7 +227,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, nextTick } from 'vue'
+import { ref, watch, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import type { CohortVariant } from '../../../../shared/types/cohort'
 import type { AcmgClassification } from '../../../../main/database/types'
 import { useTableScroll } from '../../composables/useTableScroll'
@@ -176,6 +245,7 @@ import {
   ExternalLinkCell
 } from '../table-cells'
 import CarrierExpandedRow from './CarrierExpandedRow.vue'
+import { useColumnFilters } from '../../composables/useColumnFilters'
 import { useExternalLinksStore, type ExternalLinkConfig } from '../../stores/externalLinksStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { resolveUrlTemplate, type VariantLinkData } from '../../utils/externalLinks'
@@ -221,6 +291,7 @@ interface Emits {
   (e: 'comment-click', item: CohortVariant): void
   (e: 'navigate-to-case', payload: { caseId: number; item: CohortVariant }): void
   (e: 'load-carriers', variant: CohortVariant): void
+  (e: 'column-filters-change', filters: Record<string, string> | undefined): void
 }
 
 const props = defineProps<Props>()
@@ -235,6 +306,46 @@ const { getRowProps } = useTableRowProps<CohortVariant>({
   getItemId: (item: CohortVariant) => item.variant_key
 })
 const { expandedRows, getCarriers, hasCarriers, clearCache: clearCarrierCache } = useCarriers()
+
+// Per-column text filters
+const {
+  columnFilters,
+  setColumnFilter,
+  clearColumnFilter,
+  hasFilter: hasColumnFilter,
+  getColumnFiltersParam
+} = useColumnFilters()
+
+// Filterable columns: sortable data columns (exclude annotations, actions, expand columns)
+const filterableColumns = computed(() =>
+  props.headers.filter(
+    (h) =>
+      h.sortable !== false &&
+      !h.key.startsWith('_link_') &&
+      h.key !== 'annotations' &&
+      h.key !== 'data-table-expand'
+  )
+)
+
+// Debounced emit when column filters change
+// eslint-disable-next-line no-undef
+let columnFilterTimer: ReturnType<typeof setTimeout> | null = null
+watch(
+  getColumnFiltersParam,
+  (newFilters) => {
+    // eslint-disable-next-line no-undef
+    if (columnFilterTimer !== null) clearTimeout(columnFilterTimer)
+    // eslint-disable-next-line no-undef
+    columnFilterTimer = setTimeout(() => {
+      emit('column-filters-change', newFilters)
+    }, 300)
+  },
+  { deep: true }
+)
+onUnmounted(() => {
+  // eslint-disable-next-line no-undef
+  if (columnFilterTimer !== null) clearTimeout(columnFilterTimer)
+})
 
 // Stores
 const linksStore = useExternalLinksStore()
@@ -376,6 +487,38 @@ defineExpose({ refresh })
 </script>
 
 <style scoped>
+/* Per-column filter header layout */
+.header-wrapper {
+  width: 100%;
+  gap: 4px;
+}
+
+.sortable-header {
+  cursor: pointer;
+  user-select: none;
+  min-width: 0;
+}
+
+.sortable-header:hover {
+  opacity: 0.7;
+}
+
+.header-title {
+  font-weight: 600;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sort-icon-inactive {
+  opacity: 0.3;
+}
+
+.sortable-header:hover .sort-icon-inactive {
+  opacity: 0.6;
+}
+
 /* Table container fills remaining height in flex parent */
 .table-container {
   position: relative;

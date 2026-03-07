@@ -809,6 +809,16 @@ export class DatabaseService {
       params.push(filter.case_id, ...filter.acmg_classifications)
     }
 
+    // Per-column text filters (LIKE case-insensitive partial match)
+    if (filter.column_filters !== undefined) {
+      for (const [column, value] of Object.entries(filter.column_filters)) {
+        if (value === '' || SORTABLE_COLUMNS[column] === undefined) continue
+        const sqlColumn = SORTABLE_COLUMNS[column]
+        conditions.push(`CAST(${sqlColumn} AS TEXT) LIKE ? COLLATE NOCASE`)
+        params.push(`%${value}%`)
+      }
+    }
+
     // Build ORDER BY clause
     const orderByClause = this.buildSortClause(sortBy)
 

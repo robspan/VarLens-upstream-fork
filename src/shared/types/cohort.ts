@@ -144,4 +144,6 @@ export interface CohortSearchParams {
   has_comment?: boolean
   /** Filter by ACMG classifications (global annotations) */
   acmg_classifications?: string[]
+  /** Per-column text filters (key = column name, value = search text) */
+  column_filters?: Record<string, string>
 }

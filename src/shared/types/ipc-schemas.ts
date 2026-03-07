@@ -100,7 +100,13 @@ export const CohortSearchParamsSchema = z.object({
   // Annotation filters
   starred_only: z.boolean().optional(),
   has_comment: z.boolean().optional(),
-  acmg_classifications: nullishStringArray()
+  acmg_classifications: nullishStringArray(),
+
+  // Per-column text filters
+  column_filters: z
+    .record(z.string(), z.string())
+    .nullish()
+    .transform((val) => val ?? undefined)
 })
 
 /**
@@ -159,7 +165,13 @@ export const VariantFilterPartialSchema = z.object({
   // Annotation filters
   starred_only: z.boolean().optional(),
   has_comment: z.boolean().optional(),
-  acmg_classifications: nullishStringArray()
+  acmg_classifications: nullishStringArray(),
+
+  // Per-column text filters
+  column_filters: z
+    .record(z.string(), z.string())
+    .nullish()
+    .transform((val) => val ?? undefined)
 })
 
 /**

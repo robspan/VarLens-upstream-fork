@@ -211,7 +211,7 @@ export const clinvarGroups: FilterGroupConfig = {
     },
     {
       id: 'compound',
-      label: 'Compound Het',
+      label: 'Compound',
       color: 'purple',
       icon: 'mdi-link-variant',
       items: [

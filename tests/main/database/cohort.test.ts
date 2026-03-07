@@ -190,7 +190,7 @@ describe('CohortService', () => {
     })
 
     describe('filter: clinvars', () => {
-      it('should filter by ClinVar classification with partial match', () => {
+      it('should filter by ClinVar classification with exact match', () => {
         const caseId = insertCase('Test Case')
         insertVariant(caseId, '1', 100, 'A', 'G', { clinvar: 'Pathogenic' })
         insertVariant(caseId, '2', 200, 'C', 'T', { clinvar: 'Likely_pathogenic' })
@@ -199,10 +199,10 @@ describe('CohortService', () => {
 
         const result = cohortService.getCohortVariants({ clinvars: ['Pathogenic'] })
 
-        expect(result.total_count).toBe(2) // Matches both Pathogenic and Likely_pathogenic
+        expect(result.total_count).toBe(1) // Exact match only
         const clinvars = result.data.map((v) => v.clinvar)
         expect(clinvars).toContain('Pathogenic')
-        expect(clinvars).toContain('Likely_pathogenic')
+        expect(clinvars).not.toContain('Likely_pathogenic')
       })
     })
 

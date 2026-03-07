@@ -128,11 +128,11 @@ export class CohortService {
       params_array.push(...params.funcs)
     }
 
-    // ClinVar filter (IN clause with LIKE for partial matches)
+    // ClinVar filter (exact match via IN clause)
     if (params.clinvars !== undefined && params.clinvars.length > 0) {
-      const clinvarConditions = params.clinvars.map(() => 'clinvar LIKE ?').join(' OR ')
-      whereConditions.push(`(${clinvarConditions})`)
-      params_array.push(...params.clinvars.map((c) => `%${c}%`))
+      const placeholders = params.clinvars.map(() => '?').join(', ')
+      whereConditions.push(`clinvar IN (${placeholders})`)
+      params_array.push(...params.clinvars)
     }
 
     // gnomAD AF max filter
@@ -175,6 +175,16 @@ export class CohortService {
           AND va.acmg_classification IN (${placeholders}))`
       )
       params_array.push(...params.acmg_classifications)
+    }
+
+    // Per-column text filters (LIKE case-insensitive partial match)
+    if (params.column_filters !== undefined) {
+      for (const [column, value] of Object.entries(params.column_filters)) {
+        if (value === '' || SORTABLE_COLUMNS[column] === undefined) continue
+        const sqlColumn = SORTABLE_COLUMNS[column]
+        whereConditions.push(`CAST(${sqlColumn} AS TEXT) LIKE ? COLLATE NOCASE`)
+        params_array.push(`%${value}%`)
+      }
     }
 
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : ''

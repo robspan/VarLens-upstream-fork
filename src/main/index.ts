@@ -5,6 +5,7 @@ import Database from 'better-sqlite3-multiple-ciphers'
 import { registerIpcHandlers } from './ipc'
 import { initDatabaseManager, closeDatabaseManager } from './database'
 import { mainLogger } from './services/MainLogger'
+import { initAutoUpdater, scheduleUpdateChecks } from './services/AutoUpdater'
 
 // Global error handlers — surfaces crashes that would otherwise be silent on Windows
 process.on('uncaughtException', (error) => {
@@ -126,6 +127,10 @@ if (gotTheLock !== true) {
 
     // Register IPC handlers (await to catch load errors)
     await registerIpcHandlers()
+
+    // Initialize auto-updater and schedule periodic checks
+    initAutoUpdater()
+    scheduleUpdateChecks()
 
     // Default open or close DevTools by F12 in development
     // and ignore CommandOrControl + R in production.

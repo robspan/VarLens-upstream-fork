@@ -62,7 +62,7 @@
               <v-divider />
               <v-card-text class="pa-3">
                 <v-text-field
-                  :model-value="(columnFilters as Record<string, string>)[col.key] || ''"
+                  :model-value="columnFilters[col.key] || ''"
                   label="Filter value"
                   placeholder="Type to filter..."
                   density="compact"
@@ -227,7 +227,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, watch, computed, onMounted, nextTick } from 'vue'
 import type { CohortVariant } from '../../../../shared/types/cohort'
 import type { AcmgClassification } from '../../../../main/database/types'
 import { useTableScroll } from '../../composables/useTableScroll'
@@ -246,6 +246,7 @@ import {
 } from '../table-cells'
 import CarrierExpandedRow from './CarrierExpandedRow.vue'
 import { useColumnFilters } from '../../composables/useColumnFilters'
+import { useDebounce } from '../../composables/useDebounce'
 import { useExternalLinksStore, type ExternalLinkConfig } from '../../stores/externalLinksStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { resolveUrlTemplate, type VariantLinkData } from '../../utils/externalLinks'
@@ -328,24 +329,19 @@ const filterableColumns = computed(() =>
 )
 
 // Debounced emit when column filters change
-// eslint-disable-next-line no-undef
-let columnFilterTimer: ReturnType<typeof setTimeout> | null = null
+const { debouncedFn: debouncedEmitColumnFilters } = useDebounce(
+  (newFilters: Record<string, string> | undefined) => {
+    emit('column-filters-change', newFilters)
+  },
+  300
+)
 watch(
   getColumnFiltersParam,
   (newFilters) => {
-    // eslint-disable-next-line no-undef
-    if (columnFilterTimer !== null) clearTimeout(columnFilterTimer)
-    // eslint-disable-next-line no-undef
-    columnFilterTimer = setTimeout(() => {
-      emit('column-filters-change', newFilters)
-    }, 300)
+    debouncedEmitColumnFilters(newFilters)
   },
   { deep: true }
 )
-onUnmounted(() => {
-  // eslint-disable-next-line no-undef
-  if (columnFilterTimer !== null) clearTimeout(columnFilterTimer)
-})
 
 // Stores
 const linksStore = useExternalLinksStore()

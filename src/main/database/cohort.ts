@@ -32,7 +32,8 @@ const SORTABLE_COLUMNS: Record<string, string> = {
   func: 'func',
   clinvar: 'clinvar',
   gnomad_af: 'gnomad_af',
-  cadd_phred: 'cadd_phred'
+  cadd_phred: 'cadd_phred',
+  transcript: 'transcript'
 }
 
 /**

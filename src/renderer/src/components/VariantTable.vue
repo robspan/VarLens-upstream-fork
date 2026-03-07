@@ -69,7 +69,7 @@
                 <v-divider />
                 <v-card-text class="pa-3">
                   <v-text-field
-                    :model-value="(columnFilters as Record<string, string>)[col.key] || ''"
+                    :model-value="columnFilters[col.key] || ''"
                     label="Filter value"
                     placeholder="Type to filter..."
                     density="compact"
@@ -311,7 +311,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, watch, computed, onMounted, nextTick } from 'vue'
 import type {
   Variant,
   VariantFilter,
@@ -326,6 +326,7 @@ import { useAnnotations } from '../composables/useAnnotations'
 import type { AcmgClassification } from '../../../main/database/types'
 import { useColumnPreferences } from '../composables/useColumnPreferences'
 import { useColumnFilters } from '../composables/useColumnFilters'
+import { useDebounce } from '../composables/useDebounce'
 import { formatConsequence } from '../utils/formatters'
 import { useTableScroll } from '../composables/useTableScroll'
 import CommentDialog from './CommentDialog.vue'
@@ -712,8 +713,9 @@ const loadVariants = async (_options?: any): Promise<void> => {
 watch(
   () => props.caseId,
   async (newCaseId) => {
-    // Clear selection on case change
+    // Clear selection and column filters on case change
     selectedVariantId.value = null
+    clearAllColumnFilters()
 
     if (newCaseId !== undefined && newCaseId !== 0) {
       // Clear cache and reset pagination
@@ -757,26 +759,12 @@ watch(
 )
 
 // Debounced reload when per-column filters change
-// eslint-disable-next-line no-undef
-let columnFilterTimer: ReturnType<typeof setTimeout> | null = null
-watch(
-  getColumnFiltersParam,
-  () => {
-    // eslint-disable-next-line no-undef
-    if (columnFilterTimer !== null) clearTimeout(columnFilterTimer)
-    // eslint-disable-next-line no-undef
-    columnFilterTimer = setTimeout(async () => {
-      cursorCache.value.clear()
-      page.value = 1
-      await loadVariants()
-    }, 300)
-  },
-  { deep: true }
-)
-onUnmounted(() => {
-  // eslint-disable-next-line no-undef
-  if (columnFilterTimer !== null) clearTimeout(columnFilterTimer)
-})
+const { debouncedFn: debouncedColumnFilterReload } = useDebounce(async () => {
+  cursorCache.value.clear()
+  page.value = 1
+  await loadVariants()
+}, 300)
+watch(getColumnFiltersParam, debouncedColumnFilterReload, { deep: true })
 
 // Load annotations when variants change
 watch(

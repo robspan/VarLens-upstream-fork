@@ -531,4 +531,63 @@ describe('CohortService', () => {
       expect(tp53?.affected_case_count).toBe(1)
     })
   })
+
+  describe('getCohortVariants column_filters', () => {
+    it('should filter by text column with partial match', () => {
+      const case1 = insertCase('Case 1')
+      const case2 = insertCase('Case 2')
+
+      insertVariant(case1, '1', 100, 'A', 'G', { gene_symbol: 'BRCA1' })
+      insertVariant(case2, '1', 200, 'C', 'T', { gene_symbol: 'BRCA2' })
+      insertVariant(case1, '2', 300, 'G', 'A', { gene_symbol: 'TP53' })
+
+      const result = cohortService.getCohortVariants({ column_filters: { gene_symbol: 'BRCA' } })
+      expect(result.total_count).toBe(2)
+      expect(result.data.every((v) => v.gene_symbol?.includes('BRCA'))).toBe(true)
+    })
+
+    it('should combine multiple column filters with AND logic', () => {
+      const case1 = insertCase('Case 1')
+
+      insertVariant(case1, '1', 100, 'A', 'G', {
+        gene_symbol: 'BRCA1',
+        clinvar: 'Pathogenic'
+      })
+      insertVariant(case1, '1', 200, 'C', 'T', {
+        gene_symbol: 'BRCA2',
+        clinvar: 'Benign'
+      })
+      insertVariant(case1, '2', 300, 'G', 'A', {
+        gene_symbol: 'TP53',
+        clinvar: 'Pathogenic'
+      })
+
+      const result = cohortService.getCohortVariants({
+        column_filters: { gene_symbol: 'BRCA', clinvar: 'Pathogenic' }
+      })
+      expect(result.total_count).toBe(1)
+      expect(result.data[0].gene_symbol).toBe('BRCA1')
+    })
+
+    it('should safely ignore unknown column keys', () => {
+      const case1 = insertCase('Case 1')
+      insertVariant(case1, '1', 100, 'A', 'G')
+
+      const result = cohortService.getCohortVariants({
+        column_filters: { nonexistent_column: 'test' }
+      })
+      expect(result.total_count).toBe(1)
+    })
+
+    it('should skip empty string filter values', () => {
+      const case1 = insertCase('Case 1')
+      insertVariant(case1, '1', 100, 'A', 'G', { gene_symbol: 'BRCA1' })
+      insertVariant(case1, '1', 200, 'C', 'T', { gene_symbol: 'TP53' })
+
+      const result = cohortService.getCohortVariants({
+        column_filters: { gene_symbol: '' }
+      })
+      expect(result.total_count).toBe(2)
+    })
+  })
 })

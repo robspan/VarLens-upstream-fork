@@ -45,20 +45,11 @@ jobs:
       - name: Rebuild native modules for Electron
         run: npm run rebuild:electron
 
-      - name: Build
-        run: npx electron-vite build && npx electron-builder --linux --publish never
+      - name: Build and publish
+        run: npx electron-vite build && npx electron-builder --linux --publish always
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
-
-      - name: Upload to release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          file: release/*
-          file_glob: true
-          tag: ${{ github.ref_name }}
-          overwrite: true
-          prerelease: false
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   release-macos:
     name: Release (macOS)
@@ -91,20 +82,11 @@ jobs:
       - name: Rebuild native modules for Electron
         run: npm run rebuild:electron
 
-      - name: Build
-        run: npx electron-vite build && npx electron-builder --mac --publish never
+      - name: Build and publish
+        run: npx electron-vite build && npx electron-builder --mac --publish always
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
-
-      - name: Upload to release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          file: release/*
-          file_glob: true
-          tag: ${{ github.ref_name }}
-          overwrite: true
-          prerelease: false
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   release-windows:
     name: Release (Windows)
@@ -138,10 +120,11 @@ jobs:
       - name: Rebuild native modules for Electron
         run: npm run rebuild:electron
 
-      - name: Build
-        run: npx electron-vite build && npx electron-builder --win --publish never
+      - name: Build and publish
+        run: npx electron-vite build && npx electron-builder --win --publish always
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload unsigned artifacts for signing
         if: vars.SIGNPATH_ORGANIZATION_ID != ''
@@ -169,28 +152,6 @@ jobs:
         uses: svenstaro/upload-release-action@v2
         with:
           file: release-signed/*.exe
-          file_glob: true
-          tag: ${{ github.ref_name }}
-          overwrite: true
-          prerelease: false
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload remaining artifacts to release
-        if: vars.SIGNPATH_ORGANIZATION_ID != ''
-        uses: svenstaro/upload-release-action@v2
-        with:
-          file: release/!(*.exe)
-          file_glob: true
-          tag: ${{ github.ref_name }}
-          overwrite: true
-          prerelease: false
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload all artifacts to release (unsigned)
-        if: vars.SIGNPATH_ORGANIZATION_ID == ''
-        uses: svenstaro/upload-release-action@v2
-        with:
-          file: release/*
           file_glob: true
           tag: ${{ github.ref_name }}
           overwrite: true

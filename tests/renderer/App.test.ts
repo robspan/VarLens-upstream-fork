@@ -74,6 +74,13 @@ const mockApi = {
   },
   logs: {
     onMessage: vi.fn(() => vi.fn()) // Returns cleanup function
+  },
+  updater: {
+    checkForUpdate: vi.fn().mockResolvedValue(undefined),
+    downloadUpdate: vi.fn().mockResolvedValue(undefined),
+    installUpdate: vi.fn().mockResolvedValue(undefined),
+    getStatus: vi.fn().mockResolvedValue({ state: 'idle' }),
+    onStatusChange: vi.fn(() => vi.fn()) // Returns cleanup function
   }
 }
 

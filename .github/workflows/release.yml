@@ -45,20 +45,11 @@ jobs:
       - name: Rebuild native modules for Electron
         run: npm run rebuild:electron
 
-      - name: Build
-        run: npx electron-vite build && npx electron-builder --linux --publish never
+      - name: Build and publish
+        run: npx electron-vite build && npx electron-builder --linux --publish always
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
-
-      - name: Upload to release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          file: release/*
-          file_glob: true
-          tag: ${{ github.ref_name }}
-          overwrite: true
-          prerelease: false
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   release-macos:
     name: Release (macOS)
@@ -91,20 +82,11 @@ jobs:
       - name: Rebuild native modules for Electron
         run: npm run rebuild:electron
 
-      - name: Build
-        run: npx electron-vite build && npx electron-builder --mac --publish never
+      - name: Build and publish
+        run: npx electron-vite build && npx electron-builder --mac --publish always
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
-
-      - name: Upload to release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          file: release/*
-          file_glob: true
-          tag: ${{ github.ref_name }}
-          overwrite: true
-          prerelease: false
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   release-windows:
     name: Release (Windows)
@@ -138,10 +120,11 @@ jobs:
       - name: Rebuild native modules for Electron
         run: npm run rebuild:electron
 
-      - name: Build
-        run: npx electron-vite build && npx electron-builder --win --publish never
+      - name: Build and publish
+        run: npx electron-vite build && npx electron-builder --win --publish always
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload unsigned artifacts for signing
         if: vars.SIGNPATH_ORGANIZATION_ID != ''
@@ -175,23 +158,31 @@ jobs:
           prerelease: false
           repo_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload remaining artifacts to release
+      - name: Regenerate latest.yml with signed exe hashes
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        shell: pwsh
+        run: |
+          # Replace unsigned .exe files with signed versions in release/
+          Copy-Item -Path release-signed/*.exe -Destination release/ -Force
+
+          # Recalculate SHA512 hashes and file sizes, update latest.yml
+          $yml = Get-Content release/latest.yml -Raw
+          foreach ($exe in Get-ChildItem release/*.exe) {
+            $hash = (Get-FileHash $exe.FullName -Algorithm SHA512).Hash.ToLower()
+            $b64 = [Convert]::ToBase64String([byte[]] -split ($hash -replace '..', '0x$& '))
+            $size = $exe.Length
+            $name = $exe.Name
+            # Update sha512 for this file's entry
+            $yml = $yml -replace "(?<=path: $([regex]::Escape($name))\s*\n\s*sha512: )\S+", $b64
+            $yml = $yml -replace "(?<=path: $([regex]::Escape($name))\s*\n\s*sha512: \S+\s*\n\s*size: )\d+", $size
+          }
+          Set-Content release/latest.yml $yml -NoNewline
+
+      - name: Upload updated latest.yml
         if: vars.SIGNPATH_ORGANIZATION_ID != ''
         uses: svenstaro/upload-release-action@v2
         with:
-          file: release/!(*.exe)
-          file_glob: true
-          tag: ${{ github.ref_name }}
-          overwrite: true
-          prerelease: false
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload all artifacts to release (unsigned)
-        if: vars.SIGNPATH_ORGANIZATION_ID == ''
-        uses: svenstaro/upload-release-action@v2
-        with:
-          file: release/*
-          file_glob: true
+          file: release/latest.yml
           tag: ${{ github.ref_name }}
           overwrite: true
           prerelease: false

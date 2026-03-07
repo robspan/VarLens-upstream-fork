@@ -107,6 +107,8 @@ export interface VariantFilter {
   has_comment?: boolean
   /** Filter by ACMG classification (OR logic) */
   acmg_classifications?: string[]
+  /** Per-column text filters (key = column name, value = search text) */
+  column_filters?: Record<string, string>
 }
 
 /**

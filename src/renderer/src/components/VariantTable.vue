@@ -30,6 +30,75 @@
         @update:options="loadVariants"
         @click:row="handleRowClick"
       >
+        <!-- Custom header slots with per-column filter icons -->
+        <template
+          v-for="col in filterableColumns"
+          :key="`header-${col.key}`"
+          #[`header.${col.key}`]="{ column: headerColumn, getSortIcon, toggleSort, isSorted }"
+        >
+          <div class="d-flex align-center justify-space-between header-wrapper">
+            <div
+              class="d-flex align-center flex-grow-1 sortable-header"
+              @click="toggleSort(headerColumn)"
+            >
+              <span class="header-title">{{ headerColumn.title }}</span>
+              <v-icon v-if="isSorted(headerColumn)" size="x-small" class="ml-1">
+                {{ getSortIcon(headerColumn) }}
+              </v-icon>
+              <v-icon v-else size="x-small" class="ml-1 sort-icon-inactive">mdi-sort</v-icon>
+            </div>
+            <v-menu :close-on-content-click="false" location="bottom">
+              <template #activator="{ props: menuProps }">
+                <v-btn
+                  v-bind="menuProps"
+                  icon
+                  size="x-small"
+                  variant="text"
+                  :color="hasColumnFilter(col.key) ? 'primary' : undefined"
+                  @click.stop
+                >
+                  <v-icon size="x-small">
+                    {{ hasColumnFilter(col.key) ? 'mdi-filter' : 'mdi-filter-outline' }}
+                  </v-icon>
+                </v-btn>
+              </template>
+              <v-card min-width="250" max-width="350">
+                <v-card-title class="text-subtitle-2 py-2">
+                  Filter: {{ headerColumn.title }}
+                </v-card-title>
+                <v-divider />
+                <v-card-text class="pa-3">
+                  <v-text-field
+                    :model-value="columnFilters[col.key] || ''"
+                    label="Filter value"
+                    placeholder="Type to filter..."
+                    density="compact"
+                    variant="outlined"
+                    clearable
+                    hide-details
+                    autofocus
+                    @update:model-value="(v: string | null) => setColumnFilter(col.key, v)"
+                  >
+                    <template #prepend-inner>
+                      <v-icon size="small">mdi-magnify</v-icon>
+                    </template>
+                  </v-text-field>
+                  <div class="text-caption text-medium-emphasis mt-2">
+                    Case-insensitive partial match
+                  </div>
+                </v-card-text>
+                <v-divider />
+                <v-card-actions class="pa-2">
+                  <v-spacer />
+                  <v-btn size="small" variant="text" @click="clearColumnFilter(col.key)">
+                    Clear
+                  </v-btn>
+                </v-card-actions>
+              </v-card>
+            </v-menu>
+          </div>
+        </template>
+
         <!-- Annotations column (star, ACMG, comment) -->
         <template #[`item.annotations`]="{ item }">
           <AnnotationsCell
@@ -256,6 +325,8 @@ import { resolveUrlTemplate, buildOmimUrl, type VariantLinkData } from '../utils
 import { useAnnotations } from '../composables/useAnnotations'
 import type { AcmgClassification } from '../../../main/database/types'
 import { useColumnPreferences } from '../composables/useColumnPreferences'
+import { useColumnFilters } from '../composables/useColumnFilters'
+import { useDebounce } from '../composables/useDebounce'
 import { formatConsequence } from '../utils/formatters'
 import { useTableScroll } from '../composables/useTableScroll'
 import CommentDialog from './CommentDialog.vue'
@@ -307,6 +378,18 @@ const {
 
 // Initialize column preferences (only prefs needed here, management is in FilterToolbar)
 const { prefs } = useColumnPreferences('variant-table')
+
+// Per-column text filters
+const {
+  columnFilters,
+  hasActiveFilters: hasColumnFilters,
+  activeFilterCount: columnFilterCount,
+  setColumnFilter,
+  clearColumnFilter,
+  clearAllColumnFilters,
+  hasFilter: hasColumnFilter,
+  getColumnFiltersParam
+} = useColumnFilters()
 
 // Template refs (used in template via ref="...")
 // @ts-expect-error - These refs ARE used in template bindings
@@ -406,6 +489,13 @@ const orderedColumns = computed(() => {
 const visibleHeaders = computed(() => {
   return orderedColumns.value.filter((h) => prefs.value.visibility[h.key] !== false)
 })
+
+// Filterable columns: sortable data columns (exclude annotations, actions, and link columns)
+const filterableColumns = computed(() =>
+  visibleHeaders.value.filter(
+    (h) => h.sortable !== false && !h.key.startsWith('_link_') && h.key !== 'annotations'
+  )
+)
 
 // Helper functions for link resolution
 const getVariantLinkData = (item: Variant): VariantLinkData => ({
@@ -577,6 +667,11 @@ const loadVariants = async (_options?: any): Promise<void> => {
     // Call IPC with filters and sortBy parameters
     // Deep-clone to strip all nested Vue reactive proxies (toRaw is shallow)
     const plainFilters = JSON.parse(JSON.stringify(props.filters))
+    // Merge per-column text filters
+    const colFilters = getColumnFiltersParam()
+    if (colFilters !== undefined) {
+      plainFilters.column_filters = colFilters
+    }
     const plainSortBy = JSON.parse(JSON.stringify(sortBy.value))
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any, no-undef
@@ -618,8 +713,9 @@ const loadVariants = async (_options?: any): Promise<void> => {
 watch(
   () => props.caseId,
   async (newCaseId) => {
-    // Clear selection on case change
+    // Clear selection and column filters on case change
     selectedVariantId.value = null
+    clearAllColumnFilters()
 
     if (newCaseId !== undefined && newCaseId !== 0) {
       // Clear cache and reset pagination
@@ -662,6 +758,14 @@ watch(
   { deep: true }
 )
 
+// Debounced reload when per-column filters change
+const { debouncedFn: debouncedColumnFilterReload } = useDebounce(async () => {
+  cursorCache.value.clear()
+  page.value = 1
+  await loadVariants()
+}, 300)
+watch(getColumnFiltersParam, debouncedColumnFilterReload, { deep: true })
+
 // Load annotations when variants change
 watch(
   variants,
@@ -695,11 +799,46 @@ onMounted(async () => {
 defineExpose({
   resetSort,
   refresh: loadVariants,
-  columns: computed(() => headers.value.map((h) => ({ key: h.key, title: h.title })))
+  columns: computed(() => headers.value.map((h) => ({ key: h.key, title: h.title }))),
+  hasColumnFilters,
+  columnFilterCount,
+  clearAllColumnFilters
 })
 </script>
 
 <style scoped>
+/* Per-column filter header layout */
+.header-wrapper {
+  width: 100%;
+  gap: 4px;
+}
+
+.sortable-header {
+  cursor: pointer;
+  user-select: none;
+  min-width: 0;
+}
+
+.sortable-header:hover {
+  opacity: 0.7;
+}
+
+.header-title {
+  font-weight: 600;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sort-icon-inactive {
+  opacity: 0.3;
+}
+
+.sortable-header:hover .sort-icon-inactive {
+  opacity: 0.6;
+}
+
 /* Table container fills remaining height in flex parent */
 .table-container {
   position: relative;

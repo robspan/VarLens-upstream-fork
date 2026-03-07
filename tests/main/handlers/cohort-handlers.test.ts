@@ -240,7 +240,7 @@ describe('cohort IPC handlers', () => {
       expect(nullVariant?.cadd_phred).toBeNull()
     })
 
-    it('uses LIKE for ClinVar partial matching', () => {
+    it('uses exact IN matching for ClinVar filter', () => {
       const caseId = insertCase('Test Case')
 
       insertVariant(caseId, '1', 100, 'A', 'G', { clinvar: 'Pathogenic' })
@@ -249,11 +249,11 @@ describe('cohort IPC handlers', () => {
 
       const result = cohortService.getCohortVariants({ clinvars: ['Pathogenic'] })
 
-      // Should match both (LIKE %Pathogenic%)
-      expect(result.total_count).toBe(2)
+      // Exact match only — should NOT match Likely_pathogenic
+      expect(result.total_count).toBe(1)
       const clinvars = result.data.map((v) => v.clinvar)
       expect(clinvars).toContain('Pathogenic')
-      expect(clinvars).toContain('Likely_pathogenic')
+      expect(clinvars).not.toContain('Likely_pathogenic')
     })
 
     it('combines multiple filters correctly', () => {

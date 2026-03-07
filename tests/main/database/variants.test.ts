@@ -952,4 +952,75 @@ describe('Variant Operations', () => {
       expect(result.data[2].pos).toBe(100)
     })
   })
+
+  describe('column_filters', () => {
+    it('should filter by text column with partial match', () => {
+      const caseId = createTestCase(service, 'col-filter-text')
+      service.insertVariantsBatch(caseId, [
+        { chr: '1', pos: 100, ref: 'A', alt: 'G', gene_symbol: 'BRCA1' },
+        { chr: '1', pos: 200, ref: 'C', alt: 'T', gene_symbol: 'BRCA2' },
+        { chr: '1', pos: 300, ref: 'G', alt: 'A', gene_symbol: 'TP53' }
+      ])
+
+      const result = service.getVariants(
+        { case_id: caseId, column_filters: { gene_symbol: 'BRCA' } },
+        20
+      )
+      expect(result.total_count).toBe(2)
+      expect(result.data.every((v) => v.gene_symbol?.includes('BRCA'))).toBe(true)
+    })
+
+    it('should filter by numeric column using text LIKE', () => {
+      const caseId = createTestCase(service, 'col-filter-numeric')
+      service.insertVariantsBatch(caseId, [
+        { chr: '1', pos: 100, ref: 'A', alt: 'G', cadd: 25.3 },
+        { chr: '1', pos: 200, ref: 'C', alt: 'T', cadd: 15.1 },
+        { chr: '1', pos: 300, ref: 'G', alt: 'A', cadd: 25.7 }
+      ])
+
+      const result = service.getVariants({ case_id: caseId, column_filters: { cadd: '25' } }, 20)
+      expect(result.total_count).toBe(2)
+    })
+
+    it('should combine multiple column filters with AND logic', () => {
+      const caseId = createTestCase(service, 'col-filter-combo')
+      service.insertVariantsBatch(caseId, [
+        { chr: '1', pos: 100, ref: 'A', alt: 'G', gene_symbol: 'BRCA1', clinvar: 'Pathogenic' },
+        { chr: '1', pos: 200, ref: 'C', alt: 'T', gene_symbol: 'BRCA2', clinvar: 'Benign' },
+        { chr: '1', pos: 300, ref: 'G', alt: 'A', gene_symbol: 'TP53', clinvar: 'Pathogenic' }
+      ])
+
+      const result = service.getVariants(
+        { case_id: caseId, column_filters: { gene_symbol: 'BRCA', clinvar: 'Pathogenic' } },
+        20
+      )
+      expect(result.total_count).toBe(1)
+      expect(result.data[0].gene_symbol).toBe('BRCA1')
+    })
+
+    it('should safely ignore unknown column keys', () => {
+      const caseId = createTestCase(service, 'col-filter-unknown')
+      service.insertVariantsBatch(caseId, [{ chr: '1', pos: 100, ref: 'A', alt: 'G' }])
+
+      const result = service.getVariants(
+        { case_id: caseId, column_filters: { nonexistent_column: 'test' } },
+        20
+      )
+      expect(result.total_count).toBe(1)
+    })
+
+    it('should skip empty string filter values', () => {
+      const caseId = createTestCase(service, 'col-filter-empty')
+      service.insertVariantsBatch(caseId, [
+        { chr: '1', pos: 100, ref: 'A', alt: 'G', gene_symbol: 'BRCA1' },
+        { chr: '1', pos: 200, ref: 'C', alt: 'T', gene_symbol: 'TP53' }
+      ])
+
+      const result = service.getVariants(
+        { case_id: caseId, column_filters: { gene_symbol: '' } },
+        20
+      )
+      expect(result.total_count).toBe(2)
+    })
+  })
 })

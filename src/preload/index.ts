@@ -291,6 +291,27 @@ const api = {
         ipcRenderer.removeListener('logs:message', handler)
       }
     }
+  },
+
+  updater: {
+    checkForUpdate: () => ipcRenderer.invoke('updater:check'),
+    downloadUpdate: () => ipcRenderer.invoke('updater:download'),
+    installUpdate: () => ipcRenderer.invoke('updater:install'),
+    getStatus: () => ipcRenderer.invoke('updater:status'),
+    onStatusChange: (
+      callback: (status: import('../shared/types/api').UpdateStatus) => void
+    ): (() => void) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        status: import('../shared/types/api').UpdateStatus
+      ): void => {
+        callback(status)
+      }
+      ipcRenderer.on('updater:status', handler)
+      return () => {
+        ipcRenderer.removeListener('updater:status', handler)
+      }
+    }
   }
 }
 

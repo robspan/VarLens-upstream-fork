@@ -27,6 +27,7 @@ export interface UpdaterAPI {
   checkForUpdate: () => Promise<void>
   downloadUpdate: () => Promise<void>
   installUpdate: () => Promise<void>
+  getStatus: () => Promise<UpdateStatus>
   onStatusChange: (callback: (status: UpdateStatus) => void) => () => void
 }
 

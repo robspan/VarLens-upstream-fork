@@ -659,5 +659,13 @@ export const mockApi: WindowAPI = {
 
   logs: {
     onMessage: () => () => {}
+  },
+
+  updater: {
+    checkForUpdate: async () => {},
+    downloadUpdate: async () => {},
+    installUpdate: async () => {},
+    getStatus: async () => ({ state: 'idle' as const }),
+    onStatusChange: () => () => {}
   }
 }

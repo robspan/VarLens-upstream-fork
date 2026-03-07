@@ -56,6 +56,9 @@ plan/
 .planning/
 *.json.gz
 
+# Worktrees
+.worktrees/
+
 # Preventive: common genomic formats
 *.vcf
 *.vcf.gz

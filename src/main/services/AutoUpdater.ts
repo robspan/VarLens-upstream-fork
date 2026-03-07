@@ -116,10 +116,17 @@ export function getUpdateStatus(): UpdateStatus {
  */
 export function scheduleUpdateChecks(delayMs = 30_000, intervalMs = 4 * 60 * 60 * 1000): void {
   if (is.dev) return
+  if (checkInterval !== null) return
 
   setTimeout(() => {
-    checkForUpdates()
-    checkInterval = setInterval(() => checkForUpdates(), intervalMs)
+    checkForUpdates().catch((err) => {
+      mainLogger.error(`Scheduled update check failed: ${err}`, 'updater')
+    })
+    checkInterval = setInterval(() => {
+      checkForUpdates().catch((err) => {
+        mainLogger.error(`Scheduled update check failed: ${err}`, 'updater')
+      })
+    }, intervalMs)
   }, delayMs)
 }
 

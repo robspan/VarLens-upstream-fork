@@ -50,7 +50,9 @@
         </template>
 
         <template v-else-if="updateStatus.state === 'available'">
-          <v-tooltip :text="`Update v${updateStatus.version} available — click to download`">
+          <v-tooltip
+            :text="`Update${updateStatus.version ? ` v${updateStatus.version}` : ''} available — click to download`"
+          >
             <template #activator="{ props: tooltipProps }">
               <v-btn
                 v-bind="tooltipProps"

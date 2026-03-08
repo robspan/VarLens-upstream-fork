@@ -16,7 +16,9 @@ import type Database from 'better-sqlite3-multiple-ciphers'
  * Version history:
  * - 0 (implicit): Initial v0.3.0 schema (cases, variants, FTS)
  * - 1: Mark existing v0.3.0 databases
- * - 2: v0.4.0 annotation tables
+ * - 2: v0.4.0 annotation tables (tags, cohorts, HPO terms, case metadata)
+ * - 3: v0.4.0 schema fix (move starred/ACMG to per-case annotations)
+ * - 4: v0.15.0 add sex column to case_metadata
  *
  * @param db - better-sqlite3-multiple-ciphers Database instance
  */

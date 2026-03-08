@@ -9,7 +9,7 @@
     class="mx-2 mt-2"
   />
 
-  <div class="d-flex mx-2 mt-1 ga-1">
+  <div class="case-filters-stack mx-2 mt-1">
     <v-select
       v-model="selectedCohortFilter"
       :items="cohortGroupsCache"
@@ -20,7 +20,7 @@
       density="compact"
       hide-details
       clearable
-      class="flex-1-1-0"
+      class="mb-1"
     />
     <v-autocomplete
       v-model="selectedHpoFilter"
@@ -33,7 +33,6 @@
       hide-details
       clearable
       auto-select-first
-      class="flex-1-1-0"
     />
   </div>
 

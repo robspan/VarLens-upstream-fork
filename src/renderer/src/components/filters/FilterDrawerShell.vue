@@ -19,6 +19,22 @@
         >
           {{ activeFilterCount }}
         </v-chip>
+        <v-tooltip location="bottom">
+          <template #activator="{ props: tipProps }">
+            <v-btn
+              v-bind="tipProps"
+              icon
+              size="x-small"
+              variant="text"
+              @click="allExpanded ? collapseAll() : expandAll()"
+            >
+              <v-icon size="small">{{
+                allExpanded ? 'mdi-unfold-less-horizontal' : 'mdi-unfold-more-horizontal'
+              }}</v-icon>
+            </v-btn>
+          </template>
+          {{ allExpanded ? 'Collapse all' : 'Expand all' }}
+        </v-tooltip>
         <v-btn icon size="small" @click="emit('update:open', false)">
           <v-icon>mdi-close</v-icon>
         </v-btn>
@@ -50,13 +66,31 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
+import { computed } from 'vue'
+
+const props = defineProps<{
   open: boolean
   activeFilterCount: number
+  expandedPanels: string[]
+  allPanelValues: string[]
 }>()
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
+  'update:expandedPanels': [value: string[]]
   'clear-all': []
 }>()
+
+const allExpanded = computed(
+  () =>
+    props.allPanelValues.length > 0 && props.expandedPanels.length === props.allPanelValues.length
+)
+
+const expandAll = (): void => {
+  emit('update:expandedPanels', [...props.allPanelValues])
+}
+
+const collapseAll = (): void => {
+  emit('update:expandedPanels', [])
+}
 </script>

@@ -2,7 +2,10 @@
   <FilterDrawerShell
     :open="open"
     :active-filter-count="activeFilterCount"
+    :expanded-panels="expandedPanels"
+    :all-panel-values="allPanelValues"
     @update:open="emit('update:open', $event)"
+    @update:expanded-panels="expandedPanels = $event"
     @clear-all="clearAllFilters"
   >
     <v-expansion-panels v-model="expandedPanels" multiple variant="accordion">
@@ -301,7 +304,18 @@ const emit = defineEmits<{
   'update:open': [value: boolean]
 }>()
 
-// Default expanded panels
+// Panel state
+const allPanelValues = [
+  'search',
+  'gene',
+  'impact',
+  'function',
+  'clinvar',
+  'frequency',
+  'cadd',
+  'tags',
+  'annotations'
+]
 const expandedPanels = ref<string[]>(['search', 'impact', 'frequency'])
 
 // Inject shared filter state from FilterToolbar

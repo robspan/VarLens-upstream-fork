@@ -2,7 +2,10 @@
   <FilterDrawerShell
     :open="open"
     :active-filter-count="activeFilterCount"
+    :expanded-panels="expandedPanels"
+    :all-panel-values="allPanelValues"
     @update:open="emit('update:open', $event)"
+    @update:expanded-panels="expandedPanels = $event"
     @clear-all="clearAllFilters"
   >
     <v-expansion-panels v-model="expandedPanels" multiple variant="accordion">
@@ -281,7 +284,18 @@ const emit = defineEmits<{
   'update:open': [value: boolean]
 }>()
 
-// Default expanded panels (same defaults as case drawer)
+// Panel state
+const allPanelValues = [
+  'search',
+  'gene',
+  'impact',
+  'function',
+  'clinvar',
+  'annotations',
+  'cohortFreq',
+  'frequency',
+  'cadd'
+]
 const expandedPanels = ref<string[]>(['search', 'impact', 'frequency'])
 
 // Inject shared filter state from CohortFilterBar

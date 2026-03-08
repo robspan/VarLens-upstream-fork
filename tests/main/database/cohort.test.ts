@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import Database from 'better-sqlite3-multiple-ciphers'
 import { CohortService } from '../../../src/main/database/cohort'
 import { initializeSchema } from '../../../src/main/database/schema'
+import type { CohortSearchParams } from '../../../src/shared/types/cohort'
 
 describe('CohortService', () => {
   let db: Database.Database
@@ -351,24 +352,176 @@ describe('CohortService', () => {
     })
 
     describe('pagination', () => {
-      it('should respect limit and offset', () => {
+      it('should return first page without cursor', () => {
         const caseId = insertCase('Test Case')
         for (let i = 0; i < 10; i++) {
           insertVariant(caseId, '1', 100 + i, 'A', 'G')
         }
 
-        const page1 = cohortService.getCohortVariants({ limit: 3, offset: 0 })
-        const page2 = cohortService.getCohortVariants({ limit: 3, offset: 3 })
+        const result = cohortService.getCohortVariants({ limit: 3 })
 
+        expect(result.data.length).toBe(3)
+        expect(result.total_count).toBe(10)
+        expect(result.has_more).toBe(true)
+        expect(result.next_cursor).not.toBeNull()
+      })
+
+      it('should return subsequent pages using cursor', () => {
+        const caseId = insertCase('Test Case')
+        for (let i = 0; i < 10; i++) {
+          insertVariant(caseId, '1', 100 + i, 'A', 'G')
+        }
+
+        // Get first page
+        const page1 = cohortService.getCohortVariants({ limit: 3 })
         expect(page1.data.length).toBe(3)
+        expect(page1.next_cursor).not.toBeNull()
+
+        // Get second page using cursor
+        const page2 = cohortService.getCohortVariants({
+          limit: 3,
+          cursor: page1.next_cursor!
+        })
         expect(page2.data.length).toBe(3)
-        expect(page1.total_count).toBe(10)
         expect(page2.total_count).toBe(10)
 
         // Pages should have different variants
-        const page1Positions = page1.data.map((v) => v.pos)
-        const page2Positions = page2.data.map((v) => v.pos)
-        expect(page1Positions).not.toEqual(page2Positions)
+        const page1Keys = page1.data.map((v) => v.variant_key)
+        const page2Keys = page2.data.map((v) => v.variant_key)
+        expect(page1Keys).not.toEqual(page2Keys)
+        // No overlap between pages
+        for (const key of page2Keys) {
+          expect(page1Keys).not.toContain(key)
+        }
+      })
+
+      it('should return has_more=false on last page', () => {
+        const caseId = insertCase('Test Case')
+        for (let i = 0; i < 5; i++) {
+          insertVariant(caseId, '1', 100 + i, 'A', 'G')
+        }
+
+        const page1 = cohortService.getCohortVariants({ limit: 3 })
+        expect(page1.has_more).toBe(true)
+
+        const page2 = cohortService.getCohortVariants({
+          limit: 3,
+          cursor: page1.next_cursor!
+        })
+        expect(page2.data.length).toBe(2)
+        expect(page2.has_more).toBe(false)
+        expect(page2.next_cursor).toBeNull()
+      })
+
+      it('should invalidate cursor when sort changes', () => {
+        const caseId = insertCase('Test Case')
+        for (let i = 0; i < 10; i++) {
+          insertVariant(caseId, '1', 100 + i, 'A', 'G', { gene_symbol: `GENE${i}` })
+        }
+
+        // Get cursor sorted by carrier_count (default)
+        const page1 = cohortService.getCohortVariants({ limit: 3 })
+
+        // Use cursor with different sort — should return empty (cursor invalid)
+        const result = cohortService.getCohortVariants({
+          limit: 3,
+          sort_by: 'pos',
+          sort_order: 'asc',
+          cursor: page1.next_cursor!
+        })
+        expect(result.data).toEqual([])
+      })
+
+      it('should paginate correctly with sort by pos ascending', () => {
+        const caseId = insertCase('Test Case')
+        for (let i = 0; i < 6; i++) {
+          insertVariant(caseId, '1', 100 + i, 'A', 'G')
+        }
+
+        const page1 = cohortService.getCohortVariants({
+          limit: 3,
+          sort_by: 'pos',
+          sort_order: 'asc'
+        })
+        expect(page1.data.map((v) => v.pos)).toEqual([100, 101, 102])
+
+        const page2 = cohortService.getCohortVariants({
+          limit: 3,
+          sort_by: 'pos',
+          sort_order: 'asc',
+          cursor: page1.next_cursor!
+        })
+        expect(page2.data.map((v) => v.pos)).toEqual([103, 104, 105])
+        expect(page2.has_more).toBe(false)
+      })
+
+      it('should handle cursor with NULL sort values', () => {
+        const case1 = insertCase('Case 1')
+        const case2 = insertCase('Case 2')
+
+        // Some variants with gnomad_af, some without
+        insertVariant(case1, '1', 100, 'A', 'G', { gnomad_af: 0.01 })
+        insertVariant(case1, '2', 200, 'C', 'T', {}) // NULL gnomad_af
+        insertVariant(case2, '3', 300, 'G', 'A', { gnomad_af: 0.05 })
+        insertVariant(case1, '4', 400, 'T', 'C', {}) // NULL gnomad_af
+
+        const page1 = cohortService.getCohortVariants({
+          limit: 2,
+          sort_by: 'gnomad_af',
+          sort_order: 'desc'
+        })
+        expect(page1.data.length).toBe(2)
+        expect(page1.has_more).toBe(true)
+
+        const page2 = cohortService.getCohortVariants({
+          limit: 2,
+          sort_by: 'gnomad_af',
+          sort_order: 'desc',
+          cursor: page1.next_cursor!
+        })
+        expect(page2.data.length).toBe(2)
+
+        // All 4 variants should appear across both pages (no duplicates)
+        const allKeys = [
+          ...page1.data.map((v) => v.variant_key),
+          ...page2.data.map((v) => v.variant_key)
+        ]
+        expect(new Set(allKeys).size).toBe(4)
+      })
+
+      it('should traverse all results across pages without duplicates', () => {
+        const case1 = insertCase('Case 1')
+        const case2 = insertCase('Case 2')
+
+        // 5 unique variants (7 rows, 2 shared across cases) with varying carrier counts
+        insertVariant(case1, '1', 100, 'A', 'G')
+        insertVariant(case2, '1', 100, 'A', 'G') // shared: carrier_count=2
+        insertVariant(case1, '2', 200, 'C', 'T')
+        insertVariant(case2, '2', 200, 'C', 'T') // shared: carrier_count=2
+        insertVariant(case1, '3', 300, 'G', 'A')
+        insertVariant(case1, '4', 400, 'T', 'C')
+        insertVariant(case1, '5', 500, 'A', 'T')
+
+        // Paginate through all results
+        const allVariantKeys: string[] = []
+        let cursor: CohortSearchParams['cursor'] = undefined
+        let pages = 0
+
+        while (pages < 10) {
+          // safety limit
+          const result = cohortService.getCohortVariants({
+            limit: 2,
+            cursor
+          })
+          allVariantKeys.push(...result.data.map((v) => v.variant_key))
+          pages++
+          if (!result.has_more) break
+          cursor = result.next_cursor
+        }
+
+        // All 5 unique variants should appear exactly once
+        expect(allVariantKeys.length).toBe(5)
+        expect(new Set(allVariantKeys).size).toBe(5)
       })
     })
 

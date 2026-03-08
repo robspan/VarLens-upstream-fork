@@ -30,6 +30,8 @@ describe('useCohortData', () => {
     expect(result.isLoading.value).toBe(false)
     expect(result.error.value).toBeNull()
     expect(result.summary.value).toBeNull()
+    expect(result.nextCursor.value).toBeNull()
+    expect(result.hasMore.value).toBe(false)
   })
 
   it('fetches variants and updates state', async () => {
@@ -49,20 +51,24 @@ describe('useCohortData', () => {
     ]
     window.api.cohort.getVariants = vi.fn().mockResolvedValue({
       data: mockVariants,
-      total_count: 1
+      total_count: 1,
+      has_more: false,
+      next_cursor: null
     })
 
     const [result, appInstance] = withSetup(() => useCohortData())
     app = appInstance
 
-    await result.fetchVariants({ limit: 50, offset: 0, sort_order: 'desc' })
+    await result.fetchVariants({ limit: 50, sort_order: 'desc' })
 
     expect(result.variants.value).toEqual(mockVariants)
     expect(result.totalCount.value).toBe(1)
     expect(result.isLoading.value).toBe(false)
     expect(result.error.value).toBeNull()
+    expect(result.nextCursor.value).toBeNull()
+    expect(result.hasMore.value).toBe(false)
     expect(window.api.cohort.getVariants).toHaveBeenCalledWith(
-      expect.objectContaining({ limit: 50, offset: 0, sort_order: 'desc' })
+      expect.objectContaining({ limit: 50, sort_order: 'desc' })
     )
   })
 
@@ -77,13 +83,13 @@ describe('useCohortData', () => {
     const [result, appInstance] = withSetup(() => useCohortData())
     app = appInstance
 
-    const fetchPromise = result.fetchVariants({ limit: 50, offset: 0, sort_order: 'desc' })
+    const fetchPromise = result.fetchVariants({ limit: 50, sort_order: 'desc' })
 
     // Should be loading before promise resolves
     expect(result.isLoading.value).toBe(true)
 
     // Resolve the promise
-    resolvePromise!({ data: [], total_count: 0 })
+    resolvePromise!({ data: [], total_count: 0, has_more: false, next_cursor: null })
     await fetchPromise
 
     // Should no longer be loading
@@ -97,7 +103,7 @@ describe('useCohortData', () => {
     const [result, appInstance] = withSetup(() => useCohortData())
     app = appInstance
 
-    await result.fetchVariants({ limit: 50, offset: 0, sort_order: 'desc' })
+    await result.fetchVariants({ limit: 50, sort_order: 'desc' })
 
     expect(result.error.value).toBeTruthy()
     expect(result.error.value?.message).toBe('Network error')
@@ -113,7 +119,7 @@ describe('useCohortData', () => {
     const [result, appInstance] = withSetup(() => useCohortData())
     app = appInstance
 
-    await result.fetchVariants({ limit: 50, offset: 0, sort_order: 'desc' })
+    await result.fetchVariants({ limit: 50, sort_order: 'desc' })
     expect(result.error.value).toBeTruthy()
 
     // Second call succeeds
@@ -122,7 +128,7 @@ describe('useCohortData', () => {
       total_count: 0
     })
 
-    await result.fetchVariants({ limit: 50, offset: 0, sort_order: 'desc' })
+    await result.fetchVariants({ limit: 50, sort_order: 'desc' })
     expect(result.error.value).toBeNull()
   })
 
@@ -202,6 +208,8 @@ describe('useCohortData', () => {
     expect(result.totalCount.value).toBe(0)
     expect(result.error.value).toBeNull()
     expect(result.summary.value).toBeNull()
+    expect(result.nextCursor.value).toBeNull()
+    expect(result.hasMore.value).toBe(false)
   })
 
   it('passes filter params to IPC call', async () => {
@@ -215,7 +223,6 @@ describe('useCohortData', () => {
 
     await result.fetchVariants({
       limit: 50,
-      offset: 0,
       sort_order: 'desc',
       sort_by: 'pos',
       search_term: 'BRCA',
@@ -232,7 +239,6 @@ describe('useCohortData', () => {
     expect(window.api.cohort.getVariants).toHaveBeenCalledWith(
       expect.objectContaining({
         limit: 50,
-        offset: 0,
         sort_order: 'desc',
         sort_by: 'pos',
         search_term: 'BRCA',
@@ -256,7 +262,7 @@ describe('useCohortData', () => {
     const [result, appInstance] = withSetup(() => useCohortData())
     app = appInstance
 
-    await result.fetchVariants({ limit: 50, offset: 0, sort_order: 'desc' })
+    await result.fetchVariants({ limit: 50, sort_order: 'desc' })
 
     expect(consoleWarnSpy).toHaveBeenCalledWith(
       'window.api not available - running outside Electron'

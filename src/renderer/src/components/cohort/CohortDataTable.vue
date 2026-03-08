@@ -14,6 +14,7 @@
       :items="variants"
       :items-length="totalCount"
       :loading="loading"
+      :page="props.page"
       :items-per-page-options="[10, 25, 50, 100]"
       item-value="variant_key"
       density="compact"
@@ -262,6 +263,8 @@ interface Props {
     width?: string
     align?: 'start' | 'center' | 'end'
   }>
+  /** Current page number (controlled by parent for cursor pagination) */
+  page?: number
   selectedVariantKey: string | null
   // Annotation lookup functions passed from parent
   isGlobalStarred: (chr: string, pos: number, ref: string, alt: string) => boolean

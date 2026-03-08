@@ -16,7 +16,11 @@
 
 import { ref } from 'vue'
 import type { Ref } from 'vue'
-import type { CohortVariant, CohortSummary } from '../../../shared/types/cohort'
+import type {
+  CohortVariant,
+  CohortSummary,
+  CohortPaginationCursor
+} from '../../../shared/types/cohort'
 
 /**
  * Query parameters for cohort variant fetching
@@ -24,8 +28,8 @@ import type { CohortVariant, CohortSummary } from '../../../shared/types/cohort'
 export interface CohortQueryParams {
   /** Number of items per page */
   limit: number
-  /** Offset for pagination */
-  offset: number
+  /** Cursor for keyset pagination (undefined = first page) */
+  cursor?: CohortPaginationCursor
   /** Column to sort by */
   sort_by?: string
   /** Sort direction */
@@ -79,6 +83,10 @@ export interface UseCohortDataReturn {
   error: Ref<Error | null>
   /** Cohort summary statistics */
   summary: Ref<CohortSummary | null>
+  /** Cursor for next page, null if no more results */
+  nextCursor: Ref<CohortPaginationCursor | null>
+  /** Whether more results exist */
+  hasMore: Ref<boolean>
   /** Fetch variants with given query params */
   fetchVariants: (params: CohortQueryParams) => Promise<void>
   /** Fetch cohort summary */
@@ -125,6 +133,8 @@ export function useCohortData(): UseCohortDataReturn {
   const isLoading = ref(false)
   const error = ref<Error | null>(null)
   const summary = ref<CohortSummary | null>(null)
+  const nextCursor = ref<CohortPaginationCursor | null>(null)
+  const hasMore = ref(false)
 
   /**
    * Fetch variants from backend with given query parameters
@@ -146,8 +156,16 @@ export function useCohortData(): UseCohortDataReturn {
       // IPC structured clone rejects undefined values
       const ipcParams: Record<string, unknown> = {
         limit: params.limit,
-        offset: params.offset,
         sort_order: params.sort_order
+      }
+
+      // Pass cursor instead of offset
+      if (params.cursor !== undefined) {
+        ipcParams.cursor = {
+          sort_value: params.cursor.sort_value,
+          sort_key: params.cursor.sort_key,
+          variant_key: params.cursor.variant_key
+        }
       }
 
       // Only add defined optional params
@@ -199,10 +217,14 @@ export function useCohortData(): UseCohortDataReturn {
 
       variants.value = result.data ?? []
       totalCount.value = result.total_count ?? 0
+      nextCursor.value = result.next_cursor ?? null
+      hasMore.value = result.has_more ?? false
     } catch (err) {
       error.value = err instanceof Error ? err : new Error(String(err))
       variants.value = []
       totalCount.value = 0
+      nextCursor.value = null
+      hasMore.value = false
     } finally {
       isLoading.value = false
     }
@@ -234,6 +256,8 @@ export function useCohortData(): UseCohortDataReturn {
     totalCount.value = 0
     error.value = null
     summary.value = null
+    nextCursor.value = null
+    hasMore.value = false
   }
 
   return {
@@ -242,6 +266,8 @@ export function useCohortData(): UseCohortDataReturn {
     isLoading,
     error,
     summary,
+    nextCursor,
+    hasMore,
     fetchVariants,
     fetchSummary,
     reset

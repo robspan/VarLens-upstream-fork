@@ -81,6 +81,8 @@ exports[`cohort IPC handlers > getCohortVariants - IPC payload structure > retur
       "variant_key": "2:54321:C:T",
     },
   ],
+  "has_more": false,
+  "next_cursor": null,
   "total_count": 2,
 }
 `;

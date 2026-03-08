@@ -8,6 +8,17 @@
         >
       </span>
       <v-spacer />
+      <v-tooltip location="bottom">
+        <template #activator="{ props: tipProps }">
+          <v-btn icon size="x-small" variant="text" v-bind="tipProps">
+            <v-icon size="x-small">mdi-information-outline</v-icon>
+          </v-btn>
+        </template>
+        <div class="text-body-small">
+          <div>Ctrl+Click to multi-select cases</div>
+          <div>Right-click for context menu</div>
+        </div>
+      </v-tooltip>
       <v-menu>
         <template #activator="{ props }">
           <v-btn icon size="small" variant="text" v-bind="props">

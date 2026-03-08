@@ -40,6 +40,7 @@
       :total-count="totalCount ?? 0"
       :loading="isLoading"
       :headers="visibleHeaders"
+      :page="currentPage"
       :selected-variant-key="selectedVariantKey"
       :is-global-starred="isGlobalStarred"
       :get-global-acmg-classification="getGlobalAcmgClassification"
@@ -124,6 +125,7 @@ const pageCursors = ref<Map<number, CohortPaginationCursor>>(new Map())
 const currentPage = ref(1)
 const currentSortBy = ref<string | undefined>(undefined)
 const currentSortOrder = ref<'asc' | 'desc'>('desc')
+const currentItemsPerPage = ref(50)
 // useFilters is a singleton - CohortFilterBar and CohortTable share the same state
 const { filters, searchTerm, selectedImpactPresets, clearAllFilters, clearFilter } = useFilters()
 const { loadCarriers } = useCarriers()
@@ -283,17 +285,27 @@ const handleTableOptions = async (options: {
     | 'asc'
     | 'desc'
 
-  // Reset cursors if sort changed
+  // Reset cursors if sort or page size changed
   const sortChanged = newSortBy !== currentSortBy.value || newSortOrder !== currentSortOrder.value
-  if (sortChanged) {
+  const pageSizeChanged = options.itemsPerPage !== currentItemsPerPage.value
+  if (sortChanged || pageSizeChanged) {
     pageCursors.value.clear()
     currentPage.value = 1
   }
   currentSortBy.value = newSortBy
   currentSortOrder.value = newSortOrder
+  currentItemsPerPage.value = options.itemsPerPage
 
-  // Get cursor for requested page (page 1 = no cursor)
-  const cursor = options.page > 1 ? pageCursors.value.get(options.page) : undefined
+  // Determine effective page (reset to 1 if cursor not available for requested page)
+  let effectivePage = sortChanged || pageSizeChanged ? 1 : options.page
+  let cursor: CohortPaginationCursor | undefined
+  if (effectivePage > 1) {
+    cursor = pageCursors.value.get(effectivePage)
+    if (cursor === undefined) {
+      // No cached cursor for this page — reset to page 1
+      effectivePage = 1
+    }
+  }
 
   const baseParams = buildQueryParams(cursor)
   const params = {
@@ -304,7 +316,7 @@ const handleTableOptions = async (options: {
   }
 
   await fetchVariants(params)
-  currentPage.value = options.page
+  currentPage.value = effectivePage
 
   // Store cursor for next page
   if (nextCursor.value) {

@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import Database from 'better-sqlite3-multiple-ciphers'
 import { CohortService } from '../../../src/main/database/cohort'
 import { initializeSchema } from '../../../src/main/database/schema'
+import type { CohortSearchParams } from '../../../src/shared/types/cohort'
 
 describe('CohortService', () => {
   let db: Database.Database
@@ -492,7 +493,7 @@ describe('CohortService', () => {
         const case1 = insertCase('Case 1')
         const case2 = insertCase('Case 2')
 
-        // 7 unique variants with varying carrier counts
+        // 5 unique variants (7 rows, 2 shared across cases) with varying carrier counts
         insertVariant(case1, '1', 100, 'A', 'G')
         insertVariant(case2, '1', 100, 'A', 'G') // shared: carrier_count=2
         insertVariant(case1, '2', 200, 'C', 'T')
@@ -503,8 +504,7 @@ describe('CohortService', () => {
 
         // Paginate through all results
         const allVariantKeys: string[] = []
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let cursor = undefined as any
+        let cursor: CohortSearchParams['cursor'] = undefined
         let pages = 0
 
         while (pages < 10) {

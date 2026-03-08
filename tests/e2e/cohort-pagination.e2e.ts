@@ -39,7 +39,7 @@ test.afterEach(async () => {
   await app.close()
 })
 
-test('cohort table loads and displays data with cursor pagination', async () => {
+test('cohort table loads and displays data with cursor pagination', async (_fixtures, testInfo) => {
   // Switch to Cohort mode using the mode toggle button
   const cohortBtn = window.locator('.v-btn').filter({ hasText: /Cohort/i })
   const cohortBtnCount = await cohortBtn.count()
@@ -54,7 +54,7 @@ test('cohort table loads and displays data with cursor pagination', async () => 
   await cohortBtn.first().click()
   await window.waitForTimeout(3000)
 
-  await window.screenshot({ path: '/tmp/varlens-cohort.png' })
+  await window.screenshot({ path: testInfo.outputPath('cohort-table.png') })
 
   // Check for data rows
   const dataRows = window.locator('.v-data-table__tr')
@@ -82,7 +82,7 @@ test('cohort table loads and displays data with cursor pagination', async () => 
   console.log(`First row: ${firstRowText?.substring(0, 80)}`)
 })
 
-test('cohort pagination navigates between pages', async () => {
+test('cohort pagination navigates between pages', async (_fixtures, testInfo) => {
   // Switch to Cohort mode
   const cohortBtn = window.locator('.v-btn').filter({ hasText: /Cohort/i })
   if ((await cohortBtn.count()) === 0) {
@@ -117,7 +117,7 @@ test('cohort pagination navigates between pages', async () => {
     expect(secondPageFirstRow).not.toBe(firstPageFirstRow)
     console.log('Pagination verified: page 2 has different data from page 1')
 
-    await window.screenshot({ path: '/tmp/varlens-cohort-page2.png' })
+    await window.screenshot({ path: testInfo.outputPath('cohort-page2.png') })
   } else {
     console.log('Not enough data for multi-page pagination (single page)')
   }

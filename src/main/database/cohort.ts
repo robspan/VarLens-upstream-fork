@@ -81,9 +81,13 @@ export class CohortService {
    */
   getCohortVariants(params: CohortSearchParams): CohortPaginatedResult {
     const limit = params.limit ?? 50
-    const sortBy = params.sort_by !== undefined ? SORTABLE_COLUMNS[params.sort_by] : undefined
+    const validatedSortKey =
+      params.sort_by !== undefined && SORTABLE_COLUMNS[params.sort_by] !== undefined
+        ? params.sort_by
+        : 'carrier_count'
+    const sortBy = SORTABLE_COLUMNS[validatedSortKey]
     const sortOrder = params.sort_order ?? 'desc'
-    const effectiveSortKey = params.sort_by ?? 'carrier_count'
+    const effectiveSortKey = validatedSortKey
 
     // Get total case count (used for cohort_frequency calculation)
     const totalCasesResult = this.db.prepare('SELECT COUNT(*) as count FROM cases').get() as {
@@ -244,11 +248,8 @@ export class CohortService {
     }
 
     // Build ORDER BY clause with variant_key as tiebreaker
-    let orderByClause = 'ORDER BY carrier_count DESC, variant_key ASC'
-    if (sortBy !== undefined) {
-      const direction = sortOrder.toUpperCase()
-      orderByClause = `ORDER BY ${sortBy} ${direction}, variant_key ASC`
-    }
+    const direction = sortOrder.toUpperCase()
+    const orderByClause = `ORDER BY ${sortBy} ${direction}, variant_key ASC`
 
     // Fetch limit+1 to detect has_more without a separate count query
     const fetchLimit = limit + 1
@@ -356,7 +357,7 @@ export class CohortService {
    * Build cursor condition for keyset pagination on aggregated results.
    * Uses variant_key as tiebreaker instead of a row id.
    *
-   * @returns SQL HAVING condition and params, or null if cursor is invalid
+   * @returns SQL condition for the outer WHERE clause and params, or null if cursor is invalid
    */
   private buildCursorCondition(
     cursor: CohortPaginationCursor,

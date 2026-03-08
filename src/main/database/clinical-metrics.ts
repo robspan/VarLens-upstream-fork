@@ -3,7 +3,8 @@
  *
  * Ships with VarLens as the default metric catalog.
  * Users can add custom metrics on top of these.
- * 120 metrics across 15 categories, verified against clinical standards.
+ * Predefined metrics across 15 categories, verified against clinical standards.
+ * Excludes metrics computable from VarLens data (variant counts, HPO count, ACMG).
  */
 
 export interface ClinicalMetricSeed {
@@ -437,35 +438,8 @@ export const CLINICAL_METRICS: ClinicalMetricSeed[] = [
   },
   { name: 'Plasma Amino Acids', value_type: 'text', unit: '', category: 'Rare Disease Biomarkers' },
 
-  // Genetics / Genomics
-  { name: 'Coefficient of Inbreeding (F)', value_type: 'numeric', unit: '', category: 'Genetics' },
-  {
-    name: 'Runs of Homozygosity Total Length (ROH)',
-    value_type: 'numeric',
-    unit: 'Mb',
-    category: 'Genetics'
-  },
-  { name: 'Mean Sequencing Coverage', value_type: 'numeric', unit: '×', category: 'Genetics' },
-  {
-    name: 'Percentage Bases ≥20× Coverage',
-    value_type: 'numeric',
-    unit: '%',
-    category: 'Genetics'
-  },
-  { name: 'Total Variant Count', value_type: 'numeric', unit: '', category: 'Genetics' },
-  { name: 'SNV Count', value_type: 'numeric', unit: '', category: 'Genetics' },
-  { name: 'Indel Count', value_type: 'numeric', unit: '', category: 'Genetics' },
-  {
-    name: 'Copy Number Variant Count (CNV)',
-    value_type: 'numeric',
-    unit: '',
-    category: 'Genetics'
-  },
-  { name: 'Structural Variant Count (SV)', value_type: 'numeric', unit: '', category: 'Genetics' },
-  { name: 'Ti/Tv Ratio', value_type: 'numeric', unit: '', category: 'Genetics' },
-  { name: 'Heterozygosity Rate', value_type: 'numeric', unit: '', category: 'Genetics' },
+  // Genetics / Genomics (only non-computable entries; variant/QC stats excluded)
   { name: 'Diagnostic Yield', value_type: 'text', unit: '', category: 'Genetics' },
-  { name: 'ACMG Classification', value_type: 'text', unit: '', category: 'Genetics' },
   { name: 'Karyotype', value_type: 'text', unit: '', category: 'Genetics' },
 
   // Clinical Scores / Assessments
@@ -473,7 +447,6 @@ export const CLINICAL_METRICS: ClinicalMetricSeed[] = [
   { name: 'APGAR Score (5 min)', value_type: 'numeric', unit: '', category: 'Clinical' },
   { name: 'Glasgow Coma Scale (GCS)', value_type: 'numeric', unit: '', category: 'Clinical' },
   { name: 'Pain Score (VAS)', value_type: 'numeric', unit: '', category: 'Clinical' },
-  { name: 'HPO Term Count', value_type: 'numeric', unit: '', category: 'Clinical' },
   { name: 'Primary Diagnosis (ICD Code)', value_type: 'text', unit: '', category: 'Clinical' },
   { name: 'Disease Severity', value_type: 'text', unit: '', category: 'Clinical' },
   { name: 'Family History', value_type: 'text', unit: '', category: 'Clinical' }

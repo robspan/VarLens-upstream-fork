@@ -83,6 +83,13 @@ export class DatabaseService {
       // Enable foreign key constraints
       this.db.pragma('foreign_keys = ON')
 
+      // Performance PRAGMAs
+      this.db.pragma('synchronous = NORMAL')
+      this.db.pragma('busy_timeout = 5000')
+      this.db.pragma('cache_size = -32000')
+      this.db.pragma('temp_store = MEMORY')
+      this.db.pragma('mmap_size = 268435456')
+
       // Initialize database schema (tables, indexes, FTS5)
       initializeSchema(this.db)
 
@@ -419,6 +426,7 @@ export class DatabaseService {
    */
   close(): void {
     this.clearStatementCache()
+    this.db.pragma('optimize')
     this.db.close()
   }
 

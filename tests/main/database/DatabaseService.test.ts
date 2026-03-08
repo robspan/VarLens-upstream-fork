@@ -43,6 +43,46 @@ describe('DatabaseService', () => {
       }
     })
 
+    it('sets performance PRAGMAs on initialization', () => {
+      const tempDbPath = join(tmpdir(), `varlens-test-pragmas-${Date.now()}.db`)
+      const fileService = new DatabaseService(tempDbPath)
+
+      try {
+        const synchronous = fileService.database.prepare('PRAGMA synchronous').get() as {
+          synchronous: number
+        }
+        expect(synchronous.synchronous).toBe(1) // NORMAL = 1
+
+        const cacheSize = fileService.database.prepare('PRAGMA cache_size').get() as {
+          cache_size: number
+        }
+        expect(cacheSize.cache_size).toBe(-32000)
+
+        const tempStore = fileService.database.prepare('PRAGMA temp_store').get() as {
+          temp_store: number
+        }
+        expect(tempStore.temp_store).toBe(2) // MEMORY = 2
+
+        const busyTimeout = fileService.database.prepare('PRAGMA busy_timeout').get() as {
+          timeout: number
+        }
+        expect(busyTimeout.timeout).toBe(5000)
+
+        const mmapSize = fileService.database.prepare('PRAGMA mmap_size').get() as {
+          mmap_size: number
+        } | undefined
+        // mmap_size is set but the return format varies by platform
+        if (mmapSize !== undefined) {
+          expect(mmapSize.mmap_size).toBe(268435456)
+        }
+      } finally {
+        fileService.close()
+        if (existsSync(tempDbPath)) unlinkSync(tempDbPath)
+        if (existsSync(`${tempDbPath}-wal`)) unlinkSync(`${tempDbPath}-wal`)
+        if (existsSync(`${tempDbPath}-shm`)) unlinkSync(`${tempDbPath}-shm`)
+      }
+    })
+
     it('initializes database with foreign keys enabled', () => {
       const result = service.database.prepare('PRAGMA foreign_keys').get() as {
         foreign_keys: number

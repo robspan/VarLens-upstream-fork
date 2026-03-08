@@ -77,6 +77,16 @@ export { DatabaseService } from './DatabaseService'
 export { DatabaseManager }
 export { RecentDatabasesService }
 
+// Repositories
+export { BaseRepository } from './BaseRepository'
+export { CaseRepository } from './CaseRepository'
+export { VariantRepository } from './VariantRepository'
+export { TranscriptRepository } from './TranscriptRepository'
+export { AnnotationRepository } from './AnnotationRepository'
+export { MetadataRepository } from './MetadataRepository'
+export { TagRepository } from './TagRepository'
+export { DatabaseOverviewService } from './DatabaseOverviewService'
+
 // Types
 export type {
   Case,

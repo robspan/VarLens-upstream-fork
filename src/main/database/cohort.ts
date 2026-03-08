@@ -36,6 +36,16 @@ const SORTABLE_COLUMNS: Record<string, string> = {
   transcript: 'transcript'
 }
 
+const NUMERIC_COLUMNS = new Set([
+  'pos',
+  'carrier_count',
+  'cohort_frequency',
+  'het_count',
+  'hom_count',
+  'gnomad_af',
+  'cadd_phred'
+])
+
 /**
  * CohortService class
  *
@@ -183,7 +193,11 @@ export class CohortService {
       for (const [column, value] of Object.entries(params.column_filters)) {
         if (value === '' || SORTABLE_COLUMNS[column] === undefined) continue
         const sqlColumn = SORTABLE_COLUMNS[column]
-        whereConditions.push(`CAST(${sqlColumn} AS TEXT) LIKE ? COLLATE NOCASE`)
+        whereConditions.push(
+          NUMERIC_COLUMNS.has(column)
+            ? `CAST(${sqlColumn} AS TEXT) LIKE ? COLLATE NOCASE`
+            : `${sqlColumn} LIKE ? COLLATE NOCASE`
+        )
         params_array.push(`%${value}%`)
       }
     }
@@ -255,7 +269,8 @@ export class CohortService {
         MAX(gnomad_af) as gnomad_af,
         MAX(cadd) as cadd_phred,
         MAX(transcript) as transcript,
-        MAX(omim_id) as omim_id
+        MAX(omim_id) as omim_id,
+        COUNT(*) OVER() as _total_count
       FROM deduped
       GROUP BY chr, pos, ref, alt
       ${havingClause}
@@ -264,23 +279,20 @@ export class CohortService {
     `
 
     const stmt = this.getStatement(sql)
-    const results = stmt.all(...params_array, ...havingParams, limit, offset) as CohortVariant[]
+    const rawResults = stmt.all(
+      ...params_array,
+      ...havingParams,
+      limit,
+      offset
+    ) as (CohortVariant & {
+      _total_count: number
+    })[]
 
-    // Get total count (same query without LIMIT/OFFSET, includes HAVING for cohort filters)
-    const countSql = `
-      SELECT COUNT(*) as count
-      FROM (
-        SELECT chr, pos, ref, alt
-        FROM variants
-        ${whereClause}
-        GROUP BY chr, pos, ref, alt
-        ${havingClause}
-      )
-    `
+    // Extract total count from window function (0 if no results)
+    const totalCount = rawResults.length > 0 ? rawResults[0]._total_count : 0
 
-    const countStmt = this.getStatement(countSql)
-    const countResult = countStmt.get(...params_array, ...havingParams) as { count: number }
-    const totalCount = countResult.count
+    // Strip internal _total_count field from results
+    const results = rawResults.map(({ _total_count, ...row }) => row) as CohortVariant[]
 
     return {
       data: results,

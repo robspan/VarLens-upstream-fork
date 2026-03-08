@@ -2,7 +2,9 @@ import { BaseRepository } from './BaseRepository'
 import type { CaseRepository } from './CaseRepository'
 import type { Database as DatabaseType, Statement } from 'better-sqlite3-multiple-ciphers'
 import type { Variant, VariantFilter, PaginationCursor, PaginatedResult, SortItem } from './types'
+import type { FilterOptions } from '../../shared/types/api'
 import type { TranscriptInsertRow } from '../../shared/types/transcript'
+import { createFTSTriggers } from './schema'
 import { mainLogger } from '../services/MainLogger'
 
 const BATCH_SIZE = 5000
@@ -26,6 +28,8 @@ const SORTABLE_COLUMNS: Record<string, string> = {
   moi: 'moi'
 }
 
+const NUMERIC_COLUMNS = new Set(['pos', 'gt_num', 'gnomad_af', 'cadd', 'qual', 'hpo_sim_score'])
+
 export class VariantRepository extends BaseRepository {
   private cases: CaseRepository
 
@@ -39,6 +43,13 @@ export class VariantRepository extends BaseRepository {
     variants: (Omit<Variant, 'id' | 'case_id'> & { _transcripts?: TranscriptInsertRow[] })[]
   ): number {
     this.cases.getCase(caseId)
+
+    // Drop FTS triggers to avoid per-row overhead during bulk insert
+    this.db.exec(`
+      DROP TRIGGER IF EXISTS variants_fts_ai;
+      DROP TRIGGER IF EXISTS variants_fts_ad;
+      DROP TRIGGER IF EXISTS variants_fts_au;
+    `)
 
     const insert = this.stmt(`
       INSERT INTO variants (case_id, chr, pos, ref, alt, gene_symbol, omim_mim_number, consequence, gnomad_af, cadd, clinvar, gt_num, func, qual, hpo_sim_score, transcript, cdna, aa_change, moi)
@@ -101,6 +112,17 @@ export class VariantRepository extends BaseRepository {
     }
 
     this.cases.updateCaseVariantCount(caseId, variants.length)
+
+    // Rebuild FTS index from content table and re-create triggers
+    this.db.exec("INSERT INTO variants_fts(variants_fts) VALUES('rebuild')")
+    this.db.exec(createFTSTriggers)
+
+    // Update query planner statistics after bulk import
+    this.db.exec('ANALYZE')
+
+    // Optimize FTS5 index after bulk import
+    this.db.exec("INSERT INTO variants_fts(variants_fts) VALUES('optimize')")
+
     return variants.length
   }
 
@@ -326,7 +348,11 @@ export class VariantRepository extends BaseRepository {
       for (const [column, value] of Object.entries(filter.column_filters)) {
         if (value === '' || SORTABLE_COLUMNS[column] === undefined) continue
         const sqlColumn = SORTABLE_COLUMNS[column]
-        conditions.push(`CAST(${sqlColumn} AS TEXT) LIKE ? COLLATE NOCASE`)
+        conditions.push(
+          NUMERIC_COLUMNS.has(column)
+            ? `CAST(${sqlColumn} AS TEXT) LIKE ? COLLATE NOCASE`
+            : `${sqlColumn} LIKE ? COLLATE NOCASE`
+        )
         params.push(`%${value}%`)
       }
     }
@@ -502,5 +528,43 @@ export class VariantRepository extends BaseRepository {
     const whereClause = conditions.join(' AND ')
     const sql = `SELECT * FROM variants WHERE ${whereClause} ORDER BY chr, pos`
     return this.db.prepare(sql).all(...params) as Variant[]
+  }
+
+  getFilterOptions(caseId: number): FilterOptions {
+    const consequences = (
+      this.stmt(
+        'SELECT DISTINCT consequence FROM variants WHERE case_id = ? AND consequence IS NOT NULL ORDER BY consequence'
+      ).all(caseId) as { consequence: string }[]
+    ).map((r) => r.consequence)
+
+    const funcs = (
+      this.stmt(
+        'SELECT DISTINCT func FROM variants WHERE case_id = ? AND func IS NOT NULL ORDER BY func'
+      ).all(caseId) as { func: string }[]
+    ).map((r) => r.func)
+
+    const clinvars = (
+      this.stmt(
+        'SELECT DISTINCT clinvar FROM variants WHERE case_id = ? AND clinvar IS NOT NULL ORDER BY clinvar'
+      ).all(caseId) as { clinvar: string }[]
+    ).map((r) => r.clinvar)
+
+    const caddRange = this.stmt(
+      'SELECT MIN(cadd) as min_cadd, MAX(cadd) as max_cadd FROM variants WHERE case_id = ? AND cadd IS NOT NULL'
+    ).get(caseId) as { min_cadd: number | null; max_cadd: number | null } | undefined
+
+    const afRange = this.stmt(
+      'SELECT MIN(gnomad_af) as min_af, MAX(gnomad_af) as max_af FROM variants WHERE case_id = ? AND gnomad_af IS NOT NULL'
+    ).get(caseId) as { min_af: number | null; max_af: number | null } | undefined
+
+    return {
+      consequences,
+      funcs,
+      clinvars,
+      minCadd: caddRange?.min_cadd ?? null,
+      maxCadd: caddRange?.max_cadd ?? null,
+      minGnomadAf: afRange?.min_af ?? null,
+      maxGnomadAf: afRange?.max_af ?? null
+    }
   }
 }

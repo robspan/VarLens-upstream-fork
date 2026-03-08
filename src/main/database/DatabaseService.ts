@@ -24,6 +24,7 @@ import type {
   Tag
 } from './types'
 import type { DatabaseOverview } from '../../shared/types/database-overview'
+import type { FilterOptions } from '../../shared/types/api'
 import type { TranscriptAnnotation, TranscriptInsertRow } from '../../shared/types/transcript'
 import { DatabaseError, TransactionError } from './errors'
 import { CaseRepository } from './CaseRepository'
@@ -104,6 +105,9 @@ export class DatabaseService {
       this.tags = new TagRepository(this.db, this.statementCache)
       this.variantsRepo = new VariantRepository(this.db, this.statementCache, this.cases)
       this.overview = new DatabaseOverviewService(this.db, this.statementCache)
+
+      // Clean up expired API cache entries on startup
+      this.db.prepare('DELETE FROM api_cache WHERE expires_at < ?').run(Date.now())
     } catch (error) {
       throw new DatabaseError(
         `Failed to initialize database at ${dbPath}`,
@@ -205,6 +209,10 @@ export class DatabaseService {
 
   getAllVariantsForExport(filter: VariantFilter): Variant[] {
     return this.variantsRepo.getAllVariantsForExport(filter)
+  }
+
+  getFilterOptions(caseId: number): FilterOptions {
+    return this.variantsRepo.getFilterOptions(caseId)
   }
 
   /**

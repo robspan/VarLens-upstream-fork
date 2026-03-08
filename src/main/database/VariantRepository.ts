@@ -28,7 +28,7 @@ const SORTABLE_COLUMNS: Record<string, string> = {
   moi: 'moi'
 }
 
-const NUMERIC_COLUMNS = new Set(['pos', 'gt_num', 'gnomad_af', 'cadd', 'qual', 'hpo_sim_score'])
+const NUMERIC_COLUMNS = new Set(['pos', 'gnomad_af', 'cadd', 'qual', 'hpo_sim_score'])
 
 export class VariantRepository extends BaseRepository {
   private cases: CaseRepository
@@ -51,77 +51,96 @@ export class VariantRepository extends BaseRepository {
       DROP TRIGGER IF EXISTS variants_fts_au;
     `)
 
-    const insert = this.stmt(`
-      INSERT INTO variants (case_id, chr, pos, ref, alt, gene_symbol, omim_mim_number, consequence, gnomad_af, cadd, clinvar, gt_num, func, qual, hpo_sim_score, transcript, cdna, aa_change, moi)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)
+    try {
+      const insert = this.stmt(`
+        INSERT INTO variants (case_id, chr, pos, ref, alt, gene_symbol, omim_mim_number, consequence, gnomad_af, cadd, clinvar, gt_num, func, qual, hpo_sim_score, transcript, cdna, aa_change, moi)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
 
-    const insertTranscript = this.stmt(`
-      INSERT INTO variant_transcripts (variant_id, transcript_id, gene_symbol, consequence, cdna, aa_change, hpo_sim_score, moi, is_selected)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)
+      const insertTranscript = this.stmt(`
+        INSERT INTO variant_transcripts (variant_id, transcript_id, gene_symbol, consequence, cdna, aa_change, hpo_sim_score, moi, is_selected)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
 
-    const insertBatch = this.db.transaction(
-      (batch: (Omit<Variant, 'id' | 'case_id'> & { _transcripts?: TranscriptInsertRow[] })[]) => {
-        for (const v of batch) {
-          const result = insert.run(
-            caseId,
-            v.chr,
-            v.pos,
-            v.ref,
-            v.alt,
-            v.gene_symbol,
-            v.omim_mim_number,
-            v.consequence,
-            v.gnomad_af,
-            v.cadd,
-            v.clinvar,
-            v.gt_num,
-            v.func,
-            v.qual,
-            v.hpo_sim_score,
-            v.transcript,
-            v.cdna,
-            v.aa_change,
-            v.moi
-          )
+      const insertBatch = this.db.transaction(
+        (batch: (Omit<Variant, 'id' | 'case_id'> & { _transcripts?: TranscriptInsertRow[] })[]) => {
+          for (const v of batch) {
+            const result = insert.run(
+              caseId,
+              v.chr,
+              v.pos,
+              v.ref,
+              v.alt,
+              v.gene_symbol,
+              v.omim_mim_number,
+              v.consequence,
+              v.gnomad_af,
+              v.cadd,
+              v.clinvar,
+              v.gt_num,
+              v.func,
+              v.qual,
+              v.hpo_sim_score,
+              v.transcript,
+              v.cdna,
+              v.aa_change,
+              v.moi
+            )
 
-          if (v._transcripts !== undefined && v._transcripts.length > 0) {
-            const variantId = result.lastInsertRowid as number
-            for (const t of v._transcripts) {
-              insertTranscript.run(
-                variantId,
-                t.transcript_id,
-                t.gene_symbol,
-                t.consequence,
-                t.cdna,
-                t.aa_change,
-                t.hpo_sim_score,
-                t.moi,
-                t.is_selected
-              )
+            if (v._transcripts !== undefined && v._transcripts.length > 0) {
+              const variantId = result.lastInsertRowid as number
+              for (const t of v._transcripts) {
+                insertTranscript.run(
+                  variantId,
+                  t.transcript_id,
+                  t.gene_symbol,
+                  t.consequence,
+                  t.cdna,
+                  t.aa_change,
+                  t.hpo_sim_score,
+                  t.moi,
+                  t.is_selected
+                )
+              }
             }
           }
         }
+      )
+
+      for (let i = 0; i < variants.length; i += BATCH_SIZE) {
+        const batch = variants.slice(i, i + BATCH_SIZE)
+        insertBatch(batch)
       }
-    )
 
-    for (let i = 0; i < variants.length; i += BATCH_SIZE) {
-      const batch = variants.slice(i, i + BATCH_SIZE)
-      insertBatch(batch)
+      this.cases.updateCaseVariantCount(caseId, variants.length)
+    } finally {
+      // Always rebuild FTS and restore triggers, even if insert fails
+      try {
+        this.db.exec("INSERT INTO variants_fts(variants_fts) VALUES('rebuild')")
+      } catch (error) {
+        mainLogger.error(`Failed to rebuild FTS index: ${error}`, 'VariantRepository')
+      }
+
+      try {
+        this.db.exec(createFTSTriggers)
+      } catch (error) {
+        mainLogger.error(`Failed to recreate FTS triggers: ${error}`, 'VariantRepository')
+      }
+
+      // Update query planner statistics after bulk import
+      try {
+        this.db.exec('ANALYZE')
+      } catch (error) {
+        mainLogger.error(`Failed to run ANALYZE: ${error}`, 'VariantRepository')
+      }
+
+      // Optimize FTS5 index after bulk import
+      try {
+        this.db.exec("INSERT INTO variants_fts(variants_fts) VALUES('optimize')")
+      } catch (error) {
+        mainLogger.error(`Failed to optimize FTS index: ${error}`, 'VariantRepository')
+      }
     }
-
-    this.cases.updateCaseVariantCount(caseId, variants.length)
-
-    // Rebuild FTS index from content table and re-create triggers
-    this.db.exec("INSERT INTO variants_fts(variants_fts) VALUES('rebuild')")
-    this.db.exec(createFTSTriggers)
-
-    // Update query planner statistics after bulk import
-    this.db.exec('ANALYZE')
-
-    // Optimize FTS5 index after bulk import
-    this.db.exec("INSERT INTO variants_fts(variants_fts) VALUES('optimize')")
 
     return variants.length
   }
@@ -358,7 +377,8 @@ export class VariantRepository extends BaseRepository {
     }
 
     const orderByClause = this.buildSortClause(sortBy)
-    const primarySortKey = sortBy?.[0]?.key ?? 'pos'
+    const primarySortKey =
+      (sortBy && sortBy.find((item) => SORTABLE_COLUMNS[item.key] !== undefined))?.key ?? 'pos'
 
     const countWhereClause = conditions.join(' AND ')
     const countSql = `SELECT COUNT(*) as count FROM variants WHERE ${countWhereClause}`
@@ -385,10 +405,11 @@ export class VariantRepository extends BaseRepository {
     let next_cursor: PaginationCursor | null = null
     if (has_more && data.length > 0) {
       const lastItem = data[data.length - 1]
-      const sortValue = lastItem[primarySortKey as keyof Variant]
+      const sortValue =
+        (lastItem[primarySortKey as keyof Variant] as number | string | null | undefined) ?? null
       next_cursor = {
         id: lastItem.id,
-        sort_value: sortValue as number | string | null,
+        sort_value: sortValue,
         sort_key: primarySortKey
       }
     }

@@ -434,8 +434,13 @@ export class DatabaseService {
    */
   close(): void {
     this.clearStatementCache()
-    this.db.pragma('optimize')
-    this.db.close()
+    try {
+      this.db.pragma('optimize')
+    } catch {
+      // Best-effort optimization; ignore failures to ensure the database still closes
+    } finally {
+      this.db.close()
+    }
   }
 
   /**

@@ -36,15 +36,11 @@ const SORTABLE_COLUMNS: Record<string, string> = {
   transcript: 'transcript'
 }
 
-const NUMERIC_COLUMNS = new Set([
-  'pos',
-  'carrier_count',
-  'cohort_frequency',
-  'het_count',
-  'hom_count',
-  'gnomad_af',
-  'cadd_phred'
-])
+const NUMERIC_COLUMNS = new Set(['pos', 'gnomad_af', 'cadd_phred'])
+
+// Columns that are computed aggregates (only available after GROUP BY)
+// These must be filtered via HAVING, not WHERE
+const AGGREGATE_COLUMNS = new Set(['carrier_count', 'cohort_frequency', 'het_count', 'hom_count'])
 
 /**
  * CohortService class
@@ -189,24 +185,34 @@ export class CohortService {
     }
 
     // Per-column text filters (LIKE case-insensitive partial match)
+    // Aggregate columns are deferred to HAVING clause below
+    const aggregateFilterConditions: string[] = []
+    const aggregateFilterParams: (string | number)[] = []
+
     if (params.column_filters !== undefined) {
       for (const [column, value] of Object.entries(params.column_filters)) {
         if (value === '' || SORTABLE_COLUMNS[column] === undefined) continue
         const sqlColumn = SORTABLE_COLUMNS[column]
-        whereConditions.push(
-          NUMERIC_COLUMNS.has(column)
-            ? `CAST(${sqlColumn} AS TEXT) LIKE ? COLLATE NOCASE`
-            : `${sqlColumn} LIKE ? COLLATE NOCASE`
-        )
-        params_array.push(`%${value}%`)
+        if (AGGREGATE_COLUMNS.has(column)) {
+          // Aggregate columns filtered via HAVING after GROUP BY
+          aggregateFilterConditions.push(`CAST(${sqlColumn} AS TEXT) LIKE ? COLLATE NOCASE`)
+          aggregateFilterParams.push(`%${value}%`)
+        } else {
+          whereConditions.push(
+            NUMERIC_COLUMNS.has(column)
+              ? `CAST(${sqlColumn} AS TEXT) LIKE ? COLLATE NOCASE`
+              : `${sqlColumn} LIKE ? COLLATE NOCASE`
+          )
+          params_array.push(`%${value}%`)
+        }
       }
     }
 
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : ''
 
     // Build HAVING clause for aggregate filters (applied after GROUP BY)
-    const havingConditions: string[] = []
-    const havingParams: number[] = []
+    const havingConditions: string[] = [...aggregateFilterConditions]
+    const havingParams: (string | number)[] = [...aggregateFilterParams]
 
     if (params.carrier_count_min !== undefined && params.carrier_count_min > 0) {
       havingConditions.push('COUNT(*) >= ?')

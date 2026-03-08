@@ -1,22 +1,22 @@
 <template>
-  <v-dialog v-model="isOpen" max-width="600" persistent scrim>
+  <v-dialog v-model="isOpen" max-width="700" persistent scrim>
     <v-card>
       <v-card-title>{{ config.title }}</v-card-title>
-      <v-card-text>
+      <v-card-text style="max-height: 70vh; overflow-y: auto">
         <p class="mb-4">{{ config.introduction }}</p>
-        <v-list density="compact">
-          <v-list-item v-for="(limitation, index) in config.limitations" :key="index" class="mb-2">
-            <template #prepend>
-              <v-icon :icon="limitation.icon" size="small" color="primary" class="mr-2" />
-            </template>
-            <v-list-item-title class="font-weight-bold">
-              {{ limitation.title }}
-            </v-list-item-title>
-            <v-list-item-subtitle style="white-space: normal">
-              {{ limitation.text }}
-            </v-list-item-subtitle>
-          </v-list-item>
-        </v-list>
+        <v-alert
+          v-for="(limitation, index) in config.limitations"
+          :key="index"
+          type="warning"
+          variant="tonal"
+          density="compact"
+          class="mb-2"
+        >
+          <template #title>
+            <span class="text-body-small font-weight-bold">{{ limitation.title }}</span>
+          </template>
+          <span class="text-body-small">{{ limitation.text }}</span>
+        </v-alert>
         <p class="mt-4 text-body-small font-italic text-medium-emphasis">{{ config.footer }}</p>
       </v-card-text>
       <v-card-actions>

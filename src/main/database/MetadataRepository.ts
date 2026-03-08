@@ -173,9 +173,9 @@ export class MetadataRepository extends BaseRepository {
   // ============================================================
 
   listCaseComments(caseId: number): CaseComment[] {
-    return this.stmt('SELECT * FROM case_comments WHERE case_id = ? ORDER BY created_at DESC').all(
-      caseId
-    ) as CaseComment[]
+    return this.stmt(
+      'SELECT * FROM case_comments WHERE case_id = ? ORDER BY created_at DESC, id DESC'
+    ).all(caseId) as CaseComment[]
   }
 
   createCaseComment(caseId: number, category: CommentCategory, content: string): CaseComment {

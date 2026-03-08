@@ -301,8 +301,11 @@ async function handleDelete(metricId: number): Promise<void> {
 }
 
 function handleEnterOnSearch(): void {
-  // If no match and user typed something, offer to create custom
-  if (searchQuery.value && availableDefinitions.value.length === 0) {
+  // If user typed something and no definitions match the search text, offer to create custom
+  if (!searchQuery.value) return
+  const query = searchQuery.value.toLowerCase()
+  const hasMatch = availableDefinitions.value.some((d) => d.name.toLowerCase().includes(query))
+  if (!hasMatch) {
     customName.value = searchQuery.value
     showCreateDialog.value = true
   }

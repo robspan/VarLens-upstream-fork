@@ -85,7 +85,9 @@ export function useCaseComments() {
     if (cached) {
       const index = cached.findIndex((c) => c.id === commentId)
       if (index !== -1) {
-        cached[index] = updated
+        const updatedList = [...cached]
+        updatedList[index] = updated
+        commentsCache.value.set(caseId, updatedList)
       }
     }
   }

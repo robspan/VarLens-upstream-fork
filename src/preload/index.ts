@@ -13,6 +13,7 @@ import type {
   CaseMetadataUpdates,
   LogMessage
 } from '../shared/types'
+import type { CommentCategory } from '../shared/types/api'
 
 /**
  * Preload script - exposes typed API to renderer via contextBridge.
@@ -243,7 +244,7 @@ const api = {
   caseComments: {
     list: (caseId: number) => ipcRenderer.invoke('case-comments:list', caseId),
 
-    create: (caseId: number, category: string, content: string) =>
+    create: (caseId: number, category: CommentCategory, content: string) =>
       ipcRenderer.invoke('case-comments:create', caseId, category, content),
 
     update: (commentId: number, content: string) =>

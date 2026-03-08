@@ -57,9 +57,10 @@
                   :color="hasColumnFilter(col.key) ? 'primary' : undefined"
                   @click.stop
                 >
-                  <v-icon size="x-small">
+                  <v-icon size="small">
                     {{ hasColumnFilter(col.key) ? 'mdi-filter' : 'mdi-filter-outline' }}
                   </v-icon>
+                  <v-tooltip activator="parent" location="bottom">Filter this column</v-tooltip>
                 </v-btn>
               </template>
               <v-card min-width="250" max-width="350">
@@ -230,9 +231,17 @@
           {{ value !== null ? value.toFixed(1) : '-' }}
         </template>
 
-        <!-- Transcript (handle null) -->
+        <!-- Transcript (handle null, truncate long IDs) -->
         <template #[`item.transcript`]="{ value }">
-          <span class="variant-data-mono">{{ value ?? '-' }}</span>
+          <v-tooltip v-if="value" location="top">
+            <template #activator="{ props: tipProps }">
+              <span v-bind="tipProps" class="variant-data-mono transcript-truncated">{{
+                value
+              }}</span>
+            </template>
+            {{ value }}
+          </v-tooltip>
+          <span v-else>-</span>
         </template>
 
         <!-- cDNA (handle null) -->
@@ -914,6 +923,15 @@ defineExpose({
 .variant-data-mono {
   font-family: 'Courier New', monospace;
   font-size: 0.85em;
+}
+
+.transcript-truncated {
+  max-width: 120px;
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
 }
 
 /* Clickable table rows with improved hover */

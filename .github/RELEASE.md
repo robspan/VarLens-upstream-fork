@@ -23,7 +23,7 @@ The project uses GitHub Actions to automatically build and release the applicati
 - Runs linter and type checker
 - Runs tests
 - Builds the Vue/Electron app
-- Creates test builds (without code signing)
+- Creates test builds
 
 **Purpose:** Ensures code quality and that builds work on all platforms before merging.
 
@@ -36,7 +36,6 @@ The project uses GitHub Actions to automatically build and release the applicati
 **Actions:**
 
 - Builds production-ready installers for all platforms (separate jobs per OS)
-- Signs Windows executables via SignPath (when configured)
 - Uploads all artifacts to the GitHub Release
 
 **Purpose:** Automates the release process when you tag a new version.
@@ -99,31 +98,6 @@ https://github.com/berntpopp/varlens/releases/latest
 - **macOS:** `Varlens-{version}-{arch}.dmg` (Intel and Apple Silicon)
 - **Linux:** `Varlens-{version}.AppImage` (universal)
 - **Linux (Debian/Ubuntu):** `Varlens-{version}.deb`
-
-## Code Signing
-
-Windows executables are signed via [SignPath Foundation](https://signpath.org) (free for open-source projects). See [docs/CODE-SIGNING.md](../docs/CODE-SIGNING.md) for the full code signing policy.
-
-### How it works
-
-The release workflow builds unsigned Windows executables, uploads them as GitHub Actions artifacts, and submits a signing request to SignPath. After the repository owner approves the request on SignPath.io, signed executables are published to the GitHub Release.
-
-### Setup (one-time)
-
-1. Apply to the [SignPath Foundation OSS program](https://signpath.org)
-2. Install the [SignPath GitHub App](https://github.com/apps/signpath-io) on the repository
-3. Configure the SignPath project with `test-signing` and `release-signing` policies
-4. Add the following to the GitHub repository:
-   - **Secret:** `SIGNPATH_API_TOKEN` -- API token for the submitter user
-   - **Variable:** `SIGNPATH_ORGANIZATION_ID` -- SignPath organization ID
-5. Enable MFA for all team members on GitHub and SignPath
-
-### macOS Code Signing
-
-macOS signing is not yet configured. When an Apple Developer certificate becomes available, add these secrets:
-
-- `MAC_CERTS`: Base64-encoded `.p12` certificate file
-- `MAC_CERTS_PASSWORD`: Certificate password
 
 ## Local Build Testing
 

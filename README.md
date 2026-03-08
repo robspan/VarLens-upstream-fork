@@ -89,10 +89,6 @@ tests/            Vitest test suite
 docs/             Additional documentation
 ```
 
-## Code signing
-
-Windows installers are signed via [SignPath Foundation](https://signpath.org). See [docs/CODE-SIGNING.md](docs/CODE-SIGNING.md) for the full policy.
-
 ## License
 
 [MIT](LICENSE) -- Labor Berlin

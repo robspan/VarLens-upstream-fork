@@ -95,7 +95,7 @@ import CohortFilterBar from './cohort/CohortFilterBar.vue'
 import CohortDataTable from './cohort/CohortDataTable.vue'
 import CommentDialog from './CommentDialog.vue'
 // Types
-import type { CohortVariant } from '../../../shared/types/cohort'
+import type { CohortVariant, CohortPaginationCursor } from '../../../shared/types/cohort'
 import type { AcmgClassification } from '../../../main/database/types'
 
 // Emit for navigation and row click
@@ -115,8 +115,15 @@ const emit = defineEmits<{
 }>()
 
 // Composables
-const { variants, totalCount, isLoading, error, summary, fetchVariants, fetchSummary } =
+const { variants, totalCount, isLoading, error, summary, nextCursor, fetchVariants, fetchSummary } =
   useCohortData()
+
+// Cursor tracking: page number -> cursor to use for that page
+// Page 1 has no cursor (first page), page 2 uses cursor from page 1, etc.
+const pageCursors = ref<Map<number, CohortPaginationCursor>>(new Map())
+const currentPage = ref(1)
+const currentSortBy = ref<string | undefined>(undefined)
+const currentSortOrder = ref<'asc' | 'desc'>('desc')
 // useFilters is a singleton - CohortFilterBar and CohortTable share the same state
 const { filters, searchTerm, selectedImpactPresets, clearAllFilters, clearFilter } = useFilters()
 const { loadCarriers } = useCarriers()
@@ -223,10 +230,11 @@ const selectedVariantTimestamps = computed(() => {
 // NOTE: buildQueryParams is temporary scaffolding. Phase 28 (DRY-07, DRY-09) will
 // introduce shared filter serialization utilities that this function should use.
 // For now, implement inline to maintain Phase 29's independence from Phase 28.
-const buildQueryParams = () => ({
+const buildQueryParams = (cursor?: CohortPaginationCursor) => ({
   limit: 50,
-  offset: 0,
-  sort_order: 'desc' as const,
+  cursor,
+  sort_order: (currentSortOrder.value ?? 'desc') as 'asc' | 'desc',
+  sort_by: currentSortBy.value,
   search_term: searchTerm.value || undefined,
   gene_symbol: filters.value.geneSymbol || undefined,
   consequences: selectedImpactPresets.value.length > 0 ? selectedImpactPresets.value : undefined,
@@ -246,16 +254,22 @@ const buildQueryParams = () => ({
 
 // Event handlers
 const handleFilterChange = async () => {
+  pageCursors.value.clear()
+  currentPage.value = 1
   await fetchVariants(buildQueryParams())
 }
 
 const handleClearAll = async () => {
   clearAllFilters()
+  pageCursors.value.clear()
+  currentPage.value = 1
   await fetchVariants(buildQueryParams())
 }
 
 const handleClearFilter = async (filterId: string) => {
   clearFilter(filterId)
+  pageCursors.value.clear()
+  currentPage.value = 1
   await fetchVariants(buildQueryParams())
 }
 
@@ -264,15 +278,38 @@ const handleTableOptions = async (options: {
   itemsPerPage: number
   sortBy: Array<{ key: string; order: 'asc' | 'desc' }>
 }) => {
-  const baseParams = buildQueryParams()
+  const newSortBy = options.sortBy.length > 0 ? options.sortBy[0].key : undefined
+  const newSortOrder = (options.sortBy.length > 0 ? options.sortBy[0].order : 'desc') as
+    | 'asc'
+    | 'desc'
+
+  // Reset cursors if sort changed
+  const sortChanged = newSortBy !== currentSortBy.value || newSortOrder !== currentSortOrder.value
+  if (sortChanged) {
+    pageCursors.value.clear()
+    currentPage.value = 1
+  }
+  currentSortBy.value = newSortBy
+  currentSortOrder.value = newSortOrder
+
+  // Get cursor for requested page (page 1 = no cursor)
+  const cursor = options.page > 1 ? pageCursors.value.get(options.page) : undefined
+
+  const baseParams = buildQueryParams(cursor)
   const params = {
     ...baseParams,
     limit: options.itemsPerPage,
-    offset: (options.page - 1) * options.itemsPerPage,
-    sort_by: options.sortBy.length > 0 ? options.sortBy[0].key : undefined,
-    sort_order: (options.sortBy.length > 0 ? options.sortBy[0].order : 'desc') as 'asc' | 'desc'
+    sort_by: newSortBy,
+    sort_order: newSortOrder
   }
+
   await fetchVariants(params)
+  currentPage.value = options.page
+
+  // Store cursor for next page
+  if (nextCursor.value) {
+    pageCursors.value.set(options.page + 1, nextCursor.value)
+  }
 }
 
 const handleRowClick = (variant: CohortVariant) => {
@@ -284,11 +321,15 @@ const handleColumnFiltersChange = async (
   filters: Record<string, string> | undefined
 ): Promise<void> => {
   cohortColumnFilters.value = filters
+  pageCursors.value.clear()
+  currentPage.value = 1
   await fetchVariants(buildQueryParams())
 }
 
 const handleRetry = async () => {
   error.value = null
+  pageCursors.value.clear()
+  currentPage.value = 1
   await fetchVariants(buildQueryParams())
 }
 

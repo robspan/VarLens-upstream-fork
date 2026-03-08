@@ -53,7 +53,15 @@ const nullishNumberArray = () =>
 export const CohortSearchParamsSchema = z.object({
   // Pagination (optional per actual type)
   limit: z.number().int().positive().max(10000).optional(),
-  offset: z.number().int().nonnegative().optional(),
+  // Cursor-based pagination (replaces offset)
+  cursor: z
+    .object({
+      sort_value: z.union([z.number(), z.string(), z.null()]),
+      sort_key: z.string().min(1),
+      variant_key: z.string().min(1)
+    })
+    .nullish()
+    .transform((val) => val ?? undefined),
 
   // Sorting (nullish - frontend may send null, transformed to undefined)
   sort_by: nullishString(),

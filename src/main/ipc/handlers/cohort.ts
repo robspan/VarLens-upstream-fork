@@ -49,7 +49,9 @@ ipcMain.handle('cohort:variants', async (_event, params: unknown) => {
     }))
     return {
       data: plainData,
-      total_count: Number(result.total_count)
+      total_count: Number(result.total_count),
+      has_more: result.has_more,
+      next_cursor: result.next_cursor
     }
   })
 })

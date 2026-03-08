@@ -210,8 +210,7 @@ ipcMain.handle(
       // Get all cohort variants matching filters (no pagination limit)
       const exportParams: CohortSearchParams = {
         ...params,
-        limit: 100000, // Large limit to get all variants
-        offset: 0
+        limit: 100000 // Large limit to get all variants
       }
       const cohortResult = cohortService.getCohortVariants(exportParams)
       const variants = cohortResult.data

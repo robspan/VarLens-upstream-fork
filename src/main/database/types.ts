@@ -331,3 +331,82 @@ export interface CaseHpoTerm {
   /** Unix timestamp in milliseconds */
   created_at: number
 }
+
+/**
+ * CaseComment - Timestamped, categorized case comments
+ */
+export interface CaseComment {
+  /** SQLite INTEGER PRIMARY KEY AUTOINCREMENT */
+  id: number
+  /** Foreign key to cases table */
+  case_id: number
+  /** Comment category */
+  category: 'Clinical Note' | 'Lab Result' | 'Interpretation' | 'Follow-up' | 'Family History' | 'Treatment'
+  /** Comment content */
+  content: string
+  /** Unix timestamp in milliseconds */
+  created_at: number
+  /** Unix timestamp in milliseconds, null until edited */
+  updated_at: number | null
+}
+
+/**
+ * Comment category type
+ */
+export type CommentCategory = CaseComment['category']
+
+/**
+ * MetricDefinition - Global metric catalog (predefined + user-created)
+ */
+export interface MetricDefinition {
+  /** SQLite INTEGER PRIMARY KEY AUTOINCREMENT */
+  id: number
+  /** Metric name (e.g., "Hemoglobin (Hb)") */
+  name: string
+  /** Expected value type */
+  value_type: 'numeric' | 'text' | 'date'
+  /** Unit (e.g., "g/dL"), empty string for dimensionless */
+  unit: string
+  /** Category (e.g., "Hematology") */
+  category: string
+  /** 1 = shipped default, 0 = user-created */
+  is_predefined: number
+  /** Unix timestamp in milliseconds */
+  created_at: number
+}
+
+/**
+ * CaseMetric - Per-case metric value (EAV pattern)
+ */
+export interface CaseMetric {
+  /** SQLite INTEGER PRIMARY KEY AUTOINCREMENT */
+  id: number
+  /** Foreign key to cases table */
+  case_id: number
+  /** Foreign key to metric_definitions table */
+  metric_id: number
+  /** Set when value_type = numeric */
+  numeric_value: number | null
+  /** Set when value_type = text */
+  text_value: string | null
+  /** ISO 8601 date string, set when value_type = date */
+  date_value: string | null
+  /** Unix timestamp in milliseconds */
+  created_at: number
+  /** Unix timestamp in milliseconds */
+  updated_at: number
+}
+
+/**
+ * CaseMetricWithDefinition - Joined view for display
+ */
+export interface CaseMetricWithDefinition extends CaseMetric {
+  /** Metric name */
+  name: string
+  /** Expected value type */
+  value_type: 'numeric' | 'text' | 'date'
+  /** Unit */
+  unit: string
+  /** Category */
+  metric_category: string
+}

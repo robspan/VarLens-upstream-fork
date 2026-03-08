@@ -202,7 +202,9 @@ ipcMain.handle('case-metadata:getFullMetadata', async (_event, caseId: number) =
     return {
       metadata: db.getCaseMetadata(caseId),
       cohorts: db.getCaseCohorts(caseId),
-      hpoTerms: db.getCaseHpoTerms(caseId)
+      hpoTerms: db.getCaseHpoTerms(caseId),
+      comments: db.listCaseComments(caseId),
+      metrics: db.listCaseMetrics(caseId)
     }
   })
 })

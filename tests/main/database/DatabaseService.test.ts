@@ -343,4 +343,135 @@ describe('DatabaseService', () => {
       expect(cases.length).toBe(5)
     })
   })
+
+  describe('Case Comments', () => {
+    it('creates and lists comments for a case', () => {
+      const caseId = service.createCase('comment-test', '/path/test.vcf', 1024)
+
+      const comment = service.createCaseComment(caseId, 'Clinical Note', 'Patient presents with seizures')
+      expect(comment.id).toBeGreaterThan(0)
+      expect(comment.case_id).toBe(caseId)
+      expect(comment.category).toBe('Clinical Note')
+      expect(comment.content).toBe('Patient presents with seizures')
+      expect(comment.created_at).toBeGreaterThan(0)
+      expect(comment.updated_at).toBeNull()
+
+      service.createCaseComment(caseId, 'Lab Result', 'WBC elevated')
+
+      const comments = service.listCaseComments(caseId)
+      expect(comments).toHaveLength(2)
+      // Newest first
+      expect(comments[0].category).toBe('Lab Result')
+      expect(comments[1].category).toBe('Clinical Note')
+    })
+
+    it('updates a comment and sets updated_at', () => {
+      const caseId = service.createCase('update-comment-test', '/path/test.vcf', 1024)
+      const comment = service.createCaseComment(caseId, 'Interpretation', 'Initial assessment')
+
+      const updated = service.updateCaseComment(comment.id, 'Revised assessment')
+      expect(updated.content).toBe('Revised assessment')
+      expect(updated.updated_at).not.toBeNull()
+      expect(updated.updated_at!).toBeGreaterThanOrEqual(updated.created_at)
+    })
+
+    it('deletes a comment', () => {
+      const caseId = service.createCase('delete-comment-test', '/path/test.vcf', 1024)
+      const comment = service.createCaseComment(caseId, 'Follow-up', 'Schedule MRI')
+
+      service.deleteCaseComment(comment.id)
+
+      const comments = service.listCaseComments(caseId)
+      expect(comments).toHaveLength(0)
+    })
+
+    it('throws NotFoundError when updating non-existent comment', () => {
+      expect(() => service.updateCaseComment(99999, 'nope')).toThrow(NotFoundError)
+    })
+
+    it('throws NotFoundError when deleting non-existent comment', () => {
+      expect(() => service.deleteCaseComment(99999)).toThrow(NotFoundError)
+    })
+  })
+
+  describe('Case Metrics', () => {
+    it('lists predefined metric definitions', () => {
+      const definitions = service.listMetricDefinitions()
+      expect(definitions.length).toBeGreaterThan(100)
+
+      const hb = definitions.find((d) => d.name === 'Hemoglobin (Hb)')
+      expect(hb).toBeDefined()
+      expect(hb!.value_type).toBe('numeric')
+      expect(hb!.unit).toBe('g/dL')
+      expect(hb!.category).toBe('Hematology')
+      expect(hb!.is_predefined).toBe(1)
+    })
+
+    it('creates a user-defined metric definition', () => {
+      const custom = service.createMetricDefinition('Custom Score', 'numeric', 'points', 'Custom')
+      expect(custom.id).toBeGreaterThan(0)
+      expect(custom.name).toBe('Custom Score')
+      expect(custom.is_predefined).toBe(0)
+    })
+
+    it('upserts a numeric metric value for a case', () => {
+      const caseId = service.createCase('metric-test', '/path/test.vcf', 1024)
+      const definitions = service.listMetricDefinitions()
+      const hb = definitions.find((d) => d.name === 'Hemoglobin (Hb)')!
+
+      const metric = service.upsertCaseMetric(caseId, hb.id, { numeric_value: 13.5 })
+      expect(metric.case_id).toBe(caseId)
+      expect(metric.metric_id).toBe(hb.id)
+      expect(metric.numeric_value).toBe(13.5)
+
+      const updated = service.upsertCaseMetric(caseId, hb.id, { numeric_value: 14.0 })
+      expect(updated.numeric_value).toBe(14.0)
+      expect(updated.id).toBe(metric.id)
+    })
+
+    it('lists case metrics with definitions joined', () => {
+      const caseId = service.createCase('metric-list-test', '/path/test.vcf', 1024)
+      const definitions = service.listMetricDefinitions()
+      const hb = definitions.find((d) => d.name === 'Hemoglobin (Hb)')!
+      const wbc = definitions.find((d) => d.name === 'White Blood Cell Count (WBC)')!
+
+      service.upsertCaseMetric(caseId, hb.id, { numeric_value: 13.5 })
+      service.upsertCaseMetric(caseId, wbc.id, { numeric_value: 7.2 })
+
+      const metrics = service.listCaseMetrics(caseId)
+      expect(metrics).toHaveLength(2)
+      expect(metrics[0].name).toBeDefined()
+      expect(metrics[0].unit).toBeDefined()
+      expect(metrics[0].metric_category).toBeDefined()
+    })
+
+    it('deletes a case metric value', () => {
+      const caseId = service.createCase('metric-delete-test', '/path/test.vcf', 1024)
+      const definitions = service.listMetricDefinitions()
+      const hb = definitions.find((d) => d.name === 'Hemoglobin (Hb)')!
+
+      service.upsertCaseMetric(caseId, hb.id, { numeric_value: 13.5 })
+      service.deleteCaseMetric(caseId, hb.id)
+
+      const metrics = service.listCaseMetrics(caseId)
+      expect(metrics).toHaveLength(0)
+    })
+
+    it('supports text and date metric values', () => {
+      const caseId = service.createCase('metric-types-test', '/path/test.vcf', 1024)
+      const definitions = service.listMetricDefinitions()
+      const ethnicity = definitions.find((d) => d.name === 'Ethnicity')!
+      const dob = definitions.find((d) => d.name === 'Date of Birth')!
+
+      service.upsertCaseMetric(caseId, ethnicity.id, { text_value: 'European' })
+      service.upsertCaseMetric(caseId, dob.id, { date_value: '1990-05-15' })
+
+      const metrics = service.listCaseMetrics(caseId)
+      const ethMetric = metrics.find((m) => m.name === 'Ethnicity')!
+      const dobMetric = metrics.find((m) => m.name === 'Date of Birth')!
+
+      expect(ethMetric.text_value).toBe('European')
+      expect(dobMetric.date_value).toBe('1990-05-15')
+    })
+  })
 })

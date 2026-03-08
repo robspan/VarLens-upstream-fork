@@ -21,7 +21,12 @@ import type {
   CaseMetadata,
   CohortGroup,
   CaseHpoTerm,
-  Tag
+  Tag,
+  CaseComment,
+  CommentCategory,
+  MetricDefinition,
+  CaseMetric,
+  CaseMetricWithDefinition
 } from './types'
 import type { DatabaseOverview } from '../../shared/types/database-overview'
 import type { FilterOptions } from '../../shared/types/api'
@@ -381,6 +386,54 @@ export class DatabaseService {
 
   removeCaseHpoTerm(caseId: number, hpoId: string): void {
     this.metadata.removeCaseHpoTerm(caseId, hpoId)
+  }
+
+  // Case Comments
+  listCaseComments(caseId: number): CaseComment[] {
+    return this.metadata.listCaseComments(caseId)
+  }
+
+  createCaseComment(caseId: number, category: CommentCategory, content: string): CaseComment {
+    return this.metadata.createCaseComment(caseId, category, content)
+  }
+
+  updateCaseComment(commentId: number, content: string): CaseComment {
+    return this.metadata.updateCaseComment(commentId, content)
+  }
+
+  deleteCaseComment(commentId: number): void {
+    this.metadata.deleteCaseComment(commentId)
+  }
+
+  // Metric Definitions
+  listMetricDefinitions(): MetricDefinition[] {
+    return this.metadata.listMetricDefinitions()
+  }
+
+  createMetricDefinition(
+    name: string,
+    valueType: 'numeric' | 'text' | 'date',
+    unit: string,
+    category: string
+  ): MetricDefinition {
+    return this.metadata.createMetricDefinition(name, valueType, unit, category)
+  }
+
+  // Case Metrics
+  listCaseMetrics(caseId: number): CaseMetricWithDefinition[] {
+    return this.metadata.listCaseMetrics(caseId)
+  }
+
+  upsertCaseMetric(
+    caseId: number,
+    metricId: number,
+    value: { numeric_value?: number | null; text_value?: string | null; date_value?: string | null }
+  ): CaseMetric {
+    return this.metadata.upsertCaseMetric(caseId, metricId, value)
+  }
+
+  deleteCaseMetric(caseId: number, metricId: number): void {
+    this.metadata.deleteCaseMetric(caseId, metricId)
   }
 
   listTags(): Tag[] {

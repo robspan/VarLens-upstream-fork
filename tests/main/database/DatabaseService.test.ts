@@ -68,9 +68,11 @@ describe('DatabaseService', () => {
         }
         expect(busyTimeout.timeout).toBe(5000)
 
-        const mmapSize = fileService.database.prepare('PRAGMA mmap_size').get() as {
-          mmap_size: number
-        } | undefined
+        const mmapSize = fileService.database.prepare('PRAGMA mmap_size').get() as
+          | {
+              mmap_size: number
+            }
+          | undefined
         // mmap_size is set but the return format varies by platform
         if (mmapSize !== undefined) {
           expect(mmapSize.mmap_size).toBe(268435456)

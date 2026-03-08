@@ -551,7 +551,9 @@ describe('Schema Migrations', () => {
     it('creates covering index for filter options', () => {
       const service = new DatabaseService(':memory:')
       const indexes = service.database
-        .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name = 'idx_variants_filter_covering'")
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='index' AND name = 'idx_variants_filter_covering'"
+        )
         .all()
       expect(indexes).toHaveLength(1)
       service.close()
@@ -560,7 +562,9 @@ describe('Schema Migrations', () => {
     it('creates composite index for variant lookup with case_id', () => {
       const service = new DatabaseService(':memory:')
       const indexes = service.database
-        .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name = 'idx_variants_case_coords'")
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='index' AND name = 'idx_variants_case_coords'"
+        )
         .all()
       expect(indexes).toHaveLength(1)
       service.close()
@@ -569,7 +573,9 @@ describe('Schema Migrations', () => {
     it('creates partial index on gene_symbol for gene burden', () => {
       const service = new DatabaseService(':memory:')
       const indexes = service.database
-        .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name = 'idx_variants_gene_notnull'")
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='index' AND name = 'idx_variants_gene_notnull'"
+        )
         .all()
       expect(indexes).toHaveLength(1)
       service.close()
@@ -578,7 +584,9 @@ describe('Schema Migrations', () => {
     it('creates index on variant_annotations acmg_classification', () => {
       const service = new DatabaseService(':memory:')
       const indexes = service.database
-        .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name = 'idx_variant_annotations_acmg'")
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='index' AND name = 'idx_variant_annotations_acmg'"
+        )
         .all()
       expect(indexes).toHaveLength(1)
       service.close()

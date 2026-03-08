@@ -22,10 +22,13 @@
       </v-app-bar-title>
 
       <div v-if="showContextIndicator" class="context-indicator mx-3 d-flex align-center">
-        <v-icon size="small" class="mr-1">
-          {{ activeTab === 'cohort' ? 'mdi-account-group' : 'mdi-account' }}
-        </v-icon>
         <template v-if="activeTab === 'case' && selectedCaseId">
+          <v-icon size="small" :color="selectedStatusColor" class="mr-1">
+            {{ selectedStatusIcon }}
+          </v-icon>
+          <v-icon v-if="selectedSexIcon" size="x-small" :color="selectedSexColor" class="mr-1">
+            {{ selectedSexIcon }}
+          </v-icon>
           <span
             class="text-body-medium font-weight-medium text-truncate context-label clickable-case-name"
             role="button"
@@ -47,11 +50,13 @@
           </v-btn>
         </template>
         <template v-else-if="activeTab === 'cohort'">
+          <v-icon size="small" class="mr-1">mdi-account-group</v-icon>
           <span class="text-body-medium font-weight-medium">
             Cohort ({{ caseCount }} {{ caseCount === 1 ? 'case' : 'cases' }})
           </span>
         </template>
         <template v-else>
+          <v-icon size="small" class="mr-1">mdi-account</v-icon>
           <span
             class="text-body-medium text-medium-emphasis select-case-hint"
             role="button"
@@ -271,7 +276,13 @@ import { usePanelResize } from './composables/usePanelResize'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useVersionGating } from './composables/useVersionGating'
 import { useDatabaseStore } from './stores/databaseStore'
-import { useCaseMetadata } from './composables/useCaseMetadata'
+import {
+  useCaseMetadata,
+  STATUS_ICONS,
+  STATUS_COLORS,
+  SEX_ICONS,
+  SEX_COLORS
+} from './composables/useCaseMetadata'
 import { useColumnPreferences } from './composables/useColumnPreferences'
 import { useFilterPreferences } from './composables/useFilterPreferences'
 import { useResponsiveLayout } from './composables/useResponsiveLayout'
@@ -286,7 +297,31 @@ const { tier, showModeToggleLabels, showContextIndicator } = useResponsiveLayout
 const databaseStore = useDatabaseStore()
 
 // Initialize case metadata composable for cache clearing
-const { clearCache: clearMetadataCache } = useCaseMetadata()
+const { getMetadata, clearCache: clearMetadataCache } = useCaseMetadata()
+
+// Computed icons for selected case in top bar
+const selectedStatusIcon = computed(() => {
+  if (selectedCaseId.value == null) return 'mdi-account'
+  const meta = getMetadata(selectedCaseId.value)
+  return STATUS_ICONS[meta?.metadata?.affected_status ?? 'unknown']
+})
+const selectedStatusColor = computed(() => {
+  if (selectedCaseId.value == null) return undefined
+  const meta = getMetadata(selectedCaseId.value)
+  return STATUS_COLORS[meta?.metadata?.affected_status ?? 'unknown']
+})
+const selectedSexIcon = computed(() => {
+  if (selectedCaseId.value == null) return null
+  const meta = getMetadata(selectedCaseId.value)
+  const sex = meta?.metadata?.sex ?? 'unknown'
+  if (sex === 'unknown') return null
+  return SEX_ICONS[sex]
+})
+const selectedSexColor = computed(() => {
+  if (selectedCaseId.value == null) return undefined
+  const meta = getMetadata(selectedCaseId.value)
+  return SEX_COLORS[meta?.metadata?.sex ?? 'unknown']
+})
 
 // Initialize preference reset functions
 const { resetToDefaults: resetVariantColumns } = useColumnPreferences('variant-table')

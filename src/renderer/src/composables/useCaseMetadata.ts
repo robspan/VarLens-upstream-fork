@@ -284,6 +284,21 @@ export const STATUS_COLORS: Record<AffectedStatus, string> = {
   unknown: 'grey'
 }
 
+// Sex display constants
+export const SEX_ICONS: Record<CaseSex, string> = {
+  male: 'mdi-gender-male',
+  female: 'mdi-gender-female',
+  other: 'mdi-gender-non-binary',
+  unknown: 'mdi-help-circle-outline'
+}
+
+export const SEX_COLORS: Record<CaseSex, string> = {
+  male: 'blue',
+  female: 'pink',
+  other: 'purple',
+  unknown: 'grey'
+}
+
 // Cohort color function (deterministic hash-based)
 export function getCohortColor(name: string): string {
   const colors = [

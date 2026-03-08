@@ -73,14 +73,20 @@
           size="small"
           class="mr-2"
         />
-        <!-- Status icon when not in multi-select mode -->
-        <v-icon
-          v-else
-          :icon="getCaseStatusIcon(caseItem.id)"
-          :color="getCaseStatusColor(caseItem.id)"
-          size="small"
-          class="mr-2"
-        />
+        <!-- Status + sex icons when not in multi-select mode -->
+        <div v-else class="d-flex align-center mr-2">
+          <v-icon
+            :icon="getCaseStatusIcon(caseItem.id)"
+            :color="getCaseStatusColor(caseItem.id)"
+            size="small"
+          />
+          <v-icon
+            :icon="getCaseSexIcon(caseItem.id)"
+            :color="getCaseSexColor(caseItem.id)"
+            size="x-small"
+            class="ml-n1"
+          />
+        </div>
       </template>
 
       <v-list-item-title>{{ caseItem.name }}</v-list-item-title>
@@ -169,6 +175,8 @@ import {
   useCaseMetadata,
   STATUS_ICONS,
   STATUS_COLORS,
+  SEX_ICONS,
+  SEX_COLORS,
   getCohortColor
 } from '../composables/useCaseMetadata'
 import DeleteCaseDialog from './DeleteCaseDialog.vue'
@@ -444,6 +452,18 @@ function getCaseStatusColor(caseId: number): string {
   const metadata = getMetadata(caseId)
   const status = metadata?.metadata?.affected_status ?? 'unknown'
   return STATUS_COLORS[status]
+}
+
+function getCaseSexIcon(caseId: number): string {
+  const metadata = getMetadata(caseId)
+  const sex = metadata?.metadata?.sex ?? 'unknown'
+  return SEX_ICONS[sex]
+}
+
+function getCaseSexColor(caseId: number): string {
+  const metadata = getMetadata(caseId)
+  const sex = metadata?.metadata?.sex ?? 'unknown'
+  return SEX_COLORS[sex]
 }
 
 function getCaseCohorts(caseId: number): CohortGroup[] {

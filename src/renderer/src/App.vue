@@ -23,12 +23,12 @@
 
       <div v-if="showContextIndicator" class="context-indicator mx-3 d-flex align-center">
         <template v-if="activeTab === 'case' && selectedCaseId">
-          <v-icon size="small" :color="selectedStatusColor" class="mr-1">
-            {{ selectedStatusIcon }}
-          </v-icon>
-          <v-icon v-if="selectedSexIcon" size="x-small" :color="selectedSexColor" class="mr-1">
-            {{ selectedSexIcon }}
-          </v-icon>
+          <CaseStatusIcons
+            :status="selectedStatusLabel"
+            :sex="selectedSexLabel"
+            tooltip-location="bottom"
+            class="mr-1"
+          />
           <span
             class="text-body-medium font-weight-medium text-truncate context-label clickable-case-name"
             role="button"
@@ -276,18 +276,13 @@ import { usePanelResize } from './composables/usePanelResize'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useVersionGating } from './composables/useVersionGating'
 import { useDatabaseStore } from './stores/databaseStore'
-import {
-  useCaseMetadata,
-  STATUS_ICONS,
-  STATUS_COLORS,
-  SEX_ICONS,
-  SEX_COLORS
-} from './composables/useCaseMetadata'
+import { useCaseMetadata } from './composables/useCaseMetadata'
+import CaseStatusIcons from './components/CaseStatusIcons.vue'
 import { useColumnPreferences } from './composables/useColumnPreferences'
 import { useFilterPreferences } from './composables/useFilterPreferences'
 import { useResponsiveLayout } from './composables/useResponsiveLayout'
 import { logService } from './services/LogService'
-import type { VariantFilter, Variant } from '../../shared/types/api'
+import type { VariantFilter, Variant, AffectedStatus, CaseSex } from '../../shared/types/api'
 import type { CohortVariant } from '../../shared/types/cohort'
 
 // Initialize responsive layout
@@ -299,28 +294,16 @@ const databaseStore = useDatabaseStore()
 // Initialize case metadata composable for cache clearing
 const { getMetadata, clearCache: clearMetadataCache } = useCaseMetadata()
 
-// Computed icons for selected case in top bar
-const selectedStatusIcon = computed(() => {
-  if (selectedCaseId.value == null) return 'mdi-account'
+// Computed metadata labels for selected case in top bar
+const selectedStatusLabel = computed<AffectedStatus>(() => {
+  if (selectedCaseId.value == null) return 'unknown'
   const meta = getMetadata(selectedCaseId.value)
-  return STATUS_ICONS[meta?.metadata?.affected_status ?? 'unknown']
+  return meta?.metadata?.affected_status ?? 'unknown'
 })
-const selectedStatusColor = computed(() => {
-  if (selectedCaseId.value == null) return undefined
+const selectedSexLabel = computed<CaseSex>(() => {
+  if (selectedCaseId.value == null) return 'unknown'
   const meta = getMetadata(selectedCaseId.value)
-  return STATUS_COLORS[meta?.metadata?.affected_status ?? 'unknown']
-})
-const selectedSexIcon = computed(() => {
-  if (selectedCaseId.value == null) return null
-  const meta = getMetadata(selectedCaseId.value)
-  const sex = meta?.metadata?.sex ?? 'unknown'
-  if (sex === 'unknown') return null
-  return SEX_ICONS[sex]
-})
-const selectedSexColor = computed(() => {
-  if (selectedCaseId.value == null) return undefined
-  const meta = getMetadata(selectedCaseId.value)
-  return SEX_COLORS[meta?.metadata?.sex ?? 'unknown']
+  return meta?.metadata?.sex ?? 'unknown'
 })
 
 // Initialize preference reset functions

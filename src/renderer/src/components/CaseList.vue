@@ -80,20 +80,12 @@
           class="mr-2"
         />
         <!-- Status + sex icons when not in multi-select mode -->
-        <div v-else class="d-flex align-center mr-2">
-          <v-icon
-            :icon="getCaseStatusIcon(caseItem.id)"
-            :color="getCaseStatusColor(caseItem.id)"
-            size="small"
-          />
-          <v-icon
-            v-if="getCaseSexValue(caseItem.id) !== 'unknown'"
-            :icon="getCaseSexIcon(caseItem.id)"
-            :color="getCaseSexColor(caseItem.id)"
-            size="x-small"
-            class="ml-1"
-          />
-        </div>
+        <CaseStatusIcons
+          v-else
+          :status="getCaseStatusValue(caseItem.id)"
+          :sex="getCaseSexValue(caseItem.id)"
+          class="mr-2"
+        />
       </template>
 
       <v-list-item-title>{{ caseItem.name }}</v-list-item-title>
@@ -176,16 +168,10 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import type { Case, CohortGroup } from '../../../shared/types/api'
+import type { Case, CohortGroup, AffectedStatus, CaseSex } from '../../../shared/types/api'
 import { useContextMenu } from '../composables/useContextMenu'
-import {
-  useCaseMetadata,
-  STATUS_ICONS,
-  STATUS_COLORS,
-  SEX_ICONS,
-  SEX_COLORS,
-  getCohortColor
-} from '../composables/useCaseMetadata'
+import { useCaseMetadata, getCohortColor } from '../composables/useCaseMetadata'
+import CaseStatusIcons from './CaseStatusIcons.vue'
 import DeleteCaseDialog from './DeleteCaseDialog.vue'
 import AppSnackbar from './AppSnackbar.vue'
 
@@ -453,33 +439,14 @@ const handleDeleteSelected = async (): Promise<void> => {
 }
 
 // Helper functions for metadata display
-function getCaseStatusIcon(caseId: number): string {
+function getCaseStatusValue(caseId: number): AffectedStatus {
   const metadata = getMetadata(caseId)
-  const status = metadata?.metadata?.affected_status ?? 'unknown'
-  return STATUS_ICONS[status]
+  return metadata?.metadata?.affected_status ?? 'unknown'
 }
 
-function getCaseStatusColor(caseId: number): string {
-  const metadata = getMetadata(caseId)
-  const status = metadata?.metadata?.affected_status ?? 'unknown'
-  return STATUS_COLORS[status]
-}
-
-function getCaseSexValue(caseId: number): string {
+function getCaseSexValue(caseId: number): CaseSex {
   const metadata = getMetadata(caseId)
   return metadata?.metadata?.sex ?? 'unknown'
-}
-
-function getCaseSexIcon(caseId: number): string {
-  const metadata = getMetadata(caseId)
-  const sex = metadata?.metadata?.sex ?? 'unknown'
-  return SEX_ICONS[sex]
-}
-
-function getCaseSexColor(caseId: number): string {
-  const metadata = getMetadata(caseId)
-  const sex = metadata?.metadata?.sex ?? 'unknown'
-  return SEX_COLORS[sex]
 }
 
 function getCaseCohorts(caseId: number): CohortGroup[] {

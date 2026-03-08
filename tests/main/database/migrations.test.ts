@@ -127,7 +127,7 @@ describe('Schema Migrations', () => {
       const versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(5)
+      expect(versionResult.user_version).toBe(6)
 
       service.close()
 
@@ -137,7 +137,7 @@ describe('Schema Migrations', () => {
       const versionAfterReopen = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionAfterReopen.user_version).toBe(5)
+      expect(versionAfterReopen.user_version).toBe(6)
 
       service.close()
     })
@@ -464,7 +464,7 @@ describe('Schema Migrations', () => {
       let versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(5)
+      expect(versionResult.user_version).toBe(6)
 
       service.close()
 
@@ -484,7 +484,7 @@ describe('Schema Migrations', () => {
       versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(5)
+      expect(versionResult.user_version).toBe(6)
 
       service.close()
     })
@@ -518,7 +518,7 @@ describe('Schema Migrations', () => {
       const versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(5)
+      expect(versionResult.user_version).toBe(6)
 
       service.close()
     })
@@ -589,6 +589,123 @@ describe('Schema Migrations', () => {
         )
         .all()
       expect(indexes).toHaveLength(1)
+      service.close()
+    })
+  })
+
+  describe('Migration v6 - Comments and Metrics', () => {
+    it('creates case_comments, metric_definitions, and case_metrics tables', () => {
+      const dbPath = tempDbPath()
+      const service = new DatabaseService(dbPath)
+
+      const tables = service.database
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        .all() as Array<{ name: string }>
+      const tableNames = tables.map((t) => t.name)
+
+      expect(tableNames).toContain('case_comments')
+      expect(tableNames).toContain('metric_definitions')
+      expect(tableNames).toContain('case_metrics')
+
+      service.close()
+    })
+
+    it('seeds predefined metric definitions', () => {
+      const dbPath = tempDbPath()
+      const service = new DatabaseService(dbPath)
+
+      const count = service.database
+        .prepare('SELECT COUNT(*) as count FROM metric_definitions WHERE is_predefined = 1')
+        .get() as { count: number }
+
+      // Should have ~120 predefined metrics
+      expect(count.count).toBeGreaterThan(100)
+
+      service.close()
+    })
+
+    it('cascades delete to case_comments when case deleted', () => {
+      const dbPath = tempDbPath()
+      const service = new DatabaseService(dbPath)
+
+      const caseId = service.createCase('test-case', '/path/to/file.vcf', 1024)
+
+      service.database
+        .prepare(
+          'INSERT INTO case_comments (case_id, category, content, created_at) VALUES (?, ?, ?, ?)'
+        )
+        .run(caseId, 'Clinical Note', 'Test comment', Date.now())
+
+      let count = service.database.prepare('SELECT COUNT(*) as count FROM case_comments').get() as {
+        count: number
+      }
+      expect(count.count).toBe(1)
+
+      service.database.prepare('DELETE FROM cases WHERE id = ?').run(caseId)
+
+      count = service.database.prepare('SELECT COUNT(*) as count FROM case_comments').get() as {
+        count: number
+      }
+      expect(count.count).toBe(0)
+
+      service.close()
+    })
+
+    it('cascades delete to case_metrics when case deleted', () => {
+      const dbPath = tempDbPath()
+      const service = new DatabaseService(dbPath)
+
+      const caseId = service.createCase('test-case', '/path/to/file.vcf', 1024)
+
+      const metric = service.database
+        .prepare('SELECT id FROM metric_definitions LIMIT 1')
+        .get() as { id: number }
+
+      service.database
+        .prepare(
+          'INSERT INTO case_metrics (case_id, metric_id, numeric_value, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+        )
+        .run(caseId, metric.id, 7.5, Date.now(), Date.now())
+
+      let count = service.database.prepare('SELECT COUNT(*) as count FROM case_metrics').get() as {
+        count: number
+      }
+      expect(count.count).toBe(1)
+
+      service.database.prepare('DELETE FROM cases WHERE id = ?').run(caseId)
+
+      count = service.database.prepare('SELECT COUNT(*) as count FROM case_metrics').get() as {
+        count: number
+      }
+      expect(count.count).toBe(0)
+
+      service.close()
+    })
+
+    it('enforces unique constraint on case_metrics(case_id, metric_id)', () => {
+      const dbPath = tempDbPath()
+      const service = new DatabaseService(dbPath)
+
+      const caseId = service.createCase('test-case', '/path/to/file.vcf', 1024)
+      const metric = service.database
+        .prepare('SELECT id FROM metric_definitions LIMIT 1')
+        .get() as { id: number }
+      const now = Date.now()
+
+      service.database
+        .prepare(
+          'INSERT INTO case_metrics (case_id, metric_id, numeric_value, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+        )
+        .run(caseId, metric.id, 7.5, now, now)
+
+      expect(() => {
+        service.database
+          .prepare(
+            'INSERT INTO case_metrics (case_id, metric_id, numeric_value, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+          )
+          .run(caseId, metric.id, 8.0, now, now)
+      }).toThrow()
+
       service.close()
     })
   })

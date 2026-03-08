@@ -6,7 +6,7 @@
  * for rapid UI/UX iteration.
  */
 
-import type { WindowAPI } from '../../../shared/types/api'
+import type { WindowAPI, CommentCategory } from '../../../shared/types/api'
 import { mockCases } from './fixtures/cases'
 import { mockVariants, mockFilterOptions } from './fixtures/variants'
 
@@ -600,7 +600,13 @@ export const mockApi: WindowAPI = {
       created_at: Date.now(),
       updated_at: Date.now()
     }),
-    getFullMetadata: async () => ({ metadata: null, cohorts: [], hpoTerms: [] }),
+    getFullMetadata: async () => ({
+      metadata: null,
+      cohorts: [],
+      hpoTerms: [],
+      comments: [],
+      metrics: []
+    }),
     listCohorts: async () => [],
     createCohort: async (name, description) => ({
       id: 1,
@@ -629,6 +635,57 @@ export const mockApi: WindowAPI = {
       created_at: Date.now()
     }),
     removeHpoTerm: async () => {}
+  },
+
+  caseComments: {
+    list: async () => [],
+    create: async (_caseId: number, category: CommentCategory, content: string) => ({
+      id: 1,
+      case_id: _caseId,
+      category,
+      content,
+      created_at: Date.now(),
+      updated_at: null
+    }),
+    update: async (commentId: number, content: string) => ({
+      id: commentId,
+      case_id: 1,
+      category: 'Clinical Note' as const,
+      content,
+      created_at: Date.now(),
+      updated_at: Date.now()
+    }),
+    delete: async () => {}
+  },
+
+  caseMetrics: {
+    listDefinitions: async () => [],
+    createDefinition: async (
+      name: string,
+      valueType: 'numeric' | 'text' | 'date',
+      unit: string,
+      category: string
+    ) => ({
+      id: 1,
+      name,
+      value_type: valueType,
+      unit,
+      category,
+      is_predefined: 0,
+      created_at: Date.now()
+    }),
+    listForCase: async () => [],
+    upsert: async (_caseId: number, metricId: number) => ({
+      id: 1,
+      case_id: _caseId,
+      metric_id: metricId,
+      numeric_value: null,
+      text_value: null,
+      date_value: null,
+      created_at: Date.now(),
+      updated_at: Date.now()
+    }),
+    delete: async () => {}
   },
 
   transcripts: {

@@ -104,7 +104,12 @@ export type {
   ApiCache,
   Tag,
   VariantTag,
-  CaseHpoTerm
+  CaseHpoTerm,
+  CaseComment,
+  CommentCategory,
+  MetricDefinition,
+  CaseMetric,
+  CaseMetricWithDefinition
 } from './types'
 
 // Errors

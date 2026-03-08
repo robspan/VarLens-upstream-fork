@@ -6,6 +6,7 @@
  */
 
 import type Database from 'better-sqlite3-multiple-ciphers'
+import { CLINICAL_METRICS } from './clinical-metrics'
 
 /**
  * Run schema migrations based on PRAGMA user_version
@@ -19,6 +20,8 @@ import type Database from 'better-sqlite3-multiple-ciphers'
  * - 2: v0.4.0 annotation tables (tags, cohorts, HPO terms, case metadata)
  * - 3: v0.4.0 schema fix (move starred/ACMG to per-case annotations)
  * - 4: v0.15.0 add sex column to case_metadata
+ * - 5: v0.16.0 performance indexes
+ * - 6: v0.17.0 case comments and metrics tables
  *
  * @param db - better-sqlite3-multiple-ciphers Database instance
  */
@@ -228,5 +231,74 @@ export function runMigrations(db: Database.Database): void {
         ON variant_annotations(acmg_classification) WHERE acmg_classification IS NOT NULL;
     `)
     db.exec('PRAGMA user_version = 5')
+  }
+
+  // v0.17.0: Add case comments and metrics tables
+  if (currentVersion < 6) {
+    db.exec(`
+      -- Case comments (timestamped, categorized)
+      CREATE TABLE IF NOT EXISTS case_comments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        category TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER,
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_case_comments_case_created
+        ON case_comments(case_id, created_at);
+
+      CREATE INDEX IF NOT EXISTS idx_case_comments_case_category
+        ON case_comments(case_id, category);
+
+      -- Metric definitions (predefined + user-created catalog)
+      CREATE TABLE IF NOT EXISTS metric_definitions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        value_type TEXT NOT NULL,
+        unit TEXT NOT NULL DEFAULT '',
+        category TEXT NOT NULL,
+        is_predefined INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      );
+
+      -- Case metric values (EAV pattern with typed columns)
+      CREATE TABLE IF NOT EXISTS case_metrics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        metric_id INTEGER NOT NULL,
+        numeric_value REAL,
+        text_value TEXT,
+        date_value TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+        FOREIGN KEY (metric_id) REFERENCES metric_definitions(id) ON DELETE CASCADE,
+        UNIQUE(case_id, metric_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_case_metrics_case
+        ON case_metrics(case_id);
+
+      CREATE INDEX IF NOT EXISTS idx_case_metrics_metric
+        ON case_metrics(metric_id);
+    `)
+
+    // Seed predefined metric definitions
+    const now = Date.now()
+    const insertMetric = db.prepare(
+      'INSERT OR IGNORE INTO metric_definitions (name, value_type, unit, category, is_predefined, created_at) VALUES (?, ?, ?, ?, 1, ?)'
+    )
+
+    const seedTransaction = db.transaction(() => {
+      for (const metric of CLINICAL_METRICS) {
+        insertMetric.run(metric.name, metric.value_type, metric.unit, metric.category, now)
+      }
+    })
+    seedTransaction()
+
+    db.exec('PRAGMA user_version = 6')
   }
 }

@@ -1,5 +1,14 @@
 import { BaseRepository } from './BaseRepository'
-import type { CaseMetadata, CohortGroup, CaseHpoTerm } from './types'
+import type {
+  CaseMetadata,
+  CohortGroup,
+  CaseHpoTerm,
+  CaseComment,
+  CommentCategory,
+  MetricDefinition,
+  CaseMetric,
+  CaseMetricWithDefinition
+} from './types'
 import { DatabaseError, NotFoundError, UniqueConstraintError } from './errors'
 
 export class MetadataRepository extends BaseRepository {
@@ -157,5 +166,111 @@ export class MetadataRepository extends BaseRepository {
 
   removeCaseHpoTerm(caseId: number, hpoId: string): void {
     this.stmt('DELETE FROM case_hpo_terms WHERE case_id = ? AND hpo_id = ?').run(caseId, hpoId)
+  }
+
+  // ============================================================
+  // Case Comment Operations
+  // ============================================================
+
+  listCaseComments(caseId: number): CaseComment[] {
+    return this.stmt(
+      'SELECT * FROM case_comments WHERE case_id = ? ORDER BY created_at DESC, id DESC'
+    ).all(caseId) as CaseComment[]
+  }
+
+  createCaseComment(caseId: number, category: CommentCategory, content: string): CaseComment {
+    const now = Date.now()
+    return this.stmt(
+      'INSERT INTO case_comments (case_id, category, content, created_at) VALUES (?, ?, ?, ?) RETURNING *'
+    ).get(caseId, category, content, now) as CaseComment
+  }
+
+  updateCaseComment(commentId: number, content: string): CaseComment {
+    const now = Date.now()
+    const result = this.stmt(
+      'UPDATE case_comments SET content = ?, updated_at = ? WHERE id = ? RETURNING *'
+    ).get(content, now, commentId) as CaseComment | undefined
+
+    if (!result) {
+      throw new NotFoundError('CaseComment', commentId)
+    }
+    return result
+  }
+
+  deleteCaseComment(commentId: number): void {
+    const result = this.stmt('DELETE FROM case_comments WHERE id = ?').run(commentId)
+    if (result.changes === 0) {
+      throw new NotFoundError('CaseComment', commentId)
+    }
+  }
+
+  // ============================================================
+  // Metric Definition Operations
+  // ============================================================
+
+  listMetricDefinitions(): MetricDefinition[] {
+    return this.stmt(
+      'SELECT * FROM metric_definitions ORDER BY category, name'
+    ).all() as MetricDefinition[]
+  }
+
+  createMetricDefinition(
+    name: string,
+    valueType: 'numeric' | 'text' | 'date',
+    unit: string,
+    category: string
+  ): MetricDefinition {
+    const now = Date.now()
+    return this.stmt(
+      'INSERT INTO metric_definitions (name, value_type, unit, category, is_predefined, created_at) VALUES (?, ?, ?, ?, 0, ?) RETURNING *'
+    ).get(name, valueType, unit, category, now) as MetricDefinition
+  }
+
+  // ============================================================
+  // Case Metric Operations
+  // ============================================================
+
+  listCaseMetrics(caseId: number): CaseMetricWithDefinition[] {
+    return this.stmt(
+      `
+      SELECT cm.*, md.name, md.value_type, md.unit, md.category AS metric_category
+      FROM case_metrics cm
+      JOIN metric_definitions md ON cm.metric_id = md.id
+      WHERE cm.case_id = ?
+      ORDER BY md.category, md.name
+    `
+    ).all(caseId) as CaseMetricWithDefinition[]
+  }
+
+  upsertCaseMetric(
+    caseId: number,
+    metricId: number,
+    value: { numeric_value?: number | null; text_value?: string | null; date_value?: string | null }
+  ): CaseMetric {
+    const now = Date.now()
+    return this.stmt(
+      `
+      INSERT INTO case_metrics (case_id, metric_id, numeric_value, text_value, date_value, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(case_id, metric_id) DO UPDATE SET
+        numeric_value = excluded.numeric_value,
+        text_value = excluded.text_value,
+        date_value = excluded.date_value,
+        updated_at = excluded.updated_at
+      RETURNING *
+    `
+    ).get(
+      caseId,
+      metricId,
+      value.numeric_value ?? null,
+      value.text_value ?? null,
+      value.date_value ?? null,
+      now,
+      now
+    ) as CaseMetric
+  }
+
+  deleteCaseMetric(caseId: number, metricId: number): void {
+    this.stmt('DELETE FROM case_metrics WHERE case_id = ? AND metric_id = ?').run(caseId, metricId)
   }
 }

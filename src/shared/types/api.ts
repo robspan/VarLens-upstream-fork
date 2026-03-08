@@ -45,7 +45,12 @@ import type {
   CaseMetadata,
   CohortGroup,
   CaseHpoTerm,
-  Tag
+  Tag,
+  CaseComment,
+  CommentCategory,
+  MetricDefinition,
+  CaseMetric,
+  CaseMetricWithDefinition
 } from '../../main/database/types'
 import type { ProgressUpdate, ImportResult } from '../../main/import/types'
 import type { SerializableError } from './errors'
@@ -89,7 +94,12 @@ export type {
   CohortGroup,
   CaseHpoTerm,
   Tag,
-  TranscriptInsertRow
+  TranscriptInsertRow,
+  CaseComment,
+  CommentCategory,
+  MetricDefinition,
+  CaseMetric,
+  CaseMetricWithDefinition
 }
 
 export interface CasesAPI {
@@ -339,6 +349,8 @@ export interface FullCaseMetadata {
   metadata: CaseMetadata | null
   cohorts: CohortGroup[]
   hpoTerms: CaseHpoTerm[]
+  comments: CaseComment[]
+  metrics: CaseMetricWithDefinition[]
 }
 
 export interface CaseMetadataAPI {
@@ -366,6 +378,32 @@ export interface CaseMetadataAPI {
   getHpoTerms: (caseId: number) => Promise<CaseHpoTerm[]>
   assignHpoTerm: (caseId: number, hpoId: string, hpoLabel: string) => Promise<CaseHpoTerm>
   removeHpoTerm: (caseId: number, hpoId: string) => Promise<void>
+}
+
+export interface CaseCommentsAPI {
+  list: (caseId: number) => Promise<CaseComment[]>
+  create: (caseId: number, category: CommentCategory, content: string) => Promise<CaseComment>
+  update: (commentId: number, content: string) => Promise<CaseComment>
+  delete: (commentId: number) => Promise<void>
+}
+
+export interface MetricValue {
+  numeric_value?: number | null
+  text_value?: string | null
+  date_value?: string | null
+}
+
+export interface CaseMetricsAPI {
+  listDefinitions: () => Promise<MetricDefinition[]>
+  createDefinition: (
+    name: string,
+    valueType: 'numeric' | 'text' | 'date',
+    unit: string,
+    category: string
+  ) => Promise<MetricDefinition>
+  listForCase: (caseId: number) => Promise<CaseMetricWithDefinition[]>
+  upsert: (caseId: number, metricId: number, value: MetricValue) => Promise<CaseMetric>
+  delete: (caseId: number, metricId: number) => Promise<void>
 }
 
 export interface TagsAPI {
@@ -412,6 +450,8 @@ export interface WindowAPI {
   myvariant: MyVariantAPI
   spliceai: SpliceAIAPI
   caseMetadata: CaseMetadataAPI
+  caseComments: CaseCommentsAPI
+  caseMetrics: CaseMetricsAPI
   transcripts: TranscriptsAPI
   tags: TagsAPI
   logs: LogsAPI

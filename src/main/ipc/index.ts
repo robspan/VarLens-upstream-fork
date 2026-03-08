@@ -24,6 +24,8 @@ export async function registerIpcHandlers(): Promise<void> {
     import('./handlers/myvariant'),
     import('./handlers/spliceai'),
     import('./handlers/case-metadata'),
+    import('./handlers/case-comments'),
+    import('./handlers/case-metrics'),
     import('./handlers/tags'),
     import('./handlers/transcripts'),
     import('./handlers/updater')

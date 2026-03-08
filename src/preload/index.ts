@@ -13,6 +13,7 @@ import type {
   CaseMetadataUpdates,
   LogMessage
 } from '../shared/types'
+import type { CommentCategory } from '../shared/types/api'
 
 /**
  * Preload script - exposes typed API to renderer via contextBridge.
@@ -238,6 +239,44 @@ const api = {
 
     removeHpoTerm: (caseId: number, hpoId: string) =>
       ipcRenderer.invoke('case-metadata:removeHpoTerm', caseId, hpoId)
+  },
+
+  caseComments: {
+    list: (caseId: number) => ipcRenderer.invoke('case-comments:list', caseId),
+
+    create: (caseId: number, category: CommentCategory, content: string) =>
+      ipcRenderer.invoke('case-comments:create', caseId, category, content),
+
+    update: (commentId: number, content: string) =>
+      ipcRenderer.invoke('case-comments:update', commentId, content),
+
+    delete: (commentId: number) => ipcRenderer.invoke('case-comments:delete', commentId)
+  },
+
+  caseMetrics: {
+    listDefinitions: () => ipcRenderer.invoke('case-metrics:listDefinitions'),
+
+    createDefinition: (
+      name: string,
+      valueType: 'numeric' | 'text' | 'date',
+      unit: string,
+      category: string
+    ) => ipcRenderer.invoke('case-metrics:createDefinition', name, valueType, unit, category),
+
+    listForCase: (caseId: number) => ipcRenderer.invoke('case-metrics:listForCase', caseId),
+
+    upsert: (
+      caseId: number,
+      metricId: number,
+      value: {
+        numeric_value?: number | null
+        text_value?: string | null
+        date_value?: string | null
+      }
+    ) => ipcRenderer.invoke('case-metrics:upsert', caseId, metricId, value),
+
+    delete: (caseId: number, metricId: number) =>
+      ipcRenderer.invoke('case-metrics:delete', caseId, metricId)
   },
 
   transcripts: {

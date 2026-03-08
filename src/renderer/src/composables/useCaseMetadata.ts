@@ -6,6 +6,8 @@
  */
 
 import { ref } from 'vue'
+import { useCaseComments } from './useCaseComments'
+import { useCaseMetrics } from './useCaseMetrics'
 import type {
   CaseMetadata,
   CohortGroup,
@@ -244,6 +246,8 @@ export function useCaseMetadata() {
     metadataCache.value.clear()
     loadingStates.value.clear()
     cohortGroupsCache.value = []
+    useCaseComments().clearCache()
+    useCaseMetrics().clearCache()
   }
 
   // Invalidate single case (force reload)

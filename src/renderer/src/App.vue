@@ -125,7 +125,7 @@
             @click="handleResetFilters"
           />
           <v-divider class="my-1" />
-          <v-list-subheader>Danger Zone</v-list-subheader>
+          <v-list-subheader class="danger-zone-subheader">Danger Zone</v-list-subheader>
           <v-list-item @click="handleDeleteAllCases">
             <template #prepend>
               <v-icon color="error">mdi-delete-sweep</v-icon>
@@ -171,6 +171,7 @@
           <div v-else class="case-content">
             <div class="filter-bar-container">
               <FilterToolbar
+                ref="filterToolbarRef"
                 :case-id="selectedCaseId"
                 :case-name="selectedCaseName"
                 :filtered-count="filteredCount"
@@ -340,6 +341,7 @@ const deleteAllCasesDialogRef = ref<InstanceType<typeof DeleteAllCasesDialog> | 
 const databaseOverviewDialogRef = ref<InstanceType<typeof DatabaseOverviewDialog> | null>(null)
 const caseMetadataModalRef = ref<InstanceType<typeof CaseMetadataModal> | null>(null)
 const cohortViewRef = ref<InstanceType<typeof CohortView> | null>(null)
+const filterToolbarRef = ref<InstanceType<typeof FilterToolbar> | null>(null)
 
 // Sidebar state
 const sidebarOpen = ref(true)
@@ -612,7 +614,9 @@ useKeyboardShortcuts({
   onFaq: () => faqDialogRef.value?.show(),
   onLogViewer: () => {
     logViewerOpen.value = !logViewerOpen.value
-  }
+  },
+  onToggleFilterDrawer: () => filterToolbarRef.value?.toggleFilterDrawer(),
+  onToggleColumnsDrawer: () => filterToolbarRef.value?.toggleColumnsDrawer()
 })
 
 const handleDisclaimerAcknowledged = (): void => {
@@ -698,6 +702,11 @@ onMounted(async () => {
 
 .select-case-hint:hover {
   text-decoration: underline;
+}
+
+.danger-zone-subheader {
+  color: rgb(var(--v-theme-error)) !important;
+  font-weight: 600;
 }
 
 .mode-toggle {

@@ -9,8 +9,49 @@ permissions:
   contents: read
 
 jobs:
+  create-release:
+    name: Create Draft Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release_id: ${{ steps.create.outputs.release_id }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Generate release notes
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname | sed -n '2p')
+          if [ -n "$PREV_TAG" ]; then
+            echo "## Changes since ${PREV_TAG}" > release_notes.md
+            echo "" >> release_notes.md
+            git log "${PREV_TAG}..${{ github.ref_name }}" --pretty=format:"- %s" --no-merges \
+              | grep -v "Co-Authored-By" >> release_notes.md || true
+          else
+            echo "Initial release" > release_notes.md
+          fi
+
+      - name: Create draft release
+        id: create
+        run: |
+          BODY=$(cat release_notes.md)
+          RELEASE_ID=$(gh api repos/${{ github.repository }}/releases \
+            -f tag_name="${{ github.ref_name }}" \
+            -f name="${{ github.ref_name }}" \
+            -f body="$BODY" \
+            -F draft=true \
+            -F prerelease=false \
+            --jq '.id')
+          echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   release-linux:
     name: Release (Linux)
+    needs: create-release
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -53,6 +94,7 @@ jobs:
 
   release-macos:
     name: Release (macOS)
+    needs: create-release
     runs-on: macos-latest
     permissions:
       contents: write
@@ -90,6 +132,7 @@ jobs:
 
   release-windows:
     name: Release (Windows)
+    needs: create-release
     runs-on: windows-latest
     permissions:
       contents: write
@@ -159,7 +202,7 @@ jobs:
 
   publish-release:
     name: Publish Release
-    needs: [release-linux, release-macos, release-windows]
+    needs: [create-release, release-linux, release-macos, release-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -167,8 +210,7 @@ jobs:
     steps:
       - name: Publish draft release and mark as latest
         run: |
-          RELEASE_ID=$(gh api repos/${{ github.repository }}/releases/tags/${{ github.ref_name }} --jq '.id')
-          gh api -X PATCH repos/${{ github.repository }}/releases/$RELEASE_ID \
+          gh api -X PATCH repos/${{ github.repository }}/releases/${{ needs.create-release.outputs.release_id }} \
             -F draft=false \
             -F make_latest=true
         env:

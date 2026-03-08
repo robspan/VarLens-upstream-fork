@@ -173,9 +173,9 @@ export class MetadataRepository extends BaseRepository {
   // ============================================================
 
   listCaseComments(caseId: number): CaseComment[] {
-    return this.stmt(
-      'SELECT * FROM case_comments WHERE case_id = ? ORDER BY created_at DESC'
-    ).all(caseId) as CaseComment[]
+    return this.stmt('SELECT * FROM case_comments WHERE case_id = ? ORDER BY created_at DESC').all(
+      caseId
+    ) as CaseComment[]
   }
 
   createCaseComment(caseId: number, category: CommentCategory, content: string): CaseComment {
@@ -231,13 +231,15 @@ export class MetadataRepository extends BaseRepository {
   // ============================================================
 
   listCaseMetrics(caseId: number): CaseMetricWithDefinition[] {
-    return this.stmt(`
+    return this.stmt(
+      `
       SELECT cm.*, md.name, md.value_type, md.unit, md.category AS metric_category
       FROM case_metrics cm
       JOIN metric_definitions md ON cm.metric_id = md.id
       WHERE cm.case_id = ?
       ORDER BY md.category, md.name
-    `).all(caseId) as CaseMetricWithDefinition[]
+    `
+    ).all(caseId) as CaseMetricWithDefinition[]
   }
 
   upsertCaseMetric(
@@ -246,7 +248,8 @@ export class MetadataRepository extends BaseRepository {
     value: { numeric_value?: number | null; text_value?: string | null; date_value?: string | null }
   ): CaseMetric {
     const now = Date.now()
-    return this.stmt(`
+    return this.stmt(
+      `
       INSERT INTO case_metrics (case_id, metric_id, numeric_value, text_value, date_value, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(case_id, metric_id) DO UPDATE SET
@@ -255,7 +258,8 @@ export class MetadataRepository extends BaseRepository {
         date_value = excluded.date_value,
         updated_at = excluded.updated_at
       RETURNING *
-    `).get(
+    `
+    ).get(
       caseId,
       metricId,
       value.numeric_value ?? null,

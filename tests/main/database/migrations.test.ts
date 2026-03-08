@@ -631,15 +631,21 @@ describe('Schema Migrations', () => {
       const caseId = service.createCase('test-case', '/path/to/file.vcf', 1024)
 
       service.database
-        .prepare('INSERT INTO case_comments (case_id, category, content, created_at) VALUES (?, ?, ?, ?)')
+        .prepare(
+          'INSERT INTO case_comments (case_id, category, content, created_at) VALUES (?, ?, ?, ?)'
+        )
         .run(caseId, 'Clinical Note', 'Test comment', Date.now())
 
-      let count = service.database.prepare('SELECT COUNT(*) as count FROM case_comments').get() as { count: number }
+      let count = service.database.prepare('SELECT COUNT(*) as count FROM case_comments').get() as {
+        count: number
+      }
       expect(count.count).toBe(1)
 
       service.database.prepare('DELETE FROM cases WHERE id = ?').run(caseId)
 
-      count = service.database.prepare('SELECT COUNT(*) as count FROM case_comments').get() as { count: number }
+      count = service.database.prepare('SELECT COUNT(*) as count FROM case_comments').get() as {
+        count: number
+      }
       expect(count.count).toBe(0)
 
       service.close()
@@ -656,15 +662,21 @@ describe('Schema Migrations', () => {
         .get() as { id: number }
 
       service.database
-        .prepare('INSERT INTO case_metrics (case_id, metric_id, numeric_value, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
+        .prepare(
+          'INSERT INTO case_metrics (case_id, metric_id, numeric_value, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+        )
         .run(caseId, metric.id, 7.5, Date.now(), Date.now())
 
-      let count = service.database.prepare('SELECT COUNT(*) as count FROM case_metrics').get() as { count: number }
+      let count = service.database.prepare('SELECT COUNT(*) as count FROM case_metrics').get() as {
+        count: number
+      }
       expect(count.count).toBe(1)
 
       service.database.prepare('DELETE FROM cases WHERE id = ?').run(caseId)
 
-      count = service.database.prepare('SELECT COUNT(*) as count FROM case_metrics').get() as { count: number }
+      count = service.database.prepare('SELECT COUNT(*) as count FROM case_metrics').get() as {
+        count: number
+      }
       expect(count.count).toBe(0)
 
       service.close()
@@ -681,12 +693,16 @@ describe('Schema Migrations', () => {
       const now = Date.now()
 
       service.database
-        .prepare('INSERT INTO case_metrics (case_id, metric_id, numeric_value, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
+        .prepare(
+          'INSERT INTO case_metrics (case_id, metric_id, numeric_value, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+        )
         .run(caseId, metric.id, 7.5, now, now)
 
       expect(() => {
         service.database
-          .prepare('INSERT INTO case_metrics (case_id, metric_id, numeric_value, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
+          .prepare(
+            'INSERT INTO case_metrics (case_id, metric_id, numeric_value, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+          )
           .run(caseId, metric.id, 8.0, now, now)
       }).toThrow()
 

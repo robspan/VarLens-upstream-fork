@@ -395,7 +395,12 @@ export interface MetricValue {
 
 export interface CaseMetricsAPI {
   listDefinitions: () => Promise<MetricDefinition[]>
-  createDefinition: (name: string, valueType: 'numeric' | 'text' | 'date', unit: string, category: string) => Promise<MetricDefinition>
+  createDefinition: (
+    name: string,
+    valueType: 'numeric' | 'text' | 'date',
+    unit: string,
+    category: string
+  ) => Promise<MetricDefinition>
   listForCase: (caseId: number) => Promise<CaseMetricWithDefinition[]>
   upsert: (caseId: number, metricId: number, value: MetricValue) => Promise<CaseMetric>
   delete: (caseId: number, metricId: number) => Promise<void>

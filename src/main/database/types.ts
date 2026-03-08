@@ -341,7 +341,13 @@ export interface CaseComment {
   /** Foreign key to cases table */
   case_id: number
   /** Comment category */
-  category: 'Clinical Note' | 'Lab Result' | 'Interpretation' | 'Follow-up' | 'Family History' | 'Treatment'
+  category:
+    | 'Clinical Note'
+    | 'Lab Result'
+    | 'Interpretation'
+    | 'Follow-up'
+    | 'Family History'
+    | 'Treatment'
   /** Comment content */
   content: string
   /** Unix timestamp in milliseconds */

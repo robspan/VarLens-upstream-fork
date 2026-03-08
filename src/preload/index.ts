@@ -240,6 +240,44 @@ const api = {
       ipcRenderer.invoke('case-metadata:removeHpoTerm', caseId, hpoId)
   },
 
+  caseComments: {
+    list: (caseId: number) => ipcRenderer.invoke('case-comments:list', caseId),
+
+    create: (caseId: number, category: string, content: string) =>
+      ipcRenderer.invoke('case-comments:create', caseId, category, content),
+
+    update: (commentId: number, content: string) =>
+      ipcRenderer.invoke('case-comments:update', commentId, content),
+
+    delete: (commentId: number) => ipcRenderer.invoke('case-comments:delete', commentId)
+  },
+
+  caseMetrics: {
+    listDefinitions: () => ipcRenderer.invoke('case-metrics:listDefinitions'),
+
+    createDefinition: (
+      name: string,
+      valueType: 'numeric' | 'text' | 'date',
+      unit: string,
+      category: string
+    ) => ipcRenderer.invoke('case-metrics:createDefinition', name, valueType, unit, category),
+
+    listForCase: (caseId: number) => ipcRenderer.invoke('case-metrics:listForCase', caseId),
+
+    upsert: (
+      caseId: number,
+      metricId: number,
+      value: {
+        numeric_value?: number | null
+        text_value?: string | null
+        date_value?: string | null
+      }
+    ) => ipcRenderer.invoke('case-metrics:upsert', caseId, metricId, value),
+
+    delete: (caseId: number, metricId: number) =>
+      ipcRenderer.invoke('case-metrics:delete', caseId, metricId)
+  },
+
   transcripts: {
     list: (variantId: number) => ipcRenderer.invoke('transcripts:list', variantId),
     switch: (variantId: number, transcriptId: string) =>

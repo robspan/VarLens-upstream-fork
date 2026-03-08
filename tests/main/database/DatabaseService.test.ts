@@ -348,7 +348,11 @@ describe('DatabaseService', () => {
     it('creates and lists comments for a case', () => {
       const caseId = service.createCase('comment-test', '/path/test.vcf', 1024)
 
-      const comment = service.createCaseComment(caseId, 'Clinical Note', 'Patient presents with seizures')
+      const comment = service.createCaseComment(
+        caseId,
+        'Clinical Note',
+        'Patient presents with seizures'
+      )
       expect(comment.id).toBeGreaterThan(0)
       expect(comment.case_id).toBe(caseId)
       expect(comment.category).toBe('Clinical Note')

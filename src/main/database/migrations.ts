@@ -211,4 +211,22 @@ export function runMigrations(db: Database.Database): void {
 
     db.exec('PRAGMA user_version = 4')
   }
+
+  // v0.16.0: Performance indexes
+  if (currentVersion < 5) {
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_variants_filter_covering
+        ON variants(case_id, consequence, func, clinvar);
+
+      CREATE INDEX IF NOT EXISTS idx_variants_case_coords
+        ON variants(case_id, chr, pos, ref, alt);
+
+      CREATE INDEX IF NOT EXISTS idx_variants_gene_notnull
+        ON variants(gene_symbol) WHERE gene_symbol IS NOT NULL;
+
+      CREATE INDEX IF NOT EXISTS idx_variant_annotations_acmg
+        ON variant_annotations(acmg_classification) WHERE acmg_classification IS NOT NULL;
+    `)
+    db.exec('PRAGMA user_version = 5')
+  }
 }

@@ -16,7 +16,9 @@ import type Database from 'better-sqlite3-multiple-ciphers'
  * Version history:
  * - 0 (implicit): Initial v0.3.0 schema (cases, variants, FTS)
  * - 1: Mark existing v0.3.0 databases
- * - 2: v0.4.0 annotation tables
+ * - 2: v0.4.0 annotation tables (tags, cohorts, HPO terms, case metadata)
+ * - 3: v0.4.0 schema fix (move starred/ACMG to per-case annotations)
+ * - 4: v0.15.0 add sex column to case_metadata
  *
  * @param db - better-sqlite3-multiple-ciphers Database instance
  */
@@ -195,5 +197,18 @@ export function runMigrations(db: Database.Database): void {
 
     // Update version to 3
     db.exec('PRAGMA user_version = 3')
+  }
+
+  // v0.15.0: Add sex column to case_metadata
+  if (currentVersion < 4) {
+    // Check if column already exists (safety for partial migrations)
+    const columns = db.prepare('PRAGMA table_info(case_metadata)').all() as { name: string }[]
+    const hasSex = columns.some((c) => c.name === 'sex')
+
+    if (!hasSex) {
+      db.exec(`ALTER TABLE case_metadata ADD COLUMN sex TEXT DEFAULT 'unknown'`)
+    }
+
+    db.exec('PRAGMA user_version = 4')
   }
 }

@@ -9,9 +9,9 @@
     class="mx-2 mt-2"
   />
 
-  <div class="d-flex mx-2 mt-1 ga-1">
+  <div class="case-filters-stack mx-2 mt-1">
     <v-select
-      v-model="selectedCohortFilter"
+      v-model="selectedCohortFilters"
       :items="cohortGroupsCache"
       item-title="name"
       item-value="id"
@@ -20,10 +20,13 @@
       density="compact"
       hide-details
       clearable
-      class="flex-1-1-0"
+      multiple
+      chips
+      closable-chips
+      class="mb-1"
     />
     <v-autocomplete
-      v-model="selectedHpoFilter"
+      v-model="selectedHpoFilters"
       :items="availableHpoTerms"
       item-title="label"
       item-value="hpo_id"
@@ -32,8 +35,10 @@
       density="compact"
       hide-details
       clearable
+      multiple
+      chips
+      closable-chips
       auto-select-first
-      class="flex-1-1-0"
     />
   </div>
 
@@ -74,12 +79,11 @@
           size="small"
           class="mr-2"
         />
-        <!-- Status icon when not in multi-select mode -->
-        <v-icon
+        <!-- Status + sex icons when not in multi-select mode -->
+        <CaseStatusIcons
           v-else
-          :icon="getCaseStatusIcon(caseItem.id)"
-          :color="getCaseStatusColor(caseItem.id)"
-          size="small"
+          :status="getCaseStatusValue(caseItem.id)"
+          :sex="getCaseSexValue(caseItem.id)"
           class="mr-2"
         />
       </template>
@@ -164,14 +168,10 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import type { Case, CohortGroup } from '../../../shared/types/api'
+import type { Case, CohortGroup, AffectedStatus, CaseSex } from '../../../shared/types/api'
 import { useContextMenu } from '../composables/useContextMenu'
-import {
-  useCaseMetadata,
-  STATUS_ICONS,
-  STATUS_COLORS,
-  getCohortColor
-} from '../composables/useCaseMetadata'
+import { useCaseMetadata, getCohortColor } from '../composables/useCaseMetadata'
+import CaseStatusIcons from './CaseStatusIcons.vue'
 import DeleteCaseDialog from './DeleteCaseDialog.vue'
 import AppSnackbar from './AppSnackbar.vue'
 
@@ -186,8 +186,8 @@ const emit = defineEmits<{
 const cases = ref<Case[]>([])
 const loading = ref(false)
 const search = ref('')
-const selectedCohortFilter = ref<number | null>(null)
-const selectedHpoFilter = ref<string | null>(null)
+const selectedCohortFilters = ref<number[]>([])
+const selectedHpoFilters = ref<string[]>([])
 const selected = ref<number[]>([])
 const contextMenuCase = ref<Case | null>(null)
 const contextMenu = useContextMenu()
@@ -248,10 +248,11 @@ const availableHpoTerms = computed(() => {
 
 // Whether any filter is active (for empty-state messaging)
 const hasActiveFilters = computed(
-  () => !!search.value || selectedCohortFilter.value != null || selectedHpoFilter.value != null
+  () =>
+    !!search.value || selectedCohortFilters.value.length > 0 || selectedHpoFilters.value.length > 0
 )
 
-// Filter cases by search term, cohort, HPO — sorted by created_at DESC
+// Filter cases by search term, cohort(s), HPO(s) — sorted by created_at DESC
 const filteredCases = computed(() => {
   let result = [...cases.value]
 
@@ -260,16 +261,19 @@ const filteredCases = computed(() => {
     result = result.filter((c) => c.name.toLowerCase().includes(query))
   }
 
-  if (selectedCohortFilter.value != null) {
-    const cohortId = selectedCohortFilter.value
-    result = result.filter((c) => getCaseCohorts(c.id).some((cohort) => cohort.id === cohortId))
+  if (selectedCohortFilters.value.length > 0) {
+    const cohortIds = selectedCohortFilters.value
+    result = result.filter((c) =>
+      cohortIds.some((cohortId) => getCaseCohorts(c.id).some((cohort) => cohort.id === cohortId))
+    )
   }
 
-  if (selectedHpoFilter.value != null) {
-    const hpoId = selectedHpoFilter.value
+  if (selectedHpoFilters.value.length > 0) {
+    const hpoIds = selectedHpoFilters.value
     result = result.filter((c) => {
       const metadata = getMetadata(c.id)
-      return (metadata?.hpoTerms ?? []).some((t) => t.hpo_id === hpoId)
+      const caseHpoIds = (metadata?.hpoTerms ?? []).map((t) => t.hpo_id)
+      return hpoIds.some((hpoId) => caseHpoIds.includes(hpoId))
     })
   }
 
@@ -435,16 +439,14 @@ const handleDeleteSelected = async (): Promise<void> => {
 }
 
 // Helper functions for metadata display
-function getCaseStatusIcon(caseId: number): string {
+function getCaseStatusValue(caseId: number): AffectedStatus {
   const metadata = getMetadata(caseId)
-  const status = metadata?.metadata?.affected_status ?? 'unknown'
-  return STATUS_ICONS[status]
+  return metadata?.metadata?.affected_status ?? 'unknown'
 }
 
-function getCaseStatusColor(caseId: number): string {
+function getCaseSexValue(caseId: number): CaseSex {
   const metadata = getMetadata(caseId)
-  const status = metadata?.metadata?.affected_status ?? 'unknown'
-  return STATUS_COLORS[status]
+  return metadata?.metadata?.sex ?? 'unknown'
 }
 
 function getCaseCohorts(caseId: number): CohortGroup[] {
@@ -469,5 +471,14 @@ onMounted(loadCases)
 <style scoped>
 .multi-selected {
   background-color: color-mix(in srgb, rgb(var(--v-theme-primary)) 12%, transparent) !important;
+}
+
+:deep(.v-list-item--active) {
+  border-left: 4px solid rgb(var(--v-theme-primary));
+  background-color: color-mix(in srgb, rgb(var(--v-theme-primary)) 8%, transparent) !important;
+}
+
+:deep(.v-list-item--active .v-list-item__prepend) {
+  padding-left: calc(16px - 4px);
 }
 </style>

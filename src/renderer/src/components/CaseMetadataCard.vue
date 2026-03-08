@@ -15,6 +15,23 @@
           />
         </div>
 
+        <!-- Sex row -->
+        <div class="d-flex align-center mb-3">
+          <span class="text-body-medium text-grey mr-2" style="min-width: 60px">Sex</span>
+          <v-select
+            :model-value="currentSex"
+            :items="sexOptions"
+            item-title="label"
+            item-value="value"
+            density="compact"
+            variant="outlined"
+            hide-details
+            style="max-width: 180px"
+            prepend-inner-icon="mdi-gender-male-female"
+            @update:model-value="handleSexChange"
+          />
+        </div>
+
         <!-- Cohorts row -->
         <div class="d-flex align-start mb-3">
           <span class="text-body-medium text-grey mr-2 mt-2" style="min-width: 60px">Cohorts</span>
@@ -52,7 +69,7 @@ import StatusSelector from './StatusSelector.vue'
 import CohortCombobox from './CohortCombobox.vue'
 import HpoTermSelector from './HpoTermSelector.vue'
 import { useCaseMetadata } from '../composables/useCaseMetadata'
-import type { AffectedStatus, CohortGroup } from '../../../shared/types/api'
+import type { AffectedStatus, CaseSex, CohortGroup } from '../../../shared/types/api'
 
 const props = defineProps<{
   caseId: number
@@ -64,6 +81,7 @@ const {
   getMetadata,
   isLoading,
   updateStatus,
+  updateSex,
   setCaseCohorts,
   createAndAssignCohort,
   assignHpoTerm,
@@ -71,10 +89,18 @@ const {
   cohortGroupsCache
 } = useCaseMetadata()
 
+const sexOptions = [
+  { label: 'Unknown', value: 'unknown' },
+  { label: 'Male', value: 'male' },
+  { label: 'Female', value: 'female' },
+  { label: 'Other', value: 'other' }
+]
+
 // Computed state
 const loading = computed(() => isLoading(props.caseId))
 const metadata = computed(() => getMetadata(props.caseId))
 const currentStatus = computed(() => metadata.value?.metadata?.affected_status ?? 'unknown')
+const currentSex = computed(() => metadata.value?.metadata?.sex ?? 'unknown')
 const currentCohorts = computed(() => metadata.value?.cohorts ?? [])
 const currentHpoTerms = computed(() => metadata.value?.hpoTerms ?? [])
 const allCohorts = computed(() => cohortGroupsCache.value)
@@ -93,6 +119,10 @@ watch(
 // Handlers
 async function handleStatusChange(status: AffectedStatus) {
   await updateStatus(props.caseId, status)
+}
+
+async function handleSexChange(sex: CaseSex) {
+  await updateSex(props.caseId, sex)
 }
 
 async function handleCohortsChange(cohorts: CohortGroup[]) {

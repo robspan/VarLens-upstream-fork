@@ -118,7 +118,7 @@
 
           <v-divider class="mb-4" />
 
-          <!-- Section 5: External Links -->
+          <!-- Section 6: External Links -->
           <ExternalLinksSection :variant="variant" />
         </template>
 

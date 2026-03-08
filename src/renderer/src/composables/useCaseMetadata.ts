@@ -11,6 +11,7 @@ import type {
   CohortGroup,
   CaseHpoTerm,
   AffectedStatus,
+  CaseSex,
   FullCaseMetadata
 } from '../../../shared/types/api'
 
@@ -88,6 +89,35 @@ export function useCaseMetadata() {
       // Revert optimistic update
       if (current && current.metadata) {
         current.metadata.affected_status = previousStatus
+      }
+    }
+  }
+
+  // Update sex with optimistic update
+  async function updateSex(caseId: number, sex: CaseSex): Promise<void> {
+    const current = metadataCache.value.get(caseId)
+    const previousSex = current?.metadata?.sex ?? null
+
+    // Optimistic update
+    if (current) {
+      current.metadata = {
+        ...current.metadata,
+        case_id: caseId,
+        sex: sex
+      } as CaseMetadata
+    }
+
+    try {
+      const updated = await window.api.caseMetadata.upsert(caseId, { sex })
+      const cached = metadataCache.value.get(caseId)
+      if (cached) {
+        cached.metadata = updated
+      }
+    } catch (error) {
+      console.error('Failed to update sex:', error)
+      // Revert optimistic update
+      if (current && current.metadata) {
+        current.metadata.sex = previousSex
       }
     }
   }
@@ -228,6 +258,7 @@ export function useCaseMetadata() {
     getMetadata,
     isLoading,
     updateStatus,
+    updateSex,
     setCaseCohorts,
     createAndAssignCohort,
     getOrCreateCohort,
@@ -250,6 +281,21 @@ export const STATUS_ICONS: Record<AffectedStatus, string> = {
 export const STATUS_COLORS: Record<AffectedStatus, string> = {
   affected: 'error',
   unaffected: 'success',
+  unknown: 'grey'
+}
+
+// Sex display constants
+export const SEX_ICONS: Record<CaseSex, string> = {
+  male: 'mdi-gender-male',
+  female: 'mdi-gender-female',
+  other: 'mdi-gender-non-binary',
+  unknown: 'mdi-help-circle-outline'
+}
+
+export const SEX_COLORS: Record<CaseSex, string> = {
+  male: 'blue',
+  female: 'pink',
+  other: 'purple',
   unknown: 'grey'
 }
 

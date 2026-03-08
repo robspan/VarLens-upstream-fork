@@ -1,22 +1,25 @@
 <template>
-  <v-dialog v-model="isOpen" max-width="600" persistent scrim>
+  <v-dialog v-model="isOpen" max-width="700" persistent scrim>
     <v-card>
       <v-card-title>{{ config.title }}</v-card-title>
-      <v-card-text>
+      <v-card-text style="max-height: 70vh; overflow-y: auto">
         <p class="mb-4">{{ config.introduction }}</p>
-        <v-list density="compact">
-          <v-list-item v-for="(limitation, index) in config.limitations" :key="index" class="mb-2">
-            <template #prepend>
-              <v-icon :icon="limitation.icon" size="small" color="primary" class="mr-2" />
-            </template>
-            <v-list-item-title class="font-weight-bold">
-              {{ limitation.title }}
-            </v-list-item-title>
-            <v-list-item-subtitle style="white-space: normal">
-              {{ limitation.text }}
-            </v-list-item-subtitle>
-          </v-list-item>
-        </v-list>
+        <div
+          v-for="(limitation, index) in config.limitations"
+          :key="index"
+          class="limitation-item d-flex mb-3 pa-3 rounded"
+        >
+          <v-icon
+            :icon="limitation.icon"
+            size="small"
+            color="primary"
+            class="mr-3 mt-1 flex-shrink-0"
+          />
+          <div>
+            <div class="text-body-2 font-weight-bold mb-1">{{ limitation.title }}</div>
+            <div class="text-body-2 text-medium-emphasis">{{ limitation.text }}</div>
+          </div>
+        </div>
         <p class="mt-4 text-body-small font-italic text-medium-emphasis">{{ config.footer }}</p>
       </v-card-text>
       <v-card-actions>
@@ -61,3 +64,10 @@ const show = (): void => {
 
 defineExpose({ checkAndShow, show })
 </script>
+
+<style scoped>
+.limitation-item {
+  background: color-mix(in srgb, rgb(var(--v-theme-on-surface)) 4%, transparent);
+  border-left: 3px solid rgb(var(--v-theme-primary));
+}
+</style>

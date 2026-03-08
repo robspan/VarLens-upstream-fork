@@ -34,7 +34,7 @@ ipcMain.handle(
   async (
     _event,
     caseId: number,
-    updates: { affected_status?: string | null; notes?: string | null }
+    updates: { affected_status?: string | null; sex?: string | null; notes?: string | null }
   ) => {
     return wrapHandler(async () => {
       const db = getDatabaseService()

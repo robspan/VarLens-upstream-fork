@@ -245,9 +245,17 @@ const toggleCommented = () => {
 // ACMG classification options (shared constant)
 const acmgFilterOptions = ACMG_FILTER_OPTIONS
 
-// Drawer states
+// Drawer states with mutual exclusion
 const filterDrawerOpen = ref(false)
 const columnsDrawerOpen = ref(false)
+
+// Ensure only one drawer is open at a time
+watch(filterDrawerOpen, (isOpen) => {
+  if (isOpen) columnsDrawerOpen.value = false
+})
+watch(columnsDrawerOpen, (isOpen) => {
+  if (isOpen) filterDrawerOpen.value = false
+})
 
 // Provide shared filter state for FilterDrawer (via provide/inject)
 provide<FilterDrawerState>('filterDrawerState', {
@@ -333,6 +341,17 @@ const visibleColumnKeys = computed(() => {
     .filter((h) => columnPrefs.value.visibility[h.key] !== false)
     .map((h) => h.key)
 })
+
+// Toggle drawer methods for keyboard shortcuts
+const toggleFilterDrawer = () => {
+  filterDrawerOpen.value = !filterDrawerOpen.value
+}
+const toggleColumnsDrawer = () => {
+  columnsDrawerOpen.value = !columnsDrawerOpen.value
+}
+
+// Expose drawer toggles for parent keyboard shortcuts
+defineExpose({ toggleFilterDrawer, toggleColumnsDrawer })
 
 // Load filter options on mount
 onMounted(async () => {

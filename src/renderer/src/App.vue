@@ -22,10 +22,13 @@
       </v-app-bar-title>
 
       <div v-if="showContextIndicator" class="context-indicator mx-3 d-flex align-center">
-        <v-icon size="small" class="mr-1">
-          {{ activeTab === 'cohort' ? 'mdi-account-group' : 'mdi-account' }}
-        </v-icon>
         <template v-if="activeTab === 'case' && selectedCaseId">
+          <CaseStatusIcons
+            :status="selectedStatusLabel"
+            :sex="selectedSexLabel"
+            tooltip-location="bottom"
+            class="mr-1"
+          />
           <span
             class="text-body-medium font-weight-medium text-truncate context-label clickable-case-name"
             role="button"
@@ -47,9 +50,13 @@
           </v-btn>
         </template>
         <template v-else-if="activeTab === 'cohort'">
-          <span class="text-body-medium font-weight-medium"> Cohort ({{ caseCount }} cases) </span>
+          <v-icon size="small" class="mr-1">mdi-account-group</v-icon>
+          <span class="text-body-medium font-weight-medium">
+            Cohort ({{ caseCount }} {{ caseCount === 1 ? 'case' : 'cases' }})
+          </span>
         </template>
         <template v-else>
+          <v-icon size="small" class="mr-1">mdi-account</v-icon>
           <span
             class="text-body-medium text-medium-emphasis select-case-hint"
             role="button"
@@ -123,7 +130,7 @@
             @click="handleResetFilters"
           />
           <v-divider class="my-1" />
-          <v-list-subheader>Danger Zone</v-list-subheader>
+          <v-list-subheader class="danger-zone-subheader">Danger Zone</v-list-subheader>
           <v-list-item @click="handleDeleteAllCases">
             <template #prepend>
               <v-icon color="error">mdi-delete-sweep</v-icon>
@@ -169,6 +176,7 @@
           <div v-else class="case-content">
             <div class="filter-bar-container">
               <FilterToolbar
+                ref="filterToolbarRef"
                 :case-id="selectedCaseId"
                 :case-name="selectedCaseName"
                 :filtered-count="filteredCount"
@@ -269,11 +277,12 @@ import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useVersionGating } from './composables/useVersionGating'
 import { useDatabaseStore } from './stores/databaseStore'
 import { useCaseMetadata } from './composables/useCaseMetadata'
+import CaseStatusIcons from './components/CaseStatusIcons.vue'
 import { useColumnPreferences } from './composables/useColumnPreferences'
 import { useFilterPreferences } from './composables/useFilterPreferences'
 import { useResponsiveLayout } from './composables/useResponsiveLayout'
 import { logService } from './services/LogService'
-import type { VariantFilter, Variant } from '../../shared/types/api'
+import type { VariantFilter, Variant, AffectedStatus, CaseSex } from '../../shared/types/api'
 import type { CohortVariant } from '../../shared/types/cohort'
 
 // Initialize responsive layout
@@ -283,7 +292,19 @@ const { tier, showModeToggleLabels, showContextIndicator } = useResponsiveLayout
 const databaseStore = useDatabaseStore()
 
 // Initialize case metadata composable for cache clearing
-const { clearCache: clearMetadataCache } = useCaseMetadata()
+const { getMetadata, clearCache: clearMetadataCache } = useCaseMetadata()
+
+// Computed metadata labels for selected case in top bar
+const selectedStatusLabel = computed<AffectedStatus>(() => {
+  if (selectedCaseId.value == null) return 'unknown'
+  const meta = getMetadata(selectedCaseId.value)
+  return meta?.metadata?.affected_status ?? 'unknown'
+})
+const selectedSexLabel = computed<CaseSex>(() => {
+  if (selectedCaseId.value == null) return 'unknown'
+  const meta = getMetadata(selectedCaseId.value)
+  return meta?.metadata?.sex ?? 'unknown'
+})
 
 // Initialize preference reset functions
 const { resetToDefaults: resetVariantColumns } = useColumnPreferences('variant-table')
@@ -338,6 +359,7 @@ const deleteAllCasesDialogRef = ref<InstanceType<typeof DeleteAllCasesDialog> | 
 const databaseOverviewDialogRef = ref<InstanceType<typeof DatabaseOverviewDialog> | null>(null)
 const caseMetadataModalRef = ref<InstanceType<typeof CaseMetadataModal> | null>(null)
 const cohortViewRef = ref<InstanceType<typeof CohortView> | null>(null)
+const filterToolbarRef = ref<InstanceType<typeof FilterToolbar> | null>(null)
 
 // Sidebar state
 const sidebarOpen = ref(true)
@@ -610,7 +632,9 @@ useKeyboardShortcuts({
   onFaq: () => faqDialogRef.value?.show(),
   onLogViewer: () => {
     logViewerOpen.value = !logViewerOpen.value
-  }
+  },
+  onToggleFilterDrawer: () => filterToolbarRef.value?.toggleFilterDrawer(),
+  onToggleColumnsDrawer: () => filterToolbarRef.value?.toggleColumnsDrawer()
 })
 
 const handleDisclaimerAcknowledged = (): void => {
@@ -696,6 +720,11 @@ onMounted(async () => {
 
 .select-case-hint:hover {
   text-decoration: underline;
+}
+
+.danger-zone-subheader {
+  color: rgb(var(--v-theme-error)) !important;
+  font-weight: 600;
 }
 
 .mode-toggle {

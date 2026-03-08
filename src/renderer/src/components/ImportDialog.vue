@@ -185,7 +185,7 @@ const showSuccessAndClose = (result: ImportResult): void => {
       variantCount: result.variantCount,
       caseName: caseName.value
     })
-  }, 1500) // 1.5 second delay
+  }, 3000) // 3 second delay for user to read success message
 }
 
 // Show dialog and optionally trigger file selection

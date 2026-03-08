@@ -1353,17 +1353,18 @@ export class DatabaseService {
    */
   upsertCaseMetadata(
     caseId: number,
-    updates: { affected_status?: string | null; notes?: string | null }
+    updates: { affected_status?: string | null; sex?: string | null; notes?: string | null }
   ): CaseMetadata {
     return this.runTransaction(() => {
       const now = Date.now()
 
       const result = this.stmt(
         `
-        INSERT INTO case_metadata (case_id, affected_status, notes, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO case_metadata (case_id, affected_status, sex, notes, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(case_id) DO UPDATE SET
           affected_status = COALESCE(excluded.affected_status, affected_status),
+          sex = COALESCE(excluded.sex, sex),
           notes = COALESCE(excluded.notes, notes),
           updated_at = excluded.updated_at
         RETURNING *
@@ -1371,6 +1372,7 @@ export class DatabaseService {
       ).get(
         caseId,
         updates.affected_status ?? null,
+        updates.sex ?? null,
         updates.notes ?? null,
         now,
         now

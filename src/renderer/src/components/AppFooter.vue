@@ -6,7 +6,7 @@
         <v-menu>
           <template #activator="{ props }">
             <v-btn v-bind="props" variant="text" size="small" class="text-body-small">
-              v{{ appVersion }}
+              VarLens v{{ appVersion }}
             </v-btn>
           </template>
           <v-list density="compact">

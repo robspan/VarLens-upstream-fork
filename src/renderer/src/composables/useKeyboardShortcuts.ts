@@ -4,6 +4,8 @@ interface KeyboardShortcutCallbacks {
   onDisclaimer?: () => void
   onFaq?: () => void
   onLogViewer?: () => void
+  onToggleFilterDrawer?: () => void
+  onToggleColumnsDrawer?: () => void
 }
 
 export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks): void {
@@ -25,6 +27,20 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks): void
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
       e.preventDefault()
       callbacks.onLogViewer?.()
+    }
+  })
+
+  onKeyStroke('F', (e: KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
+      e.preventDefault()
+      callbacks.onToggleFilterDrawer?.()
+    }
+  })
+
+  onKeyStroke('C', (e: KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
+      e.preventDefault()
+      callbacks.onToggleColumnsDrawer?.()
     }
   })
 }

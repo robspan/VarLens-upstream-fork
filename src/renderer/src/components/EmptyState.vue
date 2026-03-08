@@ -27,6 +27,10 @@
             Import Variants
           </v-btn>
           <p class="text-body-small text-grey mt-4">Supports .json and .json.gz files</p>
+          <div class="mt-4">
+            <v-icon size="small" class="mr-1">mdi-tray-arrow-down</v-icon>
+            <span class="text-body-small text-grey">or drag and drop files here</span>
+          </div>
         </template>
       </v-col>
     </v-row>

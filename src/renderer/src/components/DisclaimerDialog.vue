@@ -4,19 +4,22 @@
       <v-card-title>{{ config.title }}</v-card-title>
       <v-card-text style="max-height: 70vh; overflow-y: auto">
         <p class="mb-4">{{ config.introduction }}</p>
-        <v-alert
+        <div
           v-for="(limitation, index) in config.limitations"
           :key="index"
-          type="warning"
-          variant="tonal"
-          density="compact"
-          class="mb-2"
+          class="limitation-item d-flex mb-3 pa-3 rounded"
         >
-          <template #title>
-            <span class="text-body-small font-weight-bold">{{ limitation.title }}</span>
-          </template>
-          <span class="text-body-small">{{ limitation.text }}</span>
-        </v-alert>
+          <v-icon
+            :icon="limitation.icon"
+            size="small"
+            color="primary"
+            class="mr-3 mt-1 flex-shrink-0"
+          />
+          <div>
+            <div class="text-body-2 font-weight-bold mb-1">{{ limitation.title }}</div>
+            <div class="text-body-2 text-medium-emphasis">{{ limitation.text }}</div>
+          </div>
+        </div>
         <p class="mt-4 text-body-small font-italic text-medium-emphasis">{{ config.footer }}</p>
       </v-card-text>
       <v-card-actions>
@@ -61,3 +64,10 @@ const show = (): void => {
 
 defineExpose({ checkAndShow, show })
 </script>
+
+<style scoped>
+.limitation-item {
+  background: color-mix(in srgb, rgb(var(--v-theme-on-surface)) 4%, transparent);
+  border-left: 3px solid rgb(var(--v-theme-primary));
+}
+</style>

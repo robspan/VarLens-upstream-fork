@@ -106,7 +106,7 @@ await app.close();
 
 ## UI / Vuetify Theme Notes
 
-See [docs/UI-PATTERNS.md](docs/UI-PATTERNS.md) for comprehensive Vuetify component patterns.
+See [.planning/docs/UI-PATTERNS.md](.planning/docs/UI-PATTERNS.md) for comprehensive Vuetify component patterns.
 
 **Key rules:**
 - **NEVER use `surface-variant` for background colors** — the warm palette theme makes it white-on-white invisible (`surface-variant` #f5f2ef vs `surface` #faf8f6). Use `bg-grey-lighten-3` for subtle contrast (nested tables, expanded rows) or `secondary` (#424242) for strong contrast (tabs, toolbars)

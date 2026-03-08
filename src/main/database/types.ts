@@ -234,6 +234,8 @@ export interface CaseMetadata {
   case_id: number
   /** Affected status */
   affected_status: 'affected' | 'unaffected' | 'unknown' | null
+  /** Biological sex */
+  sex: 'unknown' | 'male' | 'female' | 'other' | null
   /** Case notes */
   notes: string | null
   /** Unix timestamp in milliseconds */

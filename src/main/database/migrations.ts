@@ -196,4 +196,17 @@ export function runMigrations(db: Database.Database): void {
     // Update version to 3
     db.exec('PRAGMA user_version = 3')
   }
+
+  // v0.15.0: Add sex column to case_metadata
+  if (currentVersion < 4) {
+    // Check if column already exists (safety for partial migrations)
+    const columns = db.prepare('PRAGMA table_info(case_metadata)').all() as { name: string }[]
+    const hasSex = columns.some((c) => c.name === 'sex')
+
+    if (!hasSex) {
+      db.exec(`ALTER TABLE case_metadata ADD COLUMN sex TEXT DEFAULT 'unknown'`)
+    }
+
+    db.exec('PRAGMA user_version = 4')
+  }
 }

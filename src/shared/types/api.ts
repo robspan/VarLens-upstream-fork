@@ -327,9 +327,11 @@ export interface SpliceAIAPI {
 
 // Case metadata types
 export type AffectedStatus = 'affected' | 'unaffected' | 'unknown'
+export type CaseSex = 'unknown' | 'male' | 'female' | 'other'
 
 export interface CaseMetadataUpdates {
   affected_status?: AffectedStatus | null
+  sex?: CaseSex | null
   notes?: string | null
 }
 

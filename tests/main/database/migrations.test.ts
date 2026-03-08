@@ -127,7 +127,7 @@ describe('Schema Migrations', () => {
       const versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(4)
+      expect(versionResult.user_version).toBe(5)
 
       service.close()
 
@@ -137,7 +137,7 @@ describe('Schema Migrations', () => {
       const versionAfterReopen = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionAfterReopen.user_version).toBe(4)
+      expect(versionAfterReopen.user_version).toBe(5)
 
       service.close()
     })
@@ -464,7 +464,7 @@ describe('Schema Migrations', () => {
       let versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(4)
+      expect(versionResult.user_version).toBe(5)
 
       service.close()
 
@@ -484,7 +484,7 @@ describe('Schema Migrations', () => {
       versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(4)
+      expect(versionResult.user_version).toBe(5)
 
       service.close()
     })
@@ -518,7 +518,7 @@ describe('Schema Migrations', () => {
       const versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(4)
+      expect(versionResult.user_version).toBe(5)
 
       service.close()
     })
@@ -544,6 +544,44 @@ describe('Schema Migrations', () => {
       expect(indexNames).toContain('idx_vt_selected')
       expect(indexNames).toContain('idx_vt_transcript')
       db.close()
+    })
+  })
+
+  describe('v5 migration - performance indexes', () => {
+    it('creates covering index for filter options', () => {
+      const service = new DatabaseService(':memory:')
+      const indexes = service.database
+        .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name = 'idx_variants_filter_covering'")
+        .all()
+      expect(indexes).toHaveLength(1)
+      service.close()
+    })
+
+    it('creates composite index for variant lookup with case_id', () => {
+      const service = new DatabaseService(':memory:')
+      const indexes = service.database
+        .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name = 'idx_variants_case_coords'")
+        .all()
+      expect(indexes).toHaveLength(1)
+      service.close()
+    })
+
+    it('creates partial index on gene_symbol for gene burden', () => {
+      const service = new DatabaseService(':memory:')
+      const indexes = service.database
+        .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name = 'idx_variants_gene_notnull'")
+        .all()
+      expect(indexes).toHaveLength(1)
+      service.close()
+    })
+
+    it('creates index on variant_annotations acmg_classification', () => {
+      const service = new DatabaseService(':memory:')
+      const indexes = service.database
+        .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name = 'idx_variant_annotations_acmg'")
+        .all()
+      expect(indexes).toHaveLength(1)
+      service.close()
     })
   })
 

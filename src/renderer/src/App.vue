@@ -47,7 +47,9 @@
           </v-btn>
         </template>
         <template v-else-if="activeTab === 'cohort'">
-          <span class="text-body-medium font-weight-medium"> Cohort ({{ caseCount }} cases) </span>
+          <span class="text-body-medium font-weight-medium">
+            Cohort ({{ caseCount }} {{ caseCount === 1 ? 'case' : 'cases' }})
+          </span>
         </template>
         <template v-else>
           <span

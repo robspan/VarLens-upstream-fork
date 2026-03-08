@@ -1,47 +1,19 @@
 <template>
-  <v-navigation-drawer
-    :model-value="open"
-    location="right"
-    temporary
-    :width="340"
-    @update:model-value="emit('update:open', $event)"
+  <FilterDrawerShell
+    :open="open"
+    :active-filter-count="activeFilterCount"
+    @update:open="emit('update:open', $event)"
+    @clear-all="clearAllFilters"
   >
-    <v-card flat class="h-100 d-flex flex-column">
-      <!-- Header -->
-      <v-toolbar color="transparent" density="compact" flat>
-        <v-toolbar-title class="text-body-large font-weight-medium"> All Filters </v-toolbar-title>
-        <v-chip
-          v-if="activeFilterCount > 0"
-          size="small"
-          color="primary"
-          variant="flat"
-          class="mr-2"
-        >
-          {{ activeFilterCount }}
-        </v-chip>
-        <v-btn icon size="small" @click="emit('update:open', false)">
-          <v-icon>mdi-close</v-icon>
-        </v-btn>
-      </v-toolbar>
-      <v-divider />
-
-      <!-- Scrollable filter groups -->
-      <div class="flex-grow-1 overflow-y-auto pa-3">
-        <!-- Search -->
-        <div class="filter-drawer-group mb-4">
-          <div class="filter-drawer-group-header d-flex align-center mb-2">
-            <v-icon size="small" class="mr-2">mdi-magnify</v-icon>
-            <span class="text-title-small font-weight-medium">Search</span>
-            <v-chip
-              v-if="isFilterGroupActive('search')"
-              size="x-small"
-              color="primary"
-              class="ml-2"
-              label
-            >
-              Active
-            </v-chip>
-          </div>
+    <v-expansion-panels v-model="expandedPanels" multiple variant="accordion">
+      <!-- Search -->
+      <v-expansion-panel value="search">
+        <FilterPanelTitle
+          icon="mdi-magnify"
+          label="Search"
+          :active="isFilterGroupActive('search')"
+        />
+        <v-expansion-panel-text>
           <v-text-field
             v-model="searchTerm"
             density="compact"
@@ -51,23 +23,13 @@
             placeholder="Gene, position, HGVS..."
             prepend-inner-icon="mdi-magnify"
           />
-        </div>
+        </v-expansion-panel-text>
+      </v-expansion-panel>
 
-        <!-- Gene -->
-        <div class="filter-drawer-group mb-4">
-          <div class="filter-drawer-group-header d-flex align-center mb-2">
-            <v-icon size="small" class="mr-2">mdi-dna</v-icon>
-            <span class="text-title-small font-weight-medium">Gene</span>
-            <v-chip
-              v-if="isFilterGroupActive('gene')"
-              size="x-small"
-              color="primary"
-              class="ml-2"
-              label
-            >
-              Active
-            </v-chip>
-          </div>
+      <!-- Gene -->
+      <v-expansion-panel value="gene">
+        <FilterPanelTitle icon="mdi-dna" label="Gene" :active="isFilterGroupActive('gene')" />
+        <v-expansion-panel-text>
           <v-autocomplete
             v-model="filters.geneSymbol"
             :items="geneSymbolSuggestions"
@@ -80,23 +42,13 @@
             prepend-inner-icon="mdi-magnify"
             @update:search="searchGeneSymbols"
           />
-        </div>
+        </v-expansion-panel-text>
+      </v-expansion-panel>
 
-        <!-- Impact -->
-        <div class="filter-drawer-group mb-4">
-          <div class="filter-drawer-group-header d-flex align-center mb-2">
-            <v-icon size="small" class="mr-2">mdi-flash</v-icon>
-            <span class="text-title-small font-weight-medium">Impact</span>
-            <v-chip
-              v-if="isFilterGroupActive('impact')"
-              size="x-small"
-              color="primary"
-              class="ml-2"
-              label
-            >
-              Active
-            </v-chip>
-          </div>
+      <!-- Impact -->
+      <v-expansion-panel value="impact">
+        <FilterPanelTitle icon="mdi-flash" label="Impact" :active="isFilterGroupActive('impact')" />
+        <v-expansion-panel-text>
           <div class="d-flex ga-1 flex-wrap">
             <v-chip
               v-for="preset in impactPresets"
@@ -110,23 +62,17 @@
               {{ preset.label }}
             </v-chip>
           </div>
-        </div>
+        </v-expansion-panel-text>
+      </v-expansion-panel>
 
-        <!-- Consequence (Function) -->
-        <div class="filter-drawer-group mb-4">
-          <div class="filter-drawer-group-header d-flex align-center mb-2">
-            <v-icon size="small" class="mr-2">mdi-function</v-icon>
-            <span class="text-title-small font-weight-medium">Consequence</span>
-            <v-chip
-              v-if="isFilterGroupActive('function')"
-              size="x-small"
-              color="primary"
-              class="ml-2"
-              label
-            >
-              Active
-            </v-chip>
-          </div>
+      <!-- Consequence (Function) -->
+      <v-expansion-panel value="function">
+        <FilterPanelTitle
+          icon="mdi-function"
+          label="Consequence"
+          :active="isFilterGroupActive('function')"
+        />
+        <v-expansion-panel-text>
           <GroupedMultiSelect
             v-model="filters.funcs"
             :config="consequenceGroups"
@@ -134,23 +80,17 @@
             placeholder="Select..."
             icon="mdi-function"
           />
-        </div>
+        </v-expansion-panel-text>
+      </v-expansion-panel>
 
-        <!-- ClinVar -->
-        <div class="filter-drawer-group mb-4">
-          <div class="filter-drawer-group-header d-flex align-center mb-2">
-            <v-icon size="small" class="mr-2">mdi-hospital-box</v-icon>
-            <span class="text-title-small font-weight-medium">ClinVar</span>
-            <v-chip
-              v-if="isFilterGroupActive('clinvar')"
-              size="x-small"
-              color="primary"
-              class="ml-2"
-              label
-            >
-              Active
-            </v-chip>
-          </div>
+      <!-- ClinVar -->
+      <v-expansion-panel value="clinvar">
+        <FilterPanelTitle
+          icon="mdi-hospital-box"
+          label="ClinVar"
+          :active="isFilterGroupActive('clinvar')"
+        />
+        <v-expansion-panel-text>
           <GroupedMultiSelect
             v-model="filters.clinvars"
             :config="clinvarGroups"
@@ -158,52 +98,40 @@
             placeholder="Select..."
             icon="mdi-hospital-box"
           />
-        </div>
+        </v-expansion-panel-text>
+      </v-expansion-panel>
 
-        <!-- Annotations (starred, comments, ACMG) -->
-        <div class="filter-drawer-group mb-4">
-          <div class="filter-drawer-group-header d-flex align-center mb-2">
-            <v-icon size="small" class="mr-2">mdi-star</v-icon>
-            <span class="text-title-small font-weight-medium">Annotations</span>
-            <v-chip
-              v-if="isFilterGroupActive('annotations')"
-              size="x-small"
-              color="primary"
-              class="ml-2"
-              label
+      <!-- Annotations (starred, comments, ACMG) -->
+      <v-expansion-panel value="annotations">
+        <FilterPanelTitle
+          icon="mdi-star-circle"
+          label="Annotations"
+          :active="isFilterGroupActive('annotations')"
+        />
+        <v-expansion-panel-text>
+          <div class="d-flex ga-2 mb-3">
+            <v-btn
+              :color="filters.starredOnly ? 'amber-darken-2' : undefined"
+              :variant="filters.starredOnly ? 'flat' : 'outlined'"
+              size="small"
+              rounded="pill"
+              @click="filters.starredOnly = !filters.starredOnly"
             >
-              Active
-            </v-chip>
+              <v-icon size="small" start>mdi-star</v-icon>
+              Starred
+            </v-btn>
+            <v-btn
+              :color="filters.hasCommentOnly ? 'primary' : undefined"
+              :variant="filters.hasCommentOnly ? 'flat' : 'outlined'"
+              size="small"
+              rounded="pill"
+              @click="filters.hasCommentOnly = !filters.hasCommentOnly"
+            >
+              <v-icon size="small" start>mdi-comment-text</v-icon>
+              Commented
+            </v-btn>
           </div>
-
-          <!-- Starred toggle -->
-          <div class="d-flex align-center mb-2">
-            <v-switch
-              v-model="filters.starredOnly"
-              density="compact"
-              hide-details
-              color="amber-darken-2"
-              class="mr-2"
-            />
-            <v-icon size="small" class="mr-1">mdi-star</v-icon>
-            <span class="text-body-medium">Starred only</span>
-          </div>
-
-          <!-- Comment toggle -->
-          <div class="d-flex align-center mb-3">
-            <v-switch
-              v-model="filters.hasCommentOnly"
-              density="compact"
-              hide-details
-              color="primary"
-              class="mr-2"
-            />
-            <v-icon size="small" class="mr-1">mdi-comment-text</v-icon>
-            <span class="text-body-medium">With comments only</span>
-          </div>
-
-          <!-- ACMG chips -->
-          <div class="text-body-small mb-1 text-medium-emphasis">ACMG Classification</div>
+          <div class="text-body-small text-medium-emphasis mb-1">ACMG Classification</div>
           <div class="d-flex ga-1 flex-wrap">
             <v-chip
               v-for="cls in acmgFilterOptions"
@@ -217,28 +145,22 @@
               {{ cls.label }}
             </v-chip>
           </div>
-        </div>
+        </v-expansion-panel-text>
+      </v-expansion-panel>
 
-        <!-- Cohort Frequency (unique to cohort view) -->
-        <div class="filter-drawer-group mb-4">
-          <div class="filter-drawer-group-header d-flex align-center mb-2">
-            <v-icon size="small" class="mr-2">mdi-account-group</v-icon>
-            <span class="text-title-small font-weight-medium">Cohort Freq</span>
-            <v-chip
-              v-if="isFilterGroupActive('cohortFreq')"
-              size="x-small"
-              color="primary"
-              class="ml-2"
-              label
-            >
-              Active
-            </v-chip>
-          </div>
+      <!-- Cohort Frequency (unique to cohort view) -->
+      <v-expansion-panel value="cohortFreq">
+        <FilterPanelTitle
+          icon="mdi-account-group"
+          label="Cohort Freq"
+          :active="isFilterGroupActive('cohortFreq')"
+        />
+        <v-expansion-panel-text>
           <div class="d-flex ga-1 flex-wrap mb-2">
             <v-chip
               v-for="preset in cohortFreqPresets"
               :key="preset.value"
-              :color="selectedCohortFreqPreset === preset.value ? 'purple' : undefined"
+              :color="selectedCohortFreqPreset === preset.value ? 'primary' : undefined"
               :variant="selectedCohortFreqPreset === preset.value ? 'flat' : 'outlined'"
               size="small"
               label
@@ -262,28 +184,22 @@
             placeholder="Custom % (e.g. 15)"
             clearable
           />
-        </div>
+        </v-expansion-panel-text>
+      </v-expansion-panel>
 
-        <!-- gnomAD AF -->
-        <div class="filter-drawer-group mb-4">
-          <div class="filter-drawer-group-header d-flex align-center mb-2">
-            <v-icon size="small" class="mr-2">mdi-earth</v-icon>
-            <span class="text-title-small font-weight-medium">gnomAD AF</span>
-            <v-chip
-              v-if="isFilterGroupActive('frequency')"
-              size="x-small"
-              color="primary"
-              class="ml-2"
-              label
-            >
-              Active
-            </v-chip>
-          </div>
+      <!-- gnomAD AF -->
+      <v-expansion-panel value="frequency">
+        <FilterPanelTitle
+          icon="mdi-earth"
+          label="gnomAD AF"
+          :active="isFilterGroupActive('frequency')"
+        />
+        <v-expansion-panel-text>
           <div class="d-flex ga-1 flex-wrap mb-2">
             <v-chip
               v-for="preset in afPresets"
               :key="preset.value"
-              :color="selectedAfPreset === preset.value ? 'teal' : undefined"
+              :color="selectedAfPreset === preset.value ? 'primary' : undefined"
               :variant="selectedAfPreset === preset.value ? 'flat' : 'outlined'"
               size="small"
               label
@@ -304,28 +220,22 @@
             placeholder="Custom % (e.g. 0.5)"
             clearable
           />
-        </div>
+        </v-expansion-panel-text>
+      </v-expansion-panel>
 
-        <!-- CADD -->
-        <div class="filter-drawer-group mb-4">
-          <div class="filter-drawer-group-header d-flex align-center mb-2">
-            <v-icon size="small" class="mr-2">mdi-alert-circle</v-icon>
-            <span class="text-title-small font-weight-medium">CADD</span>
-            <v-chip
-              v-if="isFilterGroupActive('cadd')"
-              size="x-small"
-              color="primary"
-              class="ml-2"
-              label
-            >
-              Active
-            </v-chip>
-          </div>
+      <!-- CADD -->
+      <v-expansion-panel value="cadd">
+        <FilterPanelTitle
+          icon="mdi-alert-circle"
+          label="CADD"
+          :active="isFilterGroupActive('cadd')"
+        />
+        <v-expansion-panel-text>
           <div class="d-flex ga-1 flex-wrap mb-2">
             <v-chip
               v-for="preset in caddPresets"
               :key="preset.value"
-              :color="selectedCaddPreset === preset.value ? 'deep-purple' : undefined"
+              :color="selectedCaddPreset === preset.value ? 'primary' : undefined"
               :variant="selectedCaddPreset === preset.value ? 'flat' : 'outlined'"
               size="small"
               label
@@ -348,32 +258,19 @@
             placeholder="Min CADD score"
             clearable
           />
-        </div>
-      </div>
-
-      <!-- Footer -->
-      <v-divider />
-      <div class="pa-3 d-flex justify-space-between">
-        <v-btn
-          variant="text"
-          size="small"
-          color="error"
-          :disabled="activeFilterCount === 0"
-          @click="clearAllFilters"
-        >
-          <v-icon start>mdi-filter-off</v-icon>
-          Clear All
-        </v-btn>
-        <v-btn variant="text" size="small" @click="emit('update:open', false)"> Done </v-btn>
-      </div>
-    </v-card>
-  </v-navigation-drawer>
+        </v-expansion-panel-text>
+      </v-expansion-panel>
+    </v-expansion-panels>
+  </FilterDrawerShell>
 </template>
 
 <script setup lang="ts">
-import { inject } from 'vue'
+import { inject, ref } from 'vue'
+import FilterDrawerShell from '../filters/FilterDrawerShell.vue'
+import FilterPanelTitle from '../filters/FilterPanelTitle.vue'
 import GroupedMultiSelect from '../GroupedMultiSelect.vue'
 import { consequenceGroups, clinvarGroups } from '../../config/filterGroups'
+import { ACMG_FILTER_OPTIONS } from '../../utils/filters'
 import type { CohortFilterDrawerState } from './cohortFilterDrawerTypes'
 
 defineProps<{
@@ -383,6 +280,9 @@ defineProps<{
 const emit = defineEmits<{
   'update:open': [value: boolean]
 }>()
+
+// Default expanded panels (same defaults as case drawer)
+const expandedPanels = ref<string[]>(['search', 'impact', 'frequency'])
 
 // Inject shared filter state from CohortFilterBar
 const state = inject<CohortFilterDrawerState>('cohortFilterDrawerState')
@@ -410,17 +310,14 @@ const {
   cohortFreqPresets,
   afPresets,
   caddPresets,
-  acmgFilterOptions,
   activeFilterCount,
   isFilterGroupActive,
   clearAllFilters,
   searchGeneSymbols
 } = state
 
-/**
- * Toggle an impact preset chip on/off.
- * Mutates the shared ref directly (safe because it's the same instance via provide/inject).
- */
+const acmgFilterOptions = ACMG_FILTER_OPTIONS
+
 const toggleImpactPreset = (value: string): void => {
   const current = selectedImpactPresets.value
   if (current.includes(value)) {
@@ -430,9 +327,6 @@ const toggleImpactPreset = (value: string): void => {
   }
 }
 
-/**
- * Toggle an ACMG classification chip on/off.
- */
 const toggleAcmgClassification = (value: string): void => {
   const current = filters.value.acmgClassifications
   if (current.includes(value)) {
@@ -444,17 +338,12 @@ const toggleAcmgClassification = (value: string): void => {
 </script>
 
 <style scoped>
-.filter-drawer-group {
-  padding: 12px;
-  border-radius: 8px;
-  background: color-mix(in srgb, rgb(var(--v-theme-on-surface)) 3%, transparent);
+:deep(.v-expansion-panel-title) {
+  min-height: 36px !important;
+  padding: 8px 12px;
 }
 
-.filter-drawer-group-header {
-  font-size: 0.8rem;
-}
-
-.filter-drawer-group-header .v-icon {
-  opacity: 0.7;
+:deep(.v-expansion-panel-text__wrapper) {
+  padding: 8px 12px 12px;
 }
 </style>

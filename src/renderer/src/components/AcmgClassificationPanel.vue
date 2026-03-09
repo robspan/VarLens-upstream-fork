@@ -50,9 +50,7 @@
                     ? 'grey-lighten-1'
                     : undefined
               "
-              :variant="
-                isCodeActive(code) ? 'flat' : isCodeSuggested(code) ? 'outlined' : 'tonal'
-              "
+              :variant="isCodeActive(code) ? 'flat' : isCodeSuggested(code) ? 'outlined' : 'tonal'"
               size="x-small"
               density="compact"
               class="criteria-btn text-caption"
@@ -69,8 +67,10 @@
             <div class="font-weight-bold">{{ code }}</div>
             <div class="text-caption">{{ CODE_DESCRIPTIONS[code] }}</div>
             <div v-if="isCodeActive(code)" class="text-caption mt-1">
-              Strength: {{ getStrengthLabel(getCodeStrength(code)) }}
-              ({{ getStrengthPoints(getCodeStrength(code)) }} pts)
+              Strength: {{ getStrengthLabel(getCodeStrength(code)) }} ({{
+                getStrengthPoints(getCodeStrength(code))
+              }}
+              pts)
             </div>
             <div v-if="isCodeSuggested(code)" class="text-caption mt-1 font-italic">
               Click to confirm suggestion
@@ -100,9 +100,7 @@
                     ? 'grey-lighten-1'
                     : undefined
               "
-              :variant="
-                isCodeActive(code) ? 'flat' : isCodeSuggested(code) ? 'outlined' : 'tonal'
-              "
+              :variant="isCodeActive(code) ? 'flat' : isCodeSuggested(code) ? 'outlined' : 'tonal'"
               size="x-small"
               density="compact"
               class="criteria-btn text-caption"
@@ -119,8 +117,10 @@
             <div class="font-weight-bold">{{ code }}</div>
             <div class="text-caption">{{ CODE_DESCRIPTIONS[code] }}</div>
             <div v-if="isCodeActive(code)" class="text-caption mt-1">
-              Strength: {{ getStrengthLabel(getCodeStrength(code)) }}
-              ({{ getStrengthPoints(getCodeStrength(code)) }} pts)
+              Strength: {{ getStrengthLabel(getCodeStrength(code)) }} ({{
+                getStrengthPoints(getCodeStrength(code))
+              }}
+              pts)
             </div>
             <div v-if="isCodeSuggested(code)" class="text-caption mt-1 font-italic">
               Click to confirm suggestion
@@ -141,19 +141,12 @@
           size="small"
           label
           closable
-          @click:close="
-            toggleCode(entry.code)
-            emitChange()
-          "
+          @click:close="() => { toggleCode(entry.code); emitChange() }"
         >
           {{ entry.code }}
           <v-menu location="bottom" :close-on-content-click="true">
             <template #activator="{ props: menuProps }">
-              <v-icon
-                v-bind="menuProps"
-                size="x-small"
-                class="ml-1 cursor-pointer"
-                @click.stop
+              <v-icon v-bind="menuProps" size="x-small" class="ml-1 cursor-pointer" @click.stop
                 >mdi-chevron-down</v-icon
               >
             </template>
@@ -186,10 +179,7 @@
       >
         Auto-suggest
       </v-btn>
-      <v-menu
-        v-if="effectiveClassification || activeCodes.length > 0"
-        location="bottom"
-      >
+      <v-menu v-if="effectiveClassification || activeCodes.length > 0" location="bottom">
         <template #activator="{ props: menuProps }">
           <v-btn
             v-bind="menuProps"
@@ -319,7 +309,7 @@ function getCodeStrength(code: AcmgCode): EvidenceStrength {
   return (
     entry?.strength ??
     (
-      ({
+      {
         PVS: 'very_strong',
         PS: 'strong',
         PM: 'moderate',
@@ -327,7 +317,7 @@ function getCodeStrength(code: AcmgCode): EvidenceStrength {
         BA: 'stand_alone',
         BS: 'strong',
         BP: 'supporting'
-      }) as Record<string, EvidenceStrength>
+      } as Record<string, EvidenceStrength>
     )[prefix] ??
     'supporting'
   )

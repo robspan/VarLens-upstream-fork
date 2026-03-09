@@ -246,7 +246,8 @@ const currentVariantData = computed(() => {
   if (!props.variant) return null
   return {
     gnomad_af: props.variant.gnomad_af ?? null,
-    cadd: props.variant.cadd ?? null,
+    cadd:
+      'cadd' in props.variant ? (props.variant.cadd ?? null) : (props.variant.cadd_phred ?? null),
     clinvar: props.variant.clinvar ?? null
   }
 })

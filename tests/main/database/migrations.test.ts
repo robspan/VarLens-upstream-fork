@@ -714,9 +714,11 @@ describe('Schema Migrations', () => {
     it('creates audit_log table with correct columns', () => {
       const service = new DatabaseService(':memory:')
 
-      const columns = service.database
-        .prepare("PRAGMA table_info('audit_log')")
-        .all() as Array<{ name: string; type: string; notnull: number }>
+      const columns = service.database.prepare("PRAGMA table_info('audit_log')").all() as Array<{
+        name: string
+        type: string
+        notnull: number
+      }>
       const colNames = columns.map((c) => c.name)
 
       expect(colNames).toContain('id')
@@ -735,7 +737,9 @@ describe('Schema Migrations', () => {
       const service = new DatabaseService(':memory:')
 
       const indexes = service.database
-        .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_audit_log_%'")
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_audit_log_%'"
+        )
         .all() as Array<{ name: string }>
       const indexNames = indexes.map((i) => i.name)
 

@@ -33,7 +33,7 @@ function isOldFormat(arr: unknown[]): arr is string[] {
  * Handles both old string[] format and new AcmgEvidenceCode[] format.
  */
 export function deserializeEvidence(json: string | null): AcmgEvidenceState | null {
-  if (!json) return null
+  if (json === null || json === '') return null
 
   try {
     const parsed = JSON.parse(json)

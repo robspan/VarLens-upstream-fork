@@ -44,15 +44,17 @@ const entries = ref<AuditLogEntry[]>([])
 const loading = ref(false)
 
 async function loadEntries(): Promise<void> {
-  if (!props.entityKey) {
+  if (props.entityKey === null || props.entityKey === '') {
     entries.value = []
     return
   }
 
   loading.value = true
   try {
+    // eslint-disable-next-line no-undef
     entries.value = await window.api.audit.getByEntity(props.entityKey)
   } catch (error) {
+    // eslint-disable-next-line no-undef
     console.error('Failed to load audit entries:', error)
     entries.value = []
   } finally {
@@ -105,8 +107,8 @@ function formatTimestamp(ts: number): string {
 function getChangeDescription(entry: AuditLogEntry): string | null {
   if (entry.action_type === 'acmg_classify') {
     try {
-      const oldVal = entry.old_value ? JSON.parse(entry.old_value) : null
-      const newVal = entry.new_value ? JSON.parse(entry.new_value) : null
+      const oldVal = entry.old_value !== null ? JSON.parse(entry.old_value) : null
+      const newVal = entry.new_value !== null ? JSON.parse(entry.new_value) : null
       const from = oldVal?.acmg_classification ?? 'none'
       const to = newVal?.acmg_classification ?? 'none'
       return `${from} \u2192 ${to}`

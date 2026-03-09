@@ -44,9 +44,9 @@ export class AuditLogRepository extends BaseRepository {
   }
 
   getByEntityKey(entityKey: string): AuditLogEntry[] {
-    return this.stmt(
-      'SELECT * FROM audit_log WHERE entity_key = ? ORDER BY timestamp ASC'
-    ).all(entityKey) as AuditLogEntry[]
+    return this.stmt('SELECT * FROM audit_log WHERE entity_key = ? ORDER BY timestamp ASC').all(
+      entityKey
+    ) as AuditLogEntry[]
   }
 
   query(filter: AuditQueryFilter): AuditQueryResult {
@@ -61,15 +61,15 @@ export class AuditLogRepository extends BaseRepository {
       conditions.push('entity_type = ?')
       params.push(filter.entity_type)
     }
-    if (filter.entity_key) {
+    if (filter.entity_key !== undefined && filter.entity_key !== null) {
       conditions.push('entity_key = ?')
       params.push(filter.entity_key)
     }
-    if (filter.from_timestamp) {
+    if (filter.from_timestamp !== undefined && filter.from_timestamp !== null) {
       conditions.push('timestamp >= ?')
       params.push(filter.from_timestamp)
     }
-    if (filter.to_timestamp) {
+    if (filter.to_timestamp !== undefined && filter.to_timestamp !== null) {
       conditions.push('timestamp <= ?')
       params.push(filter.to_timestamp)
     }

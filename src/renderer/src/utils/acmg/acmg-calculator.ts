@@ -55,8 +55,7 @@ export function calculateClassification(
 ): ClassificationResult {
   const points = calculatePoints(pathogenic, benign)
 
-  const hasConfirmed =
-    pathogenic.some((c) => c.confirmed) || benign.some((c) => c.confirmed)
+  const hasConfirmed = pathogenic.some((c) => c.confirmed) || benign.some((c) => c.confirmed)
 
   return {
     ...points,

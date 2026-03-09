@@ -1,12 +1,7 @@
 /**
  * ACMG/AMP evidence strength levels
  */
-export type EvidenceStrength =
-  | 'very_strong'
-  | 'strong'
-  | 'moderate'
-  | 'supporting'
-  | 'stand_alone'
+export type EvidenceStrength = 'very_strong' | 'strong' | 'moderate' | 'supporting' | 'stand_alone'
 
 /**
  * ACMG evidence direction

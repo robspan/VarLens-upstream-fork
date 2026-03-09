@@ -62,8 +62,7 @@ describe('useAcmgEvidence', () => {
   })
 
   it('setCodeStrength changes strength of active code', () => {
-    const { toggleCode, setCodeStrength, pathogenicCodes, classificationResult } =
-      useAcmgEvidence()
+    const { toggleCode, setCodeStrength, pathogenicCodes, classificationResult } = useAcmgEvidence()
     toggleCode('PVS1') // default: very_strong (8 pts)
     expect(classificationResult.value.pathogenicPoints).toBe(8)
 
@@ -73,8 +72,7 @@ describe('useAcmgEvidence', () => {
   })
 
   it('confirmSuggestion makes suggested code active', () => {
-    const { applySuggestions, confirmSuggestion, isCodeActive, isCodeSuggested } =
-      useAcmgEvidence()
+    const { applySuggestions, confirmSuggestion, isCodeActive, isCodeSuggested } = useAcmgEvidence()
     applySuggestions({ gnomad_af: 0, cadd: null, clinvar: null })
     expect(isCodeSuggested('PM2')).toBe(true)
 
@@ -98,8 +96,7 @@ describe('useAcmgEvidence', () => {
   })
 
   it('reset clears all state', () => {
-    const { toggleCode, notes, reset, pathogenicCodes, effectiveClassification } =
-      useAcmgEvidence()
+    const { toggleCode, notes, reset, pathogenicCodes, effectiveClassification } = useAcmgEvidence()
     toggleCode('PVS1')
     notes.value = 'some note'
     reset()

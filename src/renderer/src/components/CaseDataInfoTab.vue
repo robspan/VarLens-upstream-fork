@@ -338,7 +338,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 
 const props = defineProps<{
   caseId: number
@@ -680,4 +680,12 @@ async function importRegionFile(): Promise<void> {
 }
 
 watch(() => props.caseId, loadDataInfo, { immediate: true })
+
+onBeforeUnmount(() => {
+  if (platformDebounce !== null) {
+    // eslint-disable-next-line no-undef
+    clearTimeout(platformDebounce)
+    platformDebounce = null
+  }
+})
 </script>

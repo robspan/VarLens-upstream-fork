@@ -124,8 +124,20 @@ export function useCaseMetadata() {
     }
   }
 
-  // Update age
+  // Update age with optimistic update
   async function updateAge(caseId: number, age: number | null): Promise<void> {
+    const current = metadataCache.value.get(caseId)
+    const previousAge = current?.metadata?.age ?? null
+
+    // Optimistic update
+    if (current) {
+      current.metadata = {
+        ...current.metadata,
+        case_id: caseId,
+        age
+      } as CaseMetadata
+    }
+
     try {
       const updated = await window.api.caseMetadata.upsert(caseId, { age })
       const cached = metadataCache.value.get(caseId)
@@ -134,11 +146,27 @@ export function useCaseMetadata() {
       }
     } catch (error) {
       console.error('Failed to update age:', error)
+      // Revert optimistic update
+      if (current && current.metadata) {
+        current.metadata.age = previousAge
+      }
     }
   }
 
-  // Update date of birth
+  // Update date of birth with optimistic update
   async function updateDob(caseId: number, dateOfBirth: string | null): Promise<void> {
+    const current = metadataCache.value.get(caseId)
+    const previousDob = current?.metadata?.date_of_birth ?? null
+
+    // Optimistic update
+    if (current) {
+      current.metadata = {
+        ...current.metadata,
+        case_id: caseId,
+        date_of_birth: dateOfBirth
+      } as CaseMetadata
+    }
+
     try {
       const updated = await window.api.caseMetadata.upsert(caseId, {
         date_of_birth: dateOfBirth
@@ -149,6 +177,10 @@ export function useCaseMetadata() {
       }
     } catch (error) {
       console.error('Failed to update date of birth:', error)
+      // Revert optimistic update
+      if (current && current.metadata) {
+        current.metadata.date_of_birth = previousDob
+      }
     }
   }
 

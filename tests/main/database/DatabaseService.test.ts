@@ -465,17 +465,17 @@ describe('DatabaseService', () => {
       const caseId = service.createCase('metric-types-test', '/path/test.vcf', 1024)
       const definitions = service.listMetricDefinitions()
       const ethnicity = definitions.find((d) => d.name === 'Ethnicity')!
-      const dod = definitions.find((d) => d.name === 'Date of Diagnosis')!
+      const dodDef = definitions.find((d) => d.name === 'Date of Diagnosis')!
 
       service.upsertCaseMetric(caseId, ethnicity.id, { text_value: 'European' })
-      service.upsertCaseMetric(caseId, dod.id, { date_value: '1990-05-15' })
+      service.upsertCaseMetric(caseId, dodDef.id, { date_value: '1990-05-15' })
 
       const metrics = service.listCaseMetrics(caseId)
       const ethMetric = metrics.find((m) => m.name === 'Ethnicity')!
-      const dobMetric = metrics.find((m) => m.name === 'Date of Diagnosis')!
+      const dodMetric = metrics.find((m) => m.name === 'Date of Diagnosis')!
 
       expect(ethMetric.text_value).toBe('European')
-      expect(dobMetric.date_value).toBe('1990-05-15')
+      expect(dodMetric.date_value).toBe('1990-05-15')
     })
   })
 })

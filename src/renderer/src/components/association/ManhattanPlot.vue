@@ -52,7 +52,7 @@ async function render(): Promise<void> {
   genesWithP.sort((a, b) => a.idx - b.idx)
 
   const x = genesWithP.map((_, i) => i)
-  const y = genesWithP.map((g) => -Math.log10(g.p))
+  const y = genesWithP.map((g) => (g.p > 0 ? -Math.log10(g.p) : 0))
   const text = genesWithP.map((g) => g.gene)
   const colors = genesWithP.map((g, i) =>
     g.qval !== null && g.qval < 0.05 ? '#e53935' : CHR_COLORS[i % 2]

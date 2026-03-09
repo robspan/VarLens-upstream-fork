@@ -160,7 +160,7 @@ ipcMain.handle('cohort:geneBurdenCompare', async (event, params: unknown) => {
 
 ipcMain.handle('cohort:geneBurdenCancel', async () => {
   if (activeEngine) {
+    // Only call abort(); the finally block in geneBurdenCompare clears activeEngine
     activeEngine.abort()
-    activeEngine = null
   }
 })

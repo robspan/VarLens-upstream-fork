@@ -39,7 +39,7 @@ test.afterEach(async () => {
   await app.close()
 })
 
-test('gene burden tab is accessible from cohort view', async () => {
+test('gene burden tab is accessible from cohort view', async (_fixtures, testInfo) => {
   // Switch to Cohort mode
   const cohortBtn = window.locator('.v-btn').filter({ hasText: /Cohort/i })
   const cohortBtnCount = await cohortBtn.count()
@@ -83,11 +83,10 @@ test('gene burden tab is accessible from cohort view', async () => {
   expect(isDisabled).toBe(true)
 
   // Take a screenshot for visual verification
-  await window.screenshot({ path: 'tests/e2e/screenshots/gene-burden-tab.png' })
-  console.log('Screenshot saved to tests/e2e/screenshots/gene-burden-tab.png')
+  await window.screenshot({ path: testInfo.outputPath('gene-burden-tab.png') })
 })
 
-test('gene burden configuration panel has all expected controls', async () => {
+test('gene burden configuration panel has all expected controls', async (_fixtures, testInfo) => {
   // Switch to Cohort mode
   const cohortBtn = window.locator('.v-btn').filter({ hasText: /Cohort/i })
   if ((await cohortBtn.count()) === 0) {
@@ -122,5 +121,5 @@ test('gene burden configuration panel has all expected controls', async () => {
   expect(await filtersPanel.count()).toBeGreaterThan(0)
 
   // Take a screenshot
-  await window.screenshot({ path: 'tests/e2e/screenshots/gene-burden-config.png' })
+  await window.screenshot({ path: testInfo.outputPath('gene-burden-config.png') })
 })

@@ -127,7 +127,10 @@
                 density="compact"
                 :class="[
                   'criteria-btn text-caption',
-                  { 'criteria-btn--suggested': isCodeSuggested(code) }
+                  {
+                    'criteria-btn--suggested': isCodeSuggested(code),
+                    'criteria-btn--deprecated': isDeprecated(code)
+                  }
                 ]"
                 rounded="sm"
                 @click="handleCodeClick(code)"
@@ -146,6 +149,9 @@
                   getStrengthPoints(getCodeStrength(code))
                 }}
                 pts)
+              </div>
+              <div v-if="isDeprecated(code)" class="text-caption mt-1 text-warning">
+                Not recommended (ClinGen 2020)
               </div>
               <div v-if="isCodeSuggested(code)" class="text-caption mt-1 font-italic">
                 Click to confirm suggestion
@@ -188,7 +194,10 @@
                 density="compact"
                 :class="[
                   'criteria-btn text-caption',
-                  { 'criteria-btn--suggested': isCodeSuggested(code) }
+                  {
+                    'criteria-btn--suggested': isCodeSuggested(code),
+                    'criteria-btn--deprecated': isDeprecated(code)
+                  }
                 ]"
                 rounded="sm"
                 @click="handleCodeClick(code)"
@@ -207,6 +216,9 @@
                   getStrengthPoints(getCodeStrength(code))
                 }}
                 pts)
+              </div>
+              <div v-if="isDeprecated(code)" class="text-caption mt-1 text-warning">
+                Not recommended (ClinGen 2020)
               </div>
               <div v-if="isCodeSuggested(code)" class="text-caption mt-1 font-italic">
                 Click to confirm suggestion
@@ -287,7 +299,8 @@ import {
   CODE_DESCRIPTIONS,
   DEFAULT_STRENGTHS,
   STRENGTH_OPTIONS,
-  EVIDENCE_POINTS
+  EVIDENCE_POINTS,
+  DEPRECATED_CODES
 } from '../utils/acmg/types'
 import type { VariantAnnotationData } from '../utils/acmg/acmg-suggestions'
 import { useAcmgEvidence } from '../composables/useAcmgEvidence'
@@ -422,9 +435,14 @@ function getDefaultStrength(code: string): EvidenceStrength {
   return DEFAULT_STRENGTHS[prefix] ?? 'supporting'
 }
 
+function isDeprecated(code: AcmgCode): boolean {
+  return DEPRECATED_CODES.has(code)
+}
+
 function getButtonColor(code: AcmgCode): string {
   if (isCodeActive(code)) return STRENGTH_COLORS[getCodeStrength(code)]
   if (isCodeSuggested(code)) return 'amber-darken-2'
+  if (isDeprecated(code)) return 'grey-lighten-2'
   return INACTIVE_COLORS[getDefaultStrength(code)]
 }
 
@@ -544,6 +562,11 @@ onMounted(() => {
 
 .criteria-btn--suggested {
   border-style: dashed !important;
+}
+
+.criteria-btn--deprecated {
+  opacity: 0.5;
+  text-decoration: line-through;
 }
 
 .tooltip-content {

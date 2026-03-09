@@ -101,6 +101,7 @@
           :has-comment="!!getGlobalComment(item.chr, item.pos, item.ref, item.alt)"
           :show-global-indicators="false"
           @star-toggle="emit('star-toggle', item)"
+          @acmg-select="(classification) => emit('acmg-select', { item, classification })"
           @acmg-evidence-click="emit('acmg-evidence-click', item)"
           @comment-click="emit('comment-click', item)"
         />

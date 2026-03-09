@@ -84,7 +84,7 @@ export const CODE_DESCRIPTIONS: Record<AcmgCode, string> = {
   PP2: 'Missense in a gene with low rate of benign missense and pathogenic missenses common',
   PP3: 'Multiple lines of computational evidence support a deleterious effect',
   PP4: 'Patient phenotype or family history highly specific for the gene',
-  PP5: 'Reputable source reports variant as pathogenic',
+  PP5: 'Reputable source reports variant as pathogenic (NOT RECOMMENDED — ClinGen 2020)',
   BA1: 'Allele frequency > 5% in population databases',
   BS1: 'Allele frequency greater than expected for disorder',
   BS2: 'Observed in healthy adults with full penetrance expected at early age',
@@ -95,7 +95,7 @@ export const CODE_DESCRIPTIONS: Record<AcmgCode, string> = {
   BP3: 'In-frame indels in a repetitive region without known function',
   BP4: 'Multiple lines of computational evidence suggest no impact on gene',
   BP5: 'Variant found in a case with an alternate molecular basis for disease',
-  BP6: 'Reputable source reports variant as benign',
+  BP6: 'Reputable source reports variant as benign (NOT RECOMMENDED — ClinGen 2020)',
   BP7: 'Synonymous variant with no predicted splice impact'
 }
 
@@ -169,6 +169,12 @@ export interface AcmgEvidenceState {
   /** Whether the user has overridden the calculated result */
   is_override: boolean
 }
+
+/**
+ * Codes no longer recommended by ClinGen (2020 update).
+ * PP5 and BP6 relied on reputable source assertions without primary data.
+ */
+export const DEPRECATED_CODES: ReadonlySet<AcmgCode> = new Set(['PP5', 'BP6'])
 
 // Re-export for convenience
 import type { AcmgClassification } from '../../../../main/database/types'

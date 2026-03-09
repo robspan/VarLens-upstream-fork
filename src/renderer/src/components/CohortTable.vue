@@ -48,6 +48,7 @@
       @update:options="handleTableOptions"
       @row-click="handleRowClick"
       @star-toggle="handleGlobalStarToggle"
+      @acmg-select="handleGlobalAcmgSelect"
       @acmg-evidence-click="openAcmgEvidenceDialog"
       @comment-click="openCommentDialog"
       @navigate-to-case="handleNavigateToCase"
@@ -146,6 +147,7 @@ const {
   getGlobalComment,
   loadGlobalAnnotationsBatch,
   toggleGlobalStar,
+  setGlobalAcmgClassification,
   setGlobalAcmgClassificationWithEvidence,
   upsertGlobalComment,
   getAnnotations
@@ -385,6 +387,19 @@ const handleRetry = async () => {
 
 const handleGlobalStarToggle = async (item: CohortVariant) => {
   await toggleGlobalStar(item.chr, item.pos, item.ref, item.alt)
+}
+
+const handleGlobalAcmgSelect = async (payload: {
+  item: CohortVariant
+  classification: AcmgClassification | null
+}) => {
+  await setGlobalAcmgClassification(
+    payload.item.chr,
+    payload.item.pos,
+    payload.item.ref,
+    payload.item.alt,
+    payload.classification
+  )
 }
 
 const openAcmgEvidenceDialog = (item: CohortVariant): void => {

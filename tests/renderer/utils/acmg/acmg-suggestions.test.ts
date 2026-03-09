@@ -41,14 +41,14 @@ describe('generateSuggestions', () => {
     expect(result).toContainEqual(expect.objectContaining({ code: 'BP4', source: 'cadd' }))
   })
 
-  it('suggests PP5 for ClinVar pathogenic', () => {
+  it('does not suggest deprecated PP5 for ClinVar pathogenic', () => {
     const result = generateSuggestions({ gnomad_af: null, cadd: null, clinvar: 'Pathogenic' })
-    expect(result).toContainEqual(expect.objectContaining({ code: 'PP5', source: 'clinvar' }))
+    expect(result).not.toContainEqual(expect.objectContaining({ code: 'PP5' }))
   })
 
-  it('suggests BP6 for ClinVar benign', () => {
+  it('does not suggest deprecated BP6 for ClinVar benign', () => {
     const result = generateSuggestions({ gnomad_af: null, cadd: null, clinvar: 'Benign' })
-    expect(result).toContainEqual(expect.objectContaining({ code: 'BP6', source: 'clinvar' }))
+    expect(result).not.toContainEqual(expect.objectContaining({ code: 'BP6' }))
   })
 
   it('suggests PP3 for REVEL >= 0.7', () => {
@@ -87,11 +87,10 @@ describe('generateSuggestions', () => {
       cadd: 30,
       clinvar: 'Pathogenic'
     })
-    expect(result.length).toBe(3)
+    expect(result.length).toBe(2)
     const codes = result.map((r) => r.code)
     expect(codes).toContain('PM2')
     expect(codes).toContain('PP3')
-    expect(codes).toContain('PP5')
   })
 
   it('all suggestions are auto_suggested and not confirmed', () => {

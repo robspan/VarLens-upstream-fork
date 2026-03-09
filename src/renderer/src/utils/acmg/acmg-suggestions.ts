@@ -69,15 +69,7 @@ export function generateSuggestions(data: VariantAnnotationData): AcmgEvidenceCo
     }
   }
 
-  // ClinVar classification
-  if (data.clinvar !== null) {
-    const lower = data.clinvar.toLowerCase()
-    if (lower.includes('pathogenic') && !lower.includes('benign')) {
-      add('PP5', 'clinvar')
-    } else if (lower.includes('benign') && !lower.includes('pathogenic')) {
-      add('BP6', 'clinvar')
-    }
-  }
+  // ClinVar classification — PP5/BP6 deprecated by ClinGen (2020), not auto-suggested
 
   return suggestions
 }

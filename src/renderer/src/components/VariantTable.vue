@@ -113,6 +113,7 @@
             :has-global-comment="!!getGlobalComment(item.chr, item.pos, item.ref, item.alt)"
             :show-global-indicators="true"
             @star-toggle="handleStarToggle(item)"
+            @acmg-select="(c) => handleQuickAcmgSelect(item, c)"
             @acmg-evidence-click="openAcmgEvidenceDialog(item)"
             @comment-click="openCommentDialog(item)"
           />
@@ -387,6 +388,7 @@ const {
   loadAnnotationsBatch,
   toggleStar,
   clearCache,
+  setAcmgClassification,
   setAcmgClassificationWithEvidence,
   getGlobalComment,
   getPerCaseComment,
@@ -631,6 +633,22 @@ const handleStarToggle = async (item: Variant): Promise<void> => {
 const openCommentDialog = (item: Variant) => {
   selectedVariantForComment.value = item
   commentDialogOpen.value = true
+}
+
+// Quick ACMG classification (no evidence, just set the classification)
+const handleQuickAcmgSelect = async (
+  item: Variant,
+  classification: AcmgClassification | null
+): Promise<void> => {
+  await setAcmgClassification(
+    props.caseId,
+    item.id,
+    item.chr,
+    item.pos,
+    item.ref,
+    item.alt,
+    classification
+  )
 }
 
 // Open ACMG evidence dialog for a variant

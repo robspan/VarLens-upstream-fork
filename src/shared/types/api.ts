@@ -50,7 +50,8 @@ import type {
   CommentCategory,
   MetricDefinition,
   CaseMetric,
-  CaseMetricWithDefinition
+  CaseMetricWithDefinition,
+  AuditLogEntry
 } from '../../main/database/types'
 import type { ProgressUpdate, ImportResult } from '../../main/import/types'
 import type { SerializableError } from './errors'
@@ -434,6 +435,19 @@ export interface LogsAPI {
   onMessage: (callback: (log: LogMessage) => void) => () => void
 }
 
+export interface AuditLogAPI {
+  getByEntity: (entityKey: string) => Promise<AuditLogEntry[]>
+  query: (params: {
+    action_type?: string
+    entity_type?: string
+    entity_key?: string
+    from_timestamp?: number
+    to_timestamp?: number
+    limit?: number
+    offset?: number
+  }) => Promise<{ data: AuditLogEntry[]; total_count: number }>
+}
+
 export interface WindowAPI {
   cases: CasesAPI
   variants: VariantsAPI
@@ -456,4 +470,5 @@ export interface WindowAPI {
   tags: TagsAPI
   logs: LogsAPI
   updater: UpdaterAPI
+  audit: AuditLogAPI
 }

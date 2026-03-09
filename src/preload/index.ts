@@ -332,6 +332,11 @@ const api = {
     }
   },
 
+  audit: {
+    getByEntity: (entityKey: string) => ipcRenderer.invoke('audit:getByEntity', entityKey),
+    query: (params: Record<string, unknown>) => ipcRenderer.invoke('audit:query', params)
+  },
+
   updater: {
     checkForUpdate: () => ipcRenderer.invoke('updater:check'),
     downloadUpdate: () => ipcRenderer.invoke('updater:download'),

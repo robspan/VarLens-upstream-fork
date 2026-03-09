@@ -47,11 +47,18 @@ function buildPlotData(): Array<Record<string, unknown>> {
 
   const getX = (r: AssociationResult): number => {
     const effect = props.primaryTest === 'fisher' ? r.fisher.odds_ratio : r.logistic_burden.beta
-    return props.primaryTest === 'fisher' ? Math.log2(effect!) : effect!
+    if (props.primaryTest === 'fisher') {
+      // Guard against non-finite values (0 or negative odds ratio)
+      const val = effect!
+      return val > 0 ? Math.log2(val) : 0
+    }
+    return effect!
   }
   const getY = (r: AssociationResult): number => {
     const p = props.primaryTest === 'fisher' ? r.fisher.p_value : r.logistic_burden.p_value
-    return -Math.log10(p!)
+    // Guard against 0 p-values which produce Infinity
+    const pVal = p!
+    return pVal > 0 ? -Math.log10(pVal) : 0
   }
 
   return [

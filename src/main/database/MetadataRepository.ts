@@ -34,30 +34,43 @@ export class MetadataRepository extends BaseRepository {
   ): CaseMetadata {
     return this.runTransaction(() => {
       const now = Date.now()
-      const result = this.stmt(
-        `
-        INSERT INTO case_metadata (case_id, affected_status, sex, notes, age, date_of_birth, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(case_id) DO UPDATE SET
-          affected_status = COALESCE(excluded.affected_status, affected_status),
-          sex = COALESCE(excluded.sex, sex),
-          notes = COALESCE(excluded.notes, notes),
-          age = COALESCE(excluded.age, age),
-          date_of_birth = COALESCE(excluded.date_of_birth, date_of_birth),
-          updated_at = excluded.updated_at
-        RETURNING *
-      `
-      ).get(
-        caseId,
-        updates.affected_status ?? null,
-        updates.sex ?? null,
-        updates.notes ?? null,
-        updates.age ?? null,
-        updates.date_of_birth ?? null,
-        now,
-        now
-      ) as CaseMetadata
-      return result
+
+      // Build dynamic SET clause: only update fields explicitly provided (even if null)
+      const setClauses: string[] = ['updated_at = ?']
+      const setParams: (string | number | null)[] = [now]
+
+      const fields = ['affected_status', 'sex', 'notes', 'age', 'date_of_birth'] as const
+      for (const field of fields) {
+        if (field in updates) {
+          setClauses.push(`${field} = ?`)
+          setParams.push(updates[field] ?? null)
+        }
+      }
+
+      // Try INSERT first, then UPDATE on conflict
+      const existing = this.stmt('SELECT * FROM case_metadata WHERE case_id = ?').get(caseId) as
+        | CaseMetadata
+        | undefined
+
+      if (existing === undefined) {
+        return this.stmt(
+          `INSERT INTO case_metadata (case_id, affected_status, sex, notes, age, date_of_birth, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`
+        ).get(
+          caseId,
+          updates.affected_status ?? null,
+          updates.sex ?? null,
+          updates.notes ?? null,
+          updates.age ?? null,
+          updates.date_of_birth ?? null,
+          now,
+          now
+        ) as CaseMetadata
+      }
+
+      setParams.push(caseId)
+      const sql = `UPDATE case_metadata SET ${setClauses.join(', ')} WHERE case_id = ? RETURNING *`
+      return this.db.prepare(sql).get(...setParams) as CaseMetadata
     })
   }
 
@@ -307,42 +320,60 @@ export class MetadataRepository extends BaseRepository {
   ): CaseDataInfo {
     return this.runTransaction(() => {
       const now = Date.now()
-      const result = this.stmt(
-        `
-        INSERT INTO case_data_info (case_id, import_file_name, import_file_type, platform, platform_details, af_filter, gene_list_filter, region_filter, quality_filter, data_notes, gene_list_id, region_file_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(case_id) DO UPDATE SET
-          import_file_name = COALESCE(excluded.import_file_name, import_file_name),
-          import_file_type = COALESCE(excluded.import_file_type, import_file_type),
-          platform = COALESCE(excluded.platform, platform),
-          platform_details = COALESCE(excluded.platform_details, platform_details),
-          af_filter = COALESCE(excluded.af_filter, af_filter),
-          gene_list_filter = COALESCE(excluded.gene_list_filter, gene_list_filter),
-          region_filter = COALESCE(excluded.region_filter, region_filter),
-          quality_filter = COALESCE(excluded.quality_filter, quality_filter),
-          data_notes = COALESCE(excluded.data_notes, data_notes),
-          gene_list_id = COALESCE(excluded.gene_list_id, gene_list_id),
-          region_file_id = COALESCE(excluded.region_file_id, region_file_id),
-          updated_at = excluded.updated_at
-        RETURNING *
-      `
-      ).get(
-        caseId,
-        updates.import_file_name ?? null,
-        updates.import_file_type ?? null,
-        updates.platform ?? null,
-        updates.platform_details ?? null,
-        updates.af_filter ?? null,
-        updates.gene_list_filter ?? null,
-        updates.region_filter ?? null,
-        updates.quality_filter ?? null,
-        updates.data_notes ?? null,
-        updates.gene_list_id ?? null,
-        updates.region_file_id ?? null,
-        now,
-        now
-      ) as CaseDataInfo
-      return result
+
+      const existing = this.stmt('SELECT * FROM case_data_info WHERE case_id = ?').get(caseId) as
+        | CaseDataInfo
+        | undefined
+
+      if (existing === undefined) {
+        return this.stmt(
+          `INSERT INTO case_data_info (case_id, import_file_name, import_file_type, platform, platform_details, af_filter, gene_list_filter, region_filter, quality_filter, data_notes, gene_list_id, region_file_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`
+        ).get(
+          caseId,
+          updates.import_file_name ?? null,
+          updates.import_file_type ?? null,
+          updates.platform ?? null,
+          updates.platform_details ?? null,
+          updates.af_filter ?? null,
+          updates.gene_list_filter ?? null,
+          updates.region_filter ?? null,
+          updates.quality_filter ?? null,
+          updates.data_notes ?? null,
+          updates.gene_list_id ?? null,
+          updates.region_file_id ?? null,
+          now,
+          now
+        ) as CaseDataInfo
+      }
+
+      // Build dynamic SET clause: only update fields explicitly provided (even if null)
+      const setClauses: string[] = ['updated_at = ?']
+      const setParams: (string | number | null)[] = [now]
+
+      const allFields = [
+        'import_file_name',
+        'import_file_type',
+        'platform',
+        'platform_details',
+        'af_filter',
+        'gene_list_filter',
+        'region_filter',
+        'quality_filter',
+        'data_notes',
+        'gene_list_id',
+        'region_file_id'
+      ] as const
+      for (const field of allFields) {
+        if (field in updates) {
+          setClauses.push(`${field} = ?`)
+          setParams.push(updates[field] ?? null)
+        }
+      }
+
+      setParams.push(caseId)
+      const sql = `UPDATE case_data_info SET ${setClauses.join(', ')} WHERE case_id = ? RETURNING *`
+      return this.db.prepare(sql).get(...setParams) as CaseDataInfo
     })
   }
 

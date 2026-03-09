@@ -148,29 +148,31 @@ async function loadCases(): Promise<void> {
     const cohorts = await (window as any).api.caseMetadata.listCohorts()
     cohortGroups.value = cohorts
 
-    // Load metadata for each case to get status, sex, cohort assignments
-    const caseInfos: CaseInfo[] = []
-    for (const c of caseList) {
-      try {
-        // eslint-disable-next-line no-undef, @typescript-eslint/no-explicit-any
-        const fullMeta = await (window as any).api.caseMetadata.getFullMetadata(c.id)
-        caseInfos.push({
-          id: c.id,
-          name: c.name,
-          status: fullMeta?.metadata?.affected_status ?? null,
-          sex: fullMeta?.metadata?.sex ?? null,
-          cohortIds: fullMeta?.cohorts?.map((co: CohortGroup) => co.id) ?? []
-        })
-      } catch {
-        caseInfos.push({
-          id: c.id,
-          name: c.name,
-          status: null,
-          sex: null,
-          cohortIds: []
-        })
-      }
-    }
+    // Load metadata for all cases in parallel
+    // eslint-disable-next-line no-undef, @typescript-eslint/no-explicit-any
+    const api = (window as any).api
+    const caseInfos = await Promise.all(
+      caseList.map(async (c: { id: number; name: string }) => {
+        try {
+          const fullMeta = await api.caseMetadata.getFullMetadata(c.id)
+          return {
+            id: c.id,
+            name: c.name,
+            status: fullMeta?.metadata?.affected_status ?? null,
+            sex: fullMeta?.metadata?.sex ?? null,
+            cohortIds: fullMeta?.cohorts?.map((co: CohortGroup) => co.id) ?? []
+          }
+        } catch {
+          return {
+            id: c.id,
+            name: c.name,
+            status: null,
+            sex: null,
+            cohortIds: []
+          }
+        }
+      })
+    )
     cases.value = caseInfos
   } catch (err) {
     error.value = `Failed to load cases: ${err instanceof Error ? err.message : String(err)}`
@@ -197,6 +199,9 @@ async function runAnalysis(config: any): Promise<void> {
   try {
     // eslint-disable-next-line no-undef, @typescript-eslint/no-explicit-any
     const result = await (window as any).api.cohort.runAssociation(config)
+    if (result !== null && typeof result === 'object' && 'error' in result) {
+      throw new Error(String(result.error))
+    }
     results.value = result
   } catch (err) {
     error.value = `Analysis failed: ${err instanceof Error ? err.message : String(err)}`

@@ -47,7 +47,7 @@
           hide-details
           clearable
           placeholder="e.g. Exome, Genome, Panel"
-          @update:model-value="save"
+          @update:model-value="onPlatformChange"
         />
       </v-col>
       <v-col cols="6">
@@ -540,6 +540,22 @@ async function deleteExternalId(idType: string): Promise<void> {
   } catch {
     // Silently fail
   }
+}
+
+// Platform combobox: only save when a menu item is selected (not on every keystroke)
+// eslint-disable-next-line no-undef
+let platformDebounce: ReturnType<typeof setTimeout> | null = null
+function onPlatformChange(): void {
+  // Debounce to avoid saving on every keystroke; immediate save on item selection
+  if (platformDebounce !== null) {
+    // eslint-disable-next-line no-undef
+    clearTimeout(platformDebounce)
+  }
+  // eslint-disable-next-line no-undef
+  platformDebounce = setTimeout(() => {
+    save()
+    platformDebounce = null
+  }, 500)
 }
 
 // Gene list selection

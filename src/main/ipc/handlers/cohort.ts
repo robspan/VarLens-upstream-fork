@@ -128,6 +128,11 @@ ipcMain.handle('cohort:geneBurdenCompare', async (event, params: unknown) => {
       throw new Error('Invalid association analysis parameters')
     }
 
+    // Prevent concurrent runs
+    if (activeEngine !== null) {
+      throw new Error('An association analysis is already running')
+    }
+
     const config = validated.data
 
     // Validate no overlap between groups
@@ -143,10 +148,13 @@ ipcMain.handle('cohort:geneBurdenCompare', async (event, params: unknown) => {
       event.sender.send('cohort:geneBurdenProgress', { completed, total })
     })
 
-    const results = await activeEngine.run(config)
-    activeEngine = null
-    // Deep clone for IPC serialization – engine result may contain non-serializable properties
-    return JSON.parse(JSON.stringify(results))
+    try {
+      const results = await activeEngine.run(config)
+      // Deep clone for IPC serialization – engine result may contain non-serializable properties
+      return JSON.parse(JSON.stringify(results))
+    } finally {
+      activeEngine = null
+    }
   })
 })
 

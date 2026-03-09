@@ -338,12 +338,13 @@ export function runMigrations(db: Database.Database): void {
   if (currentVersion < 8) {
     const columns = db.prepare('PRAGMA table_info(case_metadata)').all() as { name: string }[]
     const hasAge = columns.some((c) => c.name === 'age')
+    const hasDob = columns.some((c) => c.name === 'date_of_birth')
 
     if (!hasAge) {
-      db.exec(`
-        ALTER TABLE case_metadata ADD COLUMN age REAL;
-        ALTER TABLE case_metadata ADD COLUMN date_of_birth TEXT;
-      `)
+      db.exec(`ALTER TABLE case_metadata ADD COLUMN age REAL`)
+    }
+    if (!hasDob) {
+      db.exec(`ALTER TABLE case_metadata ADD COLUMN date_of_birth TEXT`)
     }
 
     db.exec('PRAGMA user_version = 8')
@@ -431,9 +432,6 @@ export function runMigrations(db: Database.Database): void {
       CREATE INDEX IF NOT EXISTS idx_gene_list_items_list
         ON gene_list_items(gene_list_id);
 
-      -- Link case to a gene list (optional)
-      ALTER TABLE case_data_info ADD COLUMN gene_list_id INTEGER REFERENCES gene_lists(id) ON DELETE SET NULL;
-
       -- BED region files (stored content)
       CREATE TABLE IF NOT EXISTS region_files (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -457,10 +455,20 @@ export function runMigrations(db: Database.Database): void {
 
       CREATE INDEX IF NOT EXISTS idx_region_file_entries_file
         ON region_file_entries(region_file_id);
-
-      -- Link case to a region file (optional)
-      ALTER TABLE case_data_info ADD COLUMN region_file_id INTEGER REFERENCES region_files(id) ON DELETE SET NULL;
     `)
+
+    // Add columns to case_data_info idempotently (guard against partial migrations)
+    const dataInfoCols = db.prepare('PRAGMA table_info(case_data_info)').all() as { name: string }[]
+    if (!dataInfoCols.some((c) => c.name === 'gene_list_id')) {
+      db.exec(
+        'ALTER TABLE case_data_info ADD COLUMN gene_list_id INTEGER REFERENCES gene_lists(id) ON DELETE SET NULL'
+      )
+    }
+    if (!dataInfoCols.some((c) => c.name === 'region_file_id')) {
+      db.exec(
+        'ALTER TABLE case_data_info ADD COLUMN region_file_id INTEGER REFERENCES region_files(id) ON DELETE SET NULL'
+      )
+    }
 
     db.exec('PRAGMA user_version = 10')
   }

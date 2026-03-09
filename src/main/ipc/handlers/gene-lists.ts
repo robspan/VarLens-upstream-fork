@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import { wrapHandler } from '../errorHandler'
 import { getDatabaseService } from '../../database'
-import { readFileSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 
 /**
  * Gene Lists and Region Files IPC handlers
@@ -76,7 +76,7 @@ ipcMain.handle('region-files:delete', async (_event, id: number) => {
 
 ipcMain.handle('region-files:importBed', async (_event, fileId: number, filePath: string) => {
   return wrapHandler(async () => {
-    const content = readFileSync(filePath, 'utf-8')
+    const content = await readFile(filePath, 'utf-8')
     const entries: Array<{ chr: string; start: number; end: number; label?: string }> = []
 
     for (const line of content.split('\n')) {

@@ -597,8 +597,8 @@ export const mockApi: WindowAPI = {
       affected_status: updates.affected_status ?? null,
       sex: updates.sex ?? null,
       notes: updates.notes ?? null,
-      age: null,
-      date_of_birth: null,
+      age: updates.age ?? null,
+      date_of_birth: updates.date_of_birth ?? null,
       created_at: Date.now(),
       updated_at: Date.now()
     }),

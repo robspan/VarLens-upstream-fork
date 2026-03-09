@@ -1,9 +1,5 @@
 import type Database from 'better-sqlite3-multiple-ciphers'
-import type {
-  GeneContingencyData,
-  SampleBurdenData,
-  VariantFilters
-} from '../statistics/types'
+import type { GeneContingencyData, SampleBurdenData, VariantFilters } from '../statistics/types'
 
 export class AssociationDataBuilder {
   private db: Database.Database
@@ -196,9 +192,7 @@ export class AssociationDataBuilder {
     // Load sex and age from case_metadata
     const placeholders = caseIds.map(() => '?').join(', ')
     const metaRows = this.db
-      .prepare(
-        `SELECT case_id, sex, age FROM case_metadata WHERE case_id IN (${placeholders})`
-      )
+      .prepare(`SELECT case_id, sex, age FROM case_metadata WHERE case_id IN (${placeholders})`)
       .all(...caseIds) as Array<{ case_id: number; sex: string | null; age: number | null }>
 
     const metaMap = new Map<number, { sex: string | null; age: number | null }>()

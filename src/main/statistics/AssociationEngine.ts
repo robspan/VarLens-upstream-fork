@@ -63,7 +63,7 @@ export class AssociationEngine {
       )
       const logistic = logisticBurdenTest(gene.samples, config.weight_scheme)
 
-      if (logistic.warning) {
+      if (logistic.warning !== undefined && logistic.warning !== '') {
         warnings.push(`${gene.gene_symbol}: ${logistic.warning}`)
       }
 

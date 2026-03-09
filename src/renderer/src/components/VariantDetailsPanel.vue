@@ -78,28 +78,11 @@
           <!-- Section 3: ACMG Classification -->
           <div class="acmg-section mb-4">
             <div class="text-title-small mb-2">ACMG Classification</div>
-            <AcmgMenu @select="handleAcmgSelect">
-              <template #activator="{ props: menuProps }">
-                <v-chip
-                  v-if="currentAcmgClassification !== null"
-                  v-bind="menuProps"
-                  :color="ACMG_COLORS[currentAcmgClassification]"
-                  label
-                  class="cursor-pointer"
-                >
-                  {{ currentAcmgClassification }}
-                </v-chip>
-                <v-btn
-                  v-else
-                  v-bind="menuProps"
-                  variant="outlined"
-                  size="small"
-                  prepend-icon="mdi-tag-plus"
-                >
-                  Set Classification
-                </v-btn>
-              </template>
-            </AcmgMenu>
+            <AcmgClassificationPanel
+              :evidence-json="currentAcmgEvidence"
+              :variant-data="currentVariantData"
+              @change="handleAcmgEvidenceChange"
+            />
             <div v-if="hasGlobalAcmg && mode === 'case'" class="text-body-small text-grey mt-1">
               Global: {{ globalAcmgClassification }}
             </div>
@@ -133,7 +116,7 @@
 import { onMounted, onUnmounted, computed, watch } from 'vue'
 import { usePanelResize } from '../composables/usePanelResize'
 import { useResponsiveLayout } from '../composables/useResponsiveLayout'
-import { useAnnotations, ACMG_COLORS } from '../composables/useAnnotations'
+import { useAnnotations } from '../composables/useAnnotations'
 import { useVepEnrichment } from '../composables/useVepEnrichment'
 import VariantIdentitySection from './VariantIdentitySection.vue'
 import AnnotationScoresSection from './AnnotationScoresSection.vue'
@@ -141,7 +124,7 @@ import ExternalLinksSection from './ExternalLinksSection.vue'
 import CommentsSection from './CommentsSection.vue'
 import TagsSection from './TagsSection.vue'
 import TranscriptSection from './TranscriptSection.vue'
-import AcmgMenu from './AcmgMenu.vue'
+import AcmgClassificationPanel from './AcmgClassificationPanel.vue'
 import type { Variant } from '../../../shared/types/api'
 import type { CohortVariant } from '../../../shared/types/cohort'
 import type { AcmgClassification } from '../../../main/database/types'
@@ -173,10 +156,11 @@ const effectiveWidth = computed(() =>
 const {
   loadAnnotations,
   loadGlobalAnnotations,
-  getAcmgClassification,
   getGlobalAcmgClassification,
-  setAcmgClassification,
-  setGlobalAcmgClassification
+  getAcmgEvidence,
+  getGlobalAcmgEvidence,
+  setAcmgClassificationWithEvidence,
+  setGlobalAcmgClassificationWithEvidence
 } = useAnnotations()
 
 // Use VEP enrichment composable (fetches VEP, myvariant.info, and SpliceAI in parallel)
@@ -196,27 +180,6 @@ const {
   fetchVep
 } = useVepEnrichment()
 
-// Current ACMG classification (per-case in case mode, global in cohort mode)
-const currentAcmgClassification = computed<AcmgClassification | null>(() => {
-  if (props.variant === null) return null
-
-  if (props.mode === 'case') {
-    return getAcmgClassification(
-      props.variant.chr,
-      props.variant.pos,
-      props.variant.ref,
-      props.variant.alt
-    )
-  } else {
-    return getGlobalAcmgClassification(
-      props.variant.chr,
-      props.variant.pos,
-      props.variant.ref,
-      props.variant.alt
-    )
-  }
-})
-
 // Global ACMG classification (for showing in case mode)
 const globalAcmgClassification = computed<AcmgClassification | null>(() => {
   if (props.variant === null) return null
@@ -234,30 +197,62 @@ const hasGlobalAcmg = computed(() => {
   return globalAcmgClassification.value !== null
 })
 
-// Handle ACMG selection
-const handleAcmgSelect = async (classification: AcmgClassification | null) => {
+// Current evidence JSON for the ACMG panel
+const currentAcmgEvidence = computed(() => {
+  if (!props.variant) return null
+  if (props.mode === 'case') {
+    return getAcmgEvidence(
+      props.variant.chr,
+      props.variant.pos,
+      props.variant.ref,
+      props.variant.alt
+    )
+  }
+  return getGlobalAcmgEvidence(
+    props.variant.chr,
+    props.variant.pos,
+    props.variant.ref,
+    props.variant.alt
+  )
+})
+
+// Variant annotation data for auto-suggestions
+const currentVariantData = computed(() => {
+  if (!props.variant) return null
+  return {
+    gnomad_af: props.variant.gnomad_af ?? null,
+    cadd: props.variant.cadd ?? null,
+    clinvar: props.variant.clinvar ?? null
+  }
+})
+
+// Handle ACMG evidence change from panel
+const handleAcmgEvidenceChange = async (payload: {
+  classification: AcmgClassification | null
+  evidenceJson: string
+}) => {
   if (props.variant === null) return
 
   if (props.mode === 'case' && props.caseId !== null) {
-    // Per-case classification
     const variantId = (props.variant as Variant).id
-    await setAcmgClassification(
+    await setAcmgClassificationWithEvidence(
       props.caseId,
       variantId,
       props.variant.chr,
       props.variant.pos,
       props.variant.ref,
       props.variant.alt,
-      classification
+      payload.classification,
+      payload.evidenceJson
     )
   } else {
-    // Global classification (cohort mode)
-    await setGlobalAcmgClassification(
+    await setGlobalAcmgClassificationWithEvidence(
       props.variant.chr,
       props.variant.pos,
       props.variant.ref,
       props.variant.alt,
-      classification
+      payload.classification,
+      payload.evidenceJson
     )
   }
 }

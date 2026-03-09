@@ -261,7 +261,6 @@ const globalAcmgClassification = computed<AcmgClassification | null>(() => {
   )
 })
 
-// Check if global ACMG exists
 // Audit trail entity key
 const auditEntityKey = computed(() => {
   if (!props.variant) return null

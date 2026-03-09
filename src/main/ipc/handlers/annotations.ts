@@ -63,18 +63,23 @@ ipcMain.handle(
       // Read current state before upsert for audit trail
       const oldAnnotation = db.getGlobalAnnotation(chr, pos, ref, alt)
 
-      // Convert boolean starred to 0/1 for SQLite INTEGER column
+      // Build dbUpdates only with keys actually provided
       const dbUpdates: Partial<
         Pick<
           VariantAnnotation,
           'global_comment' | 'starred' | 'acmg_classification' | 'acmg_evidence'
         >
-      > = {
-        global_comment: annotationUpdates.global_comment,
-        acmg_classification: annotationUpdates.acmg_classification,
-        acmg_evidence: annotationUpdates.acmg_evidence
-      }
+      > = {}
 
+      if ('global_comment' in annotationUpdates) {
+        dbUpdates.global_comment = annotationUpdates.global_comment
+      }
+      if ('acmg_classification' in annotationUpdates) {
+        dbUpdates.acmg_classification = annotationUpdates.acmg_classification
+      }
+      if ('acmg_evidence' in annotationUpdates) {
+        dbUpdates.acmg_evidence = annotationUpdates.acmg_evidence
+      }
       if (annotationUpdates.starred !== undefined) {
         dbUpdates.starred = annotationUpdates.starred ? 1 : 0
       }
@@ -165,18 +170,23 @@ ipcMain.handle(
       // Read current state before upsert for audit trail
       const oldAnnotation = db.getPerCaseAnnotation(caseId, variantId)
 
+      // Build dbUpdates only with keys actually provided
       const dbUpdates: Partial<
         Pick<
           CaseVariantAnnotation,
           'per_case_comment' | 'starred' | 'acmg_classification' | 'acmg_evidence'
         >
-      > = {
-        per_case_comment: annotationUpdates.per_case_comment,
-        acmg_classification: annotationUpdates.acmg_classification,
-        acmg_evidence: annotationUpdates.acmg_evidence
-      }
+      > = {}
 
-      // Convert boolean starred to 0/1 for SQLite INTEGER column
+      if ('per_case_comment' in annotationUpdates) {
+        dbUpdates.per_case_comment = annotationUpdates.per_case_comment
+      }
+      if ('acmg_classification' in annotationUpdates) {
+        dbUpdates.acmg_classification = annotationUpdates.acmg_classification
+      }
+      if ('acmg_evidence' in annotationUpdates) {
+        dbUpdates.acmg_evidence = annotationUpdates.acmg_evidence
+      }
       if (annotationUpdates.starred !== undefined) {
         dbUpdates.starred = annotationUpdates.starred ? 1 : 0
       }

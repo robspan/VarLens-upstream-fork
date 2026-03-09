@@ -96,6 +96,8 @@ export function useAcmgEvidence() {
       isOverride.value = state.is_override
       if (state.is_override && state.calculated_classification) {
         overrideClassification.value = state.calculated_classification
+      } else {
+        overrideClassification.value = null
       }
     } else {
       reset()

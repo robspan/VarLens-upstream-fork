@@ -489,6 +489,9 @@ export function useAnnotations() {
     const key = variantKey(chr, pos, ref, alt)
     const current = annotationCache.value.get(key)
 
+    // Save previous state for rollback
+    const previousPerCase = current?.perCase ?? null
+
     // Optimistic update
     if (current) {
       current.perCase = {
@@ -512,6 +515,10 @@ export function useAnnotations() {
       })
     } catch (error) {
       console.error('Failed to set ACMG classification with evidence:', error)
+      // Rollback optimistic update
+      if (current) {
+        current.perCase = previousPerCase
+      }
     }
   }
 
@@ -526,6 +533,9 @@ export function useAnnotations() {
   ): Promise<void> {
     const key = variantKey(chr, pos, ref, alt)
     const current = annotationCache.value.get(key)
+
+    // Save previous state for rollback
+    const previousGlobal = current?.global ?? null
 
     // Optimistic update
     if (current) {
@@ -548,6 +558,10 @@ export function useAnnotations() {
       })
     } catch (error) {
       console.error('Failed to set global ACMG classification with evidence:', error)
+      // Rollback optimistic update
+      if (current) {
+        current.global = previousGlobal
+      }
     }
   }
 

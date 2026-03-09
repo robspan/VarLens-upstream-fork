@@ -290,7 +290,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch, onMounted } from 'vue'
+import { computed, watch } from 'vue'
 import type { AcmgClassification } from '../../../main/database/types'
 import type { AcmgCode, EvidenceStrength, AcmgEvidenceCode } from '../utils/acmg/types'
 import {
@@ -503,10 +503,6 @@ watch(
   (json) => loadState(json),
   { immediate: true }
 )
-
-onMounted(() => {
-  loadState(props.evidenceJson)
-})
 </script>
 
 <style scoped>

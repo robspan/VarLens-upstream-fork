@@ -301,4 +301,31 @@ export function runMigrations(db: Database.Database): void {
 
     db.exec('PRAGMA user_version = 6')
   }
+
+  // Version 6 → 7: Audit trail table (issue #39)
+  if (currentVersion < 7) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL,
+        action_type TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_key TEXT NOT NULL,
+        old_value TEXT,
+        new_value TEXT,
+        user_name TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_audit_log_entity_key
+        ON audit_log(entity_key);
+
+      CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp
+        ON audit_log(timestamp);
+
+      CREATE INDEX IF NOT EXISTS idx_audit_log_action_type
+        ON audit_log(action_type);
+    `)
+
+    db.exec('PRAGMA user_version = 7')
+  }
 }

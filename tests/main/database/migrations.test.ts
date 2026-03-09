@@ -127,7 +127,7 @@ describe('Schema Migrations', () => {
       const versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(6)
+      expect(versionResult.user_version).toBe(7)
 
       service.close()
 
@@ -137,7 +137,7 @@ describe('Schema Migrations', () => {
       const versionAfterReopen = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionAfterReopen.user_version).toBe(6)
+      expect(versionAfterReopen.user_version).toBe(7)
 
       service.close()
     })
@@ -464,7 +464,7 @@ describe('Schema Migrations', () => {
       let versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(6)
+      expect(versionResult.user_version).toBe(7)
 
       service.close()
 
@@ -484,7 +484,7 @@ describe('Schema Migrations', () => {
       versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(6)
+      expect(versionResult.user_version).toBe(7)
 
       service.close()
     })
@@ -518,7 +518,7 @@ describe('Schema Migrations', () => {
       const versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(6)
+      expect(versionResult.user_version).toBe(7)
 
       service.close()
     })

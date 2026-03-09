@@ -88,34 +88,38 @@
           />
         </template>
       </template>
-      <v-list density="compact">
-        <v-list-item
-          v-for="classification in CLASSIFICATIONS"
-          :key="classification"
-          @click="emit('acmg-select', classification)"
-        >
-          <template #prepend>
-            <v-chip :color="ACMG_COLORS[classification]" size="x-small" label class="mr-2">
-              {{ ACMG_ABBREV[classification] }}
-            </v-chip>
-          </template>
-          <v-list-item-title class="text-caption">{{ classification }}</v-list-item-title>
-        </v-list-item>
-        <v-divider />
-        <v-list-item @click="emit('acmg-evidence-click')">
-          <template #prepend>
-            <v-icon size="small" class="mr-2">mdi-clipboard-check-outline</v-icon>
-          </template>
-          <v-list-item-title class="text-caption font-weight-medium">
-            Evidence editor...
-          </v-list-item-title>
-        </v-list-item>
-        <v-list-item v-if="acmgClassification" @click="emit('acmg-select', null)">
-          <v-list-item-title class="text-caption text-medium-emphasis">
-            Clear classification
-          </v-list-item-title>
-        </v-list-item>
-      </v-list>
+      <v-card class="pa-2" min-width="200">
+        <div class="d-flex flex-wrap ga-1 mb-2">
+          <v-chip
+            v-for="cls in CLASSIFICATIONS"
+            :key="cls"
+            :color="acmgClassification === cls ? ACMG_COLORS[cls] : undefined"
+            :variant="acmgClassification === cls ? 'flat' : 'outlined'"
+            size="small"
+            label
+            class="cursor-pointer"
+            @click="emit('acmg-select', cls)"
+          >
+            {{ ACMG_ABBREV[cls] }}
+          </v-chip>
+        </div>
+        <v-divider class="mb-1" />
+        <v-list density="compact" class="pa-0">
+          <v-list-item class="px-1" @click="emit('acmg-evidence-click')">
+            <template #prepend>
+              <v-icon size="small" class="mr-1">mdi-clipboard-check-outline</v-icon>
+            </template>
+            <v-list-item-title class="text-caption font-weight-medium">
+              Evidence editor...
+            </v-list-item-title>
+          </v-list-item>
+          <v-list-item v-if="acmgClassification" class="px-1" @click="emit('acmg-select', null)">
+            <v-list-item-title class="text-caption text-medium-emphasis">
+              Clear classification
+            </v-list-item-title>
+          </v-list-item>
+        </v-list>
+      </v-card>
     </v-menu>
 
     <!-- Comment icon -->

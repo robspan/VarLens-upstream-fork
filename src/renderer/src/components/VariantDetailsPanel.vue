@@ -78,11 +78,52 @@
           <!-- Section 3: ACMG Classification -->
           <div class="acmg-section mb-4">
             <div class="text-title-small mb-2">ACMG Classification</div>
-            <AcmgClassificationPanel
-              :evidence-json="currentAcmgEvidence"
-              :variant-data="currentVariantData"
-              @change="handleAcmgEvidenceChange"
-            />
+
+            <!-- Quick-classify chips -->
+            <div class="d-flex flex-wrap ga-1 mb-2">
+              <v-chip
+                v-for="cls in CLASSIFICATIONS"
+                :key="cls"
+                :color="currentQuickClassification === cls ? ACMG_COLORS[cls] : undefined"
+                :variant="currentQuickClassification === cls ? 'flat' : 'outlined'"
+                size="small"
+                label
+                class="cursor-pointer"
+                @click="handleQuickClassify(cls)"
+              >
+                {{ ACMG_ABBREV[cls] }}
+              </v-chip>
+              <v-chip
+                v-if="currentQuickClassification"
+                variant="text"
+                size="small"
+                class="cursor-pointer text-medium-emphasis"
+                @click="handleQuickClassify(null)"
+              >
+                <v-icon size="x-small">mdi-close</v-icon>
+              </v-chip>
+            </div>
+
+            <!-- Evidence-based classification panel -->
+            <v-expansion-panels variant="accordion" class="mb-1">
+              <v-expansion-panel>
+                <v-expansion-panel-title class="text-body-2 pa-2">
+                  <v-icon size="small" class="mr-1">mdi-clipboard-check-outline</v-icon>
+                  Evidence editor
+                  <span v-if="currentAcmgEvidence" class="text-caption text-medium-emphasis ml-1">
+                    (has evidence)
+                  </span>
+                </v-expansion-panel-title>
+                <v-expansion-panel-text>
+                  <AcmgClassificationPanel
+                    :evidence-json="currentAcmgEvidence"
+                    :variant-data="currentVariantData"
+                    @change="handleAcmgEvidenceChange"
+                  />
+                </v-expansion-panel-text>
+              </v-expansion-panel>
+            </v-expansion-panels>
+
             <div v-if="hasGlobalAcmg && mode === 'case'" class="text-body-small text-grey mt-1">
               Global: {{ globalAcmgClassification }}
             </div>
@@ -144,6 +185,7 @@ import ActivityLogPanel from './ActivityLogPanel.vue'
 import type { Variant } from '../../../shared/types/api'
 import type { CohortVariant } from '../../../shared/types/cohort'
 import type { AcmgClassification } from '../../../main/database/types'
+import { ACMG_COLORS, ACMG_ABBREV } from '../composables/useAnnotations'
 
 interface Props {
   open: boolean
@@ -168,14 +210,25 @@ const effectiveWidth = computed(() =>
   detailPanelFullWidth.value ? displayWidth.value : panelWidth.value
 )
 
+const CLASSIFICATIONS: AcmgClassification[] = [
+  'Pathogenic',
+  'Likely Pathogenic',
+  'VUS',
+  'Likely Benign',
+  'Benign'
+]
+
 // Use annotations composable
 const {
   loadAnnotations,
   loadGlobalAnnotations,
+  getAcmgClassification,
   getGlobalAcmgClassification,
   getAcmgEvidence,
   getGlobalAcmgEvidence,
+  setAcmgClassification,
   setAcmgClassificationWithEvidence,
+  setGlobalAcmgClassification,
   setGlobalAcmgClassificationWithEvidence
 } = useAnnotations()
 
@@ -251,6 +304,53 @@ const currentVariantData = computed(() => {
     clinvar: props.variant.clinvar ?? null
   }
 })
+
+// Current quick classification (from annotation, not evidence-based)
+const currentQuickClassification = computed<AcmgClassification | null>(() => {
+  if (!props.variant) return null
+  if (props.mode === 'case') {
+    return getAcmgClassification(
+      props.variant.chr,
+      props.variant.pos,
+      props.variant.ref,
+      props.variant.alt
+    )
+  }
+  return getGlobalAcmgClassification(
+    props.variant.chr,
+    props.variant.pos,
+    props.variant.ref,
+    props.variant.alt
+  )
+})
+
+// Handle quick-classify chip click
+const handleQuickClassify = async (classification: AcmgClassification | null): Promise<void> => {
+  if (props.variant === null) return
+  // Toggle off if already selected
+  const value = classification === currentQuickClassification.value ? null : classification
+
+  if (props.mode === 'case' && props.caseId !== null) {
+    const variantId = (props.variant as Variant).id
+    await setAcmgClassification(
+      props.caseId,
+      variantId,
+      props.variant.chr,
+      props.variant.pos,
+      props.variant.ref,
+      props.variant.alt,
+      value
+    )
+  } else {
+    await setGlobalAcmgClassification(
+      props.variant.chr,
+      props.variant.pos,
+      props.variant.ref,
+      props.variant.alt,
+      value
+    )
+  }
+}
 
 // Handle ACMG evidence change from panel
 const handleAcmgEvidenceChange = async (payload: {

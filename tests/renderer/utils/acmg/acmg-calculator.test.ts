@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   calculatePoints,
-  classifyFromPoints,
+  classifyByRules,
   calculateClassification
 } from '../../../../src/renderer/src/utils/acmg/acmg-calculator'
 import type { AcmgEvidenceCode } from '../../../../src/renderer/src/utils/acmg/types'
@@ -13,6 +13,10 @@ function makeCode(code: string, strength: string): AcmgEvidenceCode {
     auto_suggested: false,
     confirmed: true
   }
+}
+
+function makeBenignCode(code: string, strength: string): AcmgEvidenceCode {
+  return makeCode(code, strength)
 }
 
 describe('calculatePoints', () => {
@@ -74,30 +78,171 @@ describe('calculatePoints', () => {
   })
 })
 
-describe('classifyFromPoints', () => {
-  it('classifies >= 10 as Pathogenic', () => {
-    expect(classifyFromPoints(10)).toBe('Pathogenic')
-    expect(classifyFromPoints(15)).toBe('Pathogenic')
+describe('classifyByRules (ACMG/AMP 2015)', () => {
+  // --- Pathogenic rules ---
+  it('PVS1 alone = VUS (not LP)', () => {
+    const p = [makeCode('PVS1', 'very_strong')]
+    expect(classifyByRules(p, [])).toBe('VUS')
   })
 
-  it('classifies 6-9 as Likely Pathogenic', () => {
-    expect(classifyFromPoints(6)).toBe('Likely Pathogenic')
-    expect(classifyFromPoints(9)).toBe('Likely Pathogenic')
+  it('PVS1 + PS = Pathogenic', () => {
+    const p = [makeCode('PVS1', 'very_strong'), makeCode('PS1', 'strong')]
+    expect(classifyByRules(p, [])).toBe('Pathogenic')
   })
 
-  it('classifies 0-5 as VUS', () => {
-    expect(classifyFromPoints(0)).toBe('VUS')
-    expect(classifyFromPoints(5)).toBe('VUS')
+  it('PVS1 + 2 PM = Pathogenic', () => {
+    const p = [
+      makeCode('PVS1', 'very_strong'),
+      makeCode('PM1', 'moderate'),
+      makeCode('PM2', 'moderate')
+    ]
+    expect(classifyByRules(p, [])).toBe('Pathogenic')
   })
 
-  it('classifies -1 to -6 as Likely Benign', () => {
-    expect(classifyFromPoints(-1)).toBe('Likely Benign')
-    expect(classifyFromPoints(-6)).toBe('Likely Benign')
+  it('PVS1 + PM + PP = Pathogenic', () => {
+    const p = [
+      makeCode('PVS1', 'very_strong'),
+      makeCode('PM2', 'moderate'),
+      makeCode('PP3', 'supporting')
+    ]
+    expect(classifyByRules(p, [])).toBe('Pathogenic')
   })
 
-  it('classifies <= -7 as Benign', () => {
-    expect(classifyFromPoints(-7)).toBe('Benign')
-    expect(classifyFromPoints(-10)).toBe('Benign')
+  it('PVS1 + 2 PP = Pathogenic', () => {
+    const p = [
+      makeCode('PVS1', 'very_strong'),
+      makeCode('PP1', 'supporting'),
+      makeCode('PP3', 'supporting')
+    ]
+    expect(classifyByRules(p, [])).toBe('Pathogenic')
+  })
+
+  it('2 PS = Pathogenic', () => {
+    const p = [makeCode('PS1', 'strong'), makeCode('PS2', 'strong')]
+    expect(classifyByRules(p, [])).toBe('Pathogenic')
+  })
+
+  it('PS + 3 PM = Pathogenic', () => {
+    const p = [
+      makeCode('PS1', 'strong'),
+      makeCode('PM1', 'moderate'),
+      makeCode('PM2', 'moderate'),
+      makeCode('PM3', 'moderate')
+    ]
+    expect(classifyByRules(p, [])).toBe('Pathogenic')
+  })
+
+  // --- Likely Pathogenic rules ---
+  it('PVS1 + PM = Likely Pathogenic', () => {
+    const p = [makeCode('PVS1', 'very_strong'), makeCode('PM2', 'moderate')]
+    expect(classifyByRules(p, [])).toBe('Likely Pathogenic')
+  })
+
+  it('PVS1 + PP = Likely Pathogenic', () => {
+    const p = [makeCode('PVS1', 'very_strong'), makeCode('PP3', 'supporting')]
+    expect(classifyByRules(p, [])).toBe('Likely Pathogenic')
+  })
+
+  it('PS + PM = Likely Pathogenic', () => {
+    const p = [makeCode('PS1', 'strong'), makeCode('PM2', 'moderate')]
+    expect(classifyByRules(p, [])).toBe('Likely Pathogenic')
+  })
+
+  it('PS + 2 PP = Likely Pathogenic', () => {
+    const p = [
+      makeCode('PS1', 'strong'),
+      makeCode('PP1', 'supporting'),
+      makeCode('PP3', 'supporting')
+    ]
+    expect(classifyByRules(p, [])).toBe('Likely Pathogenic')
+  })
+
+  it('3 PM = Likely Pathogenic', () => {
+    const p = [
+      makeCode('PM1', 'moderate'),
+      makeCode('PM2', 'moderate'),
+      makeCode('PM3', 'moderate')
+    ]
+    expect(classifyByRules(p, [])).toBe('Likely Pathogenic')
+  })
+
+  it('2 PM + 2 PP = Likely Pathogenic', () => {
+    const p = [
+      makeCode('PM1', 'moderate'),
+      makeCode('PM2', 'moderate'),
+      makeCode('PP1', 'supporting'),
+      makeCode('PP3', 'supporting')
+    ]
+    expect(classifyByRules(p, [])).toBe('Likely Pathogenic')
+  })
+
+  it('1 PM + 4 PP = Likely Pathogenic', () => {
+    const p = [
+      makeCode('PM2', 'moderate'),
+      makeCode('PP1', 'supporting'),
+      makeCode('PP2', 'supporting'),
+      makeCode('PP3', 'supporting'),
+      makeCode('PP4', 'supporting')
+    ]
+    expect(classifyByRules(p, [])).toBe('Likely Pathogenic')
+  })
+
+  // --- VUS cases ---
+  it('PS alone = VUS', () => {
+    const p = [makeCode('PS1', 'strong')]
+    expect(classifyByRules(p, [])).toBe('VUS')
+  })
+
+  it('1 PM = VUS', () => {
+    const p = [makeCode('PM2', 'moderate')]
+    expect(classifyByRules(p, [])).toBe('VUS')
+  })
+
+  it('2 PM = VUS', () => {
+    const p = [makeCode('PM1', 'moderate'), makeCode('PM2', 'moderate')]
+    expect(classifyByRules(p, [])).toBe('VUS')
+  })
+
+  it('1 PP = VUS', () => {
+    const p = [makeCode('PP3', 'supporting')]
+    expect(classifyByRules(p, [])).toBe('VUS')
+  })
+
+  it('PS + 1 PP = VUS', () => {
+    const p = [makeCode('PS1', 'strong'), makeCode('PP3', 'supporting')]
+    expect(classifyByRules(p, [])).toBe('VUS')
+  })
+
+  // --- Benign rules ---
+  it('BA1 = Benign (stand-alone)', () => {
+    const b = [makeBenignCode('BA1', 'stand_alone')]
+    expect(classifyByRules([], b)).toBe('Benign')
+  })
+
+  it('2 BS = Benign', () => {
+    const b = [makeBenignCode('BS1', 'strong'), makeBenignCode('BS2', 'strong')]
+    expect(classifyByRules([], b)).toBe('Benign')
+  })
+
+  // --- Likely Benign rules ---
+  it('BS + BP = Likely Benign', () => {
+    const b = [makeBenignCode('BS1', 'strong'), makeBenignCode('BP4', 'supporting')]
+    expect(classifyByRules([], b)).toBe('Likely Benign')
+  })
+
+  it('2 BP = Likely Benign', () => {
+    const b = [makeBenignCode('BP4', 'supporting'), makeBenignCode('BP7', 'supporting')]
+    expect(classifyByRules([], b)).toBe('Likely Benign')
+  })
+
+  it('1 BS alone = VUS', () => {
+    const b = [makeBenignCode('BS1', 'strong')]
+    expect(classifyByRules([], b)).toBe('VUS')
+  })
+
+  it('1 BP alone = VUS', () => {
+    const b = [makeBenignCode('BP4', 'supporting')]
+    expect(classifyByRules([], b)).toBe('VUS')
   })
 })
 
@@ -127,5 +272,11 @@ describe('calculateClassification', () => {
     const result = calculateClassification([], benign)
     expect(result.classification).toBe('Benign')
     expect(result.netPoints).toBe(-8)
+  })
+
+  it('PVS1 alone is VUS', () => {
+    const pathogenic = [makeCode('PVS1', 'very_strong')]
+    const result = calculateClassification(pathogenic, [])
+    expect(result.classification).toBe('VUS')
   })
 })

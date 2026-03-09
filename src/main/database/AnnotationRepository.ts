@@ -28,15 +28,22 @@ export class AnnotationRepository extends BaseRepository {
   ): VariantAnnotation {
     return this.runTransaction(() => {
       const now = Date.now()
+      // Use CASE WHEN to distinguish "not provided" (undefined) from "explicitly null"
+      // When a key is present in updates (even if null), we write the value;
+      // when a key is absent (undefined), we preserve the existing value via IFNULL.
+      const acmgClassProvided = 'acmg_classification' in updates
+      const acmgEvidenceProvided = 'acmg_evidence' in updates
+      const commentProvided = 'global_comment' in updates
+
       const result = this.stmt(
         `
         INSERT INTO variant_annotations (chr, pos, ref, alt, global_comment, starred, acmg_classification, acmg_evidence, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, IFNULL(?, 0), ?, ?, ?, ?)
         ON CONFLICT(chr, pos, ref, alt) DO UPDATE SET
-          global_comment = IFNULL(?, global_comment),
+          global_comment = ${commentProvided ? '?' : 'IFNULL(?, global_comment)'},
           starred = IFNULL(?, starred),
-          acmg_classification = IFNULL(?, acmg_classification),
-          acmg_evidence = IFNULL(?, acmg_evidence),
+          acmg_classification = ${acmgClassProvided ? '?' : 'IFNULL(?, acmg_classification)'},
+          acmg_evidence = ${acmgEvidenceProvided ? '?' : 'IFNULL(?, acmg_evidence)'},
           updated_at = excluded.updated_at
         RETURNING *
       `
@@ -85,15 +92,20 @@ export class AnnotationRepository extends BaseRepository {
   ): CaseVariantAnnotation {
     return this.runTransaction(() => {
       const now = Date.now()
+      // Use CASE WHEN to distinguish "not provided" (undefined) from "explicitly null"
+      const acmgClassProvided = 'acmg_classification' in updates
+      const acmgEvidenceProvided = 'acmg_evidence' in updates
+      const commentProvided = 'per_case_comment' in updates
+
       const result = this.stmt(
         `
         INSERT INTO case_variant_annotations (case_id, variant_id, per_case_comment, starred, acmg_classification, acmg_evidence, created_at, updated_at)
         VALUES (?, ?, ?, IFNULL(?, 0), ?, ?, ?, ?)
         ON CONFLICT(case_id, variant_id) DO UPDATE SET
-          per_case_comment = IFNULL(?, per_case_comment),
+          per_case_comment = ${commentProvided ? '?' : 'IFNULL(?, per_case_comment)'},
           starred = IFNULL(?, starred),
-          acmg_classification = IFNULL(?, acmg_classification),
-          acmg_evidence = IFNULL(?, acmg_evidence),
+          acmg_classification = ${acmgClassProvided ? '?' : 'IFNULL(?, acmg_classification)'},
+          acmg_evidence = ${acmgEvidenceProvided ? '?' : 'IFNULL(?, acmg_evidence)'},
           updated_at = excluded.updated_at
         RETURNING *
       `

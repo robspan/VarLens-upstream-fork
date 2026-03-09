@@ -72,6 +72,8 @@
       :evidence-json="acmgEvidenceJson"
       :variant-data="acmgVariantData"
       :variant-label="acmgVariantLabel"
+      :variant-cdna="selectedVariantForAcmg?.cdna ?? null"
+      :variant-aa-change="selectedVariantForAcmg?.aa_change ?? null"
       @change="handleAcmgEvidenceChange"
     />
 

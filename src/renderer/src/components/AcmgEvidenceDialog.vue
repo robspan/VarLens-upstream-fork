@@ -14,6 +14,11 @@
       <v-card-text class="pa-3">
         <div v-if="variantLabel" class="text-caption text-medium-emphasis mb-2">
           {{ variantLabel }}
+          <span v-if="variantCdna || variantAaChange" class="d-block mt-half">
+            <span v-if="variantCdna">{{ variantCdna }}</span>
+            <span v-if="variantCdna && variantAaChange"> · </span>
+            <span v-if="variantAaChange">{{ variantAaChange }}</span>
+          </span>
         </div>
         <AcmgClassificationPanel
           :evidence-json="evidenceJson"
@@ -38,6 +43,10 @@ defineProps<{
   variantData: VariantAnnotationData | null
   /** Label showing which variant this is for */
   variantLabel?: string
+  /** cDNA change notation (e.g., c.1518401A>G) */
+  variantCdna?: string | null
+  /** Amino acid change notation (e.g., p.Met41Val) */
+  variantAaChange?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -64,3 +73,9 @@ function handleChange(payload: {
 
 defineExpose({ open })
 </script>
+
+<style scoped>
+.mt-half {
+  margin-top: 2px;
+}
+</style>

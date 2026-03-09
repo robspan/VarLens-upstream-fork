@@ -10,10 +10,12 @@ const STORAGE_KEY = 'varlens_user_settings_v1'
 
 interface PersistedSettings {
   itemsPerPage: number
+  userName: string
 }
 
 const DEFAULTS: PersistedSettings = {
-  itemsPerPage: 25
+  itemsPerPage: 25,
+  userName: ''
 }
 
 function load(): PersistedSettings {
@@ -37,13 +39,15 @@ export const useSettingsStore = defineStore('settings', () => {
   const persisted = load()
 
   const itemsPerPage = ref(persisted.itemsPerPage)
+  const userName = ref(persisted.userName)
 
   // Auto-persist on change
-  watch(itemsPerPage, () => {
-    save({ itemsPerPage: itemsPerPage.value })
+  watch([itemsPerPage, userName], () => {
+    save({ itemsPerPage: itemsPerPage.value, userName: userName.value })
   })
 
   return {
-    itemsPerPage
+    itemsPerPage,
+    userName
   }
 })

@@ -102,6 +102,7 @@
           :show-global-indicators="false"
           @star-toggle="emit('star-toggle', item)"
           @acmg-select="(classification) => emit('acmg-select', { item, classification })"
+          @acmg-evidence-click="emit('acmg-evidence-click', item)"
           @comment-click="emit('comment-click', item)"
         />
       </template>
@@ -292,6 +293,7 @@ interface Emits {
     e: 'acmg-select',
     payload: { item: CohortVariant; classification: AcmgClassification | null }
   ): void
+  (e: 'acmg-evidence-click', item: CohortVariant): void
   (e: 'comment-click', item: CohortVariant): void
   (e: 'navigate-to-case', payload: { caseId: number; item: CohortVariant }): void
   (e: 'load-carriers', variant: CohortVariant): void

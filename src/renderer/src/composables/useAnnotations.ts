@@ -11,6 +11,7 @@ import type {
   CaseVariantAnnotation,
   AcmgClassification
 } from '../../../main/database/types'
+import { useSettingsStore } from '../stores/settingsStore'
 
 interface AnnotationCache {
   global: VariantAnnotation | null
@@ -24,6 +25,16 @@ const annotationCache = ref<Map<string, AnnotationCache>>(new Map())
 const loadingStates = ref<Map<string, boolean>>(new Map())
 
 export function useAnnotations() {
+  // Get current user name for audit trail
+  function getUserName(): string | undefined {
+    try {
+      const settings = useSettingsStore()
+      return settings.userName || undefined
+    } catch {
+      return undefined
+    }
+  }
+
   // Build variant key for cache lookup
   function variantKey(chr: string, pos: number, ref: string, alt: string): string {
     return `${chr}:${pos}:${ref}:${alt}`
@@ -447,6 +458,113 @@ export function useAnnotations() {
     }
   }
 
+  // Get ACMG evidence JSON (per-case)
+  function getAcmgEvidence(chr: string, pos: number, ref: string, alt: string): string | null {
+    const cached = getAnnotations(chr, pos, ref, alt)
+    return cached?.perCase?.acmg_evidence ?? null
+  }
+
+  // Get global ACMG evidence JSON
+  function getGlobalAcmgEvidence(
+    chr: string,
+    pos: number,
+    ref: string,
+    alt: string
+  ): string | null {
+    const cached = getAnnotations(chr, pos, ref, alt)
+    return cached?.global?.acmg_evidence ?? null
+  }
+
+  // Set ACMG classification and evidence together (per-case)
+  async function setAcmgClassificationWithEvidence(
+    caseId: number,
+    variantId: number,
+    chr: string,
+    pos: number,
+    ref: string,
+    alt: string,
+    classification: AcmgClassification | null,
+    evidenceJson: string
+  ): Promise<void> {
+    const key = variantKey(chr, pos, ref, alt)
+    const current = annotationCache.value.get(key)
+
+    // Save previous state for rollback
+    const previousPerCase = current?.perCase ?? null
+
+    // Optimistic update
+    if (current) {
+      current.perCase = {
+        ...current.perCase,
+        acmg_classification: classification,
+        acmg_evidence: evidenceJson,
+        case_id: caseId,
+        variant_id: variantId
+      } as CaseVariantAnnotation
+    }
+
+    try {
+      const updated = await window.api.annotations.upsertPerCase(caseId, variantId, {
+        acmg_classification: classification,
+        acmg_evidence: evidenceJson,
+        user_name: getUserName()
+      })
+      annotationCache.value.set(key, {
+        global: current?.global ?? null,
+        perCase: updated
+      })
+    } catch (error) {
+      console.error('Failed to set ACMG classification with evidence:', error)
+      // Rollback optimistic update
+      if (current) {
+        current.perCase = previousPerCase
+      }
+    }
+  }
+
+  // Set global ACMG classification and evidence together (cohort mode)
+  async function setGlobalAcmgClassificationWithEvidence(
+    chr: string,
+    pos: number,
+    ref: string,
+    alt: string,
+    classification: AcmgClassification | null,
+    evidenceJson: string
+  ): Promise<void> {
+    const key = variantKey(chr, pos, ref, alt)
+    const current = annotationCache.value.get(key)
+
+    // Save previous state for rollback
+    const previousGlobal = current?.global ?? null
+
+    // Optimistic update
+    if (current) {
+      current.global = {
+        ...current.global,
+        acmg_classification: classification,
+        acmg_evidence: evidenceJson
+      } as VariantAnnotation
+    }
+
+    try {
+      const updated = await window.api.annotations.upsertGlobal(chr, pos, ref, alt, {
+        acmg_classification: classification,
+        acmg_evidence: evidenceJson,
+        user_name: getUserName()
+      })
+      annotationCache.value.set(key, {
+        global: updated,
+        perCase: current?.perCase ?? null
+      })
+    } catch (error) {
+      console.error('Failed to set global ACMG classification with evidence:', error)
+      // Rollback optimistic update
+      if (current) {
+        current.global = previousGlobal
+      }
+    }
+  }
+
   // Clear cache (call on case switch)
   function clearCache(): void {
     annotationCache.value.clear()
@@ -474,9 +592,22 @@ export function useAnnotations() {
     deleteGlobalComment,
     deletePerCaseComment,
     setAcmgClassification,
-    setGlobalAcmgClassification
+    setGlobalAcmgClassification,
+    getAcmgEvidence,
+    getGlobalAcmgEvidence,
+    setAcmgClassificationWithEvidence,
+    setGlobalAcmgClassificationWithEvidence
   }
 }
+
+// ACMG classification values in display order
+export const ACMG_CLASSIFICATIONS: AcmgClassification[] = [
+  'Pathogenic',
+  'Likely Pathogenic',
+  'VUS',
+  'Likely Benign',
+  'Benign'
+]
 
 // ACMG color mapping for badges
 export const ACMG_COLORS: Record<AcmgClassification, string> = {

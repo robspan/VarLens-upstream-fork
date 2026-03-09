@@ -416,3 +416,44 @@ export interface CaseMetricWithDefinition extends CaseMetric {
   /** Category */
   metric_category: string
 }
+
+/**
+ * Audit trail action types
+ */
+export type AuditActionType =
+  | 'acmg_classify'
+  | 'acmg_evidence_update'
+  | 'star'
+  | 'unstar'
+  | 'comment_add'
+  | 'comment_edit'
+  | 'comment_delete'
+  | 'tag_assign'
+  | 'tag_remove'
+
+/**
+ * Audit trail entity types
+ */
+export type AuditEntityType = 'variant_annotation' | 'case_variant_annotation'
+
+/**
+ * AuditLogEntry - Immutable audit trail record
+ */
+export interface AuditLogEntry {
+  /** SQLite INTEGER PRIMARY KEY AUTOINCREMENT */
+  id: number
+  /** Unix timestamp in milliseconds */
+  timestamp: number
+  /** Type of action performed */
+  action_type: AuditActionType
+  /** Entity type that was changed */
+  entity_type: AuditEntityType
+  /** Entity identifier (e.g., "chr1:12345:A:T" or "case:1:variant:42") */
+  entity_key: string
+  /** JSON snapshot of previous state (null for first action) */
+  old_value: string | null
+  /** JSON snapshot of new state */
+  new_value: string | null
+  /** Configurable user name */
+  user_name: string | null
+}

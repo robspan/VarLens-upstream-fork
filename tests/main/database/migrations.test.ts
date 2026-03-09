@@ -127,7 +127,7 @@ describe('Schema Migrations', () => {
       const versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(6)
+      expect(versionResult.user_version).toBe(7)
 
       service.close()
 
@@ -137,7 +137,7 @@ describe('Schema Migrations', () => {
       const versionAfterReopen = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionAfterReopen.user_version).toBe(6)
+      expect(versionAfterReopen.user_version).toBe(7)
 
       service.close()
     })
@@ -464,7 +464,7 @@ describe('Schema Migrations', () => {
       let versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(6)
+      expect(versionResult.user_version).toBe(7)
 
       service.close()
 
@@ -484,7 +484,7 @@ describe('Schema Migrations', () => {
       versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(6)
+      expect(versionResult.user_version).toBe(7)
 
       service.close()
     })
@@ -518,7 +518,7 @@ describe('Schema Migrations', () => {
       const versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(6)
+      expect(versionResult.user_version).toBe(7)
 
       service.close()
     })
@@ -705,6 +705,58 @@ describe('Schema Migrations', () => {
           )
           .run(caseId, metric.id, 8.0, now, now)
       }).toThrow()
+
+      service.close()
+    })
+  })
+
+  describe('Migration v7 - Audit Log', () => {
+    it('creates audit_log table with correct columns', () => {
+      const service = new DatabaseService(':memory:')
+
+      const columns = service.database.prepare("PRAGMA table_info('audit_log')").all() as Array<{
+        name: string
+        type: string
+        notnull: number
+      }>
+      const colNames = columns.map((c) => c.name)
+
+      expect(colNames).toContain('id')
+      expect(colNames).toContain('timestamp')
+      expect(colNames).toContain('action_type')
+      expect(colNames).toContain('entity_type')
+      expect(colNames).toContain('entity_key')
+      expect(colNames).toContain('old_value')
+      expect(colNames).toContain('new_value')
+      expect(colNames).toContain('user_name')
+
+      service.close()
+    })
+
+    it('creates indexes on audit_log', () => {
+      const service = new DatabaseService(':memory:')
+
+      const indexes = service.database
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_audit_log_%'"
+        )
+        .all() as Array<{ name: string }>
+      const indexNames = indexes.map((i) => i.name)
+
+      expect(indexNames).toContain('idx_audit_log_entity_key')
+      expect(indexNames).toContain('idx_audit_log_timestamp')
+      expect(indexNames).toContain('idx_audit_log_action_type')
+
+      service.close()
+    })
+
+    it('sets user_version to 7', () => {
+      const service = new DatabaseService(':memory:')
+
+      const version = service.database.prepare('PRAGMA user_version').get() as {
+        user_version: number
+      }
+      expect(version.user_version).toBe(7)
 
       service.close()
     })

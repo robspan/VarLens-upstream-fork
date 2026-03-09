@@ -725,5 +725,10 @@ export const mockApi: WindowAPI = {
     installUpdate: async () => {},
     getStatus: async () => ({ state: 'idle' as const }),
     onStatusChange: () => () => {}
+  },
+
+  audit: {
+    getByEntity: async () => [],
+    query: async () => ({ data: [], total_count: 0 })
   }
 }

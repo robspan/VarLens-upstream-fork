@@ -28,7 +28,8 @@ export async function registerIpcHandlers(): Promise<void> {
     import('./handlers/case-metrics'),
     import('./handlers/tags'),
     import('./handlers/transcripts'),
-    import('./handlers/updater')
+    import('./handlers/updater'),
+    import('./handlers/audit-log')
   ])
 
   mainLogger.info('IPC handlers registered', 'ipc')

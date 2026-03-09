@@ -6,7 +6,7 @@
 
     <v-list density="compact">
       <v-list-item
-        v-for="classification in CLASSIFICATIONS"
+        v-for="classification in ACMG_CLASSIFICATIONS"
         :key="classification"
         :value="classification"
         @click="handleSelect(classification)"
@@ -30,15 +30,7 @@
 
 <script setup lang="ts">
 import type { AcmgClassification } from '../../../main/database/types'
-import { ACMG_COLORS, ACMG_ABBREV } from '../composables/useAnnotations'
-
-const CLASSIFICATIONS: AcmgClassification[] = [
-  'Pathogenic',
-  'Likely Pathogenic',
-  'VUS',
-  'Likely Benign',
-  'Benign'
-]
+import { ACMG_COLORS, ACMG_ABBREV, ACMG_CLASSIFICATIONS } from '../composables/useAnnotations'
 
 const emit = defineEmits<{
   select: [classification: AcmgClassification | null]

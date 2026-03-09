@@ -50,7 +50,8 @@ import type {
   CommentCategory,
   MetricDefinition,
   CaseMetric,
-  CaseMetricWithDefinition
+  CaseMetricWithDefinition,
+  AuditLogEntry
 } from '../../main/database/types'
 import type { ProgressUpdate, ImportResult } from '../../main/import/types'
 import type { SerializableError } from './errors'
@@ -99,7 +100,8 @@ export type {
   CommentCategory,
   MetricDefinition,
   CaseMetric,
-  CaseMetricWithDefinition
+  CaseMetricWithDefinition,
+  AuditLogEntry
 }
 
 export interface CasesAPI {
@@ -268,6 +270,7 @@ export interface GlobalAnnotationUpdates {
   starred?: boolean
   acmg_classification?: AcmgClassification | null
   acmg_evidence?: string | null
+  user_name?: string // for audit trail only
 }
 
 export interface PerCaseAnnotationUpdates {
@@ -275,6 +278,7 @@ export interface PerCaseAnnotationUpdates {
   starred?: boolean
   acmg_classification?: AcmgClassification | null
   acmg_evidence?: string | null
+  user_name?: string // for audit trail only
 }
 
 export interface VariantAnnotationsResult {
@@ -434,6 +438,19 @@ export interface LogsAPI {
   onMessage: (callback: (log: LogMessage) => void) => () => void
 }
 
+export interface AuditLogAPI {
+  getByEntity: (entityKey: string) => Promise<AuditLogEntry[]>
+  query: (params: {
+    action_type?: string
+    entity_type?: string
+    entity_key?: string
+    from_timestamp?: number
+    to_timestamp?: number
+    limit?: number
+    offset?: number
+  }) => Promise<{ data: AuditLogEntry[]; total_count: number }>
+}
+
 export interface WindowAPI {
   cases: CasesAPI
   variants: VariantsAPI
@@ -456,4 +473,5 @@ export interface WindowAPI {
   tags: TagsAPI
   logs: LogsAPI
   updater: UpdaterAPI
+  audit: AuditLogAPI
 }

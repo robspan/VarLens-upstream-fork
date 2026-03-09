@@ -16,6 +16,7 @@ interface GlobalAnnotationUpdates {
   starred?: boolean
   acmg_classification?: VariantAnnotation['acmg_classification']
   acmg_evidence?: string | null
+  user_name?: string // for audit trail only
 }
 
 // Type for per-case annotation updates from renderer
@@ -24,6 +25,7 @@ interface PerCaseAnnotationUpdates {
   starred?: boolean
   acmg_classification?: CaseVariantAnnotation['acmg_classification']
   acmg_evidence?: string | null
+  user_name?: string // for audit trail only
 }
 
 /**
@@ -55,23 +57,75 @@ ipcMain.handle(
     return wrapHandler(async () => {
       const db = getDatabaseService()
 
-      // Convert boolean starred to 0/1 for SQLite INTEGER column
+      // Extract user_name before building db updates
+      const { user_name, ...annotationUpdates } = updates
+
+      // Read current state before upsert for audit trail
+      const oldAnnotation = db.getGlobalAnnotation(chr, pos, ref, alt)
+
+      // Build dbUpdates only with keys actually provided
       const dbUpdates: Partial<
         Pick<
           VariantAnnotation,
           'global_comment' | 'starred' | 'acmg_classification' | 'acmg_evidence'
         >
-      > = {
-        global_comment: updates.global_comment,
-        acmg_classification: updates.acmg_classification,
-        acmg_evidence: updates.acmg_evidence
+      > = {}
+
+      if ('global_comment' in annotationUpdates) {
+        dbUpdates.global_comment = annotationUpdates.global_comment
+      }
+      if ('acmg_classification' in annotationUpdates) {
+        dbUpdates.acmg_classification = annotationUpdates.acmg_classification
+      }
+      if ('acmg_evidence' in annotationUpdates) {
+        dbUpdates.acmg_evidence = annotationUpdates.acmg_evidence
+      }
+      if (annotationUpdates.starred !== undefined) {
+        dbUpdates.starred = annotationUpdates.starred ? 1 : 0
       }
 
-      if (updates.starred !== undefined) {
-        dbUpdates.starred = updates.starred ? 1 : 0
+      const result = db.upsertGlobalAnnotation(chr, pos, ref, alt, dbUpdates)
+
+      // Audit logging
+      const entityKey = `${chr}:${pos}:${ref}:${alt}`
+      if (annotationUpdates.acmg_classification !== undefined) {
+        db.appendAuditEntry({
+          action_type: 'acmg_classify',
+          entity_type: 'variant_annotation',
+          entity_key: entityKey,
+          old_value: oldAnnotation
+            ? JSON.stringify({ acmg_classification: oldAnnotation.acmg_classification })
+            : null,
+          new_value: JSON.stringify({
+            acmg_classification: annotationUpdates.acmg_classification
+          }),
+          user_name: user_name ?? null
+        })
+      }
+      if (annotationUpdates.acmg_evidence !== undefined) {
+        db.appendAuditEntry({
+          action_type: 'acmg_evidence_update',
+          entity_type: 'variant_annotation',
+          entity_key: entityKey,
+          old_value: oldAnnotation
+            ? JSON.stringify({ acmg_evidence: oldAnnotation.acmg_evidence })
+            : null,
+          new_value: JSON.stringify({ acmg_evidence: annotationUpdates.acmg_evidence }),
+          user_name: user_name ?? null
+        })
+      }
+      if (annotationUpdates.starred !== undefined) {
+        db.appendAuditEntry({
+          action_type: annotationUpdates.starred ? 'star' : 'unstar',
+          entity_type: 'variant_annotation',
+          entity_key: entityKey,
+          old_value: oldAnnotation ? JSON.stringify({ starred: oldAnnotation.starred }) : null,
+          new_value: JSON.stringify({ starred: annotationUpdates.starred ? 1 : 0 }),
+          user_name: user_name ?? null
+        })
       }
 
-      return db.upsertGlobalAnnotation(chr, pos, ref, alt, dbUpdates)
+      return result
     })
   }
 )
@@ -110,23 +164,75 @@ ipcMain.handle(
     return wrapHandler(async () => {
       const db = getDatabaseService()
 
+      // Extract user_name before building db updates
+      const { user_name, ...annotationUpdates } = updates
+
+      // Read current state before upsert for audit trail
+      const oldAnnotation = db.getPerCaseAnnotation(caseId, variantId)
+
+      // Build dbUpdates only with keys actually provided
       const dbUpdates: Partial<
         Pick<
           CaseVariantAnnotation,
           'per_case_comment' | 'starred' | 'acmg_classification' | 'acmg_evidence'
         >
-      > = {
-        per_case_comment: updates.per_case_comment,
-        acmg_classification: updates.acmg_classification,
-        acmg_evidence: updates.acmg_evidence
+      > = {}
+
+      if ('per_case_comment' in annotationUpdates) {
+        dbUpdates.per_case_comment = annotationUpdates.per_case_comment
+      }
+      if ('acmg_classification' in annotationUpdates) {
+        dbUpdates.acmg_classification = annotationUpdates.acmg_classification
+      }
+      if ('acmg_evidence' in annotationUpdates) {
+        dbUpdates.acmg_evidence = annotationUpdates.acmg_evidence
+      }
+      if (annotationUpdates.starred !== undefined) {
+        dbUpdates.starred = annotationUpdates.starred ? 1 : 0
       }
 
-      // Convert boolean starred to 0/1 for SQLite INTEGER column
-      if (updates.starred !== undefined) {
-        dbUpdates.starred = updates.starred ? 1 : 0
+      const result = db.upsertPerCaseAnnotation(caseId, variantId, dbUpdates)
+
+      // Audit logging
+      const entityKey = `case:${caseId}:variant:${variantId}`
+      if (annotationUpdates.acmg_classification !== undefined) {
+        db.appendAuditEntry({
+          action_type: 'acmg_classify',
+          entity_type: 'case_variant_annotation',
+          entity_key: entityKey,
+          old_value: oldAnnotation
+            ? JSON.stringify({ acmg_classification: oldAnnotation.acmg_classification })
+            : null,
+          new_value: JSON.stringify({
+            acmg_classification: annotationUpdates.acmg_classification
+          }),
+          user_name: user_name ?? null
+        })
+      }
+      if (annotationUpdates.acmg_evidence !== undefined) {
+        db.appendAuditEntry({
+          action_type: 'acmg_evidence_update',
+          entity_type: 'case_variant_annotation',
+          entity_key: entityKey,
+          old_value: oldAnnotation
+            ? JSON.stringify({ acmg_evidence: oldAnnotation.acmg_evidence })
+            : null,
+          new_value: JSON.stringify({ acmg_evidence: annotationUpdates.acmg_evidence }),
+          user_name: user_name ?? null
+        })
+      }
+      if (annotationUpdates.starred !== undefined) {
+        db.appendAuditEntry({
+          action_type: annotationUpdates.starred ? 'star' : 'unstar',
+          entity_type: 'case_variant_annotation',
+          entity_key: entityKey,
+          old_value: oldAnnotation ? JSON.stringify({ starred: oldAnnotation.starred }) : null,
+          new_value: JSON.stringify({ starred: annotationUpdates.starred ? 1 : 0 }),
+          user_name: user_name ?? null
+        })
       }
 
-      return db.upsertPerCaseAnnotation(caseId, variantId, dbUpdates)
+      return result
     })
   }
 )

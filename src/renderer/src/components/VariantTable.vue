@@ -113,7 +113,8 @@
             :has-global-comment="!!getGlobalComment(item.chr, item.pos, item.ref, item.alt)"
             :show-global-indicators="true"
             @star-toggle="handleStarToggle(item)"
-            @acmg-select="(c) => handleAcmgSelect(item, c)"
+            @acmg-select="(c) => handleQuickAcmgSelect(item, c)"
+            @acmg-evidence-click="openAcmgEvidenceDialog(item)"
             @comment-click="openCommentDialog(item)"
           />
         </template>
@@ -316,6 +317,16 @@
       :per-case-timestamps="getPerCaseTimestamps(selectedVariantForComment)"
       @save="handleCommentSave"
     />
+
+    <AcmgEvidenceDialog
+      ref="acmgEvidenceDialogRef"
+      :evidence-json="acmgEvidenceJson"
+      :variant-data="acmgVariantData"
+      :variant-label="acmgVariantLabel"
+      :variant-cdna="selectedVariantForAcmg?.cdna ?? null"
+      :variant-aa-change="selectedVariantForAcmg?.aa_change ?? null"
+      @change="handleAcmgEvidenceChange"
+    />
   </div>
 </template>
 
@@ -339,6 +350,7 @@ import { useDebounce } from '../composables/useDebounce'
 import { formatConsequence } from '../utils/formatters'
 import { useTableScroll } from '../composables/useTableScroll'
 import CommentDialog from './CommentDialog.vue'
+import AcmgEvidenceDialog from './AcmgEvidenceDialog.vue'
 import {
   PositionCell,
   AlleleCell,
@@ -374,10 +386,12 @@ const {
   isGlobalStarred,
   getAcmgClassification,
   getGlobalAcmgClassification,
+  getAcmgEvidence,
   loadAnnotationsBatch,
   toggleStar,
   clearCache,
   setAcmgClassification,
+  setAcmgClassificationWithEvidence,
   getGlobalComment,
   getPerCaseComment,
   upsertGlobalComment,
@@ -438,6 +452,32 @@ const snackbar = ref({
 // Comment dialog state
 const commentDialogOpen = ref(false)
 const selectedVariantForComment = ref<Variant | null>(null)
+
+// ACMG evidence dialog state
+const acmgEvidenceDialogRef = ref<InstanceType<typeof AcmgEvidenceDialog> | null>(null)
+const selectedVariantForAcmg = ref<Variant | null>(null)
+
+const acmgEvidenceJson = computed(() => {
+  const v = selectedVariantForAcmg.value
+  if (v === null) return null
+  return getAcmgEvidence(v.chr, v.pos, v.ref, v.alt)
+})
+
+const acmgVariantData = computed(() => {
+  const v = selectedVariantForAcmg.value
+  if (v === null) return null
+  return {
+    gnomad_af: v.gnomad_af ?? null,
+    cadd: v.cadd ?? null,
+    clinvar: v.clinvar ?? null
+  }
+})
+
+const acmgVariantLabel = computed(() => {
+  const v = selectedVariantForAcmg.value
+  if (v === null) return ''
+  return `${v.chr}:${v.pos} ${v.ref}>${v.alt}${v.gene_symbol !== null ? ` (${v.gene_symbol})` : ''}`
+})
 
 // Selected row tracking for highlighting
 const selectedVariantId = ref<number | null>(null)
@@ -597,8 +637,8 @@ const openCommentDialog = (item: Variant) => {
   commentDialogOpen.value = true
 }
 
-// Handle ACMG selection (per-case)
-const handleAcmgSelect = async (
+// Quick ACMG classification (no evidence, just set the classification)
+const handleQuickAcmgSelect = async (
   item: Variant,
   classification: AcmgClassification | null
 ): Promise<void> => {
@@ -610,6 +650,33 @@ const handleAcmgSelect = async (
     item.ref,
     item.alt,
     classification
+  )
+}
+
+// Open ACMG evidence dialog for a variant
+const openAcmgEvidenceDialog = (item: Variant): void => {
+  selectedVariantForAcmg.value = item
+  nextTick(() => {
+    acmgEvidenceDialogRef.value?.open()
+  })
+}
+
+// Handle ACMG evidence change from dialog
+const handleAcmgEvidenceChange = async (payload: {
+  classification: AcmgClassification | null
+  evidenceJson: string
+}): Promise<void> => {
+  const v = selectedVariantForAcmg.value
+  if (v === null) return
+  await setAcmgClassificationWithEvidence(
+    props.caseId,
+    v.id,
+    v.chr,
+    v.pos,
+    v.ref,
+    v.alt,
+    payload.classification,
+    payload.evidenceJson
   )
 }
 

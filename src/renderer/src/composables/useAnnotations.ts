@@ -11,6 +11,7 @@ import type {
   CaseVariantAnnotation,
   AcmgClassification
 } from '../../../main/database/types'
+import { useSettingsStore } from '../stores/settingsStore'
 
 interface AnnotationCache {
   global: VariantAnnotation | null
@@ -24,6 +25,16 @@ const annotationCache = ref<Map<string, AnnotationCache>>(new Map())
 const loadingStates = ref<Map<string, boolean>>(new Map())
 
 export function useAnnotations() {
+  // Get current user name for audit trail
+  function getUserName(): string | undefined {
+    try {
+      const settings = useSettingsStore()
+      return settings.userName || undefined
+    } catch {
+      return undefined
+    }
+  }
+
   // Build variant key for cache lookup
   function variantKey(chr: string, pos: number, ref: string, alt: string): string {
     return `${chr}:${pos}:${ref}:${alt}`
@@ -492,7 +503,8 @@ export function useAnnotations() {
     try {
       const updated = await window.api.annotations.upsertPerCase(caseId, variantId, {
         acmg_classification: classification,
-        acmg_evidence: evidenceJson
+        acmg_evidence: evidenceJson,
+        user_name: getUserName()
       })
       annotationCache.value.set(key, {
         global: current?.global ?? null,
@@ -527,7 +539,8 @@ export function useAnnotations() {
     try {
       const updated = await window.api.annotations.upsertGlobal(chr, pos, ref, alt, {
         acmg_classification: classification,
-        acmg_evidence: evidenceJson
+        acmg_evidence: evidenceJson,
+        user_name: getUserName()
       })
       annotationCache.value.set(key, {
         global: updated,

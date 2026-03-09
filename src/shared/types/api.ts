@@ -269,6 +269,7 @@ export interface GlobalAnnotationUpdates {
   starred?: boolean
   acmg_classification?: AcmgClassification | null
   acmg_evidence?: string | null
+  user_name?: string // for audit trail only
 }
 
 export interface PerCaseAnnotationUpdates {
@@ -276,6 +277,7 @@ export interface PerCaseAnnotationUpdates {
   starred?: boolean
   acmg_classification?: AcmgClassification | null
   acmg_evidence?: string | null
+  user_name?: string // for audit trail only
 }
 
 export interface VariantAnnotationsResult {

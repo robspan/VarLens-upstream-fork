@@ -66,7 +66,21 @@ export class ImportService {
       }
 
       // Execute import via strategy
-      return await strategy.import(filePath, options, context)
+      const result = await strategy.import(filePath, options, context)
+
+      // Auto-populate data info with import provenance
+      try {
+        const parts = filePath.split(/[/\\]/)
+        const fileName = parts[parts.length - 1] || filePath
+        this.db.upsertCaseDataInfo(caseId, {
+          import_file_name: fileName,
+          import_file_type: formatInfo.format
+        })
+      } catch (infoError) {
+        mainLogger.warn(`Failed to save data info: ${infoError}`, 'import')
+      }
+
+      return result
     } catch (error) {
       // Rollback case creation on failure
       if (caseId !== null) {

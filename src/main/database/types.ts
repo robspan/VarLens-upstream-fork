@@ -249,6 +249,90 @@ export interface CaseMetadata {
 }
 
 /**
+ * CaseDataInfo - Tracks import provenance, platform, and pre-filtering metadata
+ */
+export interface CaseDataInfo {
+  id: number
+  case_id: number
+  /** Original import file name (basename) */
+  import_file_name: string | null
+  /** Detected file format (columnar, object, simple) */
+  import_file_type: string | null
+  /** Sequencing platform (exome_twist, exome_agilent, genome, panel, other) */
+  platform: string | null
+  /** Free text platform details */
+  platform_details: string | null
+  /** AF filter applied before import (e.g. "gnomAD < 0.01") */
+  af_filter: string | null
+  /** Gene list filter applied before import */
+  gene_list_filter: string | null
+  /** Region filter applied before import */
+  region_filter: string | null
+  /** Quality filter applied before import */
+  quality_filter: string | null
+  /** Additional notes about data provenance */
+  data_notes: string | null
+  /** FK to gene_lists (optional curated gene list link) */
+  gene_list_id: number | null
+  /** FK to region_files (optional BED region file link) */
+  region_file_id: number | null
+  created_at: number
+  updated_at: number
+}
+
+/** Update payload for CaseDataInfo */
+export interface CaseDataInfoUpdates {
+  platform?: string | null
+  platform_details?: string | null
+  af_filter?: string | null
+  gene_list_filter?: string | null
+  region_filter?: string | null
+  quality_filter?: string | null
+  data_notes?: string | null
+  gene_list_id?: number | null
+  region_file_id?: number | null
+}
+
+/**
+ * CaseExternalId - User-defined key-value pair for cross-referencing
+ */
+export interface CaseExternalId {
+  id: number
+  case_id: number
+  id_type: string
+  id_value: string
+  created_at: number
+}
+
+/**
+ * GeneList - Curated reusable gene list
+ */
+export interface GeneList {
+  id: number
+  name: string
+  description: string | null
+  created_at: number
+  updated_at: number
+}
+
+export interface GeneListWithCount extends GeneList {
+  gene_count: number
+}
+
+/**
+ * RegionFile - Stored BED region file
+ */
+export interface RegionFile {
+  id: number
+  name: string
+  description: string | null
+  region_count: number
+  total_bases: number
+  created_at: number
+  updated_at: number
+}
+
+/**
  * CohortGroup - User-defined cohort definitions
  */
 export interface CohortGroup {

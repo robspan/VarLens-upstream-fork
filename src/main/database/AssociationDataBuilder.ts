@@ -41,6 +41,11 @@ export class AssociationDataBuilder {
       conditions.push(`consequence IN (${cPlaceholders})`)
       params.push(...filters.consequences)
     }
+    if (filters.gene_list && filters.gene_list.length > 0) {
+      const gPlaceholders = filters.gene_list.map(() => '?').join(', ')
+      conditions.push(`gene_symbol IN (${gPlaceholders})`)
+      params.push(...filters.gene_list)
+    }
 
     const whereClause = conditions.join(' AND ')
 

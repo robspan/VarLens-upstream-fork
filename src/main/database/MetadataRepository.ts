@@ -1,6 +1,9 @@
 import { BaseRepository } from './BaseRepository'
 import type {
   CaseMetadata,
+  CaseDataInfo,
+  CaseDataInfoUpdates,
+  CaseExternalId,
   CohortGroup,
   CaseHpoTerm,
   CaseComment,
@@ -282,5 +285,104 @@ export class MetadataRepository extends BaseRepository {
 
   deleteCaseMetric(caseId: number, metricId: number): void {
     this.stmt('DELETE FROM case_metrics WHERE case_id = ? AND metric_id = ?').run(caseId, metricId)
+  }
+
+  // ============================================================
+  // Case Data Info (import provenance, platform, pre-filtering)
+  // ============================================================
+
+  getCaseDataInfo(caseId: number): CaseDataInfo | null {
+    const result = this.stmt('SELECT * FROM case_data_info WHERE case_id = ?').get(caseId) as
+      | CaseDataInfo
+      | undefined
+    return result ?? null
+  }
+
+  upsertCaseDataInfo(
+    caseId: number,
+    updates: CaseDataInfoUpdates & {
+      import_file_name?: string | null
+      import_file_type?: string | null
+    }
+  ): CaseDataInfo {
+    return this.runTransaction(() => {
+      const now = Date.now()
+      const result = this.stmt(
+        `
+        INSERT INTO case_data_info (case_id, import_file_name, import_file_type, platform, platform_details, af_filter, gene_list_filter, region_filter, quality_filter, data_notes, gene_list_id, region_file_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(case_id) DO UPDATE SET
+          import_file_name = COALESCE(excluded.import_file_name, import_file_name),
+          import_file_type = COALESCE(excluded.import_file_type, import_file_type),
+          platform = COALESCE(excluded.platform, platform),
+          platform_details = COALESCE(excluded.platform_details, platform_details),
+          af_filter = COALESCE(excluded.af_filter, af_filter),
+          gene_list_filter = COALESCE(excluded.gene_list_filter, gene_list_filter),
+          region_filter = COALESCE(excluded.region_filter, region_filter),
+          quality_filter = COALESCE(excluded.quality_filter, quality_filter),
+          data_notes = COALESCE(excluded.data_notes, data_notes),
+          gene_list_id = COALESCE(excluded.gene_list_id, gene_list_id),
+          region_file_id = COALESCE(excluded.region_file_id, region_file_id),
+          updated_at = excluded.updated_at
+        RETURNING *
+      `
+      ).get(
+        caseId,
+        updates.import_file_name ?? null,
+        updates.import_file_type ?? null,
+        updates.platform ?? null,
+        updates.platform_details ?? null,
+        updates.af_filter ?? null,
+        updates.gene_list_filter ?? null,
+        updates.region_filter ?? null,
+        updates.quality_filter ?? null,
+        updates.data_notes ?? null,
+        updates.gene_list_id ?? null,
+        updates.region_file_id ?? null,
+        now,
+        now
+      ) as CaseDataInfo
+      return result
+    })
+  }
+
+  // ============================================================
+  // Case External IDs (user-defined key-value cross-references)
+  // ============================================================
+
+  listCaseExternalIds(caseId: number): CaseExternalId[] {
+    return this.stmt('SELECT * FROM case_external_ids WHERE case_id = ? ORDER BY id_type').all(
+      caseId
+    ) as CaseExternalId[]
+  }
+
+  upsertCaseExternalId(caseId: number, idType: string, idValue: string): CaseExternalId {
+    const now = Date.now()
+    return this.stmt(
+      `INSERT INTO case_external_ids (case_id, id_type, id_value, created_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(case_id, id_type) DO UPDATE SET id_value = excluded.id_value
+       RETURNING *`
+    ).get(caseId, idType, idValue, now) as CaseExternalId
+  }
+
+  deleteCaseExternalId(caseId: number, idType: string): void {
+    this.stmt('DELETE FROM case_external_ids WHERE case_id = ? AND id_type = ?').run(caseId, idType)
+  }
+
+  /** Get all distinct platform values across all cases */
+  getDistinctPlatforms(): string[] {
+    const rows = this.stmt(
+      'SELECT DISTINCT platform FROM case_data_info WHERE platform IS NOT NULL ORDER BY platform'
+    ).all() as Array<{ platform: string }>
+    return rows.map((r) => r.platform)
+  }
+
+  /** Get all distinct external ID types across all cases */
+  getDistinctExternalIdTypes(): string[] {
+    const rows = this.stmt(
+      'SELECT DISTINCT id_type FROM case_external_ids ORDER BY id_type'
+    ).all() as Array<{ id_type: string }>
+    return rows.map((r) => r.id_type)
   }
 }

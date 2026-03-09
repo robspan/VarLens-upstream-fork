@@ -108,7 +108,7 @@ test('gene burden configuration panel has all expected controls', async () => {
   await window.waitForTimeout(1000)
 
   // Check for primary test radio buttons
-  const fisherRadio = window.locator('text=Fisher\'s exact')
+  const fisherRadio = window.locator("text=Fisher's exact")
   const logisticRadio = window.locator('text=Logistic burden')
   expect(await fisherRadio.count()).toBeGreaterThan(0)
   expect(await logisticRadio.count()).toBeGreaterThan(0)

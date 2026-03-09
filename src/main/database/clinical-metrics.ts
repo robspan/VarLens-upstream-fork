@@ -25,7 +25,6 @@ export const CLINICAL_METRICS: ClinicalMetricSeed[] = [
     category: 'Demographics'
   },
   { name: 'Gestational Age', value_type: 'numeric', unit: 'weeks', category: 'Demographics' },
-  { name: 'Date of Birth', value_type: 'date', unit: '', category: 'Demographics' },
   { name: 'Date of Diagnosis', value_type: 'date', unit: '', category: 'Demographics' },
   { name: 'Date of Sample Collection', value_type: 'date', unit: '', category: 'Demographics' },
   { name: 'Ethnicity', value_type: 'text', unit: '', category: 'Demographics' },
@@ -438,16 +437,7 @@ export const CLINICAL_METRICS: ClinicalMetricSeed[] = [
   },
   { name: 'Plasma Amino Acids', value_type: 'text', unit: '', category: 'Rare Disease Biomarkers' },
 
-  // Genetics / Genomics (only non-computable entries; variant/QC stats excluded)
-  { name: 'Diagnostic Yield', value_type: 'text', unit: '', category: 'Genetics' },
-  { name: 'Karyotype', value_type: 'text', unit: '', category: 'Genetics' },
-
   // Clinical Scores / Assessments
-  { name: 'APGAR Score (1 min)', value_type: 'numeric', unit: '', category: 'Clinical' },
-  { name: 'APGAR Score (5 min)', value_type: 'numeric', unit: '', category: 'Clinical' },
-  { name: 'Glasgow Coma Scale (GCS)', value_type: 'numeric', unit: '', category: 'Clinical' },
-  { name: 'Pain Score (VAS)', value_type: 'numeric', unit: '', category: 'Clinical' },
   { name: 'Primary Diagnosis (ICD Code)', value_type: 'text', unit: '', category: 'Clinical' },
-  { name: 'Disease Severity', value_type: 'text', unit: '', category: 'Clinical' },
-  { name: 'Family History', value_type: 'text', unit: '', category: 'Clinical' }
+  { name: 'Disease Severity', value_type: 'text', unit: '', category: 'Clinical' }
 ]

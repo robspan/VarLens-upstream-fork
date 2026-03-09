@@ -247,7 +247,8 @@ export const AssociationConfigSchema = z.object({
   filters: z.object({
     gnomad_af_max: z.number().min(0).max(1).optional(),
     cadd_min: z.number().min(0).max(60).optional(),
-    consequences: z.array(z.string()).optional()
+    consequences: z.array(z.string()).optional(),
+    gene_list: z.array(z.string()).optional()
   }),
   max_threads: z.number().int().min(1).max(64).default(4)
 })

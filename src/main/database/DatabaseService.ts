@@ -43,6 +43,7 @@ import { TagRepository } from './TagRepository'
 import { VariantRepository } from './VariantRepository'
 import { DatabaseOverviewService } from './DatabaseOverviewService'
 import { AuditLogRepository } from './AuditLogRepository'
+import { GeneListRepository } from './GeneListRepository'
 import type { AuditQueryFilter, AuditQueryResult } from './AuditLogRepository'
 
 /**
@@ -64,6 +65,7 @@ export class DatabaseService {
   private variantsRepo: VariantRepository
   private overview: DatabaseOverviewService
   private auditLog: AuditLogRepository
+  private geneLists: GeneListRepository
 
   /**
    * Create a new DatabaseService instance
@@ -117,6 +119,7 @@ export class DatabaseService {
       this.variantsRepo = new VariantRepository(this.db, this.statementCache, this.cases)
       this.overview = new DatabaseOverviewService(this.db, this.statementCache)
       this.auditLog = new AuditLogRepository(this.db, this.statementCache)
+      this.geneLists = new GeneListRepository(this.db, this.statementCache)
 
       // Clean up expired API cache entries on startup
       this.db.prepare('DELETE FROM api_cache WHERE expires_at < ?').run(Date.now())
@@ -461,6 +464,87 @@ export class DatabaseService {
 
   deleteCaseMetric(caseId: number, metricId: number): void {
     this.metadata.deleteCaseMetric(caseId, metricId)
+  }
+
+  // Case Data Info
+  getCaseDataInfo(caseId: number): import('./types').CaseDataInfo | null {
+    return this.metadata.getCaseDataInfo(caseId)
+  }
+
+  upsertCaseDataInfo(
+    caseId: number,
+    updates: import('./types').CaseDataInfoUpdates & {
+      import_file_name?: string | null
+      import_file_type?: string | null
+    }
+  ): import('./types').CaseDataInfo {
+    return this.metadata.upsertCaseDataInfo(caseId, updates)
+  }
+
+  // Case External IDs
+  listCaseExternalIds(caseId: number): import('./types').CaseExternalId[] {
+    return this.metadata.listCaseExternalIds(caseId)
+  }
+
+  upsertCaseExternalId(
+    caseId: number,
+    idType: string,
+    idValue: string
+  ): import('./types').CaseExternalId {
+    return this.metadata.upsertCaseExternalId(caseId, idType, idValue)
+  }
+
+  deleteCaseExternalId(caseId: number, idType: string): void {
+    this.metadata.deleteCaseExternalId(caseId, idType)
+  }
+
+  getDistinctPlatforms(): string[] {
+    return this.metadata.getDistinctPlatforms()
+  }
+
+  getDistinctExternalIdTypes(): string[] {
+    return this.metadata.getDistinctExternalIdTypes()
+  }
+
+  // Gene Lists
+  listGeneLists(): import('./types').GeneListWithCount[] {
+    return this.geneLists.listGeneLists()
+  }
+
+  createGeneList(name: string, description?: string | null): import('./types').GeneList {
+    return this.geneLists.createGeneList(name, description)
+  }
+
+  deleteGeneList(id: number): void {
+    this.geneLists.deleteGeneList(id)
+  }
+
+  getGeneListGenes(listId: number): string[] {
+    return this.geneLists.getGeneListGenes(listId)
+  }
+
+  setGeneListGenes(listId: number, genes: string[]): void {
+    this.geneLists.setGeneListGenes(listId, genes)
+  }
+
+  // Region Files
+  listRegionFiles(): import('./types').RegionFile[] {
+    return this.geneLists.listRegionFiles()
+  }
+
+  createRegionFile(name: string, description: string | null): import('./types').RegionFile {
+    return this.geneLists.createRegionFile(name, description)
+  }
+
+  deleteRegionFile(id: number): void {
+    this.geneLists.deleteRegionFile(id)
+  }
+
+  importBedEntries(
+    fileId: number,
+    entries: Array<{ chr: string; start: number; end: number; label?: string }>
+  ): import('./types').RegionFile {
+    return this.geneLists.importBedEntries(fileId, entries)
   }
 
   listTags(): Tag[] {

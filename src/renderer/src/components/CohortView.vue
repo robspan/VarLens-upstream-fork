@@ -1,6 +1,6 @@
 <template>
   <div class="cohort-content">
-    <v-tabs v-model="activeTab" color="secondary" density="compact" class="flex-grow-0">
+    <v-tabs v-model="activeTab" color="primary" density="compact" class="cohort-tabs flex-grow-0">
       <v-tab value="variants">Variants</v-tab>
       <v-tab value="burden">Gene Burden</v-tab>
     </v-tabs>
@@ -62,5 +62,15 @@ defineExpose({ refresh })
   flex-direction: column;
   height: calc(100vh - 48px - 32px);
   overflow: hidden;
+}
+
+.cohort-tabs :deep(.v-tab--selected) {
+  font-weight: 700;
+  background-color: rgba(var(--v-theme-primary), 0.12);
+  border-bottom: 3px solid rgb(var(--v-theme-primary));
+}
+
+.cohort-tabs :deep(.v-tab:not(.v-tab--selected)) {
+  opacity: 0.6;
 }
 </style>

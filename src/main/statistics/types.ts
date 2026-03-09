@@ -24,6 +24,7 @@ export interface VariantFilters {
   gnomad_af_max?: number
   cadd_min?: number
   consequences?: string[]
+  gene_list?: string[]
 }
 
 /** Per-gene data passed to worker threads */

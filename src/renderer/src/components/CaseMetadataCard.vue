@@ -32,6 +32,31 @@
           />
         </div>
 
+        <!-- Age row -->
+        <div class="d-flex align-center mb-3">
+          <span class="text-body-medium text-grey mr-2" style="min-width: 60px">Age</span>
+          <v-text-field
+            :model-value="currentAge"
+            type="number"
+            density="compact"
+            variant="outlined"
+            hide-details
+            style="max-width: 120px"
+            placeholder="Years"
+            @update:model-value="handleAgeChange"
+          />
+          <span class="text-body-medium text-grey mx-2">DOB</span>
+          <v-text-field
+            :model-value="currentDob"
+            type="date"
+            density="compact"
+            variant="outlined"
+            hide-details
+            style="max-width: 170px"
+            @update:model-value="handleDobChange"
+          />
+        </div>
+
         <!-- Cohorts row -->
         <div class="d-flex align-start mb-3">
           <span class="text-body-medium text-grey mr-2 mt-2" style="min-width: 60px">Cohorts</span>
@@ -82,6 +107,8 @@ const {
   isLoading,
   updateStatus,
   updateSex,
+  updateAge,
+  updateDob,
   setCaseCohorts,
   createAndAssignCohort,
   assignHpoTerm,
@@ -101,6 +128,8 @@ const loading = computed(() => isLoading(props.caseId))
 const metadata = computed(() => getMetadata(props.caseId))
 const currentStatus = computed(() => metadata.value?.metadata?.affected_status ?? 'unknown')
 const currentSex = computed(() => metadata.value?.metadata?.sex ?? 'unknown')
+const currentAge = computed(() => metadata.value?.metadata?.age ?? null)
+const currentDob = computed(() => metadata.value?.metadata?.date_of_birth ?? null)
 const currentCohorts = computed(() => metadata.value?.cohorts ?? [])
 const currentHpoTerms = computed(() => metadata.value?.hpoTerms ?? [])
 const allCohorts = computed(() => cohortGroupsCache.value)
@@ -123,6 +152,17 @@ async function handleStatusChange(status: AffectedStatus) {
 
 async function handleSexChange(sex: CaseSex) {
   await updateSex(props.caseId, sex)
+}
+
+async function handleAgeChange(val: string | number | null) {
+  const age =
+    typeof val === 'number' ? val : typeof val === 'string' && val !== '' ? parseFloat(val) : null
+  const validAge = age !== null && !isNaN(age) ? age : null
+  await updateAge(props.caseId, validAge)
+}
+
+async function handleDobChange(val: string | null) {
+  await updateDob(props.caseId, typeof val === 'string' && val !== '' ? val : null)
 }
 
 async function handleCohortsChange(cohorts: CohortGroup[]) {

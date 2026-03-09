@@ -10,10 +10,15 @@ import { logisticBurdenTest } from './burden'
 import { benjaminiHochberg } from './fdr'
 import type Database from 'better-sqlite3-multiple-ciphers'
 
+/** Yield control back to the event loop so IPC messages (e.g. cancel) can be processed */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve))
+}
+
 /**
  * Main orchestrator for association analysis.
- * Runs synchronously in the main process.
- * Worker pool parallelism can be added later if needed.
+ * Runs asynchronously, yielding between genes so the event loop
+ * can process cancel requests and progress IPC.
  */
 export class AssociationEngine {
   private db: Database.Database
@@ -25,7 +30,7 @@ export class AssociationEngine {
     this.onProgress = onProgress
   }
 
-  run(config: AssociationConfig): AssociationResults {
+  async run(config: AssociationConfig): Promise<AssociationResults> {
     const start = Date.now()
     const warnings: string[] = []
     this.aborted = false
@@ -49,7 +54,7 @@ export class AssociationEngine {
       }
     }
 
-    // 2. Run tests for each gene
+    // 2. Run tests for each gene, yielding periodically
     const rawResults: GeneAssociationResult[] = []
     for (let i = 0; i < genes.length; i++) {
       if (this.aborted) break
@@ -79,6 +84,21 @@ export class AssociationEngine {
       })
 
       this.onProgress?.(i + 1, genes.length)
+
+      // Yield every 10 genes to let event loop process cancel/progress IPC
+      if (i % 10 === 9) {
+        await yieldToEventLoop()
+      }
+    }
+
+    if (this.aborted) {
+      return {
+        results: [],
+        primary_test: config.primary_test,
+        config,
+        warnings: ['Analysis cancelled'],
+        elapsed_ms: Date.now() - start
+      }
     }
 
     // 3. Apply FDR correction

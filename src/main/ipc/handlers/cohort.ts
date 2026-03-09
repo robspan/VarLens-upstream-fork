@@ -143,9 +143,10 @@ ipcMain.handle('cohort:geneBurdenCompare', async (event, params: unknown) => {
       event.sender.send('cohort:geneBurdenProgress', { completed, total })
     })
 
-    const results = activeEngine.run(config)
+    const results = await activeEngine.run(config)
     activeEngine = null
-    return results
+    // Deep clone for IPC serialization – engine result may contain non-serializable properties
+    return JSON.parse(JSON.stringify(results))
   })
 })
 

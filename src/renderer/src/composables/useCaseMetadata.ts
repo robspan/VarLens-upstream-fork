@@ -124,6 +124,34 @@ export function useCaseMetadata() {
     }
   }
 
+  // Update age
+  async function updateAge(caseId: number, age: number | null): Promise<void> {
+    try {
+      const updated = await window.api.caseMetadata.upsert(caseId, { age })
+      const cached = metadataCache.value.get(caseId)
+      if (cached) {
+        cached.metadata = updated
+      }
+    } catch (error) {
+      console.error('Failed to update age:', error)
+    }
+  }
+
+  // Update date of birth
+  async function updateDob(caseId: number, dateOfBirth: string | null): Promise<void> {
+    try {
+      const updated = await window.api.caseMetadata.upsert(caseId, {
+        date_of_birth: dateOfBirth
+      })
+      const cached = metadataCache.value.get(caseId)
+      if (cached) {
+        cached.metadata = updated
+      }
+    } catch (error) {
+      console.error('Failed to update date of birth:', error)
+    }
+  }
+
   // Set case cohorts with optimistic update (bulk replace)
   async function setCaseCohorts(caseId: number, cohortIds: number[]): Promise<void> {
     const current = metadataCache.value.get(caseId)
@@ -263,6 +291,8 @@ export function useCaseMetadata() {
     isLoading,
     updateStatus,
     updateSex,
+    updateAge,
+    updateDob,
     setCaseCohorts,
     createAndAssignCohort,
     getOrCreateCohort,

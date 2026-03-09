@@ -140,7 +140,23 @@ const api = {
     getSummary: () => ipcRenderer.invoke('cohort:summary'),
     getCarriers: (chr: string, pos: number, ref: string, alt: string) =>
       ipcRenderer.invoke('cohort:carriers', chr, pos, ref, alt),
-    getGeneBurden: () => ipcRenderer.invoke('cohort:geneBurden')
+    getGeneBurden: () => ipcRenderer.invoke('cohort:geneBurden'),
+    runAssociation: (config: unknown) => ipcRenderer.invoke('cohort:geneBurdenCompare', config),
+    cancelAssociation: () => ipcRenderer.invoke('cohort:geneBurdenCancel'),
+    onAssociationProgress: (
+      callback: (progress: { completed: number; total: number }) => void
+    ): (() => void) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        progress: { completed: number; total: number }
+      ): void => {
+        callback(progress)
+      }
+      ipcRenderer.on('cohort:geneBurdenProgress', handler)
+      return () => {
+        ipcRenderer.removeListener('cohort:geneBurdenProgress', handler)
+      }
+    }
   },
 
   annotations: {

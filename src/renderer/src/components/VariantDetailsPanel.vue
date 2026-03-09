@@ -101,7 +101,22 @@
 
           <v-divider class="mb-4" />
 
-          <!-- Section 6: External Links -->
+          <!-- Section 6: Activity Log -->
+          <v-expansion-panels variant="accordion" class="mb-4">
+            <v-expansion-panel>
+              <v-expansion-panel-title class="text-body-2">
+                <v-icon size="small" class="mr-1">mdi-history</v-icon>
+                Activity Log
+              </v-expansion-panel-title>
+              <v-expansion-panel-text>
+                <ActivityLogPanel :entity-key="auditEntityKey" />
+              </v-expansion-panel-text>
+            </v-expansion-panel>
+          </v-expansion-panels>
+
+          <v-divider class="mb-4" />
+
+          <!-- Section 7: External Links -->
           <ExternalLinksSection :variant="variant" />
         </template>
 
@@ -125,6 +140,7 @@ import CommentsSection from './CommentsSection.vue'
 import TagsSection from './TagsSection.vue'
 import TranscriptSection from './TranscriptSection.vue'
 import AcmgClassificationPanel from './AcmgClassificationPanel.vue'
+import ActivityLogPanel from './ActivityLogPanel.vue'
 import type { Variant } from '../../../shared/types/api'
 import type { CohortVariant } from '../../../shared/types/cohort'
 import type { AcmgClassification } from '../../../main/database/types'
@@ -193,6 +209,15 @@ const globalAcmgClassification = computed<AcmgClassification | null>(() => {
 })
 
 // Check if global ACMG exists
+// Audit trail entity key
+const auditEntityKey = computed(() => {
+  if (!props.variant) return null
+  if (props.mode === 'case' && props.caseId !== null && 'id' in props.variant) {
+    return `case:${props.caseId}:variant:${(props.variant as Variant).id}`
+  }
+  return `${props.variant.chr}:${props.variant.pos}:${props.variant.ref}:${props.variant.alt}`
+})
+
 const hasGlobalAcmg = computed(() => {
   return globalAcmgClassification.value !== null
 })

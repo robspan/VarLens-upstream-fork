@@ -3,7 +3,11 @@ import { z } from 'zod'
 import { wrapHandler } from '../errorHandler'
 import { getDatabaseService } from '../../database'
 import { CohortService } from '../../database/cohort'
-import { CohortSearchParamsSchema } from '../../../shared/types/ipc-schemas'
+import { AssociationEngine } from '../../statistics/AssociationEngine'
+import {
+  CohortSearchParamsSchema,
+  AssociationConfigSchema
+} from '../../../shared/types/ipc-schemas'
 import { mainLogger } from '../../services/MainLogger'
 
 /**
@@ -111,4 +115,43 @@ ipcMain.handle('cohort:geneBurden', async (_event) => {
     const cohortService = new CohortService(db.database)
     return cohortService.getGeneBurden()
   })
+})
+
+// Keep a reference for cancellation
+let activeEngine: AssociationEngine | null = null
+
+ipcMain.handle('cohort:geneBurdenCompare', async (event, params: unknown) => {
+  return wrapHandler(async () => {
+    const validated = AssociationConfigSchema.safeParse(params)
+    if (!validated.success) {
+      mainLogger.error(`Invalid association config: ${validated.error.message}`, 'cohort')
+      throw new Error('Invalid association analysis parameters')
+    }
+
+    const config = validated.data
+
+    // Validate no overlap between groups
+    const groupASet = new Set(config.groupA_ids)
+    const overlap = config.groupB_ids.filter((id) => groupASet.has(id))
+    if (overlap.length > 0) {
+      throw new Error(`Groups overlap: case IDs ${overlap.join(', ')} appear in both groups`)
+    }
+
+    const db = getDatabaseService()
+
+    activeEngine = new AssociationEngine(db.database, (completed, total) => {
+      event.sender.send('cohort:geneBurdenProgress', { completed, total })
+    })
+
+    const results = activeEngine.run(config)
+    activeEngine = null
+    return results
+  })
+})
+
+ipcMain.handle('cohort:geneBurdenCancel', async () => {
+  if (activeEngine) {
+    activeEngine.abort()
+    activeEngine = null
+  }
 })

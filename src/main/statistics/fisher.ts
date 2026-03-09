@@ -31,14 +31,8 @@ export function fisherExactTest(a: number, b: number, c: number, d: number): Fis
   pValue = Math.min(pValue, 1.0)
 
   // Odds ratio
-  let oddsRatio: number | null = null
-  if (b * c === 0 && a * d === 0) {
-    oddsRatio = null
-  } else if (b * c === 0) {
-    oddsRatio = Infinity
-  } else {
-    oddsRatio = (a * d) / (b * c)
-  }
+  const oddsRatio: number | null =
+    b * c === 0 && a * d === 0 ? null : b * c === 0 ? Infinity : (a * d) / (b * c)
 
   // CI with Haldane-Anscombe correction
   const { ci_lower, ci_upper } = computeOddsRatioCI(a, b, c, d)

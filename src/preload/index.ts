@@ -140,7 +140,23 @@ const api = {
     getSummary: () => ipcRenderer.invoke('cohort:summary'),
     getCarriers: (chr: string, pos: number, ref: string, alt: string) =>
       ipcRenderer.invoke('cohort:carriers', chr, pos, ref, alt),
-    getGeneBurden: () => ipcRenderer.invoke('cohort:geneBurden')
+    getGeneBurden: () => ipcRenderer.invoke('cohort:geneBurden'),
+    runAssociation: (config: unknown) => ipcRenderer.invoke('cohort:geneBurdenCompare', config),
+    cancelAssociation: () => ipcRenderer.invoke('cohort:geneBurdenCancel'),
+    onAssociationProgress: (
+      callback: (progress: { completed: number; total: number }) => void
+    ): (() => void) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        progress: { completed: number; total: number }
+      ): void => {
+        callback(progress)
+      }
+      ipcRenderer.on('cohort:geneBurdenProgress', handler)
+      return () => {
+        ipcRenderer.removeListener('cohort:geneBurdenProgress', handler)
+      }
+    }
   },
 
   annotations: {
@@ -238,7 +254,38 @@ const api = {
       ipcRenderer.invoke('case-metadata:assignHpoTerm', caseId, hpoId, hpoLabel),
 
     removeHpoTerm: (caseId: number, hpoId: string) =>
-      ipcRenderer.invoke('case-metadata:removeHpoTerm', caseId, hpoId)
+      ipcRenderer.invoke('case-metadata:removeHpoTerm', caseId, hpoId),
+
+    // Data info (import provenance, platform, pre-filtering)
+    getDataInfo: (caseId: number) => ipcRenderer.invoke('case-metadata:getDataInfo', caseId),
+
+    upsertDataInfo: (
+      caseId: number,
+      updates: {
+        platform?: string | null
+        platform_details?: string | null
+        af_filter?: string | null
+        gene_list_filter?: string | null
+        region_filter?: string | null
+        quality_filter?: string | null
+        data_notes?: string | null
+        gene_list_id?: number | null
+        region_file_id?: number | null
+      }
+    ) => ipcRenderer.invoke('case-metadata:upsertDataInfo', caseId, updates),
+
+    // External IDs (user-defined key-value cross-references)
+    listExternalIds: (caseId: number) =>
+      ipcRenderer.invoke('case-metadata:listExternalIds', caseId),
+
+    upsertExternalId: (caseId: number, idType: string, idValue: string) =>
+      ipcRenderer.invoke('case-metadata:upsertExternalId', caseId, idType, idValue),
+
+    deleteExternalId: (caseId: number, idType: string) =>
+      ipcRenderer.invoke('case-metadata:deleteExternalId', caseId, idType),
+
+    distinctPlatforms: () => ipcRenderer.invoke('case-metadata:distinctPlatforms'),
+    distinctExternalIdTypes: () => ipcRenderer.invoke('case-metadata:distinctExternalIdTypes')
   },
 
   caseComments: {
@@ -335,6 +382,25 @@ const api = {
   audit: {
     getByEntity: (entityKey: string) => ipcRenderer.invoke('audit:getByEntity', entityKey),
     query: (params: Record<string, unknown>) => ipcRenderer.invoke('audit:query', params)
+  },
+
+  geneLists: {
+    list: () => ipcRenderer.invoke('gene-lists:list'),
+    create: (name: string, description?: string | null) =>
+      ipcRenderer.invoke('gene-lists:create', name, description),
+    delete: (id: number) => ipcRenderer.invoke('gene-lists:delete', id),
+    getGenes: (listId: number) => ipcRenderer.invoke('gene-lists:getGenes', listId),
+    setGenes: (listId: number, genes: string[]) =>
+      ipcRenderer.invoke('gene-lists:setGenes', listId, genes)
+  },
+
+  regionFiles: {
+    list: () => ipcRenderer.invoke('region-files:list'),
+    create: (name: string, description: string | null) =>
+      ipcRenderer.invoke('region-files:create', name, description),
+    delete: (id: number) => ipcRenderer.invoke('region-files:delete', id),
+    importBed: (fileId: number, filePath: string) =>
+      ipcRenderer.invoke('region-files:importBed', fileId, filePath)
   },
 
   updater: {

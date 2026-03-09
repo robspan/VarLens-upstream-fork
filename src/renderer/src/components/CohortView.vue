@@ -1,19 +1,31 @@
 <template>
   <div class="cohort-content">
-    <CohortTable
-      ref="cohortTableRef"
-      @navigate-to-case="$emit('navigate-to-case', $event)"
-      @row-click="$emit('row-click', $event)"
-    />
+    <v-tabs v-model="activeTab" color="primary" density="compact" class="cohort-tabs flex-grow-0">
+      <v-tab value="variants">Variants</v-tab>
+      <v-tab value="burden">Gene Burden</v-tab>
+    </v-tabs>
+
+    <v-tabs-window v-model="activeTab" class="flex-grow-1" style="min-height: 0; overflow: hidden">
+      <v-tabs-window-item value="variants" class="fill-height">
+        <CohortTable
+          ref="cohortTableRef"
+          @navigate-to-case="$emit('navigate-to-case', $event)"
+          @row-click="$emit('row-click', $event)"
+        />
+      </v-tabs-window-item>
+      <v-tabs-window-item value="burden" class="fill-height" style="overflow-y: auto">
+        <GeneBurdenView ref="burdenViewRef" />
+      </v-tabs-window-item>
+    </v-tabs-window>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
 import CohortTable from './CohortTable.vue'
+import GeneBurdenView from './association/GeneBurdenView.vue'
 import type { CohortVariant } from '../../../shared/types/cohort'
 
-// Emit for navigation and row click
 defineEmits<{
   'navigate-to-case': [
     payload: {
@@ -29,23 +41,36 @@ defineEmits<{
   'row-click': [variant: CohortVariant]
 }>()
 
+const activeTab = ref('variants')
 const cohortTableRef = ref<InstanceType<typeof CohortTable> | null>(null)
+const burdenViewRef = ref<InstanceType<typeof GeneBurdenView> | null>(null)
 
-// Refresh function that delegates to CohortTable
 const refresh = async (): Promise<void> => {
-  await cohortTableRef.value?.refresh()
+  if (activeTab.value === 'variants') {
+    await cohortTableRef.value?.refresh()
+  } else {
+    await burdenViewRef.value?.refresh()
+  }
 }
 
-// Expose refresh method to parent
 defineExpose({ refresh })
 </script>
 
 <style scoped>
-/* Cohort content fills available height (mirrors .case-content in App.vue) */
 .cohort-content {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 48px - 32px); /* viewport minus app-bar minus footer */
+  height: calc(100vh - 48px - 32px);
   overflow: hidden;
+}
+
+.cohort-tabs :deep(.v-tab--selected) {
+  font-weight: 700;
+  background-color: rgba(var(--v-theme-primary), 0.12);
+  border-bottom: 3px solid rgb(var(--v-theme-primary));
+}
+
+.cohort-tabs :deep(.v-tab:not(.v-tab--selected)) {
+  opacity: 0.6;
 }
 </style>

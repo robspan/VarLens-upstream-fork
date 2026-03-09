@@ -597,6 +597,8 @@ export const mockApi: WindowAPI = {
       affected_status: updates.affected_status ?? null,
       sex: updates.sex ?? null,
       notes: updates.notes ?? null,
+      age: updates.age ?? null,
+      date_of_birth: updates.date_of_birth ?? null,
       created_at: Date.now(),
       updated_at: Date.now()
     }),
@@ -605,7 +607,9 @@ export const mockApi: WindowAPI = {
       cohorts: [],
       hpoTerms: [],
       comments: [],
-      metrics: []
+      metrics: [],
+      dataInfo: null,
+      externalIds: []
     }),
     listCohorts: async () => [],
     createCohort: async (name, description) => ({
@@ -634,7 +638,38 @@ export const mockApi: WindowAPI = {
       hpo_label: hpoLabel,
       created_at: Date.now()
     }),
-    removeHpoTerm: async () => {}
+    removeHpoTerm: async () => {},
+    getDataInfo: async () => null,
+    upsertDataInfo: async (_caseId: number) =>
+      ({
+        id: 1,
+        case_id: _caseId,
+        import_file_name: null,
+        import_file_type: null,
+        platform: null,
+        platform_details: null,
+        af_filter: null,
+        gene_list_filter: null,
+        region_filter: null,
+        quality_filter: null,
+        data_notes: null,
+        gene_list_id: null,
+        region_file_id: null,
+        created_at: Date.now(),
+        updated_at: Date.now()
+      }) as import('../../../shared/types/api').CaseDataInfo,
+    listExternalIds: async () => [],
+    upsertExternalId: async (_caseId: number, idType: string, idValue: string) =>
+      ({
+        id: 1,
+        case_id: _caseId,
+        id_type: idType,
+        id_value: idValue,
+        created_at: Date.now()
+      }) as import('../../../shared/types/api').CaseExternalId,
+    deleteExternalId: async () => {},
+    distinctPlatforms: async () => [],
+    distinctExternalIdTypes: async () => []
   },
 
   caseComments: {
@@ -725,6 +760,43 @@ export const mockApi: WindowAPI = {
     installUpdate: async () => {},
     getStatus: async () => ({ state: 'idle' as const }),
     onStatusChange: () => () => {}
+  },
+
+  geneLists: {
+    list: async () => [],
+    create: async (name: string, description?: string | null) => ({
+      id: 1,
+      name,
+      description: description ?? null,
+      created_at: Date.now(),
+      updated_at: Date.now()
+    }),
+    delete: async () => {},
+    getGenes: async () => [],
+    setGenes: async () => []
+  },
+
+  regionFiles: {
+    list: async () => [],
+    create: async (name: string, description: string | null) => ({
+      id: 1,
+      name,
+      description,
+      region_count: 0,
+      total_bases: 0,
+      created_at: Date.now(),
+      updated_at: Date.now()
+    }),
+    delete: async () => {},
+    importBed: async (_fileId: number) => ({
+      id: 1,
+      name: 'Mock',
+      description: null,
+      region_count: 0,
+      total_bases: 0,
+      created_at: Date.now(),
+      updated_at: Date.now()
+    })
   },
 
   audit: {

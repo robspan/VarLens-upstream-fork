@@ -190,6 +190,90 @@ ipcMain.handle('case-metadata:removeHpoTerm', async (_event, caseId: number, hpo
 })
 
 // ============================================================
+// Case Data Info Handlers
+// ============================================================
+
+/**
+ * Get case data info (import provenance, platform, pre-filtering)
+ */
+ipcMain.handle('case-metadata:getDataInfo', async (_event, caseId: number) => {
+  return wrapHandler(async () => {
+    const db = getDatabaseService()
+    return db.getCaseDataInfo(caseId)
+  })
+})
+
+/**
+ * Upsert case data info
+ */
+ipcMain.handle(
+  'case-metadata:upsertDataInfo',
+  async (
+    _event,
+    caseId: number,
+    updates: {
+      platform?: string | null
+      platform_details?: string | null
+      af_filter?: string | null
+      gene_list_filter?: string | null
+      region_filter?: string | null
+      quality_filter?: string | null
+      data_notes?: string | null
+      gene_list_id?: number | null
+      region_file_id?: number | null
+    }
+  ) => {
+    return wrapHandler(async () => {
+      const db = getDatabaseService()
+      return db.upsertCaseDataInfo(caseId, updates)
+    })
+  }
+)
+
+// ============================================================
+// Case External IDs Handlers
+// ============================================================
+
+ipcMain.handle('case-metadata:listExternalIds', async (_event, caseId: number) => {
+  return wrapHandler(async () => {
+    const db = getDatabaseService()
+    return db.listCaseExternalIds(caseId)
+  })
+})
+
+ipcMain.handle(
+  'case-metadata:upsertExternalId',
+  async (_event, caseId: number, idType: string, idValue: string) => {
+    return wrapHandler(async () => {
+      const db = getDatabaseService()
+      return db.upsertCaseExternalId(caseId, idType, idValue)
+    })
+  }
+)
+
+ipcMain.handle('case-metadata:distinctPlatforms', async () => {
+  return wrapHandler(async () => {
+    const db = getDatabaseService()
+    return db.getDistinctPlatforms()
+  })
+})
+
+ipcMain.handle('case-metadata:distinctExternalIdTypes', async () => {
+  return wrapHandler(async () => {
+    const db = getDatabaseService()
+    return db.getDistinctExternalIdTypes()
+  })
+})
+
+ipcMain.handle('case-metadata:deleteExternalId', async (_event, caseId: number, idType: string) => {
+  return wrapHandler(async () => {
+    const db = getDatabaseService()
+    db.deleteCaseExternalId(caseId, idType)
+    return undefined
+  })
+})
+
+// ============================================================
 // Convenience Handlers
 // ============================================================
 
@@ -204,7 +288,9 @@ ipcMain.handle('case-metadata:getFullMetadata', async (_event, caseId: number) =
       cohorts: db.getCaseCohorts(caseId),
       hpoTerms: db.getCaseHpoTerms(caseId),
       comments: db.listCaseComments(caseId),
-      metrics: db.listCaseMetrics(caseId)
+      metrics: db.listCaseMetrics(caseId),
+      dataInfo: db.getCaseDataInfo(caseId),
+      externalIds: db.listCaseExternalIds(caseId)
     }
   })
 })

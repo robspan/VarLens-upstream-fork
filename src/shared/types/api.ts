@@ -51,7 +51,13 @@ import type {
   MetricDefinition,
   CaseMetric,
   CaseMetricWithDefinition,
-  AuditLogEntry
+  AuditLogEntry,
+  CaseDataInfo,
+  CaseDataInfoUpdates,
+  CaseExternalId,
+  GeneList,
+  GeneListWithCount,
+  RegionFile
 } from '../../main/database/types'
 import type { ProgressUpdate, ImportResult } from '../../main/import/types'
 import type { SerializableError } from './errors'
@@ -101,7 +107,13 @@ export type {
   MetricDefinition,
   CaseMetric,
   CaseMetricWithDefinition,
-  AuditLogEntry
+  AuditLogEntry,
+  CaseDataInfo,
+  CaseDataInfoUpdates,
+  CaseExternalId,
+  GeneList,
+  GeneListWithCount,
+  RegionFile
 }
 
 export interface CasesAPI {
@@ -347,6 +359,8 @@ export interface CaseMetadataUpdates {
   affected_status?: AffectedStatus | null
   sex?: CaseSex | null
   notes?: string | null
+  age?: number | null
+  date_of_birth?: string | null
 }
 
 export interface FullCaseMetadata {
@@ -355,6 +369,8 @@ export interface FullCaseMetadata {
   hpoTerms: CaseHpoTerm[]
   comments: CaseComment[]
   metrics: CaseMetricWithDefinition[]
+  dataInfo: CaseDataInfo | null
+  externalIds: CaseExternalId[]
 }
 
 export interface CaseMetadataAPI {
@@ -382,6 +398,17 @@ export interface CaseMetadataAPI {
   getHpoTerms: (caseId: number) => Promise<CaseHpoTerm[]>
   assignHpoTerm: (caseId: number, hpoId: string, hpoLabel: string) => Promise<CaseHpoTerm>
   removeHpoTerm: (caseId: number, hpoId: string) => Promise<void>
+
+  // Data info (import provenance, platform, pre-filtering)
+  getDataInfo: (caseId: number) => Promise<CaseDataInfo | null>
+  upsertDataInfo: (caseId: number, updates: CaseDataInfoUpdates) => Promise<CaseDataInfo>
+
+  // External IDs
+  listExternalIds: (caseId: number) => Promise<CaseExternalId[]>
+  upsertExternalId: (caseId: number, idType: string, idValue: string) => Promise<CaseExternalId>
+  deleteExternalId: (caseId: number, idType: string) => Promise<void>
+  distinctPlatforms: () => Promise<string[]>
+  distinctExternalIdTypes: () => Promise<string[]>
 }
 
 export interface CaseCommentsAPI {
@@ -451,6 +478,21 @@ export interface AuditLogAPI {
   }) => Promise<{ data: AuditLogEntry[]; total_count: number }>
 }
 
+export interface GeneListsAPI {
+  list: () => Promise<GeneListWithCount[]>
+  create: (name: string, description?: string | null) => Promise<GeneList>
+  delete: (id: number) => Promise<void>
+  getGenes: (listId: number) => Promise<string[]>
+  setGenes: (listId: number, genes: string[]) => Promise<string[]>
+}
+
+export interface RegionFilesAPI {
+  list: () => Promise<RegionFile[]>
+  create: (name: string, description: string | null) => Promise<RegionFile>
+  delete: (id: number) => Promise<void>
+  importBed: (fileId: number, filePath: string) => Promise<RegionFile>
+}
+
 export interface WindowAPI {
   cases: CasesAPI
   variants: VariantsAPI
@@ -472,6 +514,8 @@ export interface WindowAPI {
   transcripts: TranscriptsAPI
   tags: TagsAPI
   logs: LogsAPI
+  geneLists: GeneListsAPI
+  regionFiles: RegionFilesAPI
   updater: UpdaterAPI
   audit: AuditLogAPI
 }

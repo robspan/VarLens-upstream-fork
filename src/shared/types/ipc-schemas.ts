@@ -233,3 +233,22 @@ export const CaseIdSchema = z.number().int().positive()
  * Schema for pagination limit
  */
 export const LimitSchema = z.number().int().positive().max(1000)
+
+/**
+ * Schema for association analysis config
+ * Matches AssociationConfig in src/main/statistics/types.ts
+ */
+export const AssociationConfigSchema = z.object({
+  groupA_ids: z.array(z.number().int().positive()),
+  groupB_ids: z.array(z.number().int().positive()),
+  primary_test: z.enum(['fisher', 'logistic_burden']),
+  weight_scheme: z.enum(['uniform', 'beta_maf', 'beta_maf_cadd']),
+  covariates: z.array(z.string()),
+  filters: z.object({
+    gnomad_af_max: z.number().min(0).max(1).optional(),
+    cadd_min: z.number().min(0).max(60).optional(),
+    consequences: z.array(z.string()).optional(),
+    gene_list: z.array(z.string()).optional()
+  }),
+  max_threads: z.number().int().min(1).max(64).default(4)
+})

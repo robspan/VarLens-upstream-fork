@@ -46,6 +46,10 @@
             class="ml-1"
           />
         </v-tab>
+        <v-tab value="data">
+          <v-icon start size="small">mdi-database-outline</v-icon>
+          Data Info
+        </v-tab>
       </v-tabs>
 
       <v-card-text class="pa-4" style="min-height: 300px; max-height: 500px; overflow-y: auto">
@@ -61,6 +65,10 @@
           <v-tabs-window-item value="metrics">
             <CaseMetricsTab :case-id="caseId" />
           </v-tabs-window-item>
+
+          <v-tabs-window-item value="data">
+            <CaseDataInfoTab :case-id="caseId" />
+          </v-tabs-window-item>
         </v-tabs-window>
       </v-card-text>
     </v-card>
@@ -72,6 +80,7 @@ import { ref, computed } from 'vue'
 import CaseMetadataCard from './CaseMetadataCard.vue'
 import CaseCommentsTab from './CaseCommentsTab.vue'
 import CaseMetricsTab from './CaseMetricsTab.vue'
+import CaseDataInfoTab from './CaseDataInfoTab.vue'
 import { useCaseComments } from '../composables/useCaseComments'
 import { useCaseMetrics } from '../composables/useCaseMetrics'
 

@@ -22,6 +22,11 @@ import { CLINICAL_METRICS } from './clinical-metrics'
  * - 4: v0.15.0 add sex column to case_metadata
  * - 5: v0.16.0 performance indexes
  * - 6: v0.17.0 case comments and metrics tables
+ * - 7: v0.18.0 audit trail table
+ * - 8: v0.20.0 add age and date_of_birth to case_metadata
+ * - 9: v0.21.0 case_data_info table (import provenance, platform, pre-filtering)
+ * - 10: v0.21.0 gene_lists and gene_list_items tables (curated reusable gene lists)
+ * - 11: v0.21.0 remove non-clinical predefined metrics (genetics, QC, variant stats)
  *
  * @param db - better-sqlite3-multiple-ciphers Database instance
  */
@@ -327,5 +332,208 @@ export function runMigrations(db: Database.Database): void {
     `)
 
     db.exec('PRAGMA user_version = 7')
+  }
+
+  // Version 7 → 8: Add age and date_of_birth to case_metadata (gene burden analysis)
+  if (currentVersion < 8) {
+    const columns = db.prepare('PRAGMA table_info(case_metadata)').all() as { name: string }[]
+    const hasAge = columns.some((c) => c.name === 'age')
+    const hasDob = columns.some((c) => c.name === 'date_of_birth')
+
+    if (!hasAge) {
+      db.exec(`ALTER TABLE case_metadata ADD COLUMN age REAL`)
+    }
+    if (!hasDob) {
+      db.exec(`ALTER TABLE case_metadata ADD COLUMN date_of_birth TEXT`)
+    }
+
+    db.exec('PRAGMA user_version = 8')
+  }
+
+  // Version 8 → 9: Case data info table (import provenance, platform, pre-filtering)
+  if (currentVersion < 9) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS case_data_info (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL UNIQUE,
+        import_file_name TEXT,
+        import_file_type TEXT,
+        platform TEXT,
+        platform_details TEXT,
+        af_filter TEXT,
+        gene_list_filter TEXT,
+        region_filter TEXT,
+        quality_filter TEXT,
+        data_notes TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_case_data_info_case
+        ON case_data_info(case_id);
+
+      -- External IDs: user-defined key-value pairs for cross-referencing
+      CREATE TABLE IF NOT EXISTS case_external_ids (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        id_type TEXT NOT NULL,
+        id_value TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+        UNIQUE(case_id, id_type)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_case_external_ids_case
+        ON case_external_ids(case_id);
+    `)
+
+    // Auto-populate for existing cases from cases.file_path
+    const existingCases = db.prepare('SELECT id, file_path, created_at FROM cases').all() as Array<{
+      id: number
+      file_path: string
+      created_at: number
+    }>
+
+    const insertInfo = db.prepare(
+      'INSERT OR IGNORE INTO case_data_info (case_id, import_file_name, created_at, updated_at) VALUES (?, ?, ?, ?)'
+    )
+    const now = Date.now()
+    for (const c of existingCases) {
+      // Extract basename from file_path
+      const parts = c.file_path.split(/[/\\]/)
+      const fileName = parts[parts.length - 1] || c.file_path
+      insertInfo.run(c.id, fileName, c.created_at || now, now)
+    }
+
+    db.exec('PRAGMA user_version = 9')
+  }
+
+  // Version 9 → 10: Curated gene lists and BED region files
+  if (currentVersion < 10) {
+    db.exec(`
+      -- Reusable gene lists
+      CREATE TABLE IF NOT EXISTS gene_lists (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        description TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS gene_list_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        gene_list_id INTEGER NOT NULL,
+        gene_symbol TEXT NOT NULL,
+        FOREIGN KEY (gene_list_id) REFERENCES gene_lists(id) ON DELETE CASCADE,
+        UNIQUE(gene_list_id, gene_symbol)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_gene_list_items_list
+        ON gene_list_items(gene_list_id);
+
+      -- BED region files (stored content)
+      CREATE TABLE IF NOT EXISTS region_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        description TEXT,
+        region_count INTEGER NOT NULL DEFAULT 0,
+        total_bases INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS region_file_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        region_file_id INTEGER NOT NULL,
+        chr TEXT NOT NULL,
+        start_pos INTEGER NOT NULL,
+        end_pos INTEGER NOT NULL,
+        label TEXT,
+        FOREIGN KEY (region_file_id) REFERENCES region_files(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_region_file_entries_file
+        ON region_file_entries(region_file_id);
+    `)
+
+    // Add columns to case_data_info idempotently (guard against partial migrations)
+    const dataInfoCols = db.prepare('PRAGMA table_info(case_data_info)').all() as { name: string }[]
+    if (!dataInfoCols.some((c) => c.name === 'gene_list_id')) {
+      db.exec(
+        'ALTER TABLE case_data_info ADD COLUMN gene_list_id INTEGER REFERENCES gene_lists(id) ON DELETE SET NULL'
+      )
+    }
+    if (!dataInfoCols.some((c) => c.name === 'region_file_id')) {
+      db.exec(
+        'ALTER TABLE case_data_info ADD COLUMN region_file_id INTEGER REFERENCES region_files(id) ON DELETE SET NULL'
+      )
+    }
+
+    db.exec('PRAGMA user_version = 10')
+  }
+
+  // ── Migration v11: Remove non-clinical predefined metrics ──
+  if (currentVersion < 11) {
+    // Remove genetics/genomics metrics and other non-clinical entries
+    // that don't belong in a clinical lab metrics catalog.
+    // Only deletes predefined entries (is_predefined = 1) that have no user data.
+    // Comprehensive list: genetics/genomics, variant stats, bioinformatics QC,
+    // redundant demographics (DOB now in overview), and non-clinical scores.
+    const removableMetrics = [
+      // Genetics / Genomics
+      'Diagnostic Yield',
+      'Karyotype',
+      'ACMG Classification',
+      'ACMG Pathogenic Count',
+      'ACMG Likely Pathogenic Count',
+      'ACMG VUS Count',
+      // Variant statistics (computable from data)
+      'SNV Count',
+      'Indel Count',
+      'Total Variant Count',
+      'HPO Term Count',
+      'Ti/Tv Ratio',
+      // Bioinformatics QC
+      'Mean Coverage',
+      'Median Coverage',
+      'Coverage at 10x',
+      'Coverage at 20x',
+      'Coverage at 30x',
+      'Percent Bases Above 10x',
+      'Percent Bases Above 20x',
+      'Percent Bases Above 30x',
+      'Mean Insert Size',
+      'Duplication Rate',
+      'Mapping Rate',
+      'GC Content',
+      'Total Reads',
+      'Mapped Reads',
+      'On-Target Rate',
+      'Uniformity of Coverage',
+      // Redundant (now in Overview tab)
+      'Date of Birth',
+      // Non-clinical scores
+      'APGAR Score (1 min)',
+      'APGAR Score (5 min)',
+      'Glasgow Coma Scale (GCS)',
+      'Pain Score (VAS)',
+      'Family History'
+    ]
+
+    const deleteUnused = db.prepare(
+      `DELETE FROM metric_definitions
+       WHERE name = ? AND is_predefined = 1
+       AND id NOT IN (SELECT metric_id FROM case_metrics)`
+    )
+
+    const cleanupTransaction = db.transaction(() => {
+      for (const name of removableMetrics) {
+        deleteUnused.run(name)
+      }
+    })
+    cleanupTransaction()
+
+    db.exec('PRAGMA user_version = 11')
   }
 }

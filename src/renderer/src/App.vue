@@ -474,7 +474,8 @@ const handleCaseSelected = (
   selectedCaseName.value = caseName
   selectedVariantCount.value = variantCount
   selectedCreatedAt.value = createdAt
-  // Auto-close sidebar on case selection (Material Design pattern)
+  // Switch to case view and auto-close sidebar on case selection
+  activeTab.value = 'case'
   sidebarOpen.value = false
 }
 
@@ -608,6 +609,7 @@ watch(activeTab, async (newTab) => {
   panelOpen.value = false
   selectedPanelVariant.value = null
   if (newTab === 'cohort') {
+    sidebarOpen.value = false
     await cohortViewRef.value?.refresh()
   }
 })

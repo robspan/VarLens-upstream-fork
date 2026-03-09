@@ -1,6 +1,9 @@
 import { BaseRepository } from './BaseRepository'
 import type {
   CaseMetadata,
+  CaseDataInfo,
+  CaseDataInfoUpdates,
+  CaseExternalId,
   CohortGroup,
   CaseHpoTerm,
   CaseComment,
@@ -21,30 +24,53 @@ export class MetadataRepository extends BaseRepository {
 
   upsertCaseMetadata(
     caseId: number,
-    updates: { affected_status?: string | null; sex?: string | null; notes?: string | null }
+    updates: {
+      affected_status?: string | null
+      sex?: string | null
+      notes?: string | null
+      age?: number | null
+      date_of_birth?: string | null
+    }
   ): CaseMetadata {
     return this.runTransaction(() => {
       const now = Date.now()
-      const result = this.stmt(
-        `
-        INSERT INTO case_metadata (case_id, affected_status, sex, notes, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(case_id) DO UPDATE SET
-          affected_status = COALESCE(excluded.affected_status, affected_status),
-          sex = COALESCE(excluded.sex, sex),
-          notes = COALESCE(excluded.notes, notes),
-          updated_at = excluded.updated_at
-        RETURNING *
-      `
-      ).get(
-        caseId,
-        updates.affected_status ?? null,
-        updates.sex ?? null,
-        updates.notes ?? null,
-        now,
-        now
-      ) as CaseMetadata
-      return result
+
+      // Build dynamic SET clause: only update fields explicitly provided (even if null)
+      const setClauses: string[] = ['updated_at = ?']
+      const setParams: (string | number | null)[] = [now]
+
+      const fields = ['affected_status', 'sex', 'notes', 'age', 'date_of_birth'] as const
+      for (const field of fields) {
+        if (field in updates) {
+          setClauses.push(`${field} = ?`)
+          setParams.push(updates[field] ?? null)
+        }
+      }
+
+      // Try INSERT first, then UPDATE on conflict
+      const existing = this.stmt('SELECT * FROM case_metadata WHERE case_id = ?').get(caseId) as
+        | CaseMetadata
+        | undefined
+
+      if (existing === undefined) {
+        return this.stmt(
+          `INSERT INTO case_metadata (case_id, affected_status, sex, notes, age, date_of_birth, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`
+        ).get(
+          caseId,
+          updates.affected_status ?? null,
+          updates.sex ?? null,
+          updates.notes ?? null,
+          updates.age ?? null,
+          updates.date_of_birth ?? null,
+          now,
+          now
+        ) as CaseMetadata
+      }
+
+      setParams.push(caseId)
+      const sql = `UPDATE case_metadata SET ${setClauses.join(', ')} WHERE case_id = ? RETURNING *`
+      return this.db.prepare(sql).get(...setParams) as CaseMetadata
     })
   }
 
@@ -272,5 +298,122 @@ export class MetadataRepository extends BaseRepository {
 
   deleteCaseMetric(caseId: number, metricId: number): void {
     this.stmt('DELETE FROM case_metrics WHERE case_id = ? AND metric_id = ?').run(caseId, metricId)
+  }
+
+  // ============================================================
+  // Case Data Info (import provenance, platform, pre-filtering)
+  // ============================================================
+
+  getCaseDataInfo(caseId: number): CaseDataInfo | null {
+    const result = this.stmt('SELECT * FROM case_data_info WHERE case_id = ?').get(caseId) as
+      | CaseDataInfo
+      | undefined
+    return result ?? null
+  }
+
+  upsertCaseDataInfo(
+    caseId: number,
+    updates: CaseDataInfoUpdates & {
+      import_file_name?: string | null
+      import_file_type?: string | null
+    }
+  ): CaseDataInfo {
+    return this.runTransaction(() => {
+      const now = Date.now()
+
+      const existing = this.stmt('SELECT * FROM case_data_info WHERE case_id = ?').get(caseId) as
+        | CaseDataInfo
+        | undefined
+
+      if (existing === undefined) {
+        return this.stmt(
+          `INSERT INTO case_data_info (case_id, import_file_name, import_file_type, platform, platform_details, af_filter, gene_list_filter, region_filter, quality_filter, data_notes, gene_list_id, region_file_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`
+        ).get(
+          caseId,
+          updates.import_file_name ?? null,
+          updates.import_file_type ?? null,
+          updates.platform ?? null,
+          updates.platform_details ?? null,
+          updates.af_filter ?? null,
+          updates.gene_list_filter ?? null,
+          updates.region_filter ?? null,
+          updates.quality_filter ?? null,
+          updates.data_notes ?? null,
+          updates.gene_list_id ?? null,
+          updates.region_file_id ?? null,
+          now,
+          now
+        ) as CaseDataInfo
+      }
+
+      // Build dynamic SET clause: only update fields explicitly provided (even if null)
+      const setClauses: string[] = ['updated_at = ?']
+      const setParams: (string | number | null)[] = [now]
+
+      const allFields = [
+        'import_file_name',
+        'import_file_type',
+        'platform',
+        'platform_details',
+        'af_filter',
+        'gene_list_filter',
+        'region_filter',
+        'quality_filter',
+        'data_notes',
+        'gene_list_id',
+        'region_file_id'
+      ] as const
+      for (const field of allFields) {
+        if (field in updates) {
+          setClauses.push(`${field} = ?`)
+          setParams.push(updates[field] ?? null)
+        }
+      }
+
+      setParams.push(caseId)
+      const sql = `UPDATE case_data_info SET ${setClauses.join(', ')} WHERE case_id = ? RETURNING *`
+      return this.db.prepare(sql).get(...setParams) as CaseDataInfo
+    })
+  }
+
+  // ============================================================
+  // Case External IDs (user-defined key-value cross-references)
+  // ============================================================
+
+  listCaseExternalIds(caseId: number): CaseExternalId[] {
+    return this.stmt('SELECT * FROM case_external_ids WHERE case_id = ? ORDER BY id_type').all(
+      caseId
+    ) as CaseExternalId[]
+  }
+
+  upsertCaseExternalId(caseId: number, idType: string, idValue: string): CaseExternalId {
+    const now = Date.now()
+    return this.stmt(
+      `INSERT INTO case_external_ids (case_id, id_type, id_value, created_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(case_id, id_type) DO UPDATE SET id_value = excluded.id_value
+       RETURNING *`
+    ).get(caseId, idType, idValue, now) as CaseExternalId
+  }
+
+  deleteCaseExternalId(caseId: number, idType: string): void {
+    this.stmt('DELETE FROM case_external_ids WHERE case_id = ? AND id_type = ?').run(caseId, idType)
+  }
+
+  /** Get all distinct platform values across all cases */
+  getDistinctPlatforms(): string[] {
+    const rows = this.stmt(
+      'SELECT DISTINCT platform FROM case_data_info WHERE platform IS NOT NULL ORDER BY platform'
+    ).all() as Array<{ platform: string }>
+    return rows.map((r) => r.platform)
+  }
+
+  /** Get all distinct external ID types across all cases */
+  getDistinctExternalIdTypes(): string[] {
+    const rows = this.stmt(
+      'SELECT DISTINCT id_type FROM case_external_ids ORDER BY id_type'
+    ).all() as Array<{ id_type: string }>
+    return rows.map((r) => r.id_type)
   }
 }

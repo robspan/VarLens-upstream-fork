@@ -23,9 +23,7 @@ export function logisticBurdenTest(
   )
   const phenotypes = samples.map((s) => s.group)
   const covariates =
-    samples[0].covariate_values.length > 0
-      ? samples.map((s) => s.covariate_values)
-      : undefined
+    samples[0].covariate_values.length > 0 ? samples.map((s) => s.covariate_values) : undefined
 
   if (burdens.every((b) => b === 0)) {
     return {

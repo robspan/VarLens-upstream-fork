@@ -24,14 +24,7 @@ describe('Association analysis integration', () => {
       ).run(i, `case${i}`, now)
       db.prepare(
         'INSERT INTO case_metadata (case_id, affected_status, sex, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
-      ).run(
-        i,
-        i <= 5 ? 'affected' : 'unaffected',
-        i % 2 === 0 ? 'male' : 'female',
-        '',
-        now,
-        now
-      )
+      ).run(i, i <= 5 ? 'affected' : 'unaffected', i % 2 === 0 ? 'male' : 'female', '', now, now)
     }
 
     // Group A (cases 1-5): 3 have BRCA1 variants, 2 have TP53
@@ -125,12 +118,7 @@ describe('Association analysis integration', () => {
 
   it('respects gnomAD AF filter', () => {
     const builder = new AssociationDataBuilder(db)
-    const genes = builder.build(
-      [1, 2, 3, 4, 5],
-      [6, 7, 8, 9, 10],
-      { gnomad_af_max: 0.005 },
-      []
-    )
+    const genes = builder.build([1, 2, 3, 4, 5], [6, 7, 8, 9, 10], { gnomad_af_max: 0.005 }, [])
 
     // BRCA1 (AF=0.001) should pass, TP53 (AF=0.01) and EGFR (AF=0.1) should be filtered
     const geneNames = genes.map((g) => g.gene_symbol)

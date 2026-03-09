@@ -33,7 +33,7 @@ export function logisticRegression(
   }
 
   // Initialize beta = zeros
-  let beta = new Array(p).fill(0)
+  const beta = new Array(p).fill(0)
   let converged = false
   const maxIter = 25
   const tol = 1e-8

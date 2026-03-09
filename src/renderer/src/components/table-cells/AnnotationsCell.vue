@@ -31,49 +31,53 @@
       @click.stop="emit('star-toggle')"
     />
 
-    <!-- ACMG classification -->
-    <AcmgMenu @select="(c) => emit('acmg-select', c)">
-      <template #activator="{ props: menuProps }">
-        <v-tooltip v-if="showGlobalIndicators" location="top">
-          <template #activator="{ props: tooltipPropsAcmg }">
-            <span
-              v-bind="{ ...menuProps, ...tooltipPropsAcmg }"
-              class="annotation-icon-wrapper"
-              :class="{ 'has-global': globalAcmgClassification }"
-            >
-              <v-chip
-                v-if="acmgClassification"
-                :color="ACMG_COLORS[acmgClassification]"
-                size="x-small"
-                label
-                class="cursor-pointer"
-              >
-                {{ ACMG_ABBREV[acmgClassification] }}
-              </v-chip>
-              <v-icon
-                v-else
-                icon="mdi-tag-plus-outline"
-                size="small"
-                color="grey-lighten-1"
-                class="cursor-pointer"
-              />
-            </span>
-          </template>
-          <span v-if="globalAcmgClassification && acmgClassification">
-            Case: {{ acmgClassification }}<br />
-            Global: {{ globalAcmgClassification }}
-          </span>
-          <span v-else-if="globalAcmgClassification">
-            Global: {{ globalAcmgClassification }}<br />
-            (click to set case classification)
-          </span>
-          <span v-else-if="acmgClassification">{{ acmgClassification }}</span>
-          <span v-else>Set ACMG classification</span>
-        </v-tooltip>
-        <template v-else>
+    <!-- ACMG classification (click opens evidence dialog) -->
+    <v-tooltip v-if="showGlobalIndicators" location="top">
+      <template #activator="{ props: tooltipPropsAcmg }">
+        <span
+          v-bind="tooltipPropsAcmg"
+          class="annotation-icon-wrapper"
+          :class="{ 'has-global': globalAcmgClassification }"
+          @click.stop="emit('acmg-evidence-click')"
+        >
           <v-chip
             v-if="acmgClassification"
-            v-bind="menuProps"
+            :color="ACMG_COLORS[acmgClassification]"
+            size="x-small"
+            label
+            class="cursor-pointer"
+          >
+            {{ ACMG_ABBREV[acmgClassification] }}
+          </v-chip>
+          <v-icon
+            v-else
+            icon="mdi-clipboard-check-outline"
+            size="small"
+            color="grey-lighten-1"
+            class="cursor-pointer"
+          />
+        </span>
+      </template>
+      <span v-if="globalAcmgClassification && acmgClassification">
+        Case: {{ acmgClassification }}<br />
+        Global: {{ globalAcmgClassification }}<br />
+        <span class="font-italic">Click for evidence editor</span>
+      </span>
+      <span v-else-if="globalAcmgClassification">
+        Global: {{ globalAcmgClassification }}<br />
+        <span class="font-italic">Click for evidence editor</span>
+      </span>
+      <span v-else-if="acmgClassification">
+        {{ acmgClassification }}<br />
+        <span class="font-italic">Click for evidence editor</span>
+      </span>
+      <span v-else>Classify with ACMG evidence</span>
+    </v-tooltip>
+    <v-tooltip v-else location="top">
+      <template #activator="{ props: tooltipPropsAcmg }">
+        <span v-bind="tooltipPropsAcmg" @click.stop="emit('acmg-evidence-click')">
+          <v-chip
+            v-if="acmgClassification"
             size="x-small"
             :color="ACMG_COLORS[acmgClassification]"
             label
@@ -83,15 +87,19 @@
           </v-chip>
           <v-icon
             v-else
-            v-bind="menuProps"
-            icon="mdi-tag-plus-outline"
+            icon="mdi-clipboard-check-outline"
             size="small"
             color="grey-lighten-1"
             class="cursor-pointer"
           />
-        </template>
+        </span>
       </template>
-    </AcmgMenu>
+      <span v-if="acmgClassification">
+        {{ acmgClassification }}<br />
+        <span class="font-italic">Click for evidence editor</span>
+      </span>
+      <span v-else>Classify with ACMG evidence</span>
+    </v-tooltip>
 
     <!-- Comment icon -->
     <v-tooltip v-if="showGlobalIndicators" location="top">
@@ -129,7 +137,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { AcmgClassification } from '../../../../main/database/types'
-import AcmgMenu from '../AcmgMenu.vue'
 import { ACMG_COLORS, ACMG_ABBREV } from '../../composables/useAnnotations'
 
 interface Props {
@@ -152,6 +159,7 @@ interface Props {
 interface Emits {
   (e: 'star-toggle'): void
   (e: 'acmg-select', classification: AcmgClassification | null): void
+  (e: 'acmg-evidence-click'): void
   (e: 'comment-click'): void
 }
 

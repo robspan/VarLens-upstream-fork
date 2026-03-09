@@ -48,7 +48,7 @@
       @update:options="handleTableOptions"
       @row-click="handleRowClick"
       @star-toggle="handleGlobalStarToggle"
-      @acmg-select="handleGlobalAcmgSelect"
+      @acmg-evidence-click="openAcmgEvidenceDialog"
       @comment-click="openCommentDialog"
       @navigate-to-case="handleNavigateToCase"
       @load-carriers="handleLoadCarriers"
@@ -63,6 +63,15 @@
       :global-timestamps="selectedVariantTimestamps"
       :per-case-timestamps="null"
       @save="handleCommentSave"
+    />
+
+    <!-- ACMG Evidence Dialog -->
+    <AcmgEvidenceDialog
+      ref="acmgEvidenceDialogRef"
+      :evidence-json="acmgEvidenceJson"
+      :variant-data="acmgVariantData"
+      :variant-label="acmgVariantLabel"
+      @change="handleAcmgEvidenceChange"
     />
 
     <!-- Success Snackbar -->
@@ -84,7 +93,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, onMounted } from 'vue'
+import { ref, watch, computed, onMounted, nextTick } from 'vue'
 // Composables
 import { useCohortData } from '../composables/useCohortData'
 import { useFilters } from '../composables/useFilters'
@@ -95,6 +104,7 @@ import { useColumnPreferences } from '../composables/useColumnPreferences'
 import CohortFilterBar from './cohort/CohortFilterBar.vue'
 import CohortDataTable from './cohort/CohortDataTable.vue'
 import CommentDialog from './CommentDialog.vue'
+import AcmgEvidenceDialog from './AcmgEvidenceDialog.vue'
 // Types
 import type { CohortVariant, CohortPaginationCursor } from '../../../shared/types/cohort'
 import type { AcmgClassification } from '../../../main/database/types'
@@ -132,10 +142,11 @@ const { loadCarriers } = useCarriers()
 const {
   isGlobalStarred,
   getGlobalAcmgClassification,
+  getGlobalAcmgEvidence,
   getGlobalComment,
   loadGlobalAnnotationsBatch,
   toggleGlobalStar,
-  setGlobalAcmgClassification,
+  setGlobalAcmgClassificationWithEvidence,
   upsertGlobalComment,
   getAnnotations
 } = useAnnotations()
@@ -152,6 +163,33 @@ const dataTableRef = ref()
 const selectedVariantKey = ref<string | null>(null)
 const commentDialogOpen = ref(false)
 const selectedVariantForComment = ref<CohortVariant | null>(null)
+
+// ACMG evidence dialog state
+const acmgEvidenceDialogRef = ref<InstanceType<typeof AcmgEvidenceDialog> | null>(null)
+const selectedVariantForAcmg = ref<CohortVariant | null>(null)
+
+const acmgEvidenceJson = computed(() => {
+  const v = selectedVariantForAcmg.value
+  if (v === null) return null
+  return getGlobalAcmgEvidence(v.chr, v.pos, v.ref, v.alt)
+})
+
+const acmgVariantData = computed(() => {
+  const v = selectedVariantForAcmg.value
+  if (v === null) return null
+  return {
+    gnomad_af: v.gnomad_af ?? null,
+    cadd: v.cadd_phred ?? null,
+    clinvar: v.clinvar ?? null
+  }
+})
+
+const acmgVariantLabel = computed(() => {
+  const v = selectedVariantForAcmg.value
+  if (v === null) return ''
+  return `${v.chr}:${v.pos} ${v.ref}>${v.alt}${v.gene_symbol !== null ? ` (${v.gene_symbol})` : ''}`
+})
+
 const exporting = ref(false)
 const snackbar = ref({
   visible: false,
@@ -349,16 +387,26 @@ const handleGlobalStarToggle = async (item: CohortVariant) => {
   await toggleGlobalStar(item.chr, item.pos, item.ref, item.alt)
 }
 
-const handleGlobalAcmgSelect = async (payload: {
-  item: CohortVariant
+const openAcmgEvidenceDialog = (item: CohortVariant): void => {
+  selectedVariantForAcmg.value = item
+  nextTick(() => {
+    acmgEvidenceDialogRef.value?.open()
+  })
+}
+
+const handleAcmgEvidenceChange = async (payload: {
   classification: AcmgClassification | null
-}) => {
-  await setGlobalAcmgClassification(
-    payload.item.chr,
-    payload.item.pos,
-    payload.item.ref,
-    payload.item.alt,
-    payload.classification
+  evidenceJson: string
+}): Promise<void> => {
+  const v = selectedVariantForAcmg.value
+  if (v === null) return
+  await setGlobalAcmgClassificationWithEvidence(
+    v.chr,
+    v.pos,
+    v.ref,
+    v.alt,
+    payload.classification,
+    payload.evidenceJson
   )
 }
 

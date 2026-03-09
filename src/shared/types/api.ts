@@ -100,7 +100,8 @@ export type {
   CommentCategory,
   MetricDefinition,
   CaseMetric,
-  CaseMetricWithDefinition
+  CaseMetricWithDefinition,
+  AuditLogEntry
 }
 
 export interface CasesAPI {

@@ -74,7 +74,7 @@
         </template>
         <v-list density="compact" nav>
           <v-list-item
-            v-for="cls in CLASSIFICATIONS"
+            v-for="cls in ACMG_CLASSIFICATIONS"
             :key="cls"
             :active="isOverride && overrideClassification === cls"
             @click="handleOverride(cls)"
@@ -304,7 +304,7 @@ import {
 } from '../utils/acmg/types'
 import type { VariantAnnotationData } from '../utils/acmg/acmg-suggestions'
 import { useAcmgEvidence } from '../composables/useAcmgEvidence'
-import { ACMG_COLORS } from '../composables/useAnnotations'
+import { ACMG_COLORS, ACMG_CLASSIFICATIONS } from '../composables/useAnnotations'
 
 const props = defineProps<{
   /** Current acmg_evidence JSON string from database */
@@ -322,14 +322,6 @@ const emit = defineEmits<{
     }
   ]
 }>()
-
-const CLASSIFICATIONS: AcmgClassification[] = [
-  'Pathogenic',
-  'Likely Pathogenic',
-  'VUS',
-  'Likely Benign',
-  'Benign'
-]
 
 /** Color per strength level for active code chips/buttons */
 const STRENGTH_COLORS: Record<EvidenceStrength, string> = {

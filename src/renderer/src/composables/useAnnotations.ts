@@ -600,6 +600,15 @@ export function useAnnotations() {
   }
 }
 
+// ACMG classification values in display order
+export const ACMG_CLASSIFICATIONS: AcmgClassification[] = [
+  'Pathogenic',
+  'Likely Pathogenic',
+  'VUS',
+  'Likely Benign',
+  'Benign'
+]
+
 // ACMG color mapping for badges
 export const ACMG_COLORS: Record<AcmgClassification, string> = {
   Pathogenic: 'error', // Red

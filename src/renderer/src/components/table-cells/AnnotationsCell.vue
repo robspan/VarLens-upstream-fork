@@ -91,7 +91,7 @@
       <v-card class="pa-2" min-width="200">
         <div class="d-flex flex-wrap ga-1 mb-2">
           <v-chip
-            v-for="cls in CLASSIFICATIONS"
+            v-for="cls in ACMG_CLASSIFICATIONS"
             :key="cls"
             :color="acmgClassification === cls ? ACMG_COLORS[cls] : undefined"
             :variant="acmgClassification === cls ? 'flat' : 'outlined'"
@@ -158,15 +158,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { AcmgClassification } from '../../../../main/database/types'
-import { ACMG_COLORS, ACMG_ABBREV } from '../../composables/useAnnotations'
-
-const CLASSIFICATIONS: AcmgClassification[] = [
-  'Pathogenic',
-  'Likely Pathogenic',
-  'VUS',
-  'Likely Benign',
-  'Benign'
-]
+import { ACMG_COLORS, ACMG_ABBREV, ACMG_CLASSIFICATIONS } from '../../composables/useAnnotations'
 
 interface Props {
   /** Current starred state (per-case for Case Analysis, global for Cohort) */

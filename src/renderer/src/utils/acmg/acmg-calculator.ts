@@ -78,11 +78,12 @@ function countByStrength(codes: AcmgEvidenceCode[]): StrengthCounts {
  *   6. 2 PM + ≥2 PP
  *   7. 1 PM + ≥4 PP
  *
- * Benign requires one of:
+ * Benign requires one of (checked first — BA1/strong benign always wins):
  *   1. BA1 (stand-alone)
  *   2. ≥2 BS
  *
- * Likely Benign requires one of:
+ * Likely Benign requires one of (checked after pathogenic/LP to avoid
+ * weak benign evidence overriding strong pathogenic combinations):
  *   1. 1 BS + 1 BP
  *   2. ≥2 BP
  *
@@ -95,15 +96,12 @@ export function classifyByRules(
   const p = countByStrength(pathogenic)
   const b = countByStrength(benign)
 
-  // --- Benign rules (check first: BA1 is stand-alone) ---
+  // --- Benign stand-alone (BA1) and strong benign (≥2 BS) always win ---
   if (b.standAlone >= 1) return 'Benign'
   if (b.strong >= 2) return 'Benign'
 
-  // Likely Benign
-  if (b.strong >= 1 && b.supporting >= 1) return 'Likely Benign'
-  if (b.supporting >= 2) return 'Likely Benign'
-
-  // --- Pathogenic rules ---
+  // --- Pathogenic rules (evaluated before Likely Benign to avoid
+  //     weak benign evidence overriding strong pathogenic combinations) ---
   // PVS1 combinations
   if (p.veryStrong >= 1) {
     if (p.strong >= 1) return 'Pathogenic' // PVS + PS
@@ -132,6 +130,10 @@ export function classifyByRules(
   if (p.moderate >= 3) return 'Likely Pathogenic' // 3 PM
   if (p.moderate >= 2 && p.supporting >= 2) return 'Likely Pathogenic' // 2 PM + 2 PP
   if (p.moderate >= 1 && p.supporting >= 4) return 'Likely Pathogenic' // 1 PM + 4 PP
+
+  // --- Likely Benign rules (after pathogenic/LP to avoid overriding strong pathogenic evidence) ---
+  if (b.strong >= 1 && b.supporting >= 1) return 'Likely Benign'
+  if (b.supporting >= 2) return 'Likely Benign'
 
   return 'VUS'
 }

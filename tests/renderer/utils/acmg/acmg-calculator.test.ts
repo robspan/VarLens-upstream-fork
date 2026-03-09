@@ -244,6 +244,19 @@ describe('classifyByRules (ACMG/AMP 2015)', () => {
     const b = [makeBenignCode('BP4', 'supporting')]
     expect(classifyByRules([], b)).toBe('VUS')
   })
+
+  // --- Conflicting evidence: pathogenic should override weak benign ---
+  it('PVS1 + PS1 + 2 BP = Pathogenic (strong pathogenic overrides weak benign)', () => {
+    const p = [makeCode('PVS1', 'very_strong'), makeCode('PS1', 'strong')]
+    const b = [makeBenignCode('BP4', 'supporting'), makeBenignCode('BP7', 'supporting')]
+    expect(classifyByRules(p, b)).toBe('Pathogenic')
+  })
+
+  it('BA1 + PVS1 + PS1 = Benign (BA1 stand-alone always wins)', () => {
+    const p = [makeCode('PVS1', 'very_strong'), makeCode('PS1', 'strong')]
+    const b = [makeBenignCode('BA1', 'stand_alone')]
+    expect(classifyByRules(p, b)).toBe('Benign')
+  })
 })
 
 describe('calculateClassification', () => {

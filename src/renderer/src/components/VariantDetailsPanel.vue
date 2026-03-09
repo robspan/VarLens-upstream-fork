@@ -82,7 +82,7 @@
             <!-- Quick-classify chips -->
             <div class="d-flex flex-wrap ga-1 mb-2">
               <v-chip
-                v-for="cls in CLASSIFICATIONS"
+                v-for="cls in ACMG_CLASSIFICATIONS"
                 :key="cls"
                 :color="currentQuickClassification === cls ? ACMG_COLORS[cls] : undefined"
                 :variant="currentQuickClassification === cls ? 'flat' : 'outlined'"
@@ -185,7 +185,7 @@ import ActivityLogPanel from './ActivityLogPanel.vue'
 import type { Variant } from '../../../shared/types/api'
 import type { CohortVariant } from '../../../shared/types/cohort'
 import type { AcmgClassification } from '../../../main/database/types'
-import { ACMG_COLORS, ACMG_ABBREV } from '../composables/useAnnotations'
+import { ACMG_COLORS, ACMG_ABBREV, ACMG_CLASSIFICATIONS } from '../composables/useAnnotations'
 
 interface Props {
   open: boolean
@@ -209,14 +209,6 @@ const { detailPanelFullWidth, width: displayWidth } = useResponsiveLayout()
 const effectiveWidth = computed(() =>
   detailPanelFullWidth.value ? displayWidth.value : panelWidth.value
 )
-
-const CLASSIFICATIONS: AcmgClassification[] = [
-  'Pathogenic',
-  'Likely Pathogenic',
-  'VUS',
-  'Likely Benign',
-  'Benign'
-]
 
 // Use annotations composable
 const {

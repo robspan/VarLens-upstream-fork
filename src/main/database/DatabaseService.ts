@@ -26,7 +26,10 @@ import type {
   CommentCategory,
   MetricDefinition,
   CaseMetric,
-  CaseMetricWithDefinition
+  CaseMetricWithDefinition,
+  AuditLogEntry,
+  AuditActionType,
+  AuditEntityType
 } from './types'
 import type { DatabaseOverview } from '../../shared/types/database-overview'
 import type { FilterOptions } from '../../shared/types/api'
@@ -39,6 +42,8 @@ import { MetadataRepository } from './MetadataRepository'
 import { TagRepository } from './TagRepository'
 import { VariantRepository } from './VariantRepository'
 import { DatabaseOverviewService } from './DatabaseOverviewService'
+import { AuditLogRepository } from './AuditLogRepository'
+import type { AuditQueryFilter, AuditQueryResult } from './AuditLogRepository'
 
 /**
  * DatabaseService class
@@ -58,6 +63,7 @@ export class DatabaseService {
   private tags: TagRepository
   private variantsRepo: VariantRepository
   private overview: DatabaseOverviewService
+  private auditLog: AuditLogRepository
 
   /**
    * Create a new DatabaseService instance
@@ -110,6 +116,7 @@ export class DatabaseService {
       this.tags = new TagRepository(this.db, this.statementCache)
       this.variantsRepo = new VariantRepository(this.db, this.statementCache, this.cases)
       this.overview = new DatabaseOverviewService(this.db, this.statementCache)
+      this.auditLog = new AuditLogRepository(this.db, this.statementCache)
 
       // Clean up expired API cache entries on startup
       this.db.prepare('DELETE FROM api_cache WHERE expires_at < ?').run(Date.now())
@@ -324,6 +331,26 @@ export class DatabaseService {
     alt: string
   ): { global: VariantAnnotation | null; perCase: CaseVariantAnnotation | null } {
     return this.annotations.getAnnotationsForVariant(caseId, chr, pos, ref, alt)
+  }
+
+  // Audit log delegates
+  appendAuditEntry(input: {
+    action_type: AuditActionType
+    entity_type: AuditEntityType
+    entity_key: string
+    old_value: string | null
+    new_value: string | null
+    user_name: string | null
+  }): AuditLogEntry {
+    return this.auditLog.appendEntry(input)
+  }
+
+  getAuditByEntityKey(entityKey: string): AuditLogEntry[] {
+    return this.auditLog.getByEntityKey(entityKey)
+  }
+
+  queryAuditLog(filter: AuditQueryFilter): AuditQueryResult {
+    return this.auditLog.query(filter)
   }
 
   getCaseMetadata(caseId: number): CaseMetadata | null {

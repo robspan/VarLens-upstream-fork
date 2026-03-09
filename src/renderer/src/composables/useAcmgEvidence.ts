@@ -6,7 +6,7 @@ import type {
   AcmgClassification,
   EvidenceStrength
 } from '../utils/acmg/types'
-import { PATHOGENIC_CODES, DEFAULT_STRENGTHS } from '../utils/acmg/types'
+import { PATHOGENIC_CODES, getDefaultStrength } from '../utils/acmg/types'
 import { calculateClassification } from '../utils/acmg/acmg-calculator'
 import { generateSuggestions, type VariantAnnotationData } from '../utils/acmg/acmg-suggestions'
 import { serializeEvidence, deserializeEvidence } from '../utils/acmg/acmg-serialization'
@@ -37,10 +37,9 @@ export function useAcmgEvidence() {
     if (index >= 0) {
       list.value.splice(index, 1)
     } else {
-      const prefix = code.replace(/\d+$/, '')
       list.value.push({
         code,
-        strength: DEFAULT_STRENGTHS[prefix] ?? 'supporting',
+        strength: getDefaultStrength(code),
         auto_suggested: false,
         confirmed: true
       })

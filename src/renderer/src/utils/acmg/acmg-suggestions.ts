@@ -1,5 +1,5 @@
 import type { AcmgEvidenceCode } from './types'
-import { DEFAULT_STRENGTHS } from './types'
+import { getDefaultStrength } from './types'
 
 /**
  * Variant annotation data used for auto-suggestion
@@ -23,10 +23,9 @@ export function generateSuggestions(data: VariantAnnotationData): AcmgEvidenceCo
   function add(code: AcmgEvidenceCode['code'], source: string): void {
     if (addedCodes.has(code)) return
     addedCodes.add(code)
-    const prefix = code.replace(/\d+$/, '')
     suggestions.push({
       code,
-      strength: DEFAULT_STRENGTHS[prefix] ?? 'supporting',
+      strength: getDefaultStrength(code),
       auto_suggested: true,
       confirmed: false,
       source
@@ -40,6 +39,7 @@ export function generateSuggestions(data: VariantAnnotationData): AcmgEvidenceCo
     } else if (data.gnomad_af >= 0.01) {
       add('BS1', 'gnomad_af')
     } else if (data.gnomad_af < 0.00001) {
+      // ClinGen SVI: PM2 defaults to supporting via getDefaultStrength()
       add('PM2', 'gnomad_af')
     }
   }

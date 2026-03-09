@@ -1,5 +1,5 @@
 import type { AcmgEvidenceState, AcmgEvidenceCode, AcmgCode } from './types'
-import { DEFAULT_STRENGTHS } from './types'
+import { getDefaultStrength } from './types'
 
 /**
  * Serialize evidence state to JSON string for storage
@@ -12,10 +12,9 @@ export function serializeEvidence(state: AcmgEvidenceState): string {
  * Migrate an old-format string code to new AcmgEvidenceCode
  */
 function migrateStringCode(code: string): AcmgEvidenceCode {
-  const prefix = code.replace(/\d+$/, '')
   return {
     code: code as AcmgCode,
-    strength: DEFAULT_STRENGTHS[prefix] ?? 'supporting',
+    strength: getDefaultStrength(code as AcmgCode),
     auto_suggested: false,
     confirmed: true
   }

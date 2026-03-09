@@ -66,6 +66,29 @@ export const DEFAULT_STRENGTHS: Record<string, EvidenceStrength> = {
 }
 
 /**
+ * Per-code strength overrides based on ClinGen SVI recommendations.
+ * These take precedence over prefix-based defaults.
+ *
+ * PM2: ClinGen SVI recommends using at supporting level only (PM2_Supporting).
+ *       See: https://clinicalgenome.org/docs/pm2-recommendation-for-absence-rarity/
+ */
+export const CODE_STRENGTH_OVERRIDES: Partial<Record<AcmgCode, EvidenceStrength>> = {
+  PM2: 'supporting'
+}
+
+/**
+ * Get the recommended default strength for a given ACMG code,
+ * considering ClinGen SVI per-code overrides.
+ */
+export function getDefaultStrength(code: AcmgCode): EvidenceStrength {
+  if (code in CODE_STRENGTH_OVERRIDES) {
+    return CODE_STRENGTH_OVERRIDES[code as keyof typeof CODE_STRENGTH_OVERRIDES]!
+  }
+  const prefix = code.replace(/\d+$/, '')
+  return DEFAULT_STRENGTHS[prefix] ?? 'supporting'
+}
+
+/**
  * Human-readable descriptions for each ACMG evidence code (shown in tooltips)
  */
 export const CODE_DESCRIPTIONS: Record<AcmgCode, string> = {
@@ -75,7 +98,7 @@ export const CODE_DESCRIPTIONS: Record<AcmgCode, string> = {
   PS3: 'Well-established functional studies show damaging effect',
   PS4: 'Prevalence in affected significantly increased vs. controls',
   PM1: 'Located in a mutational hot spot or well-established functional domain',
-  PM2: 'Absent or extremely low frequency in population databases',
+  PM2: 'Absent or extremely low frequency in population databases (ClinGen SVI: use as supporting)',
   PM3: 'Detected in trans with a pathogenic variant (recessive disorders)',
   PM4: 'Protein length change due to in-frame indel or stop-loss',
   PM5: 'Novel missense at same position as established pathogenic missense',

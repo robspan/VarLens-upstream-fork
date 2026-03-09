@@ -33,7 +33,8 @@ describe('useAcmgEvidence', () => {
     toggleCode('PVS1')
     toggleCode('PM2')
     toggleCode('PP3')
-    expect(classificationResult.value.netPoints).toBe(11)
+    // PVS1(8) + PM2(1, ClinGen SVI supporting) + PP3(1) = 10
+    expect(classificationResult.value.netPoints).toBe(10)
     expect(effectiveClassification.value).toBe('Pathogenic')
   })
 

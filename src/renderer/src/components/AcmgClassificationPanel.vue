@@ -297,11 +297,11 @@ import {
   PATHOGENIC_CODES,
   BENIGN_CODES,
   CODE_DESCRIPTIONS,
-  DEFAULT_STRENGTHS,
   STRENGTH_OPTIONS,
   EVIDENCE_POINTS,
   DEPRECATED_CODES
 } from '../utils/acmg/types'
+import { getDefaultStrength as getDefaultCodeStrength } from '../utils/acmg/types'
 import type { VariantAnnotationData } from '../utils/acmg/acmg-suggestions'
 import { useAcmgEvidence } from '../composables/useAcmgEvidence'
 import { ACMG_COLORS, ACMG_CLASSIFICATIONS } from '../composables/useAnnotations'
@@ -418,13 +418,11 @@ const benignGroups = computed((): CodeGroup[] => [
 function getCodeStrength(code: AcmgCode): EvidenceStrength {
   const all = [...pathogenicCodes.value, ...benignCodes.value]
   const entry = all.find((c) => c.code === code)
-  const prefix = code.replace(/\d+$/, '')
-  return entry?.strength ?? DEFAULT_STRENGTHS[prefix] ?? 'supporting'
+  return entry?.strength ?? getDefaultCodeStrength(code)
 }
 
-function getDefaultStrength(code: string): EvidenceStrength {
-  const prefix = code.replace(/\d+$/, '')
-  return DEFAULT_STRENGTHS[prefix] ?? 'supporting'
+function getDefaultStrength(code: AcmgCode): EvidenceStrength {
+  return getDefaultCodeStrength(code)
 }
 
 function isDeprecated(code: AcmgCode): boolean {

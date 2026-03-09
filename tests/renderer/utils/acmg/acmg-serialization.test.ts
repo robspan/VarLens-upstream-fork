@@ -77,7 +77,8 @@ describe('deserializeEvidence', () => {
     expect(result!.pathogenic[0].strength).toBe('very_strong')
     expect(result!.pathogenic[0].confirmed).toBe(true)
     expect(result!.pathogenic[1].code).toBe('PM2')
-    expect(result!.pathogenic[1].strength).toBe('moderate')
+    // PM2 defaults to supporting per ClinGen SVI recommendation
+    expect(result!.pathogenic[1].strength).toBe('supporting')
     expect(result!.benign[0].code).toBe('BP4')
     expect(result!.benign[0].strength).toBe('supporting')
     expect(result!.notes).toBe('old note')

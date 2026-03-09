@@ -22,6 +22,8 @@ import { CLINICAL_METRICS } from './clinical-metrics'
  * - 4: v0.15.0 add sex column to case_metadata
  * - 5: v0.16.0 performance indexes
  * - 6: v0.17.0 case comments and metrics tables
+ * - 7: v0.18.0 audit trail table
+ * - 8: v0.20.0 add age and date_of_birth to case_metadata
  *
  * @param db - better-sqlite3-multiple-ciphers Database instance
  */
@@ -327,5 +329,20 @@ export function runMigrations(db: Database.Database): void {
     `)
 
     db.exec('PRAGMA user_version = 7')
+  }
+
+  // Version 7 → 8: Add age and date_of_birth to case_metadata (gene burden analysis)
+  if (currentVersion < 8) {
+    const columns = db.prepare('PRAGMA table_info(case_metadata)').all() as { name: string }[]
+    const hasAge = columns.some((c) => c.name === 'age')
+
+    if (!hasAge) {
+      db.exec(`
+        ALTER TABLE case_metadata ADD COLUMN age REAL;
+        ALTER TABLE case_metadata ADD COLUMN date_of_birth TEXT;
+      `)
+    }
+
+    db.exec('PRAGMA user_version = 8')
   }
 }

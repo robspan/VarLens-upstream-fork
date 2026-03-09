@@ -238,6 +238,10 @@ export interface CaseMetadata {
   sex: 'unknown' | 'male' | 'female' | 'other' | null
   /** Case notes */
   notes: string | null
+  /** Age at assessment */
+  age: number | null
+  /** Date of birth (ISO string) */
+  date_of_birth: string | null
   /** Unix timestamp in milliseconds */
   created_at: number
   /** Unix timestamp in milliseconds */

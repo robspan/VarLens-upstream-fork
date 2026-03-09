@@ -1,0 +1,61 @@
+[
+  {
+    "name": "perfect_separation",
+    "burden": [
+      1.0,
+      2.0,
+      1.5,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "y": [
+      1.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "covariates": null,
+    "standard_logit_converged": false,
+    "firth_required": true
+  },
+  {
+    "name": "quasi_separation",
+    "burden": [
+      1.0,
+      2.0,
+      1.5,
+      0.5,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "y": [
+      1.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "covariates": null,
+    "firth_required": true
+  }
+]

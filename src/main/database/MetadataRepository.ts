@@ -21,18 +21,26 @@ export class MetadataRepository extends BaseRepository {
 
   upsertCaseMetadata(
     caseId: number,
-    updates: { affected_status?: string | null; sex?: string | null; notes?: string | null }
+    updates: {
+      affected_status?: string | null
+      sex?: string | null
+      notes?: string | null
+      age?: number | null
+      date_of_birth?: string | null
+    }
   ): CaseMetadata {
     return this.runTransaction(() => {
       const now = Date.now()
       const result = this.stmt(
         `
-        INSERT INTO case_metadata (case_id, affected_status, sex, notes, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO case_metadata (case_id, affected_status, sex, notes, age, date_of_birth, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(case_id) DO UPDATE SET
           affected_status = COALESCE(excluded.affected_status, affected_status),
           sex = COALESCE(excluded.sex, sex),
           notes = COALESCE(excluded.notes, notes),
+          age = COALESCE(excluded.age, age),
+          date_of_birth = COALESCE(excluded.date_of_birth, date_of_birth),
           updated_at = excluded.updated_at
         RETURNING *
       `
@@ -41,6 +49,8 @@ export class MetadataRepository extends BaseRepository {
         updates.affected_status ?? null,
         updates.sex ?? null,
         updates.notes ?? null,
+        updates.age ?? null,
+        updates.date_of_birth ?? null,
         now,
         now
       ) as CaseMetadata

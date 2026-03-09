@@ -347,6 +347,8 @@ export interface CaseMetadataUpdates {
   affected_status?: AffectedStatus | null
   sex?: CaseSex | null
   notes?: string | null
+  age?: number | null
+  date_of_birth?: string | null
 }
 
 export interface FullCaseMetadata {

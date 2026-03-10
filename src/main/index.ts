@@ -6,6 +6,7 @@ import { registerIpcHandlers } from './ipc'
 import { initDatabaseManager, closeDatabaseManager } from './database'
 import { mainLogger } from './services/MainLogger'
 import { initAutoUpdater, scheduleUpdateChecks } from './services/AutoUpdater'
+import { APP_CONFIG } from '../shared/config'
 
 // Global error handlers — surfaces crashes that would otherwise be silent on Windows
 process.on('uncaughtException', (error) => {
@@ -35,8 +36,8 @@ function getAppIcon(): Electron.NativeImage {
 function createWindow(): void {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 900,
+    width: APP_CONFIG.WINDOW_WIDTH,
+    height: APP_CONFIG.WINDOW_HEIGHT,
     show: false,
     title: 'Varlens',
     autoHideMenuBar: true,
@@ -125,8 +126,8 @@ if (gotTheLock !== true) {
     // Initialize database manager with default database
     initDatabaseManager()
 
-    // Register IPC handlers (await to catch load errors)
-    await registerIpcHandlers()
+    // Register IPC handlers
+    registerIpcHandlers()
 
     // Initialize auto-updater and schedule periodic checks
     initAutoUpdater()

@@ -1,175 +1,55 @@
 <template>
-  <v-dialog v-model="dialog" max-width="700" :persistent="phase === 'importing'">
+  <v-dialog
+    v-model="dialog"
+    max-width="700"
+    :persistent="phase === 'importing' || phase === 'summary'"
+  >
     <v-card>
-      <v-card-title>Batch Import</v-card-title>
+      <v-card-title class="d-flex align-center">
+        Batch Import
+        <v-spacer />
+        <v-btn
+          v-if="phase !== 'importing'"
+          icon="mdi-close"
+          size="small"
+          variant="text"
+          @click="phase === 'summary' ? handleCancel() : closeDialog()"
+        />
+      </v-card-title>
 
       <v-card-text>
-        <!-- Review phase (always shown before import) -->
-        <div v-if="phase === 'review'">
-          <v-text-field
-            v-model="stripText"
-            label="Remove from names"
-            placeholder="e.g. _results, LB24-"
-            variant="outlined"
-            density="compact"
-            clearable
-            hide-details
-            class="mb-3"
-            prepend-inner-icon="mdi-text-search-variant"
-          />
+        <BatchReviewPhase
+          v-if="phase === 'review'"
+          v-model:strip-text="stripText"
+          v-model:duplicate-strategy="duplicateStrategy"
+          :review-files="reviewFiles"
+          :file-count="fileCount"
+          :duplicate-count="duplicateCount"
+          :has-empty-case-names="hasEmptyCaseNames"
+        />
 
-          <v-alert v-if="duplicateCount > 0" type="warning" variant="tonal" class="mb-3">
-            {{ duplicateCount }} of {{ fileCount }} files already exist as cases.
-          </v-alert>
+        <BatchZipPasswordPhase
+          v-if="phase === 'zip-password'"
+          v-model:zip-password="zipPassword"
+          v-model:show-zip-password="showZipPassword"
+          :zip-error-message="zipErrorMessage"
+          @unlock="handleZipUnlock"
+        />
 
-          <div v-if="duplicateCount > 0">
-            <v-radio-group v-model="duplicateStrategy" class="mb-3" hide-details>
-              <v-radio value="skip" color="primary">
-                <template #label>
-                  <div>
-                    <strong>Skip duplicates</strong>
-                    <div class="text-body-small text-medium-emphasis">
-                      Only import new files, leave existing cases unchanged
-                    </div>
-                  </div>
-                </template>
-              </v-radio>
-              <v-radio value="overwrite" color="warning">
-                <template #label>
-                  <div>
-                    <strong>Overwrite duplicates</strong>
-                    <div class="text-body-small text-medium-emphasis">
-                      Replace existing cases with data from the selected files
-                    </div>
-                  </div>
-                </template>
-              </v-radio>
-            </v-radio-group>
-            <v-divider class="mb-3" />
-          </div>
+        <BatchProgressPhase
+          v-if="phase === 'importing'"
+          :current-file-name="currentFileName"
+          :current-index="currentIndex"
+          :total-files="totalFiles"
+          :overall-percent="overallPercent"
+          :variant-count="variantCount"
+        />
 
-          <div class="text-body-small text-medium-emphasis mb-2">
-            {{ fileCount }} file{{ fileCount !== 1 ? 's' : '' }} to import:
-          </div>
-          <v-list density="compact" class="pa-0" max-height="300" style="overflow-y: auto">
-            <v-list-item
-              v-for="(file, i) in reviewFiles"
-              :key="i"
-              :class="file.isDuplicate ? 'text-warning' : ''"
-            >
-              <template #prepend>
-                <v-icon v-if="file.isDuplicate" color="warning" size="small">
-                  mdi-alert-circle-outline
-                </v-icon>
-                <v-icon v-else color="success" size="small"> mdi-new-box </v-icon>
-              </template>
-              <v-list-item-title class="text-body-medium">
-                {{ file.caseName }}
-                <span v-if="file.isDuplicate" class="text-body-small text-warning ml-1">
-                  (exists)
-                </span>
-              </v-list-item-title>
-              <v-list-item-subtitle v-if="file.caseName !== file.fileName" class="text-body-small">
-                {{ file.fileName }}
-              </v-list-item-subtitle>
-            </v-list-item>
-          </v-list>
-
-          <v-alert
-            v-if="hasEmptyCaseNames"
-            type="error"
-            variant="tonal"
-            density="compact"
-            class="mt-3"
-          >
-            Some case names are empty after stripping. Adjust the text to remove.
-          </v-alert>
-        </div>
-
-        <!-- ZIP password phase -->
-        <div v-if="phase === 'zip-password'">
-          <div class="text-body-medium mb-4">This archive is password-protected.</div>
-          <v-text-field
-            v-model="zipPassword"
-            label="Password"
-            :type="showZipPassword ? 'text' : 'password'"
-            :append-inner-icon="showZipPassword ? 'mdi-eye-off' : 'mdi-eye'"
-            :error-messages="zipErrorMessage"
-            autofocus
-            @click:append-inner="showZipPassword = !showZipPassword"
-            @keyup.enter="handleZipUnlock"
-          />
-        </div>
-
-        <!-- Importing phase -->
-        <div v-if="phase === 'importing'" class="mt-4">
-          <div class="text-body-medium mb-2">
-            Importing {{ currentFileName }} ({{ currentIndex + 1 }} of {{ totalFiles }})
-          </div>
-          <v-progress-linear :model-value="overallPercent" color="primary" height="25" class="mb-2">
-            <template #default>{{ overallPercent }}%</template>
-          </v-progress-linear>
-          <div v-if="variantCount > 0" class="text-body-small">
-            Variants processed: {{ variantCount.toLocaleString() }}
-          </div>
-        </div>
-
-        <!-- Summary phase -->
-        <div v-if="phase === 'summary'">
-          <div class="d-flex gap-2 mb-4">
-            <v-chip color="success" variant="flat">
-              <v-icon start>mdi-check-circle</v-icon>
-              Succeeded: {{ summary.succeeded }}
-            </v-chip>
-            <v-chip v-if="summary.failed > 0" color="error" variant="flat">
-              <v-icon start>mdi-alert-circle</v-icon>
-              Failed: {{ summary.failed }}
-            </v-chip>
-            <v-chip v-if="summary.skipped > 0" color="secondary" variant="flat">
-              <v-icon start>mdi-skip-next</v-icon>
-              Skipped: {{ summary.skipped }}
-            </v-chip>
-          </div>
-
-          <v-alert v-if="summary.cancelled" type="info" class="mb-4">
-            Import was cancelled. {{ summary.succeeded }} files were imported before cancellation.
-          </v-alert>
-
-          <v-expansion-panels v-if="summary.details.length > 0" variant="accordion">
-            <v-expansion-panel v-for="(detail, i) in summary.details" :key="i">
-              <v-expansion-panel-title>
-                <div class="d-flex align-center gap-2">
-                  <v-icon v-if="detail.status === 'success'" color="success" size="small">
-                    mdi-check-circle
-                  </v-icon>
-                  <v-icon v-else-if="detail.status === 'failed'" color="error" size="small">
-                    mdi-alert-circle
-                  </v-icon>
-                  <v-icon v-else color="secondary" size="small"> mdi-skip-next </v-icon>
-                  <span>{{ detail.fileName }}</span>
-                  <span v-if="detail.variantCount !== undefined" class="text-body-small ml-2">
-                    ({{ detail.variantCount.toLocaleString() }} variants)
-                  </span>
-                </div>
-              </v-expansion-panel-title>
-              <v-expansion-panel-text>
-                <div v-if="detail.status === 'success'">
-                  <strong>Case:</strong> {{ detail.caseName }}<br />
-                  <strong>Variants:</strong> {{ detail.variantCount?.toLocaleString() }} imported
-                </div>
-                <div v-else-if="detail.status === 'failed'">
-                  <strong>Error:</strong> {{ detail.error }}
-                </div>
-                <div v-else><strong>Reason:</strong> {{ detail.error ?? 'Skipped' }}</div>
-              </v-expansion-panel-text>
-            </v-expansion-panel>
-          </v-expansion-panels>
-        </div>
+        <BatchSummaryPhase v-if="phase === 'summary'" :summary="summary" />
       </v-card-text>
 
       <v-card-actions>
         <v-spacer />
-        <v-btn v-if="phase === 'review'" variant="text" @click="closeDialog"> Cancel </v-btn>
         <v-btn
           v-if="phase === 'review'"
           color="primary"
@@ -192,7 +72,6 @@
           Unlock
         </v-btn>
         <v-btn v-if="phase === 'importing'" @click="handleCancel"> Cancel </v-btn>
-        <v-btn v-if="phase === 'summary'" @click="handleCancel"> Close </v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -206,8 +85,15 @@ import type {
   DuplicateChoice,
   DuplicateCheckItem
 } from '../../../shared/types/api'
+import { useApiService } from '../composables/useApiService'
+import BatchReviewPhase from './batch-import/BatchReviewPhase.vue'
+import BatchProgressPhase from './batch-import/BatchProgressPhase.vue'
+import BatchSummaryPhase from './batch-import/BatchSummaryPhase.vue'
+import BatchZipPasswordPhase from './batch-import/BatchZipPasswordPhase.vue'
 
 type Phase = 'idle' | 'review' | 'importing' | 'summary' | 'zip-password'
+
+const { api } = useApiService()
 
 const dialog = ref(false)
 const phase = ref<Phase>('idle')
@@ -280,14 +166,25 @@ const hasEmptyCaseNames = computed(() => reviewFiles.value.some((f) => f.caseNam
 // eslint-disable-next-line no-undef
 let recheckTimeout: ReturnType<typeof setTimeout> | null = null
 
+// Emit refresh event when dialog closes from summary phase (handles Escape, overlay click, etc.)
+watch(dialog, (newVal, oldVal) => {
+  if (oldVal === true && newVal === false && phase.value === 'summary') {
+    if (isZipImport.value === true) {
+      api!.batchImport.cleanupZipTemp()
+    }
+    if (summary.value.succeeded > 0) {
+      emit('batch-import-complete', { totalImported: summary.value.succeeded })
+    }
+  }
+})
+
 watch(stripText, () => {
   // eslint-disable-next-line no-undef
   if (recheckTimeout !== null) clearTimeout(recheckTimeout)
   // eslint-disable-next-line no-undef
   recheckTimeout = setTimeout(async () => {
     if (selectedFilePaths.value.length === 0) return
-    // eslint-disable-next-line no-undef
-    const checkResult = await window.api.batchImport.checkDuplicates(
+    const checkResult = await api!.batchImport.checkDuplicates(
       [...selectedFilePaths.value],
       stripText.value || undefined
     )
@@ -303,8 +200,7 @@ const show = async (mode: 'files' | 'folder' | 'zip'): Promise<void> => {
   resetState()
 
   if (mode === 'zip') {
-    // eslint-disable-next-line no-undef
-    const result = await window.api.batchImport.selectZip()
+    const result = await api!.batchImport.selectZip()
     if (result === null) return
 
     zipPath.value = result.filePath
@@ -322,11 +218,9 @@ const show = async (mode: 'files' | 'folder' | 'zip'): Promise<void> => {
   let filePaths: string[]
 
   if (mode === 'files') {
-    // eslint-disable-next-line no-undef
-    filePaths = await window.api.batchImport.selectFiles()
+    filePaths = await api!.batchImport.selectFiles()
   } else {
-    // eslint-disable-next-line no-undef
-    filePaths = await window.api.batchImport.selectFolder()
+    filePaths = await api!.batchImport.selectFolder()
   }
 
   if (filePaths.length === 0) return
@@ -335,8 +229,7 @@ const show = async (mode: 'files' | 'folder' | 'zip'): Promise<void> => {
   fileCount.value = filePaths.length
   dialog.value = true
 
-  // eslint-disable-next-line no-undef
-  const checkResult = await window.api.batchImport.checkDuplicates(filePaths)
+  const checkResult = await api!.batchImport.checkDuplicates(filePaths)
   duplicateCheckFiles.value = checkResult.files
   duplicateCount.value = checkResult.duplicateCount
   phase.value = 'review'
@@ -347,31 +240,27 @@ const show = async (mode: 'files' | 'folder' | 'zip'): Promise<void> => {
  */
 const extractAndShowReview = async (zipFilePath: string, password?: string): Promise<void> => {
   try {
-    // eslint-disable-next-line no-undef
-    const result = await window.api.batchImport.extractZip(zipFilePath, password)
+    const result = await api!.batchImport.extractZip(zipFilePath, password)
 
     if (result.files.length === 0) {
       zipErrorMessage.value = 'No importable files found in archive.'
       if (result.errors.length > 0) {
         zipErrorMessage.value += ' Errors: ' + result.errors.join('; ')
       }
-      // eslint-disable-next-line no-undef
-      await window.api.batchImport.cleanupZipTemp()
+      await api!.batchImport.cleanupZipTemp()
       return
     }
 
     selectedFilePaths.value = result.files
     fileCount.value = result.files.length
 
-    // eslint-disable-next-line no-undef
-    const checkResult = await window.api.batchImport.checkDuplicates(result.files)
+    const checkResult = await api!.batchImport.checkDuplicates(result.files)
     duplicateCheckFiles.value = checkResult.files
     duplicateCount.value = checkResult.duplicateCount
     phase.value = 'review'
   } catch (error) {
     zipErrorMessage.value = error instanceof Error ? error.message : 'Failed to extract archive'
-    // eslint-disable-next-line no-undef
-    await window.api.batchImport.cleanupZipTemp()
+    await api!.batchImport.cleanupZipTemp()
   }
 }
 
@@ -397,8 +286,7 @@ const startImport = async (
   totalFiles.value = filePaths.length
 
   try {
-    // eslint-disable-next-line no-undef
-    const result = await window.api.batchImport.start(filePaths, strategy, strip)
+    const result = await api!.batchImport.start(filePaths, strategy, strip)
 
     summary.value = result
     phase.value = 'summary'
@@ -429,8 +317,7 @@ const handleZipUnlock = async (): Promise<void> => {
   zipErrorMessage.value = ''
 
   try {
-    // eslint-disable-next-line no-undef
-    const result = await window.api.batchImport.testZipPassword(zipPath.value, zipPassword.value)
+    const result = await api!.batchImport.testZipPassword(zipPath.value, zipPassword.value)
     if (result.success === true) {
       await extractAndShowReview(zipPath.value, zipPassword.value)
     } else {
@@ -447,8 +334,7 @@ const handleZipUnlock = async (): Promise<void> => {
  * Cancel ZIP flow and clean up temp directory
  */
 const handleZipCancel = async (): Promise<void> => {
-  // eslint-disable-next-line no-undef
-  await window.api.batchImport.cleanupZipTemp()
+  await api!.batchImport.cleanupZipTemp()
   dialog.value = false
 }
 
@@ -457,18 +343,10 @@ const handleZipCancel = async (): Promise<void> => {
  */
 const handleCancel = async (): Promise<void> => {
   if (phase.value === 'importing') {
-    // eslint-disable-next-line no-undef
-    await window.api.batchImport.cancel()
+    await api!.batchImport.cancel()
   } else if (phase.value === 'summary') {
+    // Close dialog — the watch on `dialog` handles cleanup and event emission
     dialog.value = false
-    if (isZipImport.value === true) {
-      // eslint-disable-next-line no-undef
-      await window.api.batchImport.cleanupZipTemp()
-    }
-
-    if (summary.value.succeeded > 0) {
-      emit('batch-import-complete', { totalImported: summary.value.succeeded })
-    }
   }
 }
 
@@ -477,8 +355,7 @@ const handleCancel = async (): Promise<void> => {
  */
 const closeDialog = async (): Promise<void> => {
   if (isZipImport.value === true) {
-    // eslint-disable-next-line no-undef
-    await window.api.batchImport.cleanupZipTemp()
+    await api!.batchImport.cleanupZipTemp()
   }
   dialog.value = false
 }
@@ -510,8 +387,7 @@ const resetState = (): void => {
 
 // Setup IPC listeners
 onMounted(() => {
-  // eslint-disable-next-line no-undef
-  cleanupProgress = window.api.batchImport.onProgress((progress: BatchProgress) => {
+  cleanupProgress = api!.batchImport.onProgress((progress: BatchProgress) => {
     currentIndex.value = progress.currentIndex
     totalFiles.value = progress.totalFiles
     currentFileName.value = progress.currentFileName

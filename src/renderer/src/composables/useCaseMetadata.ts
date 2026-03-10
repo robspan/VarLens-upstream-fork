@@ -8,6 +8,7 @@
 import { ref } from 'vue'
 import { useCaseComments } from './useCaseComments'
 import { useCaseMetrics } from './useCaseMetrics'
+import { useApiService } from './useApiService'
 import type {
   CaseMetadata,
   CohortGroup,
@@ -27,8 +28,11 @@ const loadingStates = ref<Map<number, boolean>>(new Map())
 const cohortGroupsCache = ref<CohortGroup[]>([])
 
 export function useCaseMetadata() {
+  const { api } = useApiService()
+
   // Load full metadata for a case (metadata + cohorts + HPO terms)
   async function loadMetadata(caseId: number): Promise<void> {
+    if (!api) return
     // Skip if already cached or loading
     if (metadataCache.value.has(caseId) || loadingStates.value.get(caseId) === true) {
       return
@@ -36,7 +40,7 @@ export function useCaseMetadata() {
 
     loadingStates.value.set(caseId, true)
     try {
-      const result = await window.api.caseMetadata.getFullMetadata(caseId)
+      const result = await api.caseMetadata.getFullMetadata(caseId)
       metadataCache.value.set(caseId, result)
     } catch (error) {
       console.error('Failed to load case metadata:', error)
@@ -47,8 +51,9 @@ export function useCaseMetadata() {
 
   // Load global cohort groups list
   async function loadCohortGroups(): Promise<void> {
+    if (!api) return
     try {
-      const cohorts = await window.api.caseMetadata.listCohorts()
+      const cohorts = await api.caseMetadata.listCohorts()
       cohortGroupsCache.value = cohorts
     } catch (error) {
       console.error('Failed to load cohort groups:', error)
@@ -67,6 +72,7 @@ export function useCaseMetadata() {
 
   // Update affected status with optimistic update
   async function updateStatus(caseId: number, status: AffectedStatus): Promise<void> {
+    if (!api) return
     const current = metadataCache.value.get(caseId)
     const previousStatus = current?.metadata?.affected_status ?? null
 
@@ -80,7 +86,7 @@ export function useCaseMetadata() {
     }
 
     try {
-      const updated = await window.api.caseMetadata.upsert(caseId, { affected_status: status })
+      const updated = await api.caseMetadata.upsert(caseId, { affected_status: status })
       // Update cache with server response
       const cached = metadataCache.value.get(caseId)
       if (cached) {
@@ -97,6 +103,7 @@ export function useCaseMetadata() {
 
   // Update sex with optimistic update
   async function updateSex(caseId: number, sex: CaseSex): Promise<void> {
+    if (!api) return
     const current = metadataCache.value.get(caseId)
     const previousSex = current?.metadata?.sex ?? null
 
@@ -110,7 +117,7 @@ export function useCaseMetadata() {
     }
 
     try {
-      const updated = await window.api.caseMetadata.upsert(caseId, { sex })
+      const updated = await api.caseMetadata.upsert(caseId, { sex })
       const cached = metadataCache.value.get(caseId)
       if (cached) {
         cached.metadata = updated
@@ -126,6 +133,7 @@ export function useCaseMetadata() {
 
   // Update age with optimistic update
   async function updateAge(caseId: number, age: number | null): Promise<void> {
+    if (!api) return
     const current = metadataCache.value.get(caseId)
     const previousAge = current?.metadata?.age ?? null
 
@@ -139,7 +147,7 @@ export function useCaseMetadata() {
     }
 
     try {
-      const updated = await window.api.caseMetadata.upsert(caseId, { age })
+      const updated = await api.caseMetadata.upsert(caseId, { age })
       const cached = metadataCache.value.get(caseId)
       if (cached) {
         cached.metadata = updated
@@ -155,6 +163,7 @@ export function useCaseMetadata() {
 
   // Update date of birth with optimistic update
   async function updateDob(caseId: number, dateOfBirth: string | null): Promise<void> {
+    if (!api) return
     const current = metadataCache.value.get(caseId)
     const previousDob = current?.metadata?.date_of_birth ?? null
 
@@ -168,7 +177,7 @@ export function useCaseMetadata() {
     }
 
     try {
-      const updated = await window.api.caseMetadata.upsert(caseId, {
+      const updated = await api.caseMetadata.upsert(caseId, {
         date_of_birth: dateOfBirth
       })
       const cached = metadataCache.value.get(caseId)
@@ -186,6 +195,7 @@ export function useCaseMetadata() {
 
   // Set case cohorts with optimistic update (bulk replace)
   async function setCaseCohorts(caseId: number, cohortIds: number[]): Promise<void> {
+    if (!api) return
     const current = metadataCache.value.get(caseId)
     const previousCohorts = current?.cohorts ?? []
 
@@ -196,7 +206,7 @@ export function useCaseMetadata() {
     }
 
     try {
-      await window.api.caseMetadata.setCohorts(caseId, cohortIds)
+      await api.caseMetadata.setCohorts(caseId, cohortIds)
     } catch (error) {
       console.error('Failed to set cohorts:', error)
       // Revert optimistic update
@@ -210,14 +220,15 @@ export function useCaseMetadata() {
   }
 
   // Create new cohort and assign to case
-  async function createAndAssignCohort(caseId: number, name: string): Promise<CohortGroup> {
-    const newCohort = await window.api.caseMetadata.createCohort(name)
+  async function createAndAssignCohort(caseId: number, name: string): Promise<CohortGroup | null> {
+    if (!api) return null
+    const newCohort = await api.caseMetadata.createCohort(name)
 
     // Add to global cohort groups cache
     cohortGroupsCache.value.push(newCohort)
 
     // Assign to case
-    await window.api.caseMetadata.assignCohort(caseId, newCohort.id)
+    await api.caseMetadata.assignCohort(caseId, newCohort.id)
 
     // Update case metadata cache
     const current = metadataCache.value.get(caseId)
@@ -229,7 +240,8 @@ export function useCaseMetadata() {
   }
 
   // Get or create cohort by name
-  async function getOrCreateCohort(name: string): Promise<CohortGroup> {
+  async function getOrCreateCohort(name: string): Promise<CohortGroup | null> {
+    if (!api) return null
     // Check if exists in cache
     const existing = cohortGroupsCache.value.find((c) => c.name === name)
     if (existing) {
@@ -237,7 +249,7 @@ export function useCaseMetadata() {
     }
 
     // Create new cohort
-    const newCohort = await window.api.caseMetadata.createCohort(name)
+    const newCohort = await api.caseMetadata.createCohort(name)
 
     // Add to cache
     cohortGroupsCache.value.push(newCohort)
@@ -247,6 +259,7 @@ export function useCaseMetadata() {
 
   // Assign HPO term to case with optimistic update
   async function assignHpoTerm(caseId: number, hpoId: string, hpoLabel: string): Promise<void> {
+    if (!api) return
     const current = metadataCache.value.get(caseId)
 
     // Optimistic update: add to hpoTerms array
@@ -263,7 +276,7 @@ export function useCaseMetadata() {
     }
 
     try {
-      const created = await window.api.caseMetadata.assignHpoTerm(caseId, hpoId, hpoLabel)
+      const created = await api.caseMetadata.assignHpoTerm(caseId, hpoId, hpoLabel)
       // Update cache with server response (correct ID)
       if (current) {
         const index = current.hpoTerms.findIndex((t) => t.hpo_id === hpoId)
@@ -282,6 +295,7 @@ export function useCaseMetadata() {
 
   // Remove HPO term from case with optimistic update
   async function removeHpoTerm(caseId: number, hpoId: string): Promise<void> {
+    if (!api) return
     const current = metadataCache.value.get(caseId)
     const previousTerms = current?.hpoTerms ?? []
 
@@ -291,7 +305,7 @@ export function useCaseMetadata() {
     }
 
     try {
-      await window.api.caseMetadata.removeHpoTerm(caseId, hpoId)
+      await api.caseMetadata.removeHpoTerm(caseId, hpoId)
     } catch (error) {
       console.error('Failed to remove HPO term:', error)
       // Revert optimistic update

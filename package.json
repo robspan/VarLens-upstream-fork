@@ -1,6 +1,6 @@
 {
   "name": "varlens",
-  "version": "0.20.1",
+  "version": "0.21.0",
   "description": "Offline variant analysis tool for external collaborators",
   "main": "./out/main/index.js",
   "author": "Bernt Popp <bernt.popp@gmail.com>",
@@ -120,6 +120,7 @@
     }
   },
   "dependencies": {
+    "@node-rs/argon2": "^2.0.2",
     "@vueuse/core": "^14.2.0",
     "adm-zip": "^0.5.16",
     "better-sqlite3-multiple-ciphers": "^12.6.2",
@@ -128,10 +129,13 @@
     "electron-updater": "^6.8.3",
     "file-saver": "^2.0.5",
     "jstat": "^1.9.6",
+    "kysely": "^0.28.11",
     "markdown-it": "^14.1.0",
+    "nanoid": "^5.1.6",
     "pinia": "^3.0.4",
     "plotly.js-dist-min": "^3.4.0",
     "stream-json": "^1.9.1",
+    "vue-router": "^4.6.4",
     "vuedraggable": "^4.1.0",
     "vuetify": "^4.0.1",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",

@@ -7,6 +7,7 @@
 
 import { ref } from 'vue'
 import type { Tag } from '../../../main/database/types'
+import { useApiService } from './useApiService'
 
 // Cache all tags (global list)
 const tagsCache = ref<Tag[]>([])
@@ -21,6 +22,8 @@ const variantTagsCache = ref<Map<string, Tag[]>>(new Map())
 const variantTagsLoading = ref<Map<string, boolean>>(new Map())
 
 export function useTags() {
+  const { api } = useApiService()
+
   // Build variant key for cache lookup
   function variantTagKey(caseId: number, variantId: number): string {
     return `${caseId}:${variantId}`
@@ -34,11 +37,12 @@ export function useTags() {
    * Load all tags from database
    */
   async function loadTags(): Promise<void> {
+    if (!api) return
     if (isLoadingTags.value) return
 
     isLoadingTags.value = true
     try {
-      const tags = await window.api.tags.list()
+      const tags = await api.tags.list()
       tagsCache.value = tags
     } catch (error) {
       console.error('Failed to load tags:', error)
@@ -61,8 +65,9 @@ export function useTags() {
    * @param color - Tag color (hex color)
    * @returns Created tag
    */
-  async function createTag(name: string, color: string): Promise<Tag> {
-    const tag = await window.api.tags.create(name, color)
+  async function createTag(name: string, color: string): Promise<Tag | null> {
+    if (!api) return null
+    const tag = await api.tags.create(name, color)
     // Update cache
     tagsCache.value = [...tagsCache.value, tag].sort((a, b) => a.name.localeCompare(b.name))
     return tag
@@ -75,8 +80,12 @@ export function useTags() {
    * @param updates - Partial tag updates
    * @returns Updated tag
    */
-  async function updateTag(id: number, updates: { name?: string; color?: string }): Promise<Tag> {
-    const tag = await window.api.tags.update(id, updates)
+  async function updateTag(
+    id: number,
+    updates: { name?: string; color?: string }
+  ): Promise<Tag | null> {
+    if (!api) return null
+    const tag = await api.tags.update(id, updates)
     // Update cache
     tagsCache.value = tagsCache.value
       .map((t) => (t.id === id ? tag : t))
@@ -95,7 +104,8 @@ export function useTags() {
    * @param id - Tag ID
    */
   async function deleteTag(id: number): Promise<void> {
-    await window.api.tags.delete(id)
+    if (!api) return
+    await api.tags.delete(id)
     // Update cache
     tagsCache.value = tagsCache.value.filter((t) => t.id !== id)
     // Also remove from variant tags cache
@@ -112,7 +122,8 @@ export function useTags() {
    * @returns Number of variant-tag assignments
    */
   async function getTagUsageCount(tagId: number): Promise<number> {
-    return await window.api.tags.getUsageCount(tagId)
+    if (!api) return 0
+    return await api.tags.getUsageCount(tagId)
   }
 
   // ============================================================
@@ -126,6 +137,7 @@ export function useTags() {
    * @param variantId - Variant ID
    */
   async function loadVariantTags(caseId: number, variantId: number): Promise<void> {
+    if (!api) return
     const key = variantTagKey(caseId, variantId)
 
     // Skip if already loading
@@ -133,7 +145,7 @@ export function useTags() {
 
     variantTagsLoading.value.set(key, true)
     try {
-      const tags = await window.api.tags.getVariantTags(caseId, variantId)
+      const tags = await api.tags.getVariantTags(caseId, variantId)
       variantTagsCache.value.set(key, tags)
     } catch (error) {
       console.error('Failed to load variant tags:', error)
@@ -183,6 +195,7 @@ export function useTags() {
    * @param tagId - Tag ID
    */
   async function assignVariantTag(caseId: number, variantId: number, tagId: number): Promise<void> {
+    if (!api) return
     const key = variantTagKey(caseId, variantId)
     const currentTags = variantTagsCache.value.get(key) ?? []
     const tagToAdd = tagsCache.value.find((t) => t.id === tagId)
@@ -196,7 +209,7 @@ export function useTags() {
     }
 
     try {
-      await window.api.tags.assignVariantTag(caseId, variantId, tagId)
+      await api.tags.assignVariantTag(caseId, variantId, tagId)
     } catch (error) {
       console.error('Failed to assign variant tag:', error)
       // Revert optimistic update
@@ -213,6 +226,7 @@ export function useTags() {
    * @param tagId - Tag ID
    */
   async function removeVariantTag(caseId: number, variantId: number, tagId: number): Promise<void> {
+    if (!api) return
     const key = variantTagKey(caseId, variantId)
     const currentTags = variantTagsCache.value.get(key) ?? []
 
@@ -223,7 +237,7 @@ export function useTags() {
     )
 
     try {
-      await window.api.tags.removeVariantTag(caseId, variantId, tagId)
+      await api.tags.removeVariantTag(caseId, variantId, tagId)
     } catch (error) {
       console.error('Failed to remove variant tag:', error)
       // Revert optimistic update
@@ -259,6 +273,7 @@ export function useTags() {
     variantId: number,
     tagIds: number[]
   ): Promise<void> {
+    if (!api) return
     const key = variantTagKey(caseId, variantId)
     const currentTags = variantTagsCache.value.get(key) ?? []
 
@@ -269,7 +284,7 @@ export function useTags() {
     variantTagsCache.value.set(key, newTags)
 
     try {
-      await window.api.tags.setVariantTags(caseId, variantId, tagIds)
+      await api.tags.setVariantTags(caseId, variantId, tagIds)
     } catch (error) {
       console.error('Failed to set variant tags:', error)
       // Revert optimistic update

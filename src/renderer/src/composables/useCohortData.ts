@@ -98,6 +98,8 @@ export interface UseCohortDataReturn {
   nextCursor: Ref<CohortPaginationCursor | null>
   /** Whether more results exist */
   hasMore: Ref<boolean>
+  /** Build IPC-safe params from query parameters */
+  buildIpcParams: (params: CohortQueryParams) => Record<string, unknown>
   /** Fetch variants and update reactive state */
   fetchVariants: (params: CohortQueryParams) => Promise<void>
   /** Query variants without updating reactive state (for cursor prefetching) */
@@ -303,6 +305,7 @@ export function useCohortData(): UseCohortDataReturn {
     summary,
     nextCursor,
     hasMore,
+    buildIpcParams,
     fetchVariants,
     queryVariants,
     fetchSummary,

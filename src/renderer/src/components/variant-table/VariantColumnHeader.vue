@@ -3,7 +3,7 @@
     <div
       class="d-flex align-center flex-grow-1 sortable-header"
       :class="{ 'sorted-header': isSorted(headerColumn) }"
-      @click="toggleSort(headerColumn)"
+      @click.stop="toggleSort(headerColumn)"
     >
       <span class="header-title">{{ headerColumn.title }}</span>
       <span v-if="isSorted(headerColumn)" class="sort-indicator ml-1">

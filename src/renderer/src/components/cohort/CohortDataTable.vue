@@ -7,6 +7,7 @@
 
     <v-data-table-server
       ref="dataTableRef"
+      v-model:page="page"
       v-model:items-per-page="itemsPerPage"
       v-model:sort-by="sortBy"
       v-model:expanded="expandedRows"
@@ -14,11 +15,9 @@
       :items="variants"
       :items-length="totalCount"
       :loading="loading"
-      :page="props.page"
-      :items-per-page-options="[10, 25, 50, 100]"
+      :items-per-page-options="itemsPerPageOptions"
       item-value="variant_key"
       density="compact"
-      multi-sort
       show-expand
       class="elevation-1"
       :row-props="getRowProps"
@@ -189,6 +188,7 @@
 import { ref, watch, computed, onMounted, nextTick } from 'vue'
 import type { CohortVariant } from '../../../../shared/types/cohort'
 import type { AcmgClassification } from '../../../../main/database/types'
+import type { SortItem } from '../../composables/useCursorPagination'
 import { useApiService } from '../../composables/useApiService'
 import { useTableScroll } from '../../composables/useTableScroll'
 import { useTableRowProps } from '../../composables/useTableRowProps'
@@ -209,7 +209,7 @@ import VariantColumnHeader from '../variant-table/VariantColumnHeader.vue'
 import { useColumnFilters } from '../../composables/useColumnFilters'
 import { useDebounce } from '../../composables/useDebounce'
 import { useExternalLinksStore, type ExternalLinkConfig } from '../../stores/externalLinksStore'
-import { useSettingsStore } from '../../stores/settingsStore'
+import { APP_CONFIG } from '../../../../shared/config'
 import { resolveUrlTemplate, type VariantLinkData } from '../../utils/externalLinks'
 
 interface Props {
@@ -223,8 +223,6 @@ interface Props {
     width?: string
     align?: 'start' | 'center' | 'end'
   }>
-  /** Current page number (controlled by parent for cursor pagination) */
-  page?: number
   selectedVariantKey: string | null
   // Annotation lookup functions passed from parent
   isGlobalStarred: (chr: string, pos: number, ref: string, alt: string) => boolean
@@ -237,30 +235,26 @@ interface Props {
   getGlobalComment: (chr: string, pos: number, ref: string, alt: string) => string | null
 }
 
-interface Emits {
-  (
-    e: 'update:options',
-    options: {
-      page: number
-      itemsPerPage: number
-      sortBy: Array<{ key: string; order: 'asc' | 'desc' }>
-    }
-  ): void
-  (e: 'row-click', variant: CohortVariant): void
-  (e: 'star-toggle', item: CohortVariant): void
-  (
-    e: 'acmg-select',
-    payload: { item: CohortVariant; classification: AcmgClassification | null }
-  ): void
-  (e: 'acmg-evidence-click', item: CohortVariant): void
-  (e: 'comment-click', item: CohortVariant): void
-  (e: 'navigate-to-case', payload: { caseId: number; item: CohortVariant }): void
-  (e: 'load-carriers', variant: CohortVariant): void
-  (e: 'column-filters-change', filters: Record<string, string> | undefined): void
-}
+const emit = defineEmits<{
+  'update:options': [options: unknown]
+  'row-click': [variant: CohortVariant]
+  'star-toggle': [item: CohortVariant]
+  'acmg-select': [payload: { item: CohortVariant; classification: AcmgClassification | null }]
+  'acmg-evidence-click': [item: CohortVariant]
+  'comment-click': [item: CohortVariant]
+  'navigate-to-case': [payload: { caseId: number; item: CohortVariant }]
+  'load-carriers': [variant: CohortVariant]
+  'column-filters-change': [filters: Record<string, string> | undefined]
+}>()
+
+// v-model props for pagination state (controlled by parent via useCursorPagination)
+const page = defineModel<number>('page', { default: 1 })
+const itemsPerPage = defineModel<number>('itemsPerPage', { default: 10 })
+const sortBy = defineModel<SortItem[]>('sortBy', { default: () => [] })
+
+const itemsPerPageOptions = [...APP_CONFIG.ITEMS_PER_PAGE_OPTIONS]
 
 const props = defineProps<Props>()
-const emit = defineEmits<Emits>()
 
 // Composables
 const { api } = useApiService()
@@ -310,7 +304,6 @@ watch(
 
 // Stores
 const linksStore = useExternalLinksStore()
-const settingsStore = useSettingsStore()
 
 // ============================================================================
 // External link resolution helpers (same as VariantTable.vue)
@@ -376,22 +369,12 @@ const openExternalLink = async (url: string, event?: MouseEvent): Promise<void> 
 const dataTableRef = ref<InstanceType<typeof import('vuetify/components').VDataTableServer> | null>(
   null
 )
-const itemsPerPage = ref(settingsStore.itemsPerPage)
-const sortBy = ref<Array<{ key: string; order: 'asc' | 'desc' }>>([])
-
-// Sync items-per-page changes back to settings store
-watch(itemsPerPage, (v) => {
-  settingsStore.itemsPerPage = v
-})
 
 /**
- * Handle table options update (pagination, sorting)
+ * Forward table options update to parent for data loading
  */
-const handleTableOptions = (options: {
-  page: number
-  itemsPerPage: number
-  sortBy: Array<{ key: string; order: 'asc' | 'desc' }>
-}): void => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const handleTableOptions = (options: any): void => {
   emit('update:options', options)
 }
 
@@ -442,11 +425,7 @@ const refresh = (): void => {
   clearCarrierCache()
 }
 
-const resetSort = (): void => {
-  sortBy.value = []
-}
-
-defineExpose({ refresh, resetSort })
+defineExpose({ refresh })
 </script>
 
 <style scoped>

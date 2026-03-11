@@ -13,6 +13,8 @@ export interface FormatInfo {
   format: FileFormat
   /** For columnar: case ID key. For object: first sample ID. For simple: 'variants' */
   caseKey: string
+  /** For columnar: whether data/header are wrapped under caseKey (default true) */
+  wrapped?: boolean
 }
 
 /**

@@ -161,6 +161,14 @@ export class ImportService {
               .catch(reject)
             return
           }
+
+          // Check for unwrapped columnar: data + header at top level
+          if (topLevelKeys.includes('data') && topLevelKeys.includes('header')) {
+            resolve({ format: 'columnar', caseKey: '', wrapped: false })
+            resolved = true
+            cleanup()
+            return
+          }
         }
       })
 
@@ -181,6 +189,8 @@ export class ImportService {
               resolve({ format: 'object', caseKey: sampleId })
             })
             .catch(reject)
+        } else if (topLevelKeys.includes('data') && topLevelKeys.includes('header')) {
+          resolve({ format: 'columnar', caseKey: '', wrapped: false })
         } else {
           resolveFormat('columnar', topLevelKeys[0])
         }

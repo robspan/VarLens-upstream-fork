@@ -6,13 +6,24 @@ import { pick } from 'stream-json/filters/Pick'
 import { streamArray } from 'stream-json/streamers/StreamArray'
 import { createFieldMapper } from '../transforms/FieldMapper'
 import { createBatchAccumulator } from '../transforms/BatchAccumulator'
+import { resolveColumnIndices, type ColumnIndices } from '../config/fieldMapping'
 import type { ImportOptions, ImportResult, DataDictionaries } from '../types'
 import type { ImportStrategy, FormatInfo, StrategyContext } from './ImportStrategy'
 import { importRegistry } from './StrategyRegistry'
 
+/** Result of parsing the header: dictionaries + dynamic column positions */
+interface HeaderInfo {
+  dictionaries: DataDictionaries
+  columnIndices: ColumnIndices
+}
+
 /**
- * Strategy for columnar format: { "<caseId>": { "header": [...], "data": [[...]] } }
- * Original Varvis API format with dictionaries in header
+ * Strategy for columnar format:
+ * - Wrapped:   { "<caseId>": { "header": [...], "data": [[...]] } }
+ * - Unwrapped: { "header": [...], "data": [[...]] }
+ *
+ * Column positions are resolved dynamically from the header field IDs,
+ * so this works across different VarVis export versions.
  */
 export class ColumnarStrategy implements ImportStrategy {
   readonly formatId = 'columnar' as const
@@ -28,12 +39,18 @@ export class ColumnarStrategy implements ImportStrategy {
   ): Promise<ImportResult> {
     const { db, formatInfo, caseId, startTime } = context
 
-    // Extract gene dictionary from header before processing data
-    const dictionaries = await this.extractDictionaries(filePath, formatInfo.caseKey)
+    const wrapped = formatInfo.wrapped !== false
+
+    // Pick paths differ: wrapped = "caseKey.header" / "caseKey.data", unwrapped = "header" / "data"
+    const headerPath = wrapped ? `${formatInfo.caseKey}.header` : 'header'
+    const dataPath = wrapped ? `${formatInfo.caseKey}.data` : 'data'
+
+    // Extract dictionaries and column positions from header
+    const { dictionaries, columnIndices } = await this.parseHeader(filePath, headerPath)
 
     // Create pipeline stages
     const batchSize = options.batchSize ?? 5000
-    const fieldMapper = createFieldMapper(dictionaries)
+    const fieldMapper = createFieldMapper(dictionaries, columnIndices)
     const batchAccumulator = createBatchAccumulator({
       caseId,
       batchSize,
@@ -54,7 +71,7 @@ export class ColumnarStrategy implements ImportStrategy {
       createReadStream(filePath),
       createGunzip(),
       parser(),
-      pick({ filter: `${formatInfo.caseKey}.data` }),
+      pick({ filter: dataPath }),
       streamArray(),
       fieldMapper,
       batchAccumulator
@@ -78,12 +95,9 @@ export class ColumnarStrategy implements ImportStrategy {
   }
 
   /**
-   * Extract data dictionaries from JSON header
+   * Parse header to extract data dictionaries and dynamic column indices.
    */
-  private async extractDictionaries(
-    filePath: string,
-    caseIdKey: string
-  ): Promise<DataDictionaries> {
+  private async parseHeader(filePath: string, headerPath: string): Promise<HeaderInfo> {
     return new Promise((resolve, reject) => {
       const dictionaries: DataDictionaries = {
         gene: {},
@@ -93,14 +107,16 @@ export class ColumnarStrategy implements ImportStrategy {
         moi: {}
       }
 
+      // Collect all header items to build column index map
+      const headerItems: { id: string }[] = []
+
       const fieldsToExtract = new Set(['Gene', 'Transcript', 'HpoSimScore', 'MoI'])
-      let foundCount = 0
       let resolved = false
 
       const stream = createReadStream(filePath)
         .pipe(createGunzip())
         .pipe(parser())
-        .pipe(pick({ filter: `${caseIdKey}.header` }))
+        .pipe(pick({ filter: headerPath }))
         .pipe(streamArray())
 
       const cleanup = (): void => {
@@ -112,7 +128,10 @@ export class ColumnarStrategy implements ImportStrategy {
         if (resolved) return
         resolved = true
         cleanup()
-        resolve(dictionaries)
+        resolve({
+          dictionaries,
+          columnIndices: resolveColumnIndices(headerItems)
+        })
       }
 
       stream.on('data', (data: { key: number; value: Record<string, unknown> }) => {
@@ -120,6 +139,9 @@ export class ColumnarStrategy implements ImportStrategy {
 
         const headerItem = data.value
         const fieldId = headerItem.id as string
+
+        // Track header item for column index resolution
+        headerItems[data.key] = { id: fieldId }
 
         const hasField: boolean = fieldsToExtract.has(fieldId)
         if (
@@ -152,11 +174,6 @@ export class ColumnarStrategy implements ImportStrategy {
                 }
               }
               break
-          }
-
-          foundCount++
-          if (foundCount >= fieldsToExtract.size) {
-            resolveNow()
           }
         }
       })

@@ -4,7 +4,8 @@ import {
   COLUMN_INDICES,
   IMPACT_DICTIONARY,
   resolveDictionaryValue,
-  type DataDictionaries
+  type DataDictionaries,
+  type ColumnIndices
 } from '../config/fieldMapping'
 import type { RawVariantRow } from '../types'
 import type { TranscriptInsertRow } from '../../../shared/types/transcript'
@@ -17,14 +18,18 @@ type MappedVariantWithTranscripts = MappedVariant & {
 
 interface FieldMapperOptions {
   dictionaries: DataDictionaries
+  /** Dynamic column indices resolved from header. Falls back to this.cols. */
+  columnIndices?: ColumnIndices
 }
 
 export class FieldMapper extends Transform {
   private dictionaries: DataDictionaries
+  private cols: ColumnIndices
 
   constructor(options: FieldMapperOptions) {
     super({ objectMode: true })
     this.dictionaries = options.dictionaries
+    this.cols = options.columnIndices ?? COLUMN_INDICES
   }
 
   _transform(
@@ -34,74 +39,66 @@ export class FieldMapper extends Transform {
   ): void {
     try {
       const row = chunk.value
-      const selectedTranscript = (row[COLUMN_INDICES.SELECTED_TRANSCRIPT] as number) ?? 0
+      const selectedTranscript = (row[this.cols.SELECTED_TRANSCRIPT] as number) ?? 0
 
       const mapped: MappedVariant = {
-        chr: this.extractValue(row, COLUMN_INDICES.CHR, selectedTranscript, false) as string,
-        pos: this.extractValue(row, COLUMN_INDICES.POS, selectedTranscript, false) as number,
-        ref: row[COLUMN_INDICES.REF] as string,
-        alt: row[COLUMN_INDICES.ALT] as string,
+        chr: this.extractValue(row, this.cols.CHR, selectedTranscript, false) as string,
+        pos: this.extractValue(row, this.cols.POS, selectedTranscript, false) as number,
+        ref: row[this.cols.REF] as string,
+        alt: row[this.cols.ALT] as string,
         gene_symbol: this.extractValue(
           row,
-          COLUMN_INDICES.GENE,
+          this.cols.GENE,
           selectedTranscript,
           true,
           this.dictionaries.gene
         ) as string | null,
         omim_mim_number: this.extractValue(
           row,
-          COLUMN_INDICES.OMIM,
+          this.cols.OMIM,
           selectedTranscript,
           false,
           undefined
         ) as string | null,
         consequence: this.extractValue(
           row,
-          COLUMN_INDICES.IMPACT,
+          this.cols.IMPACT,
           selectedTranscript,
           true,
           IMPACT_DICTIONARY
         ) as string | null,
-        gnomad_af: this.extractValue(row, COLUMN_INDICES.GNOMAD_AF, selectedTranscript, false) as
+        gnomad_af: this.extractValue(row, this.cols.GNOMAD_AF, selectedTranscript, false) as
           | number
           | null,
-        cadd: this.extractValue(row, COLUMN_INDICES.CADD, selectedTranscript, false) as
-          | number
-          | null,
-        clinvar: this.extractValue(row, COLUMN_INDICES.CLINVAR, selectedTranscript, false) as
+        cadd: this.extractValue(row, this.cols.CADD, selectedTranscript, false) as number | null,
+        clinvar: this.extractValue(row, this.cols.CLINVAR, selectedTranscript, false) as
           | string
           | null,
-        gt_num: this.extractValue(row, COLUMN_INDICES.GT_NUM, selectedTranscript, false) as
+        gt_num: this.extractValue(row, this.cols.GT_NUM, selectedTranscript, false) as
           | string
           | null,
-        func: this.extractValue(row, COLUMN_INDICES.FUNC, selectedTranscript, false) as
-          | string
-          | null,
-        qual: this.extractValue(row, COLUMN_INDICES.QUAL, selectedTranscript, false) as
-          | number
-          | null,
+        func: this.extractValue(row, this.cols.FUNC, selectedTranscript, false) as string | null,
+        qual: this.extractValue(row, this.cols.QUAL, selectedTranscript, false) as number | null,
         hpo_sim_score: this.extractNumericFromDict(
           row,
-          COLUMN_INDICES.HPO_SIM_SCORE,
+          this.cols.HPO_SIM_SCORE,
           selectedTranscript,
           this.dictionaries.hpoSimScore
         ),
         transcript: this.extractValue(
           row,
-          COLUMN_INDICES.TRANSCRIPT,
+          this.cols.TRANSCRIPT,
           selectedTranscript,
           true,
           this.dictionaries.transcript
         ) as string | null,
-        cdna: this.extractValue(row, COLUMN_INDICES.CDNA, selectedTranscript, false) as
-          | string
-          | null,
-        aa_change: this.extractValue(row, COLUMN_INDICES.AA_CHANGE, selectedTranscript, false) as
+        cdna: this.extractValue(row, this.cols.CDNA, selectedTranscript, false) as string | null,
+        aa_change: this.extractValue(row, this.cols.AA_CHANGE, selectedTranscript, false) as
           | string
           | null,
         moi: this.extractValue(
           row,
-          COLUMN_INDICES.MOI,
+          this.cols.MOI,
           selectedTranscript,
           true,
           this.dictionaries.moi
@@ -218,48 +215,53 @@ export class FieldMapper extends Transform {
     row: RawVariantRow,
     selectedTranscript: number
   ): TranscriptInsertRow[] {
-    const transcriptCol = row[COLUMN_INDICES.TRANSCRIPT]
+    const transcriptCol = row[this.cols.TRANSCRIPT]
     const isArray = Array.isArray(transcriptCol)
     const count = isArray ? (transcriptCol as unknown[]).length : transcriptCol != null ? 1 : 0
 
     if (count === 0) return []
 
+    // Resolve selected transcript ID up front so dedup doesn't lose the is_selected flag
+    const selectedTranscriptId = this.extractValue(
+      row,
+      this.cols.TRANSCRIPT,
+      selectedTranscript,
+      true,
+      this.dictionaries.transcript
+    ) as string | null
+
     const transcripts: TranscriptInsertRow[] = []
+    const seen = new Set<string>()
 
     for (let i = 0; i < count; i++) {
       const transcriptId = this.extractValue(
         row,
-        COLUMN_INDICES.TRANSCRIPT,
+        this.cols.TRANSCRIPT,
         i,
         true,
         this.dictionaries.transcript
       ) as string | null
-      if (transcriptId === null) continue
+      if (transcriptId === null || seen.has(transcriptId)) continue
+      seen.add(transcriptId)
 
       transcripts.push({
         transcript_id: transcriptId,
-        gene_symbol: this.extractValue(
-          row,
-          COLUMN_INDICES.GENE,
-          i,
-          true,
-          this.dictionaries.gene
-        ) as string | null,
-        consequence: this.extractValue(row, COLUMN_INDICES.IMPACT, i, true, IMPACT_DICTIONARY) as
+        gene_symbol: this.extractValue(row, this.cols.GENE, i, true, this.dictionaries.gene) as
           | string
           | null,
-        cdna: this.extractValue(row, COLUMN_INDICES.CDNA, i, false) as string | null,
-        aa_change: this.extractValue(row, COLUMN_INDICES.AA_CHANGE, i, false) as string | null,
+        consequence: this.extractValue(row, this.cols.IMPACT, i, true, IMPACT_DICTIONARY) as
+          | string
+          | null,
+        cdna: this.extractValue(row, this.cols.CDNA, i, false) as string | null,
+        aa_change: this.extractValue(row, this.cols.AA_CHANGE, i, false) as string | null,
         hpo_sim_score: this.extractNumericFromDict(
           row,
-          COLUMN_INDICES.HPO_SIM_SCORE,
+          this.cols.HPO_SIM_SCORE,
           i,
           this.dictionaries.hpoSimScore
         ),
-        moi: this.extractValue(row, COLUMN_INDICES.MOI, i, true, this.dictionaries.moi) as
-          | string
-          | null,
-        is_selected: i === selectedTranscript ? 1 : 0
+        moi: this.extractValue(row, this.cols.MOI, i, true, this.dictionaries.moi) as string | null,
+        is_selected: transcriptId === selectedTranscriptId ? 1 : 0
       })
     }
 
@@ -267,6 +269,9 @@ export class FieldMapper extends Transform {
   }
 }
 
-export function createFieldMapper(dictionaries: DataDictionaries): FieldMapper {
-  return new FieldMapper({ dictionaries })
+export function createFieldMapper(
+  dictionaries: DataDictionaries,
+  columnIndices?: ColumnIndices
+): FieldMapper {
+  return new FieldMapper({ dictionaries, columnIndices })
 }

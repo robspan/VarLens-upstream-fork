@@ -30,11 +30,11 @@
           </template>
         </v-chip>
 
-        <!-- Clear filters -->
+        <!-- Clear filters (also clears sort when hasClearableState is true) -->
         <v-btn
-          :disabled="!hasActiveFilters"
-          :color="hasActiveFilters ? 'error' : undefined"
-          :variant="hasActiveFilters ? 'tonal' : 'text'"
+          :disabled="!hasActiveFilters && !hasClearableState"
+          :color="hasActiveFilters || hasClearableState ? 'error' : undefined"
+          :variant="hasActiveFilters || hasClearableState ? 'tonal' : 'text'"
           @click="emit('clear-all')"
         >
           <v-icon start size="small">mdi-filter-off</v-icon>
@@ -139,6 +139,8 @@ interface Props {
   activeFiltersList: ActiveFilter[]
   exporting?: boolean
   columns?: ColumnDef[]
+  /** When true, Clear button is enabled even without active filters (e.g. sort is applied) */
+  hasClearableState?: boolean
 }
 
 defineProps<Props>()

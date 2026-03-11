@@ -3,6 +3,7 @@
     :filtered-count="totalCount ?? 0"
     :total-count="cohortSummary?.unique_variants ?? null"
     :has-active-filters="hasActiveFilters"
+    :has-clearable-state="props.hasSort"
     :active-filter-count="activeFilterCount"
     :active-filters-list="activeFiltersList"
     :exporting="exporting"
@@ -124,9 +125,10 @@ interface Props {
   columns: Array<{ key: string; title: string }>
   visibleColumns: string[]
   exporting: boolean
+  hasSort?: boolean
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'filter-change': []
@@ -190,7 +192,7 @@ const caddPresets = [
   { label: '25', value: 25 }
 ]
 
-// Computed: active filter count for badge display
+// Filter count only reflects actual filters, not sort
 const activeFilterCount = computed(() => activeFiltersList.value.length)
 
 // Gene autocomplete state

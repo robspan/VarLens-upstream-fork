@@ -34,13 +34,20 @@
         <template
           v-for="col in filterableColumns"
           :key="`header-${col.key}`"
-          #[`header.${col.key}`]="{ column: headerColumn, getSortIcon, toggleSort, isSorted }"
+          #[`header.${col.key}`]="{
+            column: headerColumn,
+            getSortIcon,
+            toggleSort,
+            isSorted,
+            sortBy: slotSortBy
+          }"
         >
           <VariantColumnHeader
             :header-column="headerColumn"
             :get-sort-icon="getSortIcon"
             :toggle-sort="toggleSort"
             :is-sorted="isSorted"
+            :sort-by="slotSortBy"
             :has-filter="hasFilter(col.key)"
             :filter-value="columnFilters[col.key] || ''"
             @update:filter="(v) => setColumnFilter(col.key, v)"

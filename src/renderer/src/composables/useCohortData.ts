@@ -59,6 +59,8 @@ export interface CohortQueryParams {
   has_comment?: boolean
   /** Filter by ACMG classifications (global annotations) */
   acmg_classifications?: string[]
+  /** Per-column text filters from table header inputs */
+  column_filters?: Record<string, string>
 }
 
 /**
@@ -73,6 +75,14 @@ export interface CohortQueryParams {
  * @property fetchSummary - Method to fetch cohort summary
  * @property reset - Method to reset all state (for database switches)
  */
+/** Raw result from cohort variant query (before state update) */
+export interface CohortQueryResult {
+  data: CohortVariant[]
+  total_count: number
+  next_cursor: CohortPaginationCursor | null
+  has_more: boolean
+}
+
 export interface UseCohortDataReturn {
   /** Array of cohort variants */
   variants: Ref<CohortVariant[]>
@@ -88,8 +98,10 @@ export interface UseCohortDataReturn {
   nextCursor: Ref<CohortPaginationCursor | null>
   /** Whether more results exist */
   hasMore: Ref<boolean>
-  /** Fetch variants with given query params */
+  /** Fetch variants and update reactive state */
   fetchVariants: (params: CohortQueryParams) => Promise<void>
+  /** Query variants without updating reactive state (for cursor prefetching) */
+  queryVariants: (params: CohortQueryParams) => Promise<CohortQueryResult>
   /** Fetch cohort summary */
   fetchSummary: () => Promise<void>
   /** Reset all state (for database context changes) */
@@ -140,12 +152,94 @@ export function useCohortData(): UseCohortDataReturn {
   const hasMore = ref(false)
 
   /**
-   * Fetch variants from backend with given query parameters
-   *
-   * @param params - Query parameters for filtering, sorting, and pagination
+   * Build IPC-safe params from query parameters.
+   * Filters out undefined values and strips Vue reactive proxies.
+   */
+  const buildIpcParams = (params: CohortQueryParams): Record<string, unknown> => {
+    const ipcParams: Record<string, unknown> = {
+      limit: params.limit,
+      sort_order: params.sort_order
+    }
+
+    if (params.cursor !== undefined) {
+      ipcParams.cursor = {
+        sort_value: params.cursor.sort_value,
+        sort_key: params.cursor.sort_key,
+        variant_key: params.cursor.variant_key
+      }
+    }
+    if (params.sort_by !== undefined && params.sort_by !== '') {
+      ipcParams.sort_by = params.sort_by
+    }
+    if (params.search_term !== undefined && params.search_term !== '') {
+      ipcParams.search_term = params.search_term
+    }
+    if (params.gene_symbol !== undefined && params.gene_symbol !== '') {
+      ipcParams.gene_symbol = params.gene_symbol
+    }
+    if (params.consequences !== undefined && params.consequences.length > 0) {
+      ipcParams.consequences = [...params.consequences]
+    }
+    if (params.funcs !== undefined && params.funcs.length > 0) {
+      ipcParams.funcs = [...params.funcs]
+    }
+    if (params.clinvars !== undefined && params.clinvars.length > 0) {
+      ipcParams.clinvars = [...params.clinvars]
+    }
+    if (params.gnomad_af_max !== undefined) {
+      ipcParams.gnomad_af_max = params.gnomad_af_max
+    }
+    if (params.cadd_min !== undefined) {
+      ipcParams.cadd_min = params.cadd_min
+    }
+    if (params.cohort_frequency_min !== undefined) {
+      ipcParams.cohort_frequency_min = params.cohort_frequency_min
+    }
+    if (params.carrier_count_min !== undefined) {
+      ipcParams.carrier_count_min = params.carrier_count_min
+    }
+    if (params.starred_only === true) {
+      ipcParams.starred_only = true
+    }
+    if (params.has_comment === true) {
+      ipcParams.has_comment = true
+    }
+    if (params.acmg_classifications !== undefined && params.acmg_classifications.length > 0) {
+      ipcParams.acmg_classifications = [...params.acmg_classifications]
+    }
+    if (params.column_filters !== undefined) {
+      ipcParams.column_filters = { ...params.column_filters }
+    }
+
+    return ipcParams
+  }
+
+  /**
+   * Execute a cohort query and return raw results without updating reactive state.
+   * Use this for intermediate cursor-prefetching to avoid triggering table re-renders.
+   */
+  const queryVariants = async (params: CohortQueryParams): Promise<CohortQueryResult> => {
+    if (!api) {
+      return { data: [], total_count: 0, next_cursor: null, has_more: false }
+    }
+
+    const plainParams = globalThis.structuredClone(buildIpcParams(params))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (api as any).cohort.getVariants(plainParams)
+
+    return {
+      data: result.data ?? [],
+      total_count: result.total_count ?? 0,
+      next_cursor: result.next_cursor ?? null,
+      has_more: result.has_more ?? false
+    }
+  }
+
+  /**
+   * Fetch variants and update reactive state (triggers table re-render).
+   * Use queryVariants() instead for intermediate cursor-prefetching.
    */
   const fetchVariants = async (params: CohortQueryParams): Promise<void> => {
-    // Guard for browser dev mode (no preload)
     if (!api) {
       console.warn('API not available - running outside Electron')
       return
@@ -155,73 +249,11 @@ export function useCohortData(): UseCohortDataReturn {
     error.value = null
 
     try {
-      // Build IPC params - filter out undefined values
-      // IPC structured clone rejects undefined values
-      const ipcParams: Record<string, unknown> = {
-        limit: params.limit,
-        sort_order: params.sort_order
-      }
-
-      // Pass cursor instead of offset
-      if (params.cursor !== undefined) {
-        ipcParams.cursor = {
-          sort_value: params.cursor.sort_value,
-          sort_key: params.cursor.sort_key,
-          variant_key: params.cursor.variant_key
-        }
-      }
-
-      // Only add defined optional params
-      if (params.sort_by !== undefined && params.sort_by !== '') {
-        ipcParams.sort_by = params.sort_by
-      }
-      if (params.search_term !== undefined && params.search_term !== '') {
-        ipcParams.search_term = params.search_term
-      }
-      if (params.gene_symbol !== undefined && params.gene_symbol !== '') {
-        ipcParams.gene_symbol = params.gene_symbol
-      }
-      if (params.consequences !== undefined && params.consequences.length > 0) {
-        // Spread to convert Vue Proxy to plain array for IPC
-        ipcParams.consequences = [...params.consequences]
-      }
-      if (params.funcs !== undefined && params.funcs.length > 0) {
-        ipcParams.funcs = [...params.funcs]
-      }
-      if (params.clinvars !== undefined && params.clinvars.length > 0) {
-        ipcParams.clinvars = [...params.clinvars]
-      }
-      if (params.gnomad_af_max !== undefined) {
-        ipcParams.gnomad_af_max = params.gnomad_af_max
-      }
-      if (params.cadd_min !== undefined) {
-        ipcParams.cadd_min = params.cadd_min
-      }
-      if (params.cohort_frequency_min !== undefined) {
-        ipcParams.cohort_frequency_min = params.cohort_frequency_min
-      }
-      if (params.carrier_count_min !== undefined) {
-        ipcParams.carrier_count_min = params.carrier_count_min
-      }
-      if (params.starred_only === true) {
-        ipcParams.starred_only = true
-      }
-      if (params.has_comment === true) {
-        ipcParams.has_comment = true
-      }
-      if (params.acmg_classifications !== undefined && params.acmg_classifications.length > 0) {
-        ipcParams.acmg_classifications = [...params.acmg_classifications]
-      }
-
-      // Deep clone for IPC (structured clone rejects Vue proxies)
-      const plainParams = globalThis.structuredClone(ipcParams)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await (api as any).cohort.getVariants(plainParams)
-
-      variants.value = result.data ?? []
-      totalCount.value = result.total_count ?? 0
-      nextCursor.value = result.next_cursor ?? null
-      hasMore.value = result.has_more ?? false
+      const result = await queryVariants(params)
+      variants.value = result.data
+      totalCount.value = result.total_count
+      nextCursor.value = result.next_cursor
+      hasMore.value = result.has_more
     } catch (err) {
       error.value = err instanceof Error ? err : new Error(String(err))
       variants.value = []
@@ -272,6 +304,7 @@ export function useCohortData(): UseCohortDataReturn {
     nextCursor,
     hasMore,
     fetchVariants,
+    queryVariants,
     fetchSummary,
     reset
   }

@@ -65,8 +65,6 @@ export interface UseFilterStateOptions {
   onFiltersUpdate: (filters: Omit<VariantFilter, 'case_id'>) => void
   /** Callback to reset sort order (replaces emit('reset-sort')) */
   onResetSort: () => void
-  /** Optional ref indicating whether a sort is active (used in hasActiveFilters) */
-  hasSortRef?: Ref<boolean | undefined>
 }
 
 /**
@@ -158,7 +156,7 @@ export function useFilterState(
   caseIdRef: Ref<number> | ComputedRef<number>,
   options: UseFilterStateOptions
 ): UseFilterStateReturn {
-  const { onFiltersUpdate, onResetSort, hasSortRef } = options
+  const { onFiltersUpdate, onResetSort } = options
 
   // API service
   const { api } = useApiService()
@@ -236,8 +234,7 @@ export function useFilterState(
       filters.value.tagIds.length > 0 ||
       filters.value.starredOnly ||
       filters.value.hasCommentOnly ||
-      filters.value.acmgClassifications.length > 0 ||
-      (hasSortRef !== undefined && hasSortRef.value === true)
+      filters.value.acmgClassifications.length > 0
     )
   })
 

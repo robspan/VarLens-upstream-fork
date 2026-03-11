@@ -715,5 +715,19 @@ describe('CohortService', () => {
       })
       expect(result.total_count).toBe(2)
     })
+
+    it('should filter by cadd_phred using raw variants.cadd column', () => {
+      const caseId = insertCase('case1')
+      insertVariant(caseId, '1', 100, 'A', 'G', { cadd: 30 })
+      insertVariant(caseId, '1', 200, 'C', 'T', { cadd: 15 })
+      insertVariant(caseId, '1', 300, 'G', 'A', { cadd: 5 })
+
+      const result = cohortService.getCohortVariants({
+        column_filters: { cadd_phred: '30' }
+      })
+
+      expect(result.data.length).toBe(1)
+      expect(result.data[0].cadd_phred).toBe(30)
+    })
   })
 })

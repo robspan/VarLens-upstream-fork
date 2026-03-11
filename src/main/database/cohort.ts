@@ -39,6 +39,12 @@ const SORTABLE_COLUMNS: Record<string, string> = {
 
 const NUMERIC_COLUMNS = new Set(['pos', 'gnomad_af', 'cadd_phred'])
 
+// Maps cohort-facing column keys to their raw `variants` table column names.
+// Only entries that differ need to be listed; unlisted keys pass through as-is.
+const PRE_AGGREGATION_COLUMN_MAP: Record<string, string> = {
+  cadd_phred: 'cadd'
+}
+
 // Columns that are computed aggregates (only available after GROUP BY)
 // These must be filtered via HAVING, not WHERE
 const AGGREGATE_COLUMNS = new Set(['carrier_count', 'cohort_frequency', 'het_count', 'hom_count'])
@@ -203,10 +209,12 @@ export class CohortService {
           aggregateFilterConditions.push(`CAST(${sqlColumn} AS TEXT) LIKE ? COLLATE NOCASE`)
           aggregateFilterParams.push(`%${value}%`)
         } else {
+          // Use raw table column name for pre-aggregation WHERE clause
+          const rawColumn = PRE_AGGREGATION_COLUMN_MAP[column] ?? sqlColumn
           whereConditions.push(
             NUMERIC_COLUMNS.has(column)
-              ? `CAST(${sqlColumn} AS TEXT) LIKE ? COLLATE NOCASE`
-              : `${sqlColumn} LIKE ? COLLATE NOCASE`
+              ? `CAST(${rawColumn} AS TEXT) LIKE ? COLLATE NOCASE`
+              : `${rawColumn} LIKE ? COLLATE NOCASE`
           )
           params_array.push(`%${value}%`)
         }

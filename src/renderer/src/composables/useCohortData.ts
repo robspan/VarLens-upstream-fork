@@ -16,11 +16,7 @@
 
 import { ref } from 'vue'
 import type { Ref } from 'vue'
-import type {
-  CohortVariant,
-  CohortSummary,
-  CohortPaginationCursor
-} from '../../../shared/types/cohort'
+import type { CohortVariant, CohortSummary } from '../../../shared/types/cohort'
 import { useApiService } from './useApiService'
 
 /**
@@ -29,8 +25,8 @@ import { useApiService } from './useApiService'
 export interface CohortQueryParams {
   /** Number of items per page */
   limit: number
-  /** Cursor for keyset pagination (undefined = first page) */
-  cursor?: CohortPaginationCursor
+  /** Offset for pagination: (page - 1) * limit */
+  offset?: number
   /** Column to sort by */
   sort_by?: string
   /** Sort direction */
@@ -79,8 +75,6 @@ export interface CohortQueryParams {
 export interface CohortQueryResult {
   data: CohortVariant[]
   total_count: number
-  next_cursor: CohortPaginationCursor | null
-  has_more: boolean
 }
 
 export interface UseCohortDataReturn {
@@ -94,16 +88,10 @@ export interface UseCohortDataReturn {
   error: Ref<Error | null>
   /** Cohort summary statistics */
   summary: Ref<CohortSummary | null>
-  /** Cursor for next page, null if no more results */
-  nextCursor: Ref<CohortPaginationCursor | null>
-  /** Whether more results exist */
-  hasMore: Ref<boolean>
   /** Build IPC-safe params from query parameters */
   buildIpcParams: (params: CohortQueryParams) => Record<string, unknown>
   /** Fetch variants and update reactive state */
   fetchVariants: (params: CohortQueryParams) => Promise<void>
-  /** Query variants without updating reactive state (for cursor prefetching) */
-  queryVariants: (params: CohortQueryParams) => Promise<CohortQueryResult>
   /** Fetch cohort summary */
   fetchSummary: () => Promise<void>
   /** Reset all state (for database context changes) */
@@ -150,9 +138,6 @@ export function useCohortData(): UseCohortDataReturn {
   const isLoading = ref(false)
   const error = ref<Error | null>(null)
   const summary = ref<CohortSummary | null>(null)
-  const nextCursor = ref<CohortPaginationCursor | null>(null)
-  const hasMore = ref(false)
-
   /**
    * Build IPC-safe params from query parameters.
    * Filters out undefined values and strips Vue reactive proxies.
@@ -163,12 +148,8 @@ export function useCohortData(): UseCohortDataReturn {
       sort_order: params.sort_order
     }
 
-    if (params.cursor !== undefined) {
-      ipcParams.cursor = {
-        sort_value: params.cursor.sort_value,
-        sort_key: params.cursor.sort_key,
-        variant_key: params.cursor.variant_key
-      }
+    if (params.offset !== undefined && params.offset > 0) {
+      ipcParams.offset = params.offset
     }
     if (params.sort_by !== undefined && params.sort_by !== '') {
       ipcParams.sort_by = params.sort_by
@@ -217,29 +198,7 @@ export function useCohortData(): UseCohortDataReturn {
   }
 
   /**
-   * Execute a cohort query and return raw results without updating reactive state.
-   * Use this for intermediate cursor-prefetching to avoid triggering table re-renders.
-   */
-  const queryVariants = async (params: CohortQueryParams): Promise<CohortQueryResult> => {
-    if (!api) {
-      return { data: [], total_count: 0, next_cursor: null, has_more: false }
-    }
-
-    const plainParams = globalThis.structuredClone(buildIpcParams(params))
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await (api as any).cohort.getVariants(plainParams)
-
-    return {
-      data: result.data ?? [],
-      total_count: result.total_count ?? 0,
-      next_cursor: result.next_cursor ?? null,
-      has_more: result.has_more ?? false
-    }
-  }
-
-  /**
-   * Fetch variants and update reactive state (triggers table re-render).
-   * Use queryVariants() instead for intermediate cursor-prefetching.
+   * Fetch variants and update reactive state.
    */
   const fetchVariants = async (params: CohortQueryParams): Promise<void> => {
     if (!api) {
@@ -251,17 +210,15 @@ export function useCohortData(): UseCohortDataReturn {
     error.value = null
 
     try {
-      const result = await queryVariants(params)
-      variants.value = result.data
-      totalCount.value = result.total_count
-      nextCursor.value = result.next_cursor
-      hasMore.value = result.has_more
+      const plainParams = globalThis.structuredClone(buildIpcParams(params))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await (api as any).cohort.getVariants(plainParams)
+      variants.value = result.data ?? []
+      totalCount.value = result.total_count ?? 0
     } catch (err) {
       error.value = err instanceof Error ? err : new Error(String(err))
       variants.value = []
       totalCount.value = 0
-      nextCursor.value = null
-      hasMore.value = false
     } finally {
       isLoading.value = false
     }
@@ -293,8 +250,6 @@ export function useCohortData(): UseCohortDataReturn {
     totalCount.value = 0
     error.value = null
     summary.value = null
-    nextCursor.value = null
-    hasMore.value = false
   }
 
   return {
@@ -303,11 +258,8 @@ export function useCohortData(): UseCohortDataReturn {
     isLoading,
     error,
     summary,
-    nextCursor,
-    hasMore,
     buildIpcParams,
     fetchVariants,
-    queryVariants,
     fetchSummary,
     reset
   }

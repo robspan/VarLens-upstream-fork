@@ -12,7 +12,6 @@ import type {
   CohortSearchParams,
   CohortCarrier,
   GeneBurden,
-  CohortPaginationCursor,
   CohortPaginatedResult
 } from '../../shared/types/cohort'
 
@@ -39,6 +38,12 @@ const SORTABLE_COLUMNS: Record<string, string> = {
 }
 
 const NUMERIC_COLUMNS = new Set(['pos', 'gnomad_af', 'cadd_phred'])
+
+// Maps cohort-facing column keys to their raw `variants` table column names.
+// Only entries that differ need to be listed; unlisted keys pass through as-is.
+const PRE_AGGREGATION_COLUMN_MAP: Record<string, string> = {
+  cadd_phred: 'cadd'
+}
 
 // Columns that are computed aggregates (only available after GROUP BY)
 // These must be filtered via HAVING, not WHERE
@@ -81,13 +86,13 @@ export class CohortService {
    */
   getCohortVariants(params: CohortSearchParams): CohortPaginatedResult {
     const limit = params.limit ?? 50
+    const offset = params.offset ?? 0
     const validatedSortKey =
       params.sort_by !== undefined && SORTABLE_COLUMNS[params.sort_by] !== undefined
         ? params.sort_by
         : 'carrier_count'
     const sortBy = SORTABLE_COLUMNS[validatedSortKey]
     const sortOrder = params.sort_order ?? 'desc'
-    const effectiveSortKey = validatedSortKey
 
     // Get total case count (used for cohort_frequency calculation)
     const totalCasesResult = this.db.prepare('SELECT COUNT(*) as count FROM cases').get() as {
@@ -97,7 +102,7 @@ export class CohortService {
 
     if (totalCases === 0) {
       // No cases in database - return empty result
-      return { data: [], total_count: 0, next_cursor: null, has_more: false }
+      return { data: [], total_count: 0 }
     }
 
     // Build WHERE clause for search and filters
@@ -204,10 +209,12 @@ export class CohortService {
           aggregateFilterConditions.push(`CAST(${sqlColumn} AS TEXT) LIKE ? COLLATE NOCASE`)
           aggregateFilterParams.push(`%${value}%`)
         } else {
+          // Use raw table column name for pre-aggregation WHERE clause
+          const rawColumn = PRE_AGGREGATION_COLUMN_MAP[column] ?? sqlColumn
           whereConditions.push(
             NUMERIC_COLUMNS.has(column)
-              ? `CAST(${sqlColumn} AS TEXT) LIKE ? COLLATE NOCASE`
-              : `${sqlColumn} LIKE ? COLLATE NOCASE`
+              ? `CAST(${rawColumn} AS TEXT) LIKE ? COLLATE NOCASE`
+              : `${rawColumn} LIKE ? COLLATE NOCASE`
           )
           params_array.push(`%${value}%`)
         }
@@ -234,30 +241,14 @@ export class CohortService {
     const filterHavingClause =
       havingConditions.length > 0 ? `HAVING ${havingConditions.join(' AND ')}` : ''
 
-    // Build cursor condition separately (applied as WHERE on outer query)
-    let cursorWhereClause = ''
-    const cursorParams: (string | number | null)[] = []
-    if (params.cursor !== undefined) {
-      const cursorResult = this.buildCursorCondition(params.cursor, params.sort_by, sortOrder)
-      if (cursorResult === null) {
-        // Invalid cursor (sort changed) — return empty
-        return { data: [], next_cursor: null, has_more: false, total_count: 0 }
-      }
-      cursorWhereClause = `WHERE ${cursorResult.condition}`
-      cursorParams.push(...cursorResult.params)
-    }
-
     // Build ORDER BY clause with variant_key as tiebreaker
     const direction = sortOrder.toUpperCase()
     const orderByClause = `ORDER BY ${sortBy} ${direction}, variant_key ASC`
 
-    // Fetch limit+1 to detect has_more without a separate count query
-    const fetchLimit = limit + 1
-
     // Two-CTE query structure:
     // 1. deduped: deduplicate per case before counting
     // 2. aggregated: GROUP BY with filter HAVING + COUNT(*) OVER() for total_count
-    // Outer query: applies cursor WHERE (total_count already computed), ORDER BY, LIMIT
+    // Outer query: ORDER BY, LIMIT, OFFSET
     const sql = `
       WITH deduped AS (
         SELECT
@@ -305,92 +296,57 @@ export class CohortService {
         ${filterHavingClause}
       )
       SELECT * FROM aggregated
-      ${cursorWhereClause}
       ${orderByClause}
-      LIMIT ?
+      LIMIT ? OFFSET ?
     `
 
     const stmt = this.getStatement(sql)
     const rawResults = stmt.all(
       ...params_array,
       ...havingParams,
-      ...cursorParams,
-      fetchLimit
+      limit,
+      offset
     ) as (CohortVariant & {
       _total_count: number
     })[]
 
-    // Detect has_more by checking if we got more than limit
-    const hasMore = rawResults.length > limit
-    const pageResults = hasMore ? rawResults.slice(0, limit) : rawResults
-
-    // Extract total count from window function (computed before cursor, so always full count)
-    const totalCount = pageResults.length > 0 ? pageResults[0]._total_count : 0
-
-    // Build next cursor from last row
-    let nextCursor: CohortPaginationCursor | null = null
-    if (hasMore && pageResults.length > 0) {
-      const lastRow = pageResults[pageResults.length - 1]
-      nextCursor = {
-        sort_value:
-          ((lastRow as unknown as Record<string, unknown>)[effectiveSortKey] as
-            | string
-            | number
-            | null) ?? null,
-        sort_key: effectiveSortKey,
-        variant_key: lastRow.variant_key
+    // Extract total count from window function; if empty page (offset beyond data),
+    // run a count-only query to still report the correct total
+    let totalCount = 0
+    if (rawResults.length > 0) {
+      totalCount = rawResults[0]._total_count
+    } else if (offset > 0) {
+      // Offset beyond data — need a separate count query
+      const countSql = `
+        WITH deduped AS (
+          SELECT chr, pos, ref, alt, case_id,
+            MAX(gt_num) as gt_num
+          FROM variants ${whereClause}
+          GROUP BY chr, pos, ref, alt, case_id
+        ),
+        aggregated AS (
+          SELECT chr, pos, ref, alt, COUNT(*) as carrier_count,
+            CAST(COUNT(*) AS REAL) / ${totalCases} as cohort_frequency,
+            SUM(CASE WHEN gt_num IN ('0/1','1/0','0|1','1|0') THEN 1 ELSE 0 END) as het_count,
+            SUM(CASE WHEN gt_num IN ('1/1','1|1') THEN 1 ELSE 0 END) as hom_count
+          FROM deduped GROUP BY chr, pos, ref, alt
+          ${filterHavingClause}
+        )
+        SELECT COUNT(*) as count FROM aggregated
+      `
+      const countResult = this.db.prepare(countSql).get(...params_array, ...havingParams) as {
+        count: number
       }
+      totalCount = countResult.count
     }
 
     // Strip internal _total_count field from results
-    const results = pageResults.map(({ _total_count, ...row }) => row) as CohortVariant[]
+    const results = rawResults.map(({ _total_count, ...row }) => row) as CohortVariant[]
 
     return {
       data: results,
-      next_cursor: nextCursor,
-      has_more: hasMore,
       total_count: totalCount
     }
-  }
-
-  /**
-   * Build cursor condition for keyset pagination on aggregated results.
-   * Uses variant_key as tiebreaker instead of a row id.
-   *
-   * @returns SQL condition for the outer WHERE clause and params, or null if cursor is invalid
-   */
-  private buildCursorCondition(
-    cursor: CohortPaginationCursor,
-    sortBy: string | undefined,
-    sortOrder: 'asc' | 'desc'
-  ): { condition: string; params: (string | number | null)[] } | null {
-    const effectiveSortKey = sortBy ?? 'carrier_count'
-
-    // Invalidate cursor if sort changed
-    if (cursor.sort_key !== effectiveSortKey) {
-      return null
-    }
-
-    if (SORTABLE_COLUMNS[effectiveSortKey] === undefined) return null
-
-    const params: (string | number | null)[] = []
-    let condition: string
-
-    // Use column alias directly — cursor is applied as WHERE on the aggregated CTE
-    const columnExpr = effectiveSortKey
-
-    if (cursor.sort_value === null) {
-      // Current position is in the NULL region — only more NULLs with greater variant_key
-      condition = `(${columnExpr} IS NULL AND variant_key > ?)`
-      params.push(cursor.variant_key)
-    } else {
-      const compareOp = sortOrder === 'desc' ? '<' : '>'
-      // Both ASC and DESC: NULLs are last in SQLite, so include them after all non-null values
-      condition = `(${columnExpr} ${compareOp} ? OR (${columnExpr} = ? AND variant_key > ?) OR ${columnExpr} IS NULL)`
-      params.push(cursor.sort_value, cursor.sort_value, cursor.variant_key)
-    }
-
-    return { condition, params }
   }
 
   /**

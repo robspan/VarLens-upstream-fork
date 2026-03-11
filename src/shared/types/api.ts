@@ -36,7 +36,6 @@ import type {
   Case,
   Variant,
   VariantFilter,
-  PaginationCursor,
   PaginatedResult,
   SortItem,
   VariantAnnotation,
@@ -85,7 +84,6 @@ export type {
   Case,
   Variant,
   VariantFilter,
-  PaginationCursor,
   PaginatedResult,
   SortItem,
   ProgressUpdate,
@@ -127,7 +125,7 @@ export interface VariantsAPI {
   query: (
     caseId: number,
     filters: Omit<VariantFilter, 'case_id'>,
-    cursor?: PaginationCursor,
+    offset?: number,
     limit?: number,
     sortBy?: SortItem[]
   ) => Promise<PaginatedResult<Variant>>

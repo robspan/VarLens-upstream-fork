@@ -111,8 +111,6 @@ describe('variant IPC handlers', () => {
       // Verify basic structure expectations
       expect(result).toHaveProperty('data')
       expect(result).toHaveProperty('total_count')
-      expect(result).toHaveProperty('has_more')
-      expect(result).toHaveProperty('next_cursor')
       expect(Array.isArray(result.data)).toBe(true)
       expect(typeof result.total_count).toBe('number')
     })
@@ -127,7 +125,6 @@ describe('variant IPC handlers', () => {
 
       expect(result.data.length).toBe(3)
       expect(result.total_count).toBe(10)
-      expect(result.has_more).toBe(true)
     })
 
     it('respects sort parameters', () => {
@@ -136,7 +133,7 @@ describe('variant IPC handlers', () => {
       insertVariant(caseId, '1', 200, 'G', 'A')
 
       const filter: VariantFilter = { case_id: caseId }
-      const result = db.variants.getVariants(filter, 50, undefined, [{ key: 'pos', order: 'asc' }])
+      const result = db.variants.getVariants(filter, 50, 0, [{ key: 'pos', order: 'asc' }])
 
       expect(result.data[0].pos).toBe(100)
       expect(result.data[1].pos).toBe(200)

@@ -2,7 +2,6 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   ProgressUpdate,
   VariantFilter,
-  PaginationCursor,
   SortItem,
   BatchProgress,
   DuplicateChoice,
@@ -38,10 +37,10 @@ const api = {
     query: (
       caseId: number,
       filters: Omit<VariantFilter, 'case_id'>,
-      cursor?: PaginationCursor,
+      offset?: number,
       limit?: number,
       sortBy?: SortItem[]
-    ) => ipcRenderer.invoke('variants:query', caseId, filters, cursor, limit, sortBy),
+    ) => ipcRenderer.invoke('variants:query', caseId, filters, offset, limit, sortBy),
 
     getFilterOptions: (caseId: number) => ipcRenderer.invoke('variants:filterOptions', caseId),
 

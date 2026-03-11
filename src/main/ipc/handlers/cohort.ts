@@ -65,9 +65,7 @@ export function registerCohortHandlers({ ipcMain, getDb }: HandlerDependencies):
       }))
       return {
         data: plainData,
-        total_count: Number(result.total_count),
-        has_more: result.has_more,
-        next_cursor: result.next_cursor
+        total_count: Number(result.total_count)
       }
     })
   })

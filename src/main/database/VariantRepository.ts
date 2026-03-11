@@ -3,7 +3,7 @@ import type { CaseRepository } from './CaseRepository'
 import type { Database as DatabaseType } from 'better-sqlite3-multiple-ciphers'
 import type { Kysely } from 'kysely'
 import type { VarlensDatabase } from '../../shared/types/database-schema'
-import type { Variant, VariantFilter, PaginationCursor, PaginatedResult, SortItem } from './types'
+import type { Variant, VariantFilter, PaginatedResult, SortItem } from './types'
 import type { FilterOptions } from '../../shared/types/api'
 import type { TranscriptInsertRow } from '../../shared/types/transcript'
 import { createFTSTriggers } from './schema'
@@ -348,93 +348,28 @@ export class VariantRepository extends BaseRepository {
     return 'id IN (SELECT rowid FROM variants_fts WHERE variants_fts MATCH ?)'
   }
 
-  private buildCursorCondition(
-    cursor: PaginationCursor,
-    sortBy?: SortItem[]
-  ): { condition: string; params: (string | number | null)[] } {
-    const sortItem = sortBy?.[0]
-    const sortKey = sortItem?.key ?? 'pos'
-    const sortDirection = sortItem?.order ?? 'asc'
-    const sqlColumn = SORTABLE_COLUMNS[sortKey] ?? 'pos'
-
-    if (cursor.sort_key !== sortKey) {
-      return { condition: '1 = 0', params: [] }
-    }
-
-    const params: (string | number | null)[] = []
-    let condition: string
-
-    if (cursor.sort_value === null) {
-      if (sortDirection === 'asc') {
-        condition = `(${sqlColumn} IS NULL AND id > ?)`
-        params.push(cursor.id)
-      } else {
-        condition = `(${sqlColumn} IS NULL AND id > ?) OR (${sqlColumn} IS NOT NULL)`
-        params.push(cursor.id)
-      }
-    } else {
-      const compareOp = sortDirection === 'desc' ? '<' : '>'
-      if (sortDirection === 'asc') {
-        condition = `(${sqlColumn} ${compareOp} ? OR (${sqlColumn} = ? AND id > ?) OR ${sqlColumn} IS NULL)`
-        params.push(cursor.sort_value, cursor.sort_value, cursor.id)
-      } else {
-        condition = `(${sqlColumn} ${compareOp} ? OR (${sqlColumn} = ? AND id > ?))`
-        params.push(cursor.sort_value, cursor.sort_value, cursor.id)
-      }
-    }
-
-    return { condition, params }
-  }
-
   // ── Query methods ────────────────────────────────────────────
 
   getVariants(
     filter: VariantFilter,
     limit: number,
-    cursor?: PaginationCursor,
+    offset: number = 0,
     sortBy?: SortItem[]
   ): PaginatedResult<Variant> {
     const { conditions, params } = this.buildFilterConditions(filter)
-
     const orderByClause = this.buildSortClause(sortBy)
-    const primarySortKey =
-      (sortBy && sortBy.find((item) => SORTABLE_COLUMNS[item.key] !== undefined))?.key ?? 'pos'
+    const whereClause = conditions.join(' AND ')
 
-    const countWhereClause = conditions.join(' AND ')
-    const countSql = `SELECT COUNT(*) as count FROM variants WHERE ${countWhereClause}`
+    // Count query (same filters, no offset)
+    const countSql = `SELECT COUNT(*) as count FROM variants WHERE ${whereClause}`
     const countResult = this.db.prepare(countSql).get(...params) as { count: number }
     const total_count = countResult.count
 
-    let cursorCondition = ''
-    let cursorParams: (string | number | null)[] = []
-    if (cursor) {
-      const cursorResult = this.buildCursorCondition(cursor, sortBy)
-      cursorCondition = cursorResult.condition
-      cursorParams = cursorResult.params
-    }
+    // Data query with OFFSET
+    const dataSql = `SELECT * FROM variants WHERE ${whereClause} ORDER BY ${orderByClause} LIMIT ? OFFSET ?`
+    const data = this.db.prepare(dataSql).all(...params, limit, offset) as Variant[]
 
-    const dataConditions = cursor ? [...conditions, cursorCondition] : conditions
-    const dataWhereClause = dataConditions.join(' AND ')
-    const dataSql = `SELECT * FROM variants WHERE ${dataWhereClause} ORDER BY ${orderByClause} LIMIT ?`
-    const dataParams = [...params, ...cursorParams, limit + 1]
-    const results = this.db.prepare(dataSql).all(...dataParams) as Variant[]
-
-    const has_more = results.length > limit
-    const data = has_more ? results.slice(0, limit) : results
-
-    let next_cursor: PaginationCursor | null = null
-    if (has_more && data.length > 0) {
-      const lastItem = data[data.length - 1]
-      const sortValue =
-        (lastItem[primarySortKey as keyof Variant] as number | string | null | undefined) ?? null
-      next_cursor = {
-        id: lastItem.id,
-        sort_value: sortValue,
-        sort_key: primarySortKey
-      }
-    }
-
-    return { data, next_cursor, has_more, total_count }
+    return { data, total_count }
   }
 
   searchVariants(caseId: number, query: string, limit: number = 50): Variant[] {

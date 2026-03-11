@@ -180,36 +180,15 @@ describe('Variant Operations', () => {
       expect(result.data.length).toBe(20)
     })
 
-    it('has_more is true when more results exist', () => {
-      const caseId = createTestCase(service, 'test-case')
-      const variants = createTestVariants(100)
-      service.variants.insertVariantsBatch(caseId, variants)
-
-      const result = service.variants.getVariants({ case_id: caseId }, 20)
-
-      expect(result.has_more).toBe(true)
-    })
-
-    it('has_more is false on last page', () => {
-      const caseId = createTestCase(service, 'test-case')
-      const variants = createTestVariants(15)
-      service.variants.insertVariantsBatch(caseId, variants)
-
-      const result = service.variants.getVariants({ case_id: caseId }, 20)
-
-      expect(result.has_more).toBe(false)
-    })
-
-    it('cursor navigates to next page', () => {
+    it('returns second page with offset', () => {
       const caseId = createTestCase(service, 'test-case')
       const variants = createTestVariants(50)
       service.variants.insertVariantsBatch(caseId, variants)
 
-      const page1 = service.variants.getVariants({ case_id: caseId }, 20)
-      expect(page1.next_cursor).not.toBeNull()
+      const page1 = service.variants.getVariants({ case_id: caseId }, 20, 0)
+      const page2 = service.variants.getVariants({ case_id: caseId }, 20, 20)
 
-      const page2 = service.variants.getVariants({ case_id: caseId }, 20, page1.next_cursor!)
-
+      expect(page2.data.length).toBe(20)
       // Different results on page 2
       expect(page2.data[0].id).not.toBe(page1.data[0].id)
       // All page2 items should be different from page1
@@ -217,6 +196,16 @@ describe('Variant Operations', () => {
       for (const v of page2.data) {
         expect(page1Ids.has(v.id)).toBe(false)
       }
+    })
+
+    it('returns empty page when offset exceeds total', () => {
+      const caseId = createTestCase(service, 'test-case')
+      const variants = createTestVariants(5)
+      service.variants.insertVariantsBatch(caseId, variants)
+
+      const result = service.variants.getVariants({ case_id: caseId }, 10, 100)
+      expect(result.data).toHaveLength(0)
+      expect(result.total_count).toBe(5)
     })
 
     it('total_count reflects all matching variants', () => {
@@ -235,9 +224,7 @@ describe('Variant Operations', () => {
       const result = service.variants.getVariants({ case_id: caseId }, 20)
 
       expect(result.data).toEqual([])
-      expect(result.has_more).toBe(false)
       expect(result.total_count).toBe(0)
-      expect(result.next_cursor).toBeNull()
     })
   })
 

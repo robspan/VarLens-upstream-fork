@@ -1,6 +1,6 @@
 import { ref, watch, type Ref } from 'vue'
-import type { Variant, VariantFilter, PaginatedResult } from '../../../../shared/types/api'
-import { useCursorPagination } from '../../composables/useCursorPagination'
+import type { Variant, VariantFilter } from '../../../../shared/types/api'
+import { useOffsetPagination } from '../../composables/useOffsetPagination'
 import { useAnnotations } from '../../composables/useAnnotations'
 import { useColumnFilters } from '../../composables/useColumnFilters'
 import { useDebounce } from '../../composables/useDebounce'
@@ -28,7 +28,7 @@ export function useVariantData(options: UseVariantDataOptions) {
   const columnFilterState = useColumnFilters()
   const { getColumnFiltersParam, clearAllColumnFilters } = columnFilterState
 
-  // Shared cursor pagination
+  // Shared offset pagination
   const {
     page,
     itemsPerPage,
@@ -41,11 +41,11 @@ export function useVariantData(options: UseVariantDataOptions) {
     invalidateAndReload,
     resetSort,
     resetState
-  } = useCursorPagination<Variant>({
-    fetchPage: async ({ cursor, limit, sortBy: sortItems }) => {
+  } = useOffsetPagination<Variant>({
+    fetchPage: async ({ offset, limit, sortBy: sortItems }) => {
       if (!api) {
         console.warn('API not available - running outside Electron')
-        return { data: [], total_count: 0, next_cursor: null, has_more: false }
+        return { data: [], total_count: 0 }
       }
 
       // Deep-clone filters to strip reactive proxies for IPC
@@ -56,19 +56,17 @@ export function useVariantData(options: UseVariantDataOptions) {
       }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result: PaginatedResult<Variant> = await (api as any).variants.query(
+      const result = await (api as any).variants.query(
         caseId.value,
         plainFilters,
-        cursor,
+        offset,
         limit,
         sortItems
       )
 
       return {
         data: result.data,
-        total_count: result.total_count,
-        next_cursor: result.next_cursor ?? null,
-        has_more: result.has_more ?? false
+        total_count: result.total_count
       }
     },
     onSortChange: onSortUpdate

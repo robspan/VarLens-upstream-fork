@@ -123,28 +123,12 @@ export interface SortItem {
 }
 
 /**
- * PaginationCursor - cursor for keyset pagination
- */
-export interface PaginationCursor {
-  /** Last row id */
-  id: number
-  /** Value of primary sort column for keyset pagination */
-  sort_value: number | string | null
-  /** Column key being sorted (needed to resume correctly) */
-  sort_key: string
-}
-
-/**
  * PaginatedResult - generic paginated response wrapper
  */
 export interface PaginatedResult<T> {
   /** Array of result items */
   data: T[]
-  /** Cursor for next page, null if no more results */
-  next_cursor: PaginationCursor | null
-  /** Whether there are more results */
-  has_more: boolean
-  /** Total count of matching items */
+  /** Total count of matching items (for Vuetify items-length) */
   total_count: number
 }
 

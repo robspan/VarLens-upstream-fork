@@ -54,13 +54,11 @@ const nullishNumberArray = () =>
 export const CohortSearchParamsSchema = z.object({
   // Pagination (optional per actual type)
   limit: z.number().int().positive().max(10000).optional(),
-  // Cursor-based pagination (replaces offset)
-  cursor: z
-    .object({
-      sort_value: z.union([z.number(), z.string(), z.null()]),
-      sort_key: z.string().min(1),
-      variant_key: z.string().min(1)
-    })
+  // Offset-based pagination
+  offset: z
+    .number()
+    .int()
+    .nonnegative()
     .nullish()
     .transform((val) => val ?? undefined),
 
@@ -197,19 +195,9 @@ export const VariantFilterSchema = VariantFilterPartialSchema.extend({
 export type ValidatedVariantFilter = z.infer<typeof VariantFilterSchema>
 
 /**
- * Schema for pagination cursor
- * Matches PaginationCursor in src/main/database/types.ts
+ * Schema for pagination offset
  */
-export const PaginationCursorSchema = z.object({
-  id: z.number().int(),
-  sort_value: z.union([z.number(), z.string(), z.null()]),
-  sort_key: z.string()
-})
-
-/**
- * Inferred type from PaginationCursorSchema
- */
-export type ValidatedPaginationCursor = z.infer<typeof PaginationCursorSchema>
+export const OffsetSchema = z.number().int().nonnegative()
 
 /**
  * Schema for sort item

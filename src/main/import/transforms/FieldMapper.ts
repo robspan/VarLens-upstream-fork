@@ -221,6 +221,15 @@ export class FieldMapper extends Transform {
 
     if (count === 0) return []
 
+    // Resolve selected transcript ID up front so dedup doesn't lose the is_selected flag
+    const selectedTranscriptId = this.extractValue(
+      row,
+      this.cols.TRANSCRIPT,
+      selectedTranscript,
+      true,
+      this.dictionaries.transcript
+    ) as string | null
+
     const transcripts: TranscriptInsertRow[] = []
     const seen = new Set<string>()
 
@@ -252,7 +261,7 @@ export class FieldMapper extends Transform {
           this.dictionaries.hpoSimScore
         ),
         moi: this.extractValue(row, this.cols.MOI, i, true, this.dictionaries.moi) as string | null,
-        is_selected: i === selectedTranscript ? 1 : 0
+        is_selected: transcriptId === selectedTranscriptId ? 1 : 0
       })
     }
 

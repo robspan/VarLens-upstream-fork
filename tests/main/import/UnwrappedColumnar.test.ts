@@ -19,9 +19,12 @@ import { COLUMN_INDICES } from '../../../src/main/import/config/fieldMapping'
 /**
  * Build a minimal unwrapped columnar JSON fixture.
  *
- * The header array must have entries at positions matching COLUMN_INDICES
- * for the FieldMapper to extract dictionaries. The data rows are arrays
- * where each index maps to a column.
+ * The header array includes entries whose `id` fields (e.g., "Gene",
+ * "Transcript") are used by the FieldMapper to resolve column indices
+ * dynamically. In this fixture we align header and data positions with
+ * COLUMN_INDICES for consistency, but the FieldMapper does not require
+ * these hardcoded positions. The data rows are arrays where each index
+ * maps to a column.
  */
 function buildUnwrappedFixture(variantCount = 3): Buffer {
   // Build header with Gene dictionary for field mapping
@@ -175,5 +178,86 @@ describe('Unwrapped Columnar Import', () => {
 
     expect(result.caseId).toBeGreaterThan(0)
     expect(result.variantCount).toBe(1)
+  })
+
+  it('should resolve columns dynamically when header positions are shifted', async () => {
+    // Build a fixture where extra columns shift Gene/CADD/Func to non-default positions
+    const maxIndex = Math.max(...Object.values(COLUMN_INDICES))
+    const extraCols = 5 // Insert 5 extra columns before Gene
+    const totalCols = maxIndex + extraCols + 1
+
+    // Build header with extra columns shifting everything after ALT
+    const header: Record<string, unknown>[] = []
+    // Keep first 13 columns (up to and including Alt at index 12) at default positions
+    for (let i = 0; i <= 12; i++) {
+      header.push({ id: `field_${i}`, dataDictionary: null })
+    }
+    header[1] = { id: 'selectedTranscript', dataDictionary: null }
+    header[9] = { id: 'Chr', dataDictionary: null }
+    header[10] = { id: 'Pos', dataDictionary: null }
+    header[11] = { id: 'Ref', dataDictionary: null }
+    header[12] = { id: 'Alt', dataDictionary: null }
+
+    // Insert extra columns (these shift everything below)
+    for (let i = 0; i < extraCols; i++) {
+      header.push({ id: `ExtraCol_${i}`, dataDictionary: null })
+    }
+
+    // Now Gene is at 13 + extraCols = 18 (default was 24)
+    const geneIdx = header.length
+    header.push({
+      id: 'Gene',
+      dataDictionary: { '100': 'TP53', '200': 'BRCA2' }
+    })
+
+    // Func right after
+    const funcIdx = header.length
+    header.push({ id: 'Func', dataDictionary: null })
+
+    // Impact right after
+    const impactIdx = header.length
+    header.push({ id: 'Impact', dataDictionary: null })
+
+    // CADD at a shifted position
+    const caddIdx = header.length
+    header.push({ id: 'CADDPhredScore', dataDictionary: null })
+
+    // Pad to totalCols
+    while (header.length < totalCols) {
+      header.push({ id: `pad_${header.length}`, dataDictionary: null })
+    }
+
+    // Build a data row using the SHIFTED positions
+    const row: unknown[] = new Array(totalCols).fill(null)
+    row[0] = 5000
+    row[1] = 0
+    row[9] = [['7', 7]]
+    row[10] = [[55000, 55000]]
+    row[11] = 'G'
+    row[12] = 'A'
+    row[geneIdx] = [[100]] // Should resolve to TP53
+    row[funcIdx] = [['missense_variant']]
+    row[impactIdx] = [[2]] // MODERATE
+    row[caddIdx] = 23.5
+
+    const json = JSON.stringify({ data: [row], header })
+    const fixturePath = join(tmpDir, 'shifted.json.gz')
+    writeFileSync(fixturePath, gzipSync(Buffer.from(json)))
+
+    const result = await importService.importVariants(fixturePath, {
+      caseName: 'Shifted Columns Test'
+    })
+
+    expect(result.variantCount).toBe(1)
+    expect(result.skipped).toBe(0)
+
+    const variants = db.variants.getVariants({ case_id: result.caseId }, 1)
+    const v = variants.data[0]
+    expect(v.chr).toBe('7')
+    expect(v.pos).toBe(55000)
+    expect(v.gene_symbol).toBe('TP53')
+    expect(v.cadd).toBe(23.5)
+    expect(v.func).toBe('missense_variant')
+    expect(v.consequence).toBe('MODERATE')
   })
 })

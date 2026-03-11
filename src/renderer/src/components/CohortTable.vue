@@ -99,8 +99,17 @@ const emit = defineEmits<{
 }>()
 
 // Composables
-const { variants, totalCount, isLoading, error, summary, nextCursor, fetchVariants, fetchSummary } =
-  useCohortData()
+const {
+  variants,
+  totalCount,
+  isLoading,
+  error,
+  summary,
+  nextCursor,
+  fetchVariants,
+  queryVariants,
+  fetchSummary
+} = useCohortData()
 
 // Cursor tracking: page number -> cursor to use for that page
 // Page 1 has no cursor (first page), page 2 uses cursor from page 1, etc.
@@ -184,73 +193,113 @@ const buildQueryParams = (cursor?: CohortPaginationCursor) => ({
   column_filters: cohortColumnFilters.value
 })
 
-// Event handlers
-const handleFilterChange = async () => {
+// Shared helper: invalidate cursor cache, reset to page 1, and reload
+const invalidateAndReload = async () => {
   pageCursors.value.clear()
   currentPage.value = 1
   await fetchVariants(buildQueryParams())
 }
 
+// Event handlers
+const handleFilterChange = () => invalidateAndReload()
+
 const handleClearAll = async () => {
   clearAllFilters()
-  pageCursors.value.clear()
-  currentPage.value = 1
-  await fetchVariants(buildQueryParams())
+  await invalidateAndReload()
 }
 
 const handleClearFilter = async (filterId: string) => {
   clearFilter(filterId)
-  pageCursors.value.clear()
-  currentPage.value = 1
-  await fetchVariants(buildQueryParams())
+  await invalidateAndReload()
 }
+
+// Re-entrancy guard: intermediate cursor fetches update reactive state which
+// triggers @update:options, causing infinite loops without this guard.
+let tableOptionsLoading = false
 
 const handleTableOptions = async (options: {
   page: number
   itemsPerPage: number
   sortBy: Array<{ key: string; order: 'asc' | 'desc' }>
 }) => {
-  const newSortBy = options.sortBy.length > 0 ? options.sortBy[0].key : undefined
-  const newSortOrder = (options.sortBy.length > 0 ? options.sortBy[0].order : 'desc') as
-    | 'asc'
-    | 'desc'
+  if (tableOptionsLoading) return
+  tableOptionsLoading = true
+  try {
+    const newSortBy = options.sortBy.length > 0 ? options.sortBy[0].key : undefined
+    const newSortOrder = (options.sortBy.length > 0 ? options.sortBy[0].order : 'desc') as
+      | 'asc'
+      | 'desc'
 
-  // Reset cursors if sort or page size changed
-  const sortChanged = newSortBy !== currentSortBy.value || newSortOrder !== currentSortOrder.value
-  const pageSizeChanged = options.itemsPerPage !== currentItemsPerPage.value
-  if (sortChanged || pageSizeChanged) {
-    pageCursors.value.clear()
-    currentPage.value = 1
-  }
-  currentSortBy.value = newSortBy
-  currentSortOrder.value = newSortOrder
-  currentItemsPerPage.value = options.itemsPerPage
-
-  // Determine effective page (reset to 1 if cursor not available for requested page)
-  let effectivePage = sortChanged || pageSizeChanged ? 1 : options.page
-  let cursor: CohortPaginationCursor | undefined
-  if (effectivePage > 1) {
-    cursor = pageCursors.value.get(effectivePage)
-    if (cursor === undefined) {
-      // No cached cursor for this page — reset to page 1
-      effectivePage = 1
+    // Reset cursors if sort or page size changed
+    const sortChanged = newSortBy !== currentSortBy.value || newSortOrder !== currentSortOrder.value
+    const pageSizeChanged = options.itemsPerPage !== currentItemsPerPage.value
+    if (sortChanged || pageSizeChanged) {
+      pageCursors.value.clear()
+      currentPage.value = 1
     }
-  }
+    currentSortBy.value = newSortBy
+    currentSortOrder.value = newSortOrder
+    currentItemsPerPage.value = options.itemsPerPage
 
-  const baseParams = buildQueryParams(cursor)
-  const params = {
-    ...baseParams,
-    limit: options.itemsPerPage,
-    sort_by: newSortBy,
-    sort_order: newSortOrder
-  }
+    // Determine effective page
+    const effectivePage = sortChanged || pageSizeChanged ? 1 : options.page
 
-  await fetchVariants(params)
-  currentPage.value = effectivePage
+    // For cursor-based pagination, if the target page has no cached cursor,
+    // sequentially fetch forward from the nearest cached page to build up cursors.
+    // This handles "Last page" and arbitrary page jumps correctly.
+    if (effectivePage > 1 && !pageCursors.value.has(effectivePage)) {
+      // Find the highest page <= effectivePage that has a cursor (or page 1)
+      let startPage = 1
+      for (let p = effectivePage; p > 1; p--) {
+        if (pageCursors.value.has(p)) {
+          startPage = p
+          break
+        }
+      }
 
-  // Store cursor for next page
-  if (nextCursor.value) {
-    pageCursors.value.set(options.page + 1, nextCursor.value)
+      // Fetch intermediate pages to fill cursor gaps.
+      // Uses queryVariants (non-reactive) to avoid triggering table re-renders.
+      for (let p = startPage; p < effectivePage; p++) {
+        const intermediateCursor =
+          p === 1 ? undefined : JSON.parse(JSON.stringify(pageCursors.value.get(p)))
+        const intermediateParams = {
+          ...buildQueryParams(intermediateCursor),
+          limit: options.itemsPerPage,
+          sort_by: newSortBy,
+          sort_order: newSortOrder
+        }
+        const result = await queryVariants(intermediateParams)
+        if (result.next_cursor && result.has_more) {
+          pageCursors.value.set(p + 1, result.next_cursor)
+        }
+      }
+    }
+
+    // Fetch the target page
+    const cursor =
+      effectivePage === 1
+        ? undefined
+        : pageCursors.value.has(effectivePage)
+          ? JSON.parse(JSON.stringify(pageCursors.value.get(effectivePage)))
+          : undefined
+
+    const baseParams = buildQueryParams(cursor)
+    const params = {
+      ...baseParams,
+      limit: options.itemsPerPage,
+      sort_by: newSortBy,
+      sort_order: newSortOrder
+    }
+
+    await fetchVariants(params)
+    currentPage.value = effectivePage
+
+    // Store cursor for next page based on the page we actually loaded
+    if (nextCursor.value) {
+      pageCursors.value.set(effectivePage + 1, nextCursor.value)
+    }
+  } finally {
+    tableOptionsLoading = false
   }
 }
 
@@ -263,16 +312,12 @@ const handleColumnFiltersChange = async (
   filters: Record<string, string> | undefined
 ): Promise<void> => {
   cohortColumnFilters.value = filters
-  pageCursors.value.clear()
-  currentPage.value = 1
-  await fetchVariants(buildQueryParams())
+  await invalidateAndReload()
 }
 
 const handleRetry = async () => {
   error.value = null
-  pageCursors.value.clear()
-  currentPage.value = 1
-  await fetchVariants(buildQueryParams())
+  await invalidateAndReload()
 }
 
 // Delegate annotation events to CohortAnnotationDialogs
@@ -339,11 +384,14 @@ defineExpose({ refresh })
 </script>
 
 <style scoped>
-/* CohortTable fills remaining height in flex parent */
+/* CohortTable fills remaining height in flex parent.
+   height: 100% is needed because the parent v-tabs-window-item is display: block,
+   so flex: 1 alone has no effect. */
 .cohort-table-container {
   display: flex;
   flex-direction: column;
   flex: 1;
+  height: 100%;
   min-height: 0;
   overflow: hidden;
 }

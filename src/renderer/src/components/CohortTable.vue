@@ -1,6 +1,6 @@
 <template>
   <div class="cohort-table-container">
-    <!-- IPC Error Banner (SOL-11) -->
+    <!-- IPC Error Banner -->
     <v-alert
       v-if="error"
       type="error"
@@ -24,7 +24,7 @@
       :columns="orderedColumns.map((h) => ({ key: h.key, title: h.title }))"
       :visible-columns="visibleHeaders.map((h) => h.key)"
       :exporting="annotationDialogsRef?.exporting ?? false"
-      :has-sort="currentSortBy !== undefined"
+      :has-sort="hasSort"
       @filter-change="handleFilterChange"
       @clear-all="handleClearAll"
       @clear-filter="handleClearFilter"
@@ -36,17 +36,18 @@
 
     <!-- Data Table -->
     <CohortDataTable
-      ref="dataTableRef"
+      v-model:page="page"
+      v-model:items-per-page="itemsPerPage"
+      v-model:sort-by="sortBy"
       :variants="variants"
-      :total-count="totalCount ?? 0"
-      :loading="isLoading"
+      :total-count="totalCount"
+      :loading="loading"
       :headers="visibleHeaders"
-      :page="currentPage"
       :selected-variant-key="selectedVariantKey"
       :is-global-starred="isGlobalStarred"
       :get-global-acmg-classification="getGlobalAcmgClassification"
       :get-global-comment="getGlobalComment"
-      @update:options="handleTableOptions"
+      @update:options="loadPage"
       @row-click="handleRowClick"
       @star-toggle="handleStarToggle"
       @acmg-select="handleAcmgSelect"
@@ -69,12 +70,14 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 // Composables
+import { useCursorPagination } from '../composables/useCursorPagination'
 import { useCohortData } from '../composables/useCohortData'
 import { useFilters } from '../composables/useFilters'
 import { useCarriers } from '../composables/useCarriers'
 import { useAnnotations } from '../composables/useAnnotations'
 import { useColumnPreferences } from '../composables/useColumnPreferences'
-import { useSettingsStore } from '../stores/settingsStore'
+import { useApiService } from '../composables/useApiService'
+import { useDebounce } from '../composables/useDebounce'
 // Sub-components
 import CohortFilterBar from './cohort/CohortFilterBar.vue'
 import CohortDataTable from './cohort/CohortDataTable.vue'
@@ -82,7 +85,8 @@ import CohortAnnotationDialogs from './cohort/CohortAnnotationDialogs.vue'
 // Column composable
 import { useCohortColumns } from './cohort/useCohortColumns'
 // Types
-import type { CohortVariant, CohortPaginationCursor } from '../../../shared/types/cohort'
+import type { CohortVariant } from '../../../shared/types/cohort'
+import type { CohortQueryParams } from '../composables/useCohortData'
 
 // Emit for navigation and row click
 const emit = defineEmits<{
@@ -100,28 +104,9 @@ const emit = defineEmits<{
   'row-click': [variant: CohortVariant]
 }>()
 
-// Composables
-const {
-  variants,
-  totalCount,
-  isLoading,
-  error,
-  summary,
-  nextCursor,
-  fetchVariants,
-  queryVariants,
-  fetchSummary
-} = useCohortData()
-
-// Cursor tracking: page number -> cursor to use for that page
-// Page 1 has no cursor (first page), page 2 uses cursor from page 1, etc.
-const pageCursors = ref<Map<number, CohortPaginationCursor>>(new Map())
-const currentPage = ref(1)
-const currentSortBy = ref<string | undefined>(undefined)
-const currentSortOrder = ref<'asc' | 'desc'>('desc')
-const settingsStore = useSettingsStore()
-const currentItemsPerPage = ref(settingsStore.itemsPerPage)
-// useFilters is a singleton - CohortFilterBar and CohortTable share the same state
+// API + domain composables
+const { api } = useApiService()
+const { summary, fetchSummary, buildIpcParams } = useCohortData()
 const { filters, searchTerm, selectedImpactPresets, clearAllFilters, clearFilter } = useFilters()
 const { loadCarriers } = useCarriers()
 const {
@@ -138,15 +123,82 @@ const {
 } = useAnnotations()
 const { prefs, resetToDefaults, toggleColumnVisibility, setColumnOrder } =
   useColumnPreferences('cohort-table')
-
-// Column management
 const { orderedColumns, visibleHeaders } = useCohortColumns(prefs)
 
 // Per-column text filters from CohortDataTable
 const cohortColumnFilters = ref<Record<string, string> | undefined>(undefined)
 
+// Sort state for filter bar
+const hasSort = ref(false)
+
+// Build cohort query params from current filter state
+const buildCohortQueryParams = (): Omit<
+  CohortQueryParams,
+  'limit' | 'cursor' | 'sort_by' | 'sort_order'
+> => ({
+  search_term: searchTerm.value || undefined,
+  gene_symbol: filters.value.geneSymbol || undefined,
+  consequences: selectedImpactPresets.value.length > 0 ? selectedImpactPresets.value : undefined,
+  funcs: filters.value.funcs.length > 0 ? filters.value.funcs : undefined,
+  clinvars: filters.value.clinvars.length > 0 ? filters.value.clinvars : undefined,
+  gnomad_af_max: filters.value.maxGnomadAf ?? undefined,
+  cadd_min: filters.value.minCadd ?? undefined,
+  cohort_frequency_min: filters.value.minCohortFrequency ?? undefined,
+  starred_only: filters.value.starredOnly || undefined,
+  has_comment: filters.value.hasCommentOnly || undefined,
+  acmg_classifications:
+    filters.value.acmgClassifications.length > 0
+      ? [...filters.value.acmgClassifications]
+      : undefined,
+  column_filters: cohortColumnFilters.value
+})
+
+// Shared cursor pagination (same composable as case view)
+const {
+  page,
+  itemsPerPage,
+  sortBy,
+  items: variants,
+  totalCount,
+  loading,
+  error,
+  loadPage,
+  invalidateAndReload,
+  resetSort
+} = useCursorPagination<CohortVariant>({
+  fetchPage: async ({ cursor, limit, sortBy: sortItems }) => {
+    if (!api) {
+      return { data: [], total_count: 0, next_cursor: null, has_more: false }
+    }
+
+    const sortKey = sortItems.length > 0 ? sortItems[0].key : undefined
+    const sortOrder: 'asc' | 'desc' = sortItems.length > 0 ? sortItems[0].order : 'desc'
+
+    const params: CohortQueryParams = {
+      limit,
+      cursor: cursor as CohortQueryParams['cursor'],
+      sort_by: sortKey,
+      sort_order: sortOrder,
+      ...buildCohortQueryParams()
+    }
+
+    const plainParams = globalThis.structuredClone(buildIpcParams(params))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (api as any).cohort.getVariants(plainParams)
+
+    return {
+      data: result.data ?? [],
+      total_count: result.total_count ?? 0,
+      next_cursor: result.next_cursor ?? null,
+      has_more: result.has_more ?? false
+    }
+  },
+  onSortChange: (sorted) => {
+    hasSort.value = sorted
+  }
+})
+
 // Local state
-const dataTableRef = ref<InstanceType<typeof CohortDataTable> | null>(null)
 const selectedVariantKey = ref<string | null>(null)
 const annotationDialogsRef = ref<InstanceType<typeof CohortAnnotationDialogs> | null>(null)
 
@@ -168,47 +220,12 @@ const filterState = {
   selectedImpactPresets
 }
 
-// Build query params from filter state
-// NOTE: buildQueryParams is temporary scaffolding. Phase 28 (DRY-07, DRY-09) will
-// introduce shared filter serialization utilities that this function should use.
-// For now, implement inline to maintain Phase 29's independence from Phase 28.
-const buildQueryParams = (cursor?: CohortPaginationCursor) => ({
-  limit: currentItemsPerPage.value,
-  cursor,
-  sort_order: (currentSortOrder.value ?? 'desc') as 'asc' | 'desc',
-  sort_by: currentSortBy.value,
-  search_term: searchTerm.value || undefined,
-  gene_symbol: filters.value.geneSymbol || undefined,
-  consequences: selectedImpactPresets.value.length > 0 ? selectedImpactPresets.value : undefined,
-  funcs: filters.value.funcs.length > 0 ? filters.value.funcs : undefined,
-  clinvars: filters.value.clinvars.length > 0 ? filters.value.clinvars : undefined,
-  gnomad_af_max: filters.value.maxGnomadAf ?? undefined,
-  cadd_min: filters.value.minCadd ?? undefined,
-  cohort_frequency_min: filters.value.minCohortFrequency ?? undefined,
-  starred_only: filters.value.starredOnly || undefined,
-  has_comment: filters.value.hasCommentOnly || undefined,
-  acmg_classifications:
-    filters.value.acmgClassifications.length > 0
-      ? [...filters.value.acmgClassifications]
-      : undefined,
-  column_filters: cohortColumnFilters.value
-})
-
-// Shared helper: invalidate cursor cache, reset to page 1, and reload
-const invalidateAndReload = async () => {
-  pageCursors.value.clear()
-  currentPage.value = 1
-  await fetchVariants(buildQueryParams())
-}
-
 // Event handlers
 const handleFilterChange = () => invalidateAndReload()
 
 const handleClearAll = async () => {
   clearAllFilters()
-  dataTableRef.value?.resetSort()
-  currentSortBy.value = undefined
-  currentSortOrder.value = 'desc'
+  resetSort()
   await invalidateAndReload()
 }
 
@@ -217,106 +234,17 @@ const handleClearFilter = async (filterId: string) => {
   await invalidateAndReload()
 }
 
-// Re-entrancy guard: intermediate cursor fetches update reactive state which
-// triggers @update:options, causing infinite loops without this guard.
-let tableOptionsLoading = false
-
-const handleTableOptions = async (options: {
-  page: number
-  itemsPerPage: number
-  sortBy: Array<{ key: string; order: 'asc' | 'desc' }>
-}) => {
-  if (tableOptionsLoading) return
-  tableOptionsLoading = true
-  try {
-    const newSortBy = options.sortBy.length > 0 ? options.sortBy[0].key : undefined
-    const newSortOrder = (options.sortBy.length > 0 ? options.sortBy[0].order : 'desc') as
-      | 'asc'
-      | 'desc'
-
-    // Reset cursors if sort or page size changed
-    const sortChanged = newSortBy !== currentSortBy.value || newSortOrder !== currentSortOrder.value
-    const pageSizeChanged = options.itemsPerPage !== currentItemsPerPage.value
-    if (sortChanged || pageSizeChanged) {
-      pageCursors.value.clear()
-      currentPage.value = 1
-    }
-    currentSortBy.value = newSortBy
-    currentSortOrder.value = newSortOrder
-    currentItemsPerPage.value = options.itemsPerPage
-
-    // Determine effective page
-    const effectivePage = sortChanged || pageSizeChanged ? 1 : options.page
-
-    // For cursor-based pagination, if the target page has no cached cursor,
-    // sequentially fetch forward from the nearest cached page to build up cursors.
-    // This handles "Last page" and arbitrary page jumps correctly.
-    if (effectivePage > 1 && !pageCursors.value.has(effectivePage)) {
-      // Find the highest page <= effectivePage that has a cursor (or page 1)
-      let startPage = 1
-      for (let p = effectivePage; p > 1; p--) {
-        if (pageCursors.value.has(p)) {
-          startPage = p
-          break
-        }
-      }
-
-      // Fetch intermediate pages to fill cursor gaps.
-      // Uses queryVariants (non-reactive) to avoid triggering table re-renders.
-      for (let p = startPage; p < effectivePage; p++) {
-        const intermediateCursor =
-          p === 1 ? undefined : JSON.parse(JSON.stringify(pageCursors.value.get(p)))
-        const intermediateParams = {
-          ...buildQueryParams(intermediateCursor),
-          limit: options.itemsPerPage,
-          sort_by: newSortBy,
-          sort_order: newSortOrder
-        }
-        const result = await queryVariants(intermediateParams)
-        if (result.next_cursor && result.has_more) {
-          pageCursors.value.set(p + 1, result.next_cursor)
-        }
-      }
-    }
-
-    // Fetch the target page
-    const cursor =
-      effectivePage === 1
-        ? undefined
-        : pageCursors.value.has(effectivePage)
-          ? JSON.parse(JSON.stringify(pageCursors.value.get(effectivePage)))
-          : undefined
-
-    const baseParams = buildQueryParams(cursor)
-    const params = {
-      ...baseParams,
-      limit: options.itemsPerPage,
-      sort_by: newSortBy,
-      sort_order: newSortOrder
-    }
-
-    await fetchVariants(params)
-    currentPage.value = effectivePage
-
-    // Store cursor for next page based on the page we actually loaded
-    if (nextCursor.value) {
-      pageCursors.value.set(effectivePage + 1, nextCursor.value)
-    }
-  } finally {
-    tableOptionsLoading = false
-  }
-}
-
 const handleRowClick = (variant: CohortVariant) => {
   selectedVariantKey.value = variant.variant_key
   emit('row-click', variant)
 }
 
-const handleColumnFiltersChange = async (
-  filters: Record<string, string> | undefined
-): Promise<void> => {
-  cohortColumnFilters.value = filters
-  await invalidateAndReload()
+// Debounced reload when per-column filters change
+const { debouncedFn: debouncedColumnFilterReload } = useDebounce(invalidateAndReload, 300)
+
+const handleColumnFiltersChange = (newFilters: Record<string, string> | undefined): void => {
+  cohortColumnFilters.value = newFilters
+  debouncedColumnFilterReload()
 }
 
 const handleRetry = async () => {
@@ -374,15 +302,14 @@ watch(variants, async (newVariants) => {
 })
 
 // Lifecycle
-onMounted(async () => {
+onMounted(() => {
   void fetchSummary()
-  await fetchVariants(buildQueryParams())
 })
 
 // Expose refresh method
 const refresh = async () => {
   void fetchSummary()
-  await fetchVariants(buildQueryParams())
+  await invalidateAndReload()
 }
 defineExpose({ refresh })
 </script>

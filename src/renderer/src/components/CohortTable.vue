@@ -171,8 +171,8 @@ const {
       return { data: [], total_count: 0, next_cursor: null, has_more: false }
     }
 
-    const sortKey = sortItems.length > 0 ? String(sortItems[0].key) : undefined
-    const sortOrder = (sortItems.length > 0 ? String(sortItems[0].order) : 'desc') as 'asc' | 'desc'
+    const sortKey = sortItems.length > 0 ? sortItems[0].key : undefined
+    const sortOrder: 'asc' | 'desc' = sortItems.length > 0 ? sortItems[0].order : 'desc'
 
     const params: CohortQueryParams = {
       limit,

@@ -20,6 +20,21 @@ export interface SortItem {
   order: boolean | 'asc' | 'desc'
 }
 
+/** Normalized sort item with strict 'asc'/'desc' order (IPC-safe). */
+export interface NormalizedSortItem {
+  key: string
+  order: 'asc' | 'desc'
+}
+
+/** Normalize Vuetify's boolean sort orders to 'asc'/'desc' for IPC safety. */
+const normalizeOrder = (order: SortItem['order']): 'asc' | 'desc' => {
+  if (order === 'desc' || order === false) return 'desc'
+  return 'asc'
+}
+
+const normalizeSortBy = (items: SortItem[]): NormalizedSortItem[] =>
+  items.map(({ key, order }) => ({ key, order: normalizeOrder(order) }))
+
 export interface CursorPageResult<T> {
   data: T[]
   total_count: number
@@ -28,11 +43,11 @@ export interface CursorPageResult<T> {
 }
 
 export interface UseCursorPaginationOptions<T> {
-  /** Fetch a single page. Params are deep-cloned (IPC-safe). */
+  /** Fetch a single page. sortBy is already normalized to 'asc'/'desc' (IPC-safe). */
   fetchPage: (params: {
     cursor: unknown | undefined
     limit: number
-    sortBy: SortItem[]
+    sortBy: NormalizedSortItem[]
   }) => Promise<CursorPageResult<T>>
   /** Called when sort state changes (e.g. to update "has sort" indicator) */
   onSortChange?: (hasSort: boolean) => void
@@ -65,8 +80,9 @@ export function useCursorPagination<T>(options: UseCursorPaginationOptions<T>) {
   })
 
   const getCacheKey = (pageNum: number): string => {
-    const sortKey = sortBy.value.length > 0 ? sortBy.value[0].key : 'default'
-    const sortOrder = sortBy.value.length > 0 ? sortBy.value[0].order : 'asc'
+    const normalized = normalizeSortBy(sortBy.value)
+    const sortKey = normalized.length > 0 ? normalized[0].key : 'default'
+    const sortOrder = normalized.length > 0 ? normalized[0].order : 'asc'
     return `${pageNum}-${sortKey}-${sortOrder}`
   }
 
@@ -81,7 +97,7 @@ export function useCursorPagination<T>(options: UseCursorPaginationOptions<T>) {
     error.value = null
     try {
       const targetPage = page.value
-      const plainSortBy = deepClone(sortBy.value)
+      const plainSortBy = normalizeSortBy(sortBy.value)
 
       // Fill cursor gaps for page jumps (e.g. "Last page" button)
       if (targetPage > 1) {
@@ -121,7 +137,7 @@ export function useCursorPagination<T>(options: UseCursorPaginationOptions<T>) {
       const result = await options.fetchPage({
         cursor,
         limit: itemsPerPage.value,
-        sortBy: deepClone(sortBy.value)
+        sortBy: plainSortBy
       })
 
       items.value = result.data
@@ -155,7 +171,9 @@ export function useCursorPagination<T>(options: UseCursorPaginationOptions<T>) {
   watch(
     sortBy,
     () => {
-      const serialized = sortBy.value.map((s) => `${s.key}:${s.order}`).join(',')
+      const serialized = normalizeSortBy(sortBy.value)
+        .map((s) => `${s.key}:${s.order}`)
+        .join(',')
       if (serialized === prevSortSerialized) return
       prevSortSerialized = serialized
       cursorCache.value.clear()

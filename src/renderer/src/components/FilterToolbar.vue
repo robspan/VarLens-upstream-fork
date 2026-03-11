@@ -3,6 +3,7 @@
     :filtered-count="filteredCount"
     :total-count="totalCount"
     :has-active-filters="hasActiveFilters"
+    :has-clearable-state="props.hasSort"
     :active-filter-count="activeFilterCount"
     :active-filters-list="activeFiltersList"
     :exporting="exporting"
@@ -159,7 +160,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, toRef, provide } from 'vue'
+import { ref, computed, watch, onMounted, provide } from 'vue'
 import { useFilterState } from '../composables/useFilterState'
 import { useColumnPreferences } from '../composables/useColumnPreferences'
 import SlimFilterToolbar from './SlimFilterToolbar.vue'
@@ -199,7 +200,6 @@ interface Emits {
 const emit = defineEmits<Emits>()
 
 // Filter state composable - single source of truth for all filter logic
-const hasSortRef = toRef(props, 'hasSort')
 const {
   filters,
   filterOptions,
@@ -229,8 +229,7 @@ const {
   computed(() => props.caseId),
   {
     onFiltersUpdate: (f) => emit('update:filters', f),
-    onResetSort: () => emit('reset-sort'),
-    hasSortRef
+    onResetSort: () => emit('reset-sort')
   }
 )
 

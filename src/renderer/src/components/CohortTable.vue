@@ -24,6 +24,7 @@
       :columns="orderedColumns.map((h) => ({ key: h.key, title: h.title }))"
       :visible-columns="visibleHeaders.map((h) => h.key)"
       :exporting="annotationDialogsRef?.exporting ?? false"
+      :has-sort="currentSortBy !== undefined"
       @filter-change="handleFilterChange"
       @clear-all="handleClearAll"
       @clear-filter="handleClearFilter"
@@ -73,6 +74,7 @@ import { useFilters } from '../composables/useFilters'
 import { useCarriers } from '../composables/useCarriers'
 import { useAnnotations } from '../composables/useAnnotations'
 import { useColumnPreferences } from '../composables/useColumnPreferences'
+import { useSettingsStore } from '../stores/settingsStore'
 // Sub-components
 import CohortFilterBar from './cohort/CohortFilterBar.vue'
 import CohortDataTable from './cohort/CohortDataTable.vue'
@@ -117,7 +119,8 @@ const pageCursors = ref<Map<number, CohortPaginationCursor>>(new Map())
 const currentPage = ref(1)
 const currentSortBy = ref<string | undefined>(undefined)
 const currentSortOrder = ref<'asc' | 'desc'>('desc')
-const currentItemsPerPage = ref(50)
+const settingsStore = useSettingsStore()
+const currentItemsPerPage = ref(settingsStore.itemsPerPage)
 // useFilters is a singleton - CohortFilterBar and CohortTable share the same state
 const { filters, searchTerm, selectedImpactPresets, clearAllFilters, clearFilter } = useFilters()
 const { loadCarriers } = useCarriers()
@@ -143,9 +146,7 @@ const { orderedColumns, visibleHeaders } = useCohortColumns(prefs)
 const cohortColumnFilters = ref<Record<string, string> | undefined>(undefined)
 
 // Local state
-// dataTableRef is used in template via ref="dataTableRef"
-// @ts-expect-error - ref is used in template
-const dataTableRef = ref()
+const dataTableRef = ref<InstanceType<typeof CohortDataTable> | null>(null)
 const selectedVariantKey = ref<string | null>(null)
 const annotationDialogsRef = ref<InstanceType<typeof CohortAnnotationDialogs> | null>(null)
 
@@ -172,7 +173,7 @@ const filterState = {
 // introduce shared filter serialization utilities that this function should use.
 // For now, implement inline to maintain Phase 29's independence from Phase 28.
 const buildQueryParams = (cursor?: CohortPaginationCursor) => ({
-  limit: 50,
+  limit: currentItemsPerPage.value,
   cursor,
   sort_order: (currentSortOrder.value ?? 'desc') as 'asc' | 'desc',
   sort_by: currentSortBy.value,
@@ -205,6 +206,9 @@ const handleFilterChange = () => invalidateAndReload()
 
 const handleClearAll = async () => {
   clearAllFilters()
+  dataTableRef.value?.resetSort()
+  currentSortBy.value = undefined
+  currentSortOrder.value = 'desc'
   await invalidateAndReload()
 }
 

@@ -107,29 +107,12 @@ export interface GeneBurden {
 }
 
 /**
- * Cursor for cohort keyset pagination
- * Uses variant_key as tiebreaker since aggregated rows have no single id
- */
-export interface CohortPaginationCursor {
-  /** Value of primary sort column for keyset comparison */
-  sort_value: number | string | null
-  /** Column key being sorted (prevents cursor reuse after sort change) */
-  sort_key: string
-  /** variant_key of last row (tiebreaker: "chr:pos:ref:alt") */
-  variant_key: string
-}
-
-/**
  * Paginated result for cohort queries
  */
 export interface CohortPaginatedResult {
   /** Array of cohort variants */
   data: CohortVariant[]
-  /** Cursor for fetching next page, null if no more results */
-  next_cursor: CohortPaginationCursor | null
-  /** Whether more results exist beyond this page */
-  has_more: boolean
-  /** Total count of matching variants (via window function) */
+  /** Total count of matching variants */
   total_count: number
 }
 
@@ -145,8 +128,8 @@ export interface CohortSearchParams {
   sort_order?: 'asc' | 'desc'
   /** Page size */
   limit?: number
-  /** Cursor for keyset pagination (replaces offset) */
-  cursor?: CohortPaginationCursor
+  /** Offset for pagination: (page - 1) * limit */
+  offset?: number
 
   // Filter parameters (matching case analysis filters)
   /** Gene symbol exact match */

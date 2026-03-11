@@ -1,12 +1,12 @@
 import { z } from 'zod'
 import { wrapHandler } from '../errorHandler'
 import type { HandlerDependencies } from '../types'
-import type { VariantFilter, PaginationCursor, SortItem } from '../../database/types'
+import type { VariantFilter, SortItem } from '../../database/types'
 import {
   VariantFilterPartialSchema,
   CaseIdSchema,
   LimitSchema,
-  PaginationCursorSchema,
+  OffsetSchema,
   SortItemSchema
 } from '../../../shared/types/ipc-schemas'
 import { mainLogger } from '../../services/MainLogger'
@@ -26,7 +26,7 @@ export function registerVariantHandlers({ ipcMain, getDb }: HandlerDependencies)
       _event,
       caseId: unknown,
       filters: unknown,
-      cursor: unknown,
+      offset: unknown,
       limit: unknown,
       sortBy: unknown
     ) => {
@@ -51,17 +51,17 @@ export function registerVariantHandlers({ ipcMain, getDb }: HandlerDependencies)
         }
 
         // Validate optional parameters
-        let validatedCursor: PaginationCursor | undefined
-        if (cursor !== undefined && cursor !== null) {
-          const cursorResult = PaginationCursorSchema.safeParse(cursor)
-          if (!cursorResult.success) {
+        let validatedOffset = 0
+        if (offset !== undefined && offset !== null) {
+          const offsetResult = OffsetSchema.safeParse(offset)
+          if (!offsetResult.success) {
             mainLogger.error(
-              `Invalid variants:query cursor: ${cursorResult.error.message}`,
+              `Invalid variants:query offset: ${offsetResult.error.message}`,
               'variants'
             )
-            throw new Error('Invalid pagination cursor')
+            throw new Error('Invalid offset parameter')
           }
-          validatedCursor = cursorResult.data
+          validatedOffset = offsetResult.data
         }
 
         let validatedLimit = 50
@@ -95,7 +95,7 @@ export function registerVariantHandlers({ ipcMain, getDb }: HandlerDependencies)
           case_id: validatedCaseId.data,
           ...validatedFilters.data
         }
-        return db.variants.getVariants(fullFilter, validatedLimit, validatedCursor, validatedSortBy)
+        return db.variants.getVariants(fullFilter, validatedLimit, validatedOffset, validatedSortBy)
       })
     }
   )

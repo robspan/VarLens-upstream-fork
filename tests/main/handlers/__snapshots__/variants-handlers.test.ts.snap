@@ -94,8 +94,6 @@ exports[`variant IPC handlers > getVariants (variants:query) - IPC payload struc
       "transcript": null,
     },
   ],
-  "has_more": false,
-  "next_cursor": null,
   "total_count": 3,
 }
 `;

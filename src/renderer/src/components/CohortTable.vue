@@ -70,7 +70,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 // Composables
-import { useCursorPagination } from '../composables/useCursorPagination'
+import { useOffsetPagination } from '../composables/useOffsetPagination'
 import { useCohortData } from '../composables/useCohortData'
 import { useFilters } from '../composables/useFilters'
 import { useCarriers } from '../composables/useCarriers'
@@ -134,7 +134,7 @@ const hasSort = ref(false)
 // Build cohort query params from current filter state
 const buildCohortQueryParams = (): Omit<
   CohortQueryParams,
-  'limit' | 'cursor' | 'sort_by' | 'sort_order'
+  'limit' | 'offset' | 'sort_by' | 'sort_order'
 > => ({
   search_term: searchTerm.value || undefined,
   gene_symbol: filters.value.geneSymbol || undefined,
@@ -153,7 +153,7 @@ const buildCohortQueryParams = (): Omit<
   column_filters: cohortColumnFilters.value
 })
 
-// Shared cursor pagination (same composable as case view)
+// Shared offset pagination (same composable as case view)
 const {
   page,
   itemsPerPage,
@@ -165,10 +165,10 @@ const {
   loadPage,
   invalidateAndReload,
   resetSort
-} = useCursorPagination<CohortVariant>({
-  fetchPage: async ({ cursor, limit, sortBy: sortItems }) => {
+} = useOffsetPagination<CohortVariant>({
+  fetchPage: async ({ offset, limit, sortBy: sortItems }) => {
     if (!api) {
-      return { data: [], total_count: 0, next_cursor: null, has_more: false }
+      return { data: [], total_count: 0 }
     }
 
     const sortKey = sortItems.length > 0 ? sortItems[0].key : undefined
@@ -176,7 +176,7 @@ const {
 
     const params: CohortQueryParams = {
       limit,
-      cursor: cursor as CohortQueryParams['cursor'],
+      offset,
       sort_by: sortKey,
       sort_order: sortOrder,
       ...buildCohortQueryParams()
@@ -188,9 +188,7 @@ const {
 
     return {
       data: result.data ?? [],
-      total_count: result.total_count ?? 0,
-      next_cursor: result.next_cursor ?? null,
-      has_more: result.has_more ?? false
+      total_count: result.total_count ?? 0
     }
   },
   onSortChange: (sorted) => {

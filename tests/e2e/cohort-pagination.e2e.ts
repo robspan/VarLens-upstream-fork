@@ -1,7 +1,7 @@
 /**
- * E2E test for cursor-based cohort pagination
+ * E2E test for offset-based cohort pagination
  *
- * Tests that the cohort table loads data, paginates with cursors,
+ * Tests that the cohort table loads data, paginates with offset,
  * and handles sort changes correctly.
  */
 
@@ -39,7 +39,7 @@ test.afterEach(async () => {
   await app.close()
 })
 
-test('cohort table loads and displays data with cursor pagination', async (_fixtures, testInfo) => {
+test('cohort table loads and displays data with offset pagination', async (_fixtures, testInfo) => {
   // Switch to Cohort mode using the mode toggle button
   const cohortBtn = window.locator('.v-btn').filter({ hasText: /Cohort/i })
   const cohortBtnCount = await cohortBtn.count()
@@ -112,7 +112,7 @@ test('cohort pagination navigates between pages', async (_fixtures, testInfo) =>
     console.log(`Page 2 rows: ${newRowCount}`)
     expect(newRowCount).toBeGreaterThan(0)
 
-    // Verify different content (cursor pagination working)
+    // Verify different content (offset pagination working)
     const secondPageFirstRow = await dataRows.first().textContent()
     expect(secondPageFirstRow).not.toBe(firstPageFirstRow)
     console.log('Pagination verified: page 2 has different data from page 1')

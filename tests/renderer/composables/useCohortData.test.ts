@@ -30,8 +30,6 @@ describe('useCohortData', () => {
     expect(result.isLoading.value).toBe(false)
     expect(result.error.value).toBeNull()
     expect(result.summary.value).toBeNull()
-    expect(result.nextCursor.value).toBeNull()
-    expect(result.hasMore.value).toBe(false)
   })
 
   it('fetches variants and updates state', async () => {
@@ -51,9 +49,7 @@ describe('useCohortData', () => {
     ]
     window.api.cohort.getVariants = vi.fn().mockResolvedValue({
       data: mockVariants,
-      total_count: 1,
-      has_more: false,
-      next_cursor: null
+      total_count: 1
     })
 
     const [result, appInstance] = withSetup(() => useCohortData())
@@ -65,8 +61,6 @@ describe('useCohortData', () => {
     expect(result.totalCount.value).toBe(1)
     expect(result.isLoading.value).toBe(false)
     expect(result.error.value).toBeNull()
-    expect(result.nextCursor.value).toBeNull()
-    expect(result.hasMore.value).toBe(false)
     expect(window.api.cohort.getVariants).toHaveBeenCalledWith(
       expect.objectContaining({ limit: 50, sort_order: 'desc' })
     )
@@ -89,7 +83,7 @@ describe('useCohortData', () => {
     expect(result.isLoading.value).toBe(true)
 
     // Resolve the promise
-    resolvePromise!({ data: [], total_count: 0, has_more: false, next_cursor: null })
+    resolvePromise!({ data: [], total_count: 0 })
     await fetchPromise
 
     // Should no longer be loading
@@ -208,8 +202,6 @@ describe('useCohortData', () => {
     expect(result.totalCount.value).toBe(0)
     expect(result.error.value).toBeNull()
     expect(result.summary.value).toBeNull()
-    expect(result.nextCursor.value).toBeNull()
-    expect(result.hasMore.value).toBe(false)
   })
 
   it('passes filter params to IPC call', async () => {

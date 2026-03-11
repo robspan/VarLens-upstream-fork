@@ -125,26 +125,21 @@ describe('cohort IPC handlers', () => {
       // Verify basic structure expectations
       expect(result).toHaveProperty('data')
       expect(result).toHaveProperty('total_count')
-      expect(result).toHaveProperty('has_more')
-      expect(result).toHaveProperty('next_cursor')
       expect(Array.isArray(result.data)).toBe(true)
       expect(typeof result.total_count).toBe('number')
-      expect(typeof result.has_more).toBe('boolean')
     })
 
-    it('verifies cursor pagination works correctly', () => {
+    it('verifies offset pagination works correctly', () => {
       const caseId = insertCase('Test Case')
       for (let i = 0; i < 10; i++) {
         insertVariant(caseId, '1', 100 + i, 'A', 'G', { gene_symbol: `GENE${i}` })
       }
 
-      const page1 = cohortService.getCohortVariants({ limit: 3 })
+      const page1 = cohortService.getCohortVariants({ limit: 3, offset: 0 })
       expect(page1.data.length).toBe(3)
       expect(page1.total_count).toBe(10)
-      expect(page1.has_more).toBe(true)
-      expect(page1.next_cursor).not.toBeNull()
 
-      const page2 = cohortService.getCohortVariants({ limit: 3, cursor: page1.next_cursor! })
+      const page2 = cohortService.getCohortVariants({ limit: 3, offset: 3 })
       expect(page2.data.length).toBe(3)
       expect(page2.total_count).toBe(10)
 

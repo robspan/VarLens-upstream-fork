@@ -149,7 +149,7 @@ export function createMockApi(): MockApi {
     },
 
     variants: {
-      query: vi.fn().mockResolvedValue({ rows: [], total: 0, hasMore: false }),
+      query: vi.fn().mockResolvedValue({ data: [], total_count: 0 }),
       getFilterOptions: vi.fn().mockResolvedValue({}),
       search: vi.fn().mockResolvedValue([])
     },
@@ -201,7 +201,7 @@ export function createMockApi(): MockApi {
     },
 
     cohort: {
-      getVariants: vi.fn().mockResolvedValue({ rows: [], total: 0, hasMore: false }),
+      getVariants: vi.fn().mockResolvedValue({ data: [], total_count: 0 }),
       getSummary: vi.fn().mockResolvedValue({ totalCases: 0, totalVariants: 0 }),
       getCarriers: vi.fn().mockResolvedValue([]),
       getGeneBurden: vi.fn().mockResolvedValue([])

@@ -92,7 +92,6 @@ export type {
   Case,
   Variant,
   VariantFilter,
-  PaginationCursor,
   PaginatedResult,
   AcmgClassification,
   AcmgEvidence,

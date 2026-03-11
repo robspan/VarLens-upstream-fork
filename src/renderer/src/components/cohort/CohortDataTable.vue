@@ -188,7 +188,7 @@
 import { ref, watch, computed, onMounted, nextTick } from 'vue'
 import type { CohortVariant } from '../../../../shared/types/cohort'
 import type { AcmgClassification } from '../../../../main/database/types'
-import type { SortItem } from '../../composables/useCursorPagination'
+import type { SortItem } from '../../composables/useOffsetPagination'
 import { useApiService } from '../../composables/useApiService'
 import { useTableScroll } from '../../composables/useTableScroll'
 import { useTableRowProps } from '../../composables/useTableRowProps'
@@ -247,7 +247,7 @@ const emit = defineEmits<{
   'column-filters-change': [filters: Record<string, string> | undefined]
 }>()
 
-// v-model props for pagination state (controlled by parent via useCursorPagination)
+// v-model props for pagination state (controlled by parent via useOffsetPagination)
 const page = defineModel<number>('page', { default: 1 })
 const itemsPerPage = defineModel<number>('itemsPerPage', { default: 10 })
 const sortBy = defineModel<SortItem[]>('sortBy', { default: () => [] })

@@ -33,7 +33,7 @@ export const mockApi: WindowAPI = {
   },
 
   variants: {
-    query: async (caseId, filters, cursor, limit = 50) => {
+    query: async (caseId, filters, offset, limit = 50) => {
       let filtered = variants.filter((v) => v.case_id === caseId)
 
       // Apply filters
@@ -70,19 +70,11 @@ export const mockApi: WindowAPI = {
       }
 
       // Pagination
-      const startIndex =
-        cursor !== undefined && cursor !== null
-          ? filtered.findIndex((v) => v.id === cursor.id) + 1
-          : 0
+      const startIndex = offset ?? 0
       const data = filtered.slice(startIndex, startIndex + limit)
-      const hasMore = startIndex + limit < filtered.length
 
       return {
         data,
-        next_cursor: hasMore
-          ? { id: data[data.length - 1].id, sort_value: data[data.length - 1].id, sort_key: 'id' }
-          : null,
-        has_more: hasMore,
         total_count: filtered.length
       }
     },

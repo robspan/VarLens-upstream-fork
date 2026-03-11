@@ -14,7 +14,7 @@ const mockApi = {
     delete: vi.fn().mockResolvedValue(undefined)
   },
   variants: {
-    query: vi.fn().mockResolvedValue({ data: [], total_count: 0, has_more: false }),
+    query: vi.fn().mockResolvedValue({ data: [], total_count: 0 }),
     getFilterOptions: vi.fn().mockResolvedValue({ consequences: [], genes: [] }),
     search: vi.fn().mockResolvedValue([])
   },

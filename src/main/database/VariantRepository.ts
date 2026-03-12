@@ -252,15 +252,21 @@ export class VariantRepository extends BaseRepository {
     }
 
     if (filter.has_comment === true) {
-      conditions.push(
-        `(id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND per_case_comment IS NOT NULL AND per_case_comment != '')
-          OR EXISTS (
-            SELECT 1 FROM variant_annotations va
-            WHERE va.chr = variants.chr AND va.pos = variants.pos
-              AND va.ref = variants.ref AND va.alt = variants.alt
-              AND va.global_comment IS NOT NULL AND va.global_comment != ''
-          ))`
-      )
+      if (filter.annotation_scope === 'all') {
+        conditions.push(
+          `(id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND per_case_comment IS NOT NULL AND per_case_comment != '')
+            OR EXISTS (
+              SELECT 1 FROM variant_annotations va
+              WHERE va.chr = variants.chr AND va.pos = variants.pos
+                AND va.ref = variants.ref AND va.alt = variants.alt
+                AND va.global_comment IS NOT NULL AND va.global_comment != ''
+            ))`
+        )
+      } else {
+        conditions.push(
+          `id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND per_case_comment IS NOT NULL AND per_case_comment != '')`
+        )
+      }
       params.push(filter.case_id)
     }
 

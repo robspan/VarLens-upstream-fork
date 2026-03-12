@@ -132,7 +132,7 @@
         <template v-if="showFooterLinks">
           <!-- External links group: GitHub, Docs, License -->
           <v-btn
-            icon="mdi-github"
+            icon
             size="small"
             variant="text"
             aria-label="Open GitHub repository"
@@ -141,23 +141,11 @@
             <v-icon>mdi-github</v-icon>
             <v-tooltip activator="parent" location="top">GitHub</v-tooltip>
           </v-btn>
-          <v-btn
-            icon="mdi-book-open-variant"
-            size="small"
-            variant="text"
-            aria-label="Open documentation"
-            @click="openDocs"
-          >
+          <v-btn icon size="small" variant="text" aria-label="Open documentation" @click="openDocs">
             <v-icon>mdi-book-open-variant</v-icon>
             <v-tooltip activator="parent" location="top">Documentation</v-tooltip>
           </v-btn>
-          <v-btn
-            icon="mdi-license"
-            size="small"
-            variant="text"
-            aria-label="View license"
-            @click="openLicense"
-          >
+          <v-btn icon size="small" variant="text" aria-label="View license" @click="openLicense">
             <v-icon>mdi-license</v-icon>
             <v-tooltip activator="parent" location="top">License</v-tooltip>
           </v-btn>
@@ -176,13 +164,7 @@
             <v-icon>{{ disclaimerAcknowledged ? 'mdi-shield-check' : 'mdi-shield-alert' }}</v-icon>
             <v-tooltip activator="parent" location="top">Disclaimer</v-tooltip>
           </v-btn>
-          <v-btn
-            icon="mdi-help-circle"
-            size="small"
-            variant="text"
-            aria-label="Open FAQ"
-            @click="openFAQ"
-          >
+          <v-btn icon size="small" variant="text" aria-label="Open FAQ" @click="openFAQ">
             <v-icon>mdi-help-circle</v-icon>
             <v-tooltip activator="parent" location="top">FAQ</v-tooltip>
           </v-btn>

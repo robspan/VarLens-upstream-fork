@@ -68,11 +68,15 @@
             </span>
           </template>
           <span v-if="displayGlobalAcmg && displayAcmg">
-            Case: {{ displayAcmg }}<br />
-            Global: {{ displayGlobalAcmg }}
+            {{ annotationScope === 'all' ? 'Global' : 'Case' }}: {{ displayAcmg }}<br />
+            {{ annotationScope === 'all' ? 'Case' : 'Global' }}: {{ displayGlobalAcmg }}
           </span>
-          <span v-else-if="displayGlobalAcmg"> Global: {{ displayGlobalAcmg }} </span>
-          <span v-else-if="displayAcmg">{{ displayAcmg }}</span>
+          <span v-else-if="displayGlobalAcmg">
+            {{ annotationScope === 'all' ? 'Case' : 'Global' }}: {{ displayGlobalAcmg }}
+          </span>
+          <span v-else-if="displayAcmg">
+            {{ annotationScope === 'all' ? 'Classified globally' : displayAcmg }}
+          </span>
           <span v-else>Set ACMG classification</span>
         </v-tooltip>
         <template v-else>
@@ -147,9 +151,17 @@
           />
         </span>
       </template>
-      <span v-if="displayHasGlobalComment && displayHasComment">Has global + case comments</span>
-      <span v-else-if="displayHasGlobalComment">Has global comment</span>
-      <span v-else-if="displayHasComment">Has case comment</span>
+      <span v-if="displayHasGlobalComment && displayHasComment">
+        {{
+          annotationScope === 'all' ? 'Has case + global comments' : 'Has global + case comments'
+        }}
+      </span>
+      <span v-else-if="displayHasGlobalComment">
+        {{ annotationScope === 'all' ? 'Has case comment' : 'Has global comment' }}
+      </span>
+      <span v-else-if="displayHasComment">
+        {{ annotationScope === 'all' ? 'Has global comment' : 'Has case comment' }}
+      </span>
       <span v-else>Add comment</span>
     </v-tooltip>
     <v-icon

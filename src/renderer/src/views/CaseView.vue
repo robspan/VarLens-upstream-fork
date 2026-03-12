@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
+import type { AnnotationScope } from '../../../shared/types/annotations'
 import EmptyState from '../components/EmptyState.vue'
 import FilterToolbar from '../components/FilterToolbar.vue'
 import VariantTable from '../components/VariantTable.vue'
@@ -25,6 +26,7 @@ const {
 } = useAppState()
 
 const hasCases = computed(() => caseCount.value > 0)
+const annotationScope = ref<AnnotationScope>('case')
 
 function handleImportClick(): void {
   // Delegate to parent App.vue via event bus or direct ref
@@ -34,6 +36,7 @@ function handleImportClick(): void {
 
 function handleFiltersUpdate(filters: Omit<VariantFilter, 'case_id'>): void {
   currentFilters.value = filters
+  annotationScope.value = (filters.annotation_scope as AnnotationScope) ?? 'case'
   if (initialSearch.value !== undefined && filters.search_query != null) {
     initialSearch.value = undefined
   }
@@ -102,6 +105,7 @@ defineExpose({
       ref="variantTableRef"
       :case-id="selectedCaseId"
       :filters="currentFilters"
+      :annotation-scope="annotationScope"
       @update:counts="handleCountsUpdate"
       @update:has-sort="handleSortUpdate"
       @row-click="handleRowClick"

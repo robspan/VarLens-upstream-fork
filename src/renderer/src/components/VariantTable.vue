@@ -248,6 +248,7 @@
 <script setup lang="ts">
 import { ref, computed, toRef, onMounted, nextTick } from 'vue'
 import type { Variant, VariantFilter } from '../../../shared/types/api'
+import type { AnnotationScope } from '../../../shared/types/annotations'
 import { useAnnotations } from '../composables/useAnnotations'
 import { useColumnPreferences } from '../composables/useColumnPreferences'
 import { useVariantLinks } from '../composables/useVariantLinks'
@@ -272,9 +273,12 @@ import {
 interface Props {
   caseId: number
   filters: Omit<VariantFilter, 'case_id'>
+  annotationScope?: AnnotationScope
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  annotationScope: 'case'
+})
 
 const emit = defineEmits<{
   'update:counts': [counts: { filtered: number; total: number }]

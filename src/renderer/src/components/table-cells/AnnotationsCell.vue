@@ -6,26 +6,30 @@
         <span
           v-bind="tooltipProps"
           class="annotation-icon-wrapper"
-          :class="{ 'has-global': isGlobalStarred }"
+          :class="{ 'has-global': displayGlobalStarred }"
         >
           <v-icon
-            :icon="isStarred ? 'mdi-star' : 'mdi-star-outline'"
-            :color="isStarred ? 'amber' : 'grey-lighten-1'"
+            :icon="displayStarred ? 'mdi-star' : 'mdi-star-outline'"
+            :color="displayStarred ? 'amber' : 'grey-lighten-1'"
             size="small"
             class="cursor-pointer"
             @click.stop="emit('star-toggle')"
           />
         </span>
       </template>
-      <span v-if="isGlobalStarred && isStarred">Starred (case + global)</span>
-      <span v-else-if="isGlobalStarred">Global star (click to add case star)</span>
-      <span v-else-if="isStarred">Starred for this case</span>
+      <span v-if="displayGlobalStarred && displayStarred">Starred (case + global)</span>
+      <span v-else-if="displayGlobalStarred">
+        {{ annotationScope === 'all' ? 'Case star (click to toggle global)' : 'Global star (click to add case star)' }}
+      </span>
+      <span v-else-if="displayStarred">
+        {{ annotationScope === 'all' ? 'Starred globally' : 'Starred for this case' }}
+      </span>
       <span v-else>Click to star</span>
     </v-tooltip>
     <v-icon
       v-else
-      :icon="isStarred ? 'mdi-star' : 'mdi-star-outline'"
-      :color="isStarred ? 'amber' : 'grey-lighten-1'"
+      :icon="displayStarred ? 'mdi-star' : 'mdi-star-outline'"
+      :color="displayStarred ? 'amber' : 'grey-lighten-1'"
       size="small"
       class="cursor-pointer"
       @click.stop="emit('star-toggle')"
@@ -39,16 +43,16 @@
             <span
               v-bind="{ ...menuProps, ...tooltipPropsAcmg }"
               class="annotation-icon-wrapper"
-              :class="{ 'has-global': globalAcmgClassification }"
+              :class="{ 'has-global': displayGlobalAcmg }"
             >
               <v-chip
-                v-if="acmgClassification"
-                :color="ACMG_COLORS[acmgClassification]"
+                v-if="displayAcmg"
+                :color="ACMG_COLORS[displayAcmg]"
                 size="x-small"
                 label
                 class="cursor-pointer"
               >
-                {{ ACMG_ABBREV[acmgClassification] }}
+                {{ ACMG_ABBREV[displayAcmg] }}
               </v-chip>
               <v-icon
                 v-else
@@ -59,24 +63,24 @@
               />
             </span>
           </template>
-          <span v-if="globalAcmgClassification && acmgClassification">
-            Case: {{ acmgClassification }}<br />
-            Global: {{ globalAcmgClassification }}
+          <span v-if="displayGlobalAcmg && displayAcmg">
+            Case: {{ displayAcmg }}<br />
+            Global: {{ displayGlobalAcmg }}
           </span>
-          <span v-else-if="globalAcmgClassification"> Global: {{ globalAcmgClassification }} </span>
-          <span v-else-if="acmgClassification">{{ acmgClassification }}</span>
+          <span v-else-if="displayGlobalAcmg"> Global: {{ displayGlobalAcmg }} </span>
+          <span v-else-if="displayAcmg">{{ displayAcmg }}</span>
           <span v-else>Set ACMG classification</span>
         </v-tooltip>
         <template v-else>
           <v-chip
-            v-if="acmgClassification"
+            v-if="displayAcmg"
             v-bind="menuProps"
             size="x-small"
-            :color="ACMG_COLORS[acmgClassification]"
+            :color="ACMG_COLORS[displayAcmg]"
             label
             class="cursor-pointer"
           >
-            {{ ACMG_ABBREV[acmgClassification] }}
+            {{ ACMG_ABBREV[displayAcmg] }}
           </v-chip>
           <v-icon
             v-else
@@ -93,8 +97,8 @@
           <v-chip
             v-for="cls in ACMG_CLASSIFICATIONS"
             :key="cls"
-            :color="acmgClassification === cls ? ACMG_COLORS[cls] : undefined"
-            :variant="acmgClassification === cls ? 'flat' : 'outlined'"
+            :color="displayAcmg === cls ? ACMG_COLORS[cls] : undefined"
+            :variant="displayAcmg === cls ? 'flat' : 'outlined'"
             size="small"
             label
             class="cursor-pointer"
@@ -113,7 +117,7 @@
               Evidence editor...
             </v-list-item-title>
           </v-list-item>
-          <v-list-item v-if="acmgClassification" class="px-1" @click="emit('acmg-select', null)">
+          <v-list-item v-if="displayAcmg" class="px-1" @click="emit('acmg-select', null)">
             <v-list-item-title class="text-caption text-medium-emphasis">
               Clear classification
             </v-list-item-title>
@@ -128,7 +132,7 @@
         <span
           v-bind="tooltipProps"
           class="annotation-icon-wrapper"
-          :class="{ 'has-global': hasGlobalComment }"
+          :class="{ 'has-global': displayHasGlobalComment }"
         >
           <v-icon
             :icon="hasAnyComment ? 'mdi-comment-text' : 'mdi-comment-text-outline'"
@@ -139,15 +143,15 @@
           />
         </span>
       </template>
-      <span v-if="hasGlobalComment && hasComment">Has global + case comments</span>
-      <span v-else-if="hasGlobalComment">Has global comment</span>
-      <span v-else-if="hasComment">Has case comment</span>
+      <span v-if="displayHasGlobalComment && displayHasComment">Has global + case comments</span>
+      <span v-else-if="displayHasGlobalComment">Has global comment</span>
+      <span v-else-if="displayHasComment">Has case comment</span>
       <span v-else>Add comment</span>
     </v-tooltip>
     <v-icon
       v-else
-      :icon="hasComment ? 'mdi-comment-text' : 'mdi-comment-text-outline'"
-      :color="hasComment ? 'primary' : 'grey-lighten-1'"
+      :icon="displayHasComment ? 'mdi-comment-text' : 'mdi-comment-text-outline'"
+      :color="displayHasComment ? 'primary' : 'grey-lighten-1'"
       size="small"
       class="cursor-pointer"
       @click.stop="emit('comment-click')"
@@ -158,6 +162,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { AcmgClassification } from '../../../../main/database/types'
+import type { AnnotationScope } from '../../../../shared/types/annotations'
 import { ACMG_COLORS, ACMG_ABBREV, ACMG_CLASSIFICATIONS } from '../../composables/useAnnotations'
 
 interface Props {
@@ -175,6 +180,8 @@ interface Props {
   hasGlobalComment?: boolean
   /** Show global indicator rings (true for Case Analysis, false for Cohort) */
   showGlobalIndicators?: boolean
+  /** Annotation scope: controls display priority and action routing */
+  annotationScope?: AnnotationScope
 }
 
 interface Emits {
@@ -188,11 +195,32 @@ const props = withDefaults(defineProps<Props>(), {
   isGlobalStarred: false,
   globalAcmgClassification: null,
   hasGlobalComment: false,
-  showGlobalIndicators: true
+  showGlobalIndicators: true,
+  annotationScope: 'case'
 })
 
 const emit = defineEmits<Emits>()
 
+// Display swap: in "all" mode, global becomes primary, per-case becomes ring indicator
+const displayStarred = computed(() =>
+  props.annotationScope === 'all' ? props.isGlobalStarred : props.isStarred
+)
+const displayGlobalStarred = computed(() =>
+  props.annotationScope === 'all' ? props.isStarred : props.isGlobalStarred
+)
+const displayAcmg = computed(() =>
+  props.annotationScope === 'all' ? props.globalAcmgClassification : props.acmgClassification
+)
+const displayGlobalAcmg = computed(() =>
+  props.annotationScope === 'all' ? props.acmgClassification : props.globalAcmgClassification
+)
+const displayHasComment = computed(() =>
+  props.annotationScope === 'all' ? props.hasGlobalComment : props.hasComment
+)
+const displayHasGlobalComment = computed(() =>
+  props.annotationScope === 'all' ? props.hasComment : props.hasGlobalComment
+)
+
 // For Case Analysis tooltip logic
-const hasAnyComment = computed(() => props.hasComment || props.hasGlobalComment)
+const hasAnyComment = computed(() => displayHasComment.value || displayHasGlobalComment.value)
 </script>

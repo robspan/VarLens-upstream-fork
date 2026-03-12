@@ -57,6 +57,7 @@ plan/
 *.json.gz
 
 # VitePress
+.vitepress/
 docs/.vitepress/dist
 docs/.vitepress/cache
 

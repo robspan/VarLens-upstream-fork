@@ -128,10 +128,11 @@
       </div>
 
       <!-- Right section: Action buttons -->
-      <div class="d-flex align-center ga-1">
+      <div class="footer-actions d-flex align-center">
         <template v-if="showFooterLinks">
+          <!-- External links group: GitHub, Docs, License -->
           <v-btn
-            icon="mdi-github"
+            icon
             size="small"
             variant="text"
             aria-label="Open GitHub repository"
@@ -140,17 +141,20 @@
             <v-icon>mdi-github</v-icon>
             <v-tooltip activator="parent" location="top">GitHub</v-tooltip>
           </v-btn>
-          <v-btn
-            icon="mdi-license"
-            size="small"
-            variant="text"
-            aria-label="View license"
-            @click="openLicense"
-          >
+          <v-btn icon size="small" variant="text" aria-label="Open documentation" @click="openDocs">
+            <v-icon>mdi-book-open-variant</v-icon>
+            <v-tooltip activator="parent" location="top">Documentation</v-tooltip>
+          </v-btn>
+          <v-btn icon size="small" variant="text" aria-label="View license" @click="openLicense">
             <v-icon>mdi-license</v-icon>
             <v-tooltip activator="parent" location="top">License</v-tooltip>
           </v-btn>
+
+          <v-divider vertical class="footer-divider" />
+
+          <!-- App info group: Disclaimer, FAQ -->
           <v-btn
+            icon
             :color="disclaimerAcknowledged ? 'success' : 'warning'"
             size="small"
             variant="text"
@@ -160,16 +164,12 @@
             <v-icon>{{ disclaimerAcknowledged ? 'mdi-shield-check' : 'mdi-shield-alert' }}</v-icon>
             <v-tooltip activator="parent" location="top">Disclaimer</v-tooltip>
           </v-btn>
-          <v-btn
-            icon="mdi-help-circle"
-            size="small"
-            variant="text"
-            aria-label="Open FAQ"
-            @click="openFAQ"
-          >
+          <v-btn icon size="small" variant="text" aria-label="Open FAQ" @click="openFAQ">
             <v-icon>mdi-help-circle</v-icon>
             <v-tooltip activator="parent" location="top">FAQ</v-tooltip>
           </v-btn>
+
+          <v-divider vertical class="footer-divider" />
         </template>
         <v-menu v-else location="top">
           <template #activator="{ props }">
@@ -178,8 +178,16 @@
             </v-btn>
           </template>
           <v-list density="compact">
+            <v-list-subheader>External Links</v-list-subheader>
             <v-list-item prepend-icon="mdi-github" title="GitHub" @click="openGitHub" />
+            <v-list-item
+              prepend-icon="mdi-book-open-variant"
+              title="Documentation"
+              @click="openDocs"
+            />
             <v-list-item prepend-icon="mdi-license" title="License" @click="openLicense" />
+            <v-divider class="my-1" />
+            <v-list-subheader>App Info</v-list-subheader>
             <v-list-item
               :prepend-icon="disclaimerAcknowledged ? 'mdi-shield-check' : 'mdi-shield-alert'"
               title="Disclaimer"
@@ -188,6 +196,8 @@
             <v-list-item prepend-icon="mdi-help-circle" title="FAQ" @click="openFAQ" />
           </v-list>
         </v-menu>
+
+        <!-- Dev tool: Console -->
         <v-btn
           icon
           size="small"
@@ -198,6 +208,7 @@
           <v-badge :content="errorCount" :model-value="errorCount > 0" color="error" floating>
             <v-icon>mdi-console</v-icon>
           </v-badge>
+          <v-tooltip activator="parent" location="top">Log Viewer</v-tooltip>
         </v-btn>
       </div>
     </div>
@@ -212,6 +223,7 @@ import { useLogStore } from '../stores/logStore'
 import { useResponsiveLayout } from '../composables/useResponsiveLayout'
 import { useAutoUpdate } from '../composables/useAutoUpdate'
 import { useApiService } from '../composables/useApiService'
+import { APP_CONFIG } from '../../../shared/config/app.config'
 
 defineProps<{
   disclaimerAcknowledged: boolean
@@ -290,7 +302,7 @@ const openFAQ = (): void => {
 const openGitHub = async (): Promise<void> => {
   if (api) {
     try {
-      const result = await api.shell.openExternal('https://github.com/berntpopp/varlens')
+      const result = await api.shell.openExternal(APP_CONFIG.URLS.GITHUB)
       if (!result.success) {
         console.error('Failed to open GitHub URL:', result.error)
       }
@@ -300,10 +312,23 @@ const openGitHub = async (): Promise<void> => {
   }
 }
 
+const openDocs = async (): Promise<void> => {
+  if (api) {
+    try {
+      const result = await api.shell.openExternal(APP_CONFIG.URLS.DOCS)
+      if (!result.success) {
+        console.error('Failed to open documentation URL:', result.error)
+      }
+    } catch (error) {
+      console.error('Failed to open documentation URL:', error)
+    }
+  }
+}
+
 const openLicense = async (): Promise<void> => {
   if (api) {
     try {
-      const result = await api.shell.openExternal('https://opensource.org/licenses/MIT')
+      const result = await api.shell.openExternal(APP_CONFIG.URLS.LICENSE)
       if (!result.success) {
         console.error('Failed to open license URL:', result.error)
       }
@@ -313,3 +338,15 @@ const openLicense = async (): Promise<void> => {
   }
 }
 </script>
+
+<style scoped>
+.footer-actions {
+  gap: 4px;
+}
+
+.footer-divider {
+  height: 20px;
+  margin: 0;
+  opacity: 0.4;
+}
+</style>

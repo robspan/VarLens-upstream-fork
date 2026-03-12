@@ -233,31 +233,62 @@ export class VariantRepository extends BaseRepository {
     }
 
     if (filter.starred_only === true) {
-      conditions.push(
-        `id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND starred = 1)`
-      )
+      if (filter.annotation_scope === 'all') {
+        conditions.push(
+          `(id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND starred = 1)
+            OR EXISTS (
+              SELECT 1 FROM variant_annotations va
+              WHERE va.chr = variants.chr AND va.pos = variants.pos
+                AND va.ref = variants.ref AND va.alt = variants.alt
+                AND va.starred = 1
+            ))`
+        )
+      } else {
+        conditions.push(
+          `id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND starred = 1)`
+        )
+      }
       params.push(filter.case_id)
     }
 
     if (filter.has_comment === true) {
-      conditions.push(
-        `(id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND per_case_comment IS NOT NULL AND per_case_comment != '')
-          OR EXISTS (
-            SELECT 1 FROM variant_annotations va
-            WHERE va.chr = variants.chr AND va.pos = variants.pos
-              AND va.ref = variants.ref AND va.alt = variants.alt
-              AND va.global_comment IS NOT NULL AND va.global_comment != ''
-          ))`
-      )
+      if (filter.annotation_scope === 'all') {
+        conditions.push(
+          `(id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND per_case_comment IS NOT NULL AND per_case_comment != '')
+            OR EXISTS (
+              SELECT 1 FROM variant_annotations va
+              WHERE va.chr = variants.chr AND va.pos = variants.pos
+                AND va.ref = variants.ref AND va.alt = variants.alt
+                AND va.global_comment IS NOT NULL AND va.global_comment != ''
+            ))`
+        )
+      } else {
+        conditions.push(
+          `id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND per_case_comment IS NOT NULL AND per_case_comment != '')`
+        )
+      }
       params.push(filter.case_id)
     }
 
     if (filter.acmg_classifications !== undefined && filter.acmg_classifications.length > 0) {
       const placeholders = filter.acmg_classifications.map(() => '?').join(', ')
-      conditions.push(
-        `id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND acmg_classification IN (${placeholders}))`
-      )
-      params.push(filter.case_id, ...filter.acmg_classifications)
+      if (filter.annotation_scope === 'all') {
+        conditions.push(
+          `(id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND acmg_classification IN (${placeholders}))
+            OR EXISTS (
+              SELECT 1 FROM variant_annotations va
+              WHERE va.chr = variants.chr AND va.pos = variants.pos
+                AND va.ref = variants.ref AND va.alt = variants.alt
+                AND va.acmg_classification IN (${placeholders})
+            ))`
+        )
+        params.push(filter.case_id, ...filter.acmg_classifications, ...filter.acmg_classifications)
+      } else {
+        conditions.push(
+          `id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND acmg_classification IN (${placeholders}))`
+        )
+        params.push(filter.case_id, ...filter.acmg_classifications)
+      }
     }
 
     if (filter.column_filters !== undefined) {

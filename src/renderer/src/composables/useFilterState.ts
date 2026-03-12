@@ -46,6 +46,7 @@ export interface FilterState {
   starredOnly: boolean
   hasCommentOnly: boolean
   acmgClassifications: string[]
+  annotationScope: 'case' | 'all'
 }
 
 /**
@@ -179,7 +180,8 @@ export function useFilterState(
     tagIds: [] as number[],
     starredOnly: false,
     hasCommentOnly: false,
-    acmgClassifications: [] as string[]
+    acmgClassifications: [] as string[],
+    annotationScope: 'case' as const
   })
 
   // Filter options loaded from database
@@ -332,6 +334,9 @@ export function useFilterState(
         value: filters.value.acmgClassifications.join(', ')
       })
     }
+    if (filters.value.annotationScope === 'all') {
+      list.push({ id: 'annotationScope', label: 'Scope', value: 'All (global)' })
+    }
 
     return list
   })
@@ -421,6 +426,9 @@ export function useFilterState(
       case 'acmg':
         filters.value.acmgClassifications = []
         break
+      case 'annotationScope':
+        filters.value.annotationScope = 'case'
+        break
     }
   }
 
@@ -440,6 +448,7 @@ export function useFilterState(
     filters.value.starredOnly = false
     filters.value.hasCommentOnly = false
     filters.value.acmgClassifications = []
+    filters.value.annotationScope = 'case'
     selectedAfPreset.value = null
     selectedCaddPreset.value = null
     selectedImpactPresets.value = []
@@ -537,6 +546,11 @@ export function useFilterState(
       variantFilter.acmg_classifications = filters.value.acmgClassifications
     }
 
+    // Annotation scope
+    if (filters.value.annotationScope === 'all') {
+      variantFilter.annotation_scope = 'all'
+    }
+
     onFiltersUpdate(variantFilter)
   }
 
@@ -620,6 +634,7 @@ export function useFilterState(
     filters.value.starredOnly = false
     filters.value.hasCommentOnly = false
     filters.value.acmgClassifications = []
+    filters.value.annotationScope = 'case'
     selectedAfPreset.value = null
     selectedCaddPreset.value = null
     selectedImpactPresets.value = []
@@ -736,6 +751,11 @@ export function useFilterState(
       }
       if (filters.value.acmgClassifications.length > 0) {
         exportFilters.acmg_classifications = filters.value.acmgClassifications
+      }
+
+      // Annotation scope
+      if (filters.value.annotationScope === 'all') {
+        exportFilters.annotation_scope = 'all'
       }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

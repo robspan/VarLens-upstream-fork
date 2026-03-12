@@ -2,40 +2,37 @@
   <div class="variant-identity-section">
     <div class="text-title-large mb-2">{{ variant.gene_symbol ?? 'Unknown Gene' }}</div>
 
+    <!-- Transcript + cDNA + protein change -->
     <div
-      v-if="isFullVariant && (variant as Variant).transcript"
-      class="text-body-small text-grey mb-1"
+      v-if="variant.cdna || variant.aa_change || (isFullVariant && (variant as Variant).transcript)"
+      class="d-flex align-center mb-1"
     >
-      {{ (variant as Variant).transcript }}
-    </div>
-
-    <!-- cDNA / HGVS -->
-    <div v-if="variant.cdna" class="d-flex align-center mb-1">
-      <span class="hgvs-notation">{{ variant.cdna }}</span>
-      <v-btn icon size="x-small" variant="text" @click="copyHgvs">
+      <span class="hgvs-notation">
+        <span v-if="isFullVariant && (variant as Variant).transcript" class="text-grey">
+          {{ (variant as Variant).transcript }}<template v-if="variant.cdna">:</template>
+        </span>
+        <template v-if="variant.cdna">{{ variant.cdna }}</template>
+        <template v-if="variant.aa_change"> {{ ' ' }}{{ variant.aa_change }} </template>
+      </span>
+      <v-btn v-if="variant.cdna" icon size="x-small" variant="text" class="ml-2" @click="copyHgvs">
         <v-icon size="small">{{ hgvsCopied ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
       </v-btn>
     </div>
 
-    <!-- Protein change -->
-    <div v-if="variant.aa_change" class="hgvs-notation mb-2">
-      {{ variant.aa_change }}
-    </div>
-
-    <!-- Genomic position -->
-    <div class="d-flex align-center mb-1">
-      <span class="genomic-coordinate">{{ variant.chr }}:{{ formatPosition(variant.pos) }}</span>
-      <v-btn icon size="x-small" variant="text" @click="copyPosition">
-        <v-icon size="small">{{ positionCopied ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
-      </v-btn>
-    </div>
-
-    <!-- Alleles with full variant copy -->
+    <!-- Genomic position + alleles -->
     <div class="d-flex align-center">
-      <span class="variant-data-mono">{{ variant.ref }} &gt; {{ variant.alt }}</span>
+      <span class="genomic-coordinate">{{ variant.chr }}:{{ formatPosition(variant.pos) }}</span>
+      <span class="variant-data-mono ml-1">{{ variant.ref }} &gt; {{ variant.alt }}</span>
       <v-tooltip location="top">
         <template #activator="{ props: tooltipProps }">
-          <v-btn v-bind="tooltipProps" icon size="x-small" variant="text" @click="copyVariant">
+          <v-btn
+            v-bind="tooltipProps"
+            icon
+            size="x-small"
+            variant="text"
+            class="ml-2"
+            @click="copyVariant"
+          >
             <v-icon size="small">{{ variantCopied ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
           </v-btn>
         </template>
@@ -48,7 +45,7 @@
       <span class="text-body-small text-grey">rsID:</span>
       <template v-if="rsId">
         <span class="ml-1 variant-data-mono">{{ rsId }}</span>
-        <v-btn icon size="x-small" variant="text" @click="copyRsId">
+        <v-btn icon size="x-small" variant="text" class="ml-2" @click="copyRsId">
           <v-icon size="small">{{ rsIdCopied ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
         </v-btn>
       </template>
@@ -82,7 +79,6 @@ const isFullVariant = computed(() => {
 
 // Create separate clipboard instances for each copy operation
 const { copy: copyHgvsText, copied: hgvsCopied } = useClipboard()
-const { copy: copyPositionText, copied: positionCopied } = useClipboard()
 const { copy: copyVariantText, copied: variantCopied } = useClipboard()
 const { copy: copyRsIdText, copied: rsIdCopied } = useClipboard()
 
@@ -106,16 +102,16 @@ function formatPosition(pos: number): string {
  */
 async function copyHgvs(): Promise<void> {
   if (props.variant.cdna !== null && props.variant.cdna !== '') {
-    await copyHgvsText(props.variant.cdna)
+    const transcript = isFullVariant.value ? (props.variant as Variant).transcript : null
+    let text =
+      transcript !== null && transcript !== undefined && transcript !== ''
+        ? `${transcript}:${props.variant.cdna}`
+        : props.variant.cdna
+    if (props.variant.aa_change !== null && props.variant.aa_change !== '') {
+      text += ` ${props.variant.aa_change}`
+    }
+    await copyHgvsText(text)
   }
-}
-
-/**
- * Copy genomic position to clipboard
- */
-async function copyPosition(): Promise<void> {
-  const position = `${props.variant.chr}:${props.variant.pos}`
-  await copyPositionText(position)
 }
 
 /**

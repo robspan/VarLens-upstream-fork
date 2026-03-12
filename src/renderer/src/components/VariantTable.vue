@@ -67,6 +67,7 @@
             :has-comment="!!getPerCaseComment(item.chr, item.pos, item.ref, item.alt)"
             :has-global-comment="!!getGlobalComment(item.chr, item.pos, item.ref, item.alt)"
             :show-global-indicators="true"
+            :annotation-scope="annotationScope"
             @star-toggle="annotationDialogsRef?.handleStarToggle(item)"
             @acmg-select="(c) => annotationDialogsRef?.handleQuickAcmgSelect(item, c)"
             @acmg-evidence-click="annotationDialogsRef?.openAcmgEvidenceDialog(item)"
@@ -237,9 +238,10 @@
       </v-data-table-server>
     </template>
 
-    <VariantAnnotationDialogs
+    <AnnotationDialogs
       ref="annotationDialogsRef"
       :case-id="caseId"
+      :annotation-scope="annotationScope"
       :annotation-actions="annotationActions"
     />
   </div>
@@ -248,13 +250,14 @@
 <script setup lang="ts">
 import { ref, computed, toRef, onMounted, nextTick } from 'vue'
 import type { Variant, VariantFilter } from '../../../shared/types/api'
+import type { AnnotationScope } from '../../../shared/types/annotations'
 import { useAnnotations } from '../composables/useAnnotations'
 import { useColumnPreferences } from '../composables/useColumnPreferences'
 import { useVariantLinks } from '../composables/useVariantLinks'
 import { formatConsequence } from '../utils/formatters'
 import { useTableScroll } from '../composables/useTableScroll'
 import VariantColumnHeader from './variant-table/VariantColumnHeader.vue'
-import VariantAnnotationDialogs from './variant-table/VariantAnnotationDialogs.vue'
+import AnnotationDialogs from './AnnotationDialogs.vue'
 import { useVariantColumns } from './variant-table/columns'
 import { useVariantData } from './variant-table/useVariantData'
 import {
@@ -272,9 +275,12 @@ import {
 interface Props {
   caseId: number
   filters: Omit<VariantFilter, 'case_id'>
+  annotationScope?: AnnotationScope
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  annotationScope: 'case'
+})
 
 const emit = defineEmits<{
   'update:counts': [counts: { filtered: number; total: number }]
@@ -296,7 +302,11 @@ const {
   getPerCaseComment,
   upsertGlobalComment,
   upsertPerCaseComment,
-  getAnnotations
+  getAnnotations,
+  toggleGlobalStar,
+  setGlobalAcmgClassification,
+  setGlobalAcmgClassificationWithEvidence,
+  getGlobalAcmgEvidence
 } = useAnnotations()
 
 // Bundle annotation actions for dialog subcomponent
@@ -309,7 +319,11 @@ const annotationActions = {
   upsertPerCaseComment,
   getAnnotations,
   getGlobalComment,
-  getPerCaseComment
+  getPerCaseComment,
+  toggleGlobalStar,
+  setGlobalAcmgClassification,
+  setGlobalAcmgClassificationWithEvidence,
+  getGlobalAcmgEvidence
 }
 
 // Links
@@ -348,7 +362,7 @@ const {
 })
 
 // Template refs
-const annotationDialogsRef = ref<InstanceType<typeof VariantAnnotationDialogs> | null>(null)
+const annotationDialogsRef = ref<InstanceType<typeof AnnotationDialogs> | null>(null)
 
 // @ts-expect-error - These refs ARE used in template bindings
 const { topScrollbarRef, topScrollbarInnerRef, initScrollSync } = useTableScroll()

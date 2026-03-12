@@ -166,33 +166,41 @@ export class CohortService {
       params_array.push(params.cadd_min)
     }
 
-    // Annotation filters (via variant_annotations table)
+    // Annotation filters (global via variant_annotations OR per-case via case_variant_annotations)
     if (params.starred_only === true) {
       whereConditions.push(
-        `EXISTS (SELECT 1 FROM variant_annotations va
+        `(EXISTS (SELECT 1 FROM variant_annotations va
           WHERE va.chr = variants.chr AND va.pos = variants.pos
-          AND va.ref = variants.ref AND va.alt = variants.alt AND va.starred = 1)`
+          AND va.ref = variants.ref AND va.alt = variants.alt AND va.starred = 1)
+        OR EXISTS (SELECT 1 FROM case_variant_annotations cva
+          WHERE cva.variant_id = variants.id AND cva.starred = 1))`
       )
     }
 
     if (params.has_comment === true) {
       whereConditions.push(
-        `EXISTS (SELECT 1 FROM variant_annotations va
+        `(EXISTS (SELECT 1 FROM variant_annotations va
           WHERE va.chr = variants.chr AND va.pos = variants.pos
           AND va.ref = variants.ref AND va.alt = variants.alt
-          AND va.global_comment IS NOT NULL AND va.global_comment != '')`
+          AND va.global_comment IS NOT NULL AND va.global_comment != '')
+        OR EXISTS (SELECT 1 FROM case_variant_annotations cva
+          WHERE cva.variant_id = variants.id
+          AND cva.per_case_comment IS NOT NULL AND cva.per_case_comment != ''))`
       )
     }
 
     if (params.acmg_classifications !== undefined && params.acmg_classifications.length > 0) {
       const placeholders = params.acmg_classifications.map(() => '?').join(', ')
       whereConditions.push(
-        `EXISTS (SELECT 1 FROM variant_annotations va
+        `(EXISTS (SELECT 1 FROM variant_annotations va
           WHERE va.chr = variants.chr AND va.pos = variants.pos
           AND va.ref = variants.ref AND va.alt = variants.alt
-          AND va.acmg_classification IN (${placeholders}))`
+          AND va.acmg_classification IN (${placeholders}))
+        OR EXISTS (SELECT 1 FROM case_variant_annotations cva
+          WHERE cva.variant_id = variants.id
+          AND cva.acmg_classification IN (${placeholders})))`
       )
-      params_array.push(...params.acmg_classifications)
+      params_array.push(...params.acmg_classifications, ...params.acmg_classifications)
     }
 
     // Per-column text filters (LIKE case-insensitive partial match)

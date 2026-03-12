@@ -23,7 +23,7 @@
       :cohort-summary="summary"
       :columns="orderedColumns.map((h) => ({ key: h.key, title: h.title }))"
       :visible-columns="visibleHeaders.map((h) => h.key)"
-      :exporting="annotationDialogsRef?.exporting ?? false"
+      :exporting="exporting"
       :has-sort="hasSort"
       @filter-change="handleFilterChange"
       @clear-all="handleClearAll"
@@ -58,12 +58,29 @@
       @column-filters-change="handleColumnFiltersChange"
     />
 
-    <!-- Annotation Dialogs (Comment, ACMG Evidence, Snackbar) -->
-    <CohortAnnotationDialogs
+    <!-- Annotation Dialogs (Comment, ACMG Evidence) -->
+    <AnnotationDialogs
       ref="annotationDialogsRef"
+      :case-id="null"
+      annotation-scope="all"
       :annotation-actions="annotationActions"
-      :filter-state="filterState"
     />
+
+    <!-- Export Snackbar -->
+    <v-snackbar
+      v-model="snackbar.visible"
+      :color="snackbar.color"
+      :timeout="snackbar.timeout"
+      location="bottom right"
+    >
+      {{ snackbar.message }}
+      <template #actions>
+        <v-btn v-if="snackbar.actionText" variant="text" @click="snackbar.actionCallback?.()">
+          {{ snackbar.actionText }}
+        </v-btn>
+        <v-btn variant="text" @click="snackbar.visible = false">Close</v-btn>
+      </template>
+    </v-snackbar>
   </div>
 </template>
 
@@ -81,7 +98,7 @@ import { useDebounce } from '../composables/useDebounce'
 // Sub-components
 import CohortFilterBar from './cohort/CohortFilterBar.vue'
 import CohortDataTable from './cohort/CohortDataTable.vue'
-import CohortAnnotationDialogs from './cohort/CohortAnnotationDialogs.vue'
+import AnnotationDialogs from './AnnotationDialogs.vue'
 // Column composable
 import { useCohortColumns } from './cohort/useCohortColumns'
 // Types
@@ -198,24 +215,89 @@ const {
 
 // Local state
 const selectedVariantKey = ref<string | null>(null)
-const annotationDialogsRef = ref<InstanceType<typeof CohortAnnotationDialogs> | null>(null)
+const annotationDialogsRef = ref<InstanceType<typeof AnnotationDialogs> | null>(null)
 
-// Annotation actions passed to CohortAnnotationDialogs
+// Export state
+const exporting = ref(false)
+const snackbar = ref({
+  visible: false,
+  message: '',
+  color: 'success' as 'success' | 'error',
+  timeout: 3000,
+  actionText: null as string | null,
+  actionCallback: null as (() => void) | null
+})
+
+const exportToExcel = async (): Promise<void> => {
+  if (!api) {
+    // eslint-disable-next-line no-undef
+    console.warn('API not available - running outside Electron')
+    return
+  }
+
+  exporting.value = true
+  try {
+    const exportParams = {
+      search_term: searchTerm.value || undefined,
+      gene_symbol: filters.value.geneSymbol || undefined,
+      consequences:
+        selectedImpactPresets.value.length > 0 ? selectedImpactPresets.value : undefined,
+      funcs: filters.value.funcs.length > 0 ? filters.value.funcs : undefined,
+      clinvars: filters.value.clinvars.length > 0 ? filters.value.clinvars : undefined,
+      gnomad_af_max: filters.value.maxGnomadAf ?? undefined,
+      cadd_min: filters.value.minCadd ?? undefined,
+      cohort_frequency_min: filters.value.minCohortFrequency ?? undefined
+    }
+
+    const plainParams = globalThis.structuredClone(exportParams)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (api as any).export.cohort(plainParams)
+
+    if (result !== null && result !== undefined && 'code' in result) {
+      snackbar.value = {
+        visible: true,
+        message: `Export failed: ${result.message ?? result.userMessage ?? 'Unknown error'}`,
+        color: 'error',
+        timeout: -1,
+        actionText: null,
+        actionCallback: null
+      }
+    } else if (result !== null && result !== undefined && result.success === true) {
+      snackbar.value = {
+        visible: true,
+        message: `Exported to ${result.filePath}`,
+        color: 'success',
+        timeout: 3000,
+        actionText: 'Open folder',
+        actionCallback: () => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ;(api as any).shell.showItemInFolder(result.filePath)
+        }
+      }
+    }
+  } finally {
+    exporting.value = false
+  }
+}
+
+// Annotation actions passed to AnnotationDialogs
 const annotationActions = {
+  // Per-case stubs (not used in cohort mode, but required by interface)
+  getAcmgEvidence: getGlobalAcmgEvidence,
+  toggleStar: async () => {},
+  setAcmgClassification: async () => {},
+  setAcmgClassificationWithEvidence: async () => {},
+  upsertPerCaseComment: async () => {},
+  // Shared
+  upsertGlobalComment,
+  getAnnotations,
+  getGlobalComment,
+  getPerCaseComment: () => null,
+  // Global methods
   toggleGlobalStar,
   setGlobalAcmgClassification,
   setGlobalAcmgClassificationWithEvidence,
-  upsertGlobalComment,
-  getGlobalAcmgEvidence,
-  getGlobalComment,
-  getAnnotations
-}
-
-// Filter state passed to CohortAnnotationDialogs for export
-const filterState = {
-  searchTerm,
-  filters,
-  selectedImpactPresets
+  getGlobalAcmgEvidence
 }
 
 // Event handlers
@@ -250,7 +332,7 @@ const handleRetry = async () => {
   await invalidateAndReload()
 }
 
-// Delegate annotation events to CohortAnnotationDialogs
+// Delegate annotation events to AnnotationDialogs
 const handleStarToggle = (item: CohortVariant) => {
   annotationDialogsRef.value?.handleStarToggle(item)
 }
@@ -259,7 +341,7 @@ const handleAcmgSelect = (payload: {
   item: CohortVariant
   classification: import('../../../main/database/types').AcmgClassification | null
 }) => {
-  annotationDialogsRef.value?.handleAcmgSelect(payload)
+  annotationDialogsRef.value?.handleQuickAcmgSelect(payload.item, payload.classification)
 }
 
 const handleAcmgEvidenceClick = (item: CohortVariant) => {
@@ -271,7 +353,7 @@ const handleCommentClick = (item: CohortVariant) => {
 }
 
 const handleExport = () => {
-  annotationDialogsRef.value?.exportToExcel()
+  exportToExcel()
 }
 
 const handleNavigateToCase = (payload: { caseId: number; item: CohortVariant }) => {

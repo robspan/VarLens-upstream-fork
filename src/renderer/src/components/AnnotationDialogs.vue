@@ -16,7 +16,7 @@
         : null
     "
     :per-case-comment="
-      selectedVariantForComment
+      effectiveScope === 'case' && selectedVariantForComment
         ? getPerCaseComment(
             selectedVariantForComment.chr,
             selectedVariantForComment.pos,
@@ -26,7 +26,9 @@
         : null
     "
     :global-timestamps="getGlobalTimestamps(selectedVariantForComment)"
-    :per-case-timestamps="getPerCaseTimestamps(selectedVariantForComment)"
+    :per-case-timestamps="
+      effectiveScope === 'case' ? getPerCaseTimestamps(selectedVariantForComment) : null
+    "
     @save="handleCommentSave"
   />
 
@@ -42,15 +44,17 @@
 </template>
 
 <script setup lang="ts">
-import { toRef } from 'vue'
-import CommentDialog from '../CommentDialog.vue'
-import AcmgEvidenceDialog from '../AcmgEvidenceDialog.vue'
-import { useAnnotationDialogs } from '../../composables/useAnnotationDialogs'
-import { useVariantLinks } from '../../composables/useVariantLinks'
-import type { useAnnotations } from '../../composables/useAnnotations'
+import { toRef, computed } from 'vue'
+import CommentDialog from './CommentDialog.vue'
+import AcmgEvidenceDialog from './AcmgEvidenceDialog.vue'
+import { useAnnotationDialogs } from '../composables/useAnnotationDialogs'
+import { useVariantLinks } from '../composables/useVariantLinks'
+import type { useAnnotations } from '../composables/useAnnotations'
+import type { AnnotationScope } from '../../../shared/types/annotations'
 
 interface Props {
-  caseId: number
+  caseId: number | null
+  annotationScope?: AnnotationScope
   annotationActions: {
     getAcmgEvidence: ReturnType<typeof useAnnotations>['getAcmgEvidence']
     toggleStar: ReturnType<typeof useAnnotations>['toggleStar']
@@ -63,10 +67,21 @@ interface Props {
     getAnnotations: ReturnType<typeof useAnnotations>['getAnnotations']
     getGlobalComment: ReturnType<typeof useAnnotations>['getGlobalComment']
     getPerCaseComment: ReturnType<typeof useAnnotations>['getPerCaseComment']
+    // Global methods (used when scope === 'all')
+    toggleGlobalStar?: ReturnType<typeof useAnnotations>['toggleGlobalStar']
+    setGlobalAcmgClassification?: ReturnType<typeof useAnnotations>['setGlobalAcmgClassification']
+    setGlobalAcmgClassificationWithEvidence?: ReturnType<
+      typeof useAnnotations
+    >['setGlobalAcmgClassificationWithEvidence']
+    getGlobalAcmgEvidence?: ReturnType<typeof useAnnotations>['getGlobalAcmgEvidence']
   }
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  annotationScope: 'case'
+})
+
+const effectiveScope = computed(() => props.annotationScope)
 
 const { snackbar } = useVariantLinks()
 
@@ -86,20 +101,31 @@ const {
   handleCommentSave,
   getGlobalTimestamps,
   getPerCaseTimestamps
-} = useAnnotationDialogs(toRef(props, 'caseId'), {
-  getAcmgEvidence: props.annotationActions.getAcmgEvidence,
-  toggleStar: props.annotationActions.toggleStar,
-  setAcmgClassification: props.annotationActions.setAcmgClassification,
-  setAcmgClassificationWithEvidence: props.annotationActions.setAcmgClassificationWithEvidence,
-  upsertGlobalComment: props.annotationActions.upsertGlobalComment,
-  upsertPerCaseComment: props.annotationActions.upsertPerCaseComment,
-  getAnnotations: props.annotationActions.getAnnotations
-})
+} = useAnnotationDialogs(
+  toRef(props, 'caseId'),
+  {
+    getAcmgEvidence: props.annotationActions.getAcmgEvidence,
+    toggleStar: props.annotationActions.toggleStar,
+    setAcmgClassification: props.annotationActions.setAcmgClassification,
+    setAcmgClassificationWithEvidence: props.annotationActions.setAcmgClassificationWithEvidence,
+    upsertGlobalComment: props.annotationActions.upsertGlobalComment,
+    upsertPerCaseComment: props.annotationActions.upsertPerCaseComment,
+    getAnnotations: props.annotationActions.getAnnotations,
+    toggleGlobalStar: props.annotationActions.toggleGlobalStar,
+    setGlobalAcmgClassification: props.annotationActions.setGlobalAcmgClassification,
+    setGlobalAcmgClassificationWithEvidence:
+      props.annotationActions.setGlobalAcmgClassificationWithEvidence,
+    getGlobalAcmgEvidence: props.annotationActions.getGlobalAcmgEvidence,
+    getGlobalComment: props.annotationActions.getGlobalComment,
+    getPerCaseComment: props.annotationActions.getPerCaseComment
+  },
+  effectiveScope
+)
 
-// Re-export getGlobalComment/getPerCaseComment from annotation actions for template
+// Re-export comment accessors for template
 const { getGlobalComment, getPerCaseComment } = props.annotationActions
 
-// acmgEvidenceDialogRef is used as template ref
+// Suppress unused ref warning
 void acmgEvidenceDialogRef
 
 defineExpose({

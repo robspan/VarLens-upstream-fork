@@ -27,6 +27,9 @@
         :class="{ 'filter-active': filters.searchQuery !== '' }"
       />
 
+      <!-- Annotation scope toggle -->
+      <AnnotationScopeToggle v-model="filters.annotationScope" class="mr-2" />
+
       <!-- Star toggle -->
       <v-tooltip location="bottom">
         <template #activator="{ props: tooltipProps }">
@@ -137,7 +140,11 @@
         >
           <v-icon size="small" class="mr-1">mdi-information-outline</v-icon>
           <span class="text-body-small">
-            No variants match the annotation filter. Star or comment on variants first, then filter.
+            {{
+              filters.annotationScope === 'all'
+                ? 'No variants match the annotation filter. This includes global annotations from other cases.'
+                : 'No variants match the annotation filter. Star or comment on variants first, then filter.'
+            }}
           </span>
         </div>
       </v-expand-transition>
@@ -164,6 +171,7 @@ import { ref, computed, watch, onMounted, provide } from 'vue'
 import { useFilterState } from '../composables/useFilterState'
 import { useColumnPreferences } from '../composables/useColumnPreferences'
 import SlimFilterToolbar from './SlimFilterToolbar.vue'
+import AnnotationScopeToggle from './AnnotationScopeToggle.vue'
 import ColumnsDrawer from './ColumnsDrawer.vue'
 import FilterDrawer from './FilterDrawer.vue'
 import type { VariantFilter, Tag } from '../../../shared/types/api'

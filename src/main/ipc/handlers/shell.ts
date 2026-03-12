@@ -24,6 +24,7 @@ const UserDomainsSchema = z.array(z.string().min(1).max(253))
 /** Built-in domains allowed for external link opening */
 const ALLOWED_DOMAINS = [
   'github.com',
+  'github.io',
   'opensource.org',
   'gnomad.broadinstitute.org',
   'ncbi.nlm.nih.gov', // Covers PubTator, LitVar, ClinVar

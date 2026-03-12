@@ -104,6 +104,12 @@ await app.close();
 - **CI on Linux**: needs `xvfb-run` for real window rendering
 - **File dialogs**: mock at IPC level or use `electron-playwright-helpers` package
 
+## Planning & Documentation
+
+- **All plans, specs, and design docs go in `.planning/`** — never use `docs/` for planning artifacts
+- Specs: `.planning/specs/`
+- Research/notes: `.planning/docs/`
+
 ## UI / Vuetify Theme Notes
 
 See [.planning/docs/UI-PATTERNS.md](.planning/docs/UI-PATTERNS.md) for comprehensive Vuetify component patterns.

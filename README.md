@@ -9,7 +9,7 @@ VarLens is a cross-platform desktop application for offline genetic variant anal
 
 **[Documentation](https://berntpopp.github.io/VarLens/)** | **[Download](https://github.com/berntpopp/VarLens/releases/latest)**
 
-![VarLens variant table view](docs/public/screenshots/variant-table.png)
+![VarLens variant table view](https://berntpopp.github.io/VarLens/screenshots/variant-table.png)
 
 ## Features
 

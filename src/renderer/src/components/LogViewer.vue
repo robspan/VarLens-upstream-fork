@@ -14,25 +14,27 @@
             ({{ stats.totalDropped }} dropped)
           </span>
           <span class="mx-2">|</span>
-          <span>Mem: {{ memoryUsage }}</span>
+          <span
+            >Mem: {{ memoryUsage }}
+            <v-tooltip activator="parent" location="top">Renderer JS heap usage</v-tooltip>
+          </span>
         </div>
 
         <!-- Action buttons -->
-        <v-btn
-          icon="mdi-download"
-          size="x-small"
-          variant="text"
-          title="Download logs"
-          @click="handleExport"
-        />
-        <v-btn
-          icon="mdi-delete-outline"
-          size="x-small"
-          variant="text"
-          title="Clear logs"
-          @click="handleClear"
-        />
-        <v-btn icon="mdi-close" size="x-small" variant="text" @click="isOpen = false" />
+        <div class="log-viewer-actions d-flex align-center">
+          <v-btn icon size="small" variant="text" @click="handleExport">
+            <v-icon size="small">mdi-download</v-icon>
+            <v-tooltip activator="parent" location="top">Download logs</v-tooltip>
+          </v-btn>
+          <v-btn icon size="small" variant="text" @click="handleClear">
+            <v-icon size="small">mdi-delete-outline</v-icon>
+            <v-tooltip activator="parent" location="top">Clear logs</v-tooltip>
+          </v-btn>
+          <v-btn icon size="small" variant="text" @click="isOpen = false">
+            <v-icon size="small">mdi-close</v-icon>
+            <v-tooltip activator="parent" location="top">Close</v-tooltip>
+          </v-btn>
+        </div>
       </v-toolbar>
 
       <!-- Single-row filter bar: search + level chips -->
@@ -310,8 +312,7 @@ function updateMemoryUsage(): void {
   const perf = performance as { memory?: { usedJSHeapSize: number; totalJSHeapSize: number } }
   if (perf.memory !== undefined) {
     const usedMB = perf.memory.usedJSHeapSize / (1024 * 1024)
-    const totalMB = perf.memory.totalJSHeapSize / (1024 * 1024)
-    memoryUsage.value = `${usedMB.toFixed(1)} MB / ${totalMB.toFixed(1)} MB`
+    memoryUsage.value = `${usedMB.toFixed(1)} MB`
   } else {
     memoryUsage.value = 'N/A'
   }
@@ -349,6 +350,11 @@ onBeforeUnmount(() => {
 
 .log-entry:hover {
   background-color: color-mix(in srgb, rgb(var(--v-theme-on-surface)) 4%, transparent);
+}
+
+.log-viewer-actions {
+  gap: 6px;
+  padding-right: 4px;
 }
 
 .scroll-to-latest-fab {

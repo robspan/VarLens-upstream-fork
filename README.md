@@ -1,15 +1,30 @@
-# VarLens
+<p align="center">
+  <a href="https://berntpopp.github.io/VarLens/">
+    <img src="https://berntpopp.github.io/VarLens/logo.svg" alt="VarLens" width="120" />
+  </a>
+</p>
 
-[![Build](https://github.com/berntpopp/VarLens/actions/workflows/build.yml/badge.svg)](https://github.com/berntpopp/VarLens/actions/workflows/build.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
-[![Vue](https://img.shields.io/badge/Vue-3-4FC08D.svg)](https://vuejs.org/)
+<h1 align="center">VarLens</h1>
 
-VarLens is a cross-platform desktop application for offline genetic variant analysis. It provides a data-dense interface for importing, filtering, annotating, and exporting variant data -- all processed locally, with no data leaving your machine.
+<p align="center">
+  <strong>Offline genetic variant analysis, right on your desktop.</strong>
+</p>
 
-**[Documentation](https://berntpopp.github.io/VarLens/)** | **[Download](https://github.com/berntpopp/VarLens/releases/latest)**
+<p align="center">
+  <a href="https://github.com/berntpopp/VarLens/actions/workflows/build.yml"><img src="https://github.com/berntpopp/VarLens/actions/workflows/build.yml/badge.svg" alt="Build" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" /></a>
+  <a href="https://www.electronjs.org/"><img src="https://img.shields.io/badge/Electron-40-47848F.svg" alt="Electron" /></a>
+  <a href="https://vuejs.org/"><img src="https://img.shields.io/badge/Vue-3-4FC08D.svg" alt="Vue" /></a>
+</p>
 
-![VarLens variant table view](https://berntpopp.github.io/VarLens/screenshots/variant-table.png)
+<p align="center">
+  <a href="https://berntpopp.github.io/VarLens/"><strong>Documentation</strong></a> &middot;
+  <a href="https://github.com/berntpopp/VarLens/releases/latest"><strong>Download</strong></a>
+</p>
+
+<p align="center">
+  <img src="https://berntpopp.github.io/VarLens/screenshots/variant-table.png" alt="VarLens variant table view" width="800" />
+</p>
 
 ## Features
 

@@ -178,7 +178,10 @@ export const VariantFilterPartialSchema = z.object({
   column_filters: z
     .record(z.string(), z.string())
     .nullish()
-    .transform((val) => val ?? undefined)
+    .transform((val) => val ?? undefined),
+
+  // Annotation scope for star/ACMG filters
+  annotation_scope: z.enum(['case', 'all']).optional()
 })
 
 /**

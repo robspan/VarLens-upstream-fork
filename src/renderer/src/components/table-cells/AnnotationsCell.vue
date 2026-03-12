@@ -19,7 +19,11 @@
       </template>
       <span v-if="displayGlobalStarred && displayStarred">Starred (case + global)</span>
       <span v-else-if="displayGlobalStarred">
-        {{ annotationScope === 'all' ? 'Case star (click to toggle global)' : 'Global star (click to add case star)' }}
+        {{
+          annotationScope === 'all'
+            ? 'Case star (click to toggle global)'
+            : 'Global star (click to add case star)'
+        }}
       </span>
       <span v-else-if="displayStarred">
         {{ annotationScope === 'all' ? 'Starred globally' : 'Starred for this case' }}

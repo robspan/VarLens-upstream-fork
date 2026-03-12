@@ -238,9 +238,10 @@
       </v-data-table-server>
     </template>
 
-    <VariantAnnotationDialogs
+    <AnnotationDialogs
       ref="annotationDialogsRef"
       :case-id="caseId"
+      :annotation-scope="annotationScope"
       :annotation-actions="annotationActions"
     />
   </div>
@@ -256,7 +257,7 @@ import { useVariantLinks } from '../composables/useVariantLinks'
 import { formatConsequence } from '../utils/formatters'
 import { useTableScroll } from '../composables/useTableScroll'
 import VariantColumnHeader from './variant-table/VariantColumnHeader.vue'
-import VariantAnnotationDialogs from './variant-table/VariantAnnotationDialogs.vue'
+import AnnotationDialogs from './AnnotationDialogs.vue'
 import { useVariantColumns } from './variant-table/columns'
 import { useVariantData } from './variant-table/useVariantData'
 import {
@@ -301,7 +302,11 @@ const {
   getPerCaseComment,
   upsertGlobalComment,
   upsertPerCaseComment,
-  getAnnotations
+  getAnnotations,
+  toggleGlobalStar,
+  setGlobalAcmgClassification,
+  setGlobalAcmgClassificationWithEvidence,
+  getGlobalAcmgEvidence
 } = useAnnotations()
 
 // Bundle annotation actions for dialog subcomponent
@@ -314,7 +319,11 @@ const annotationActions = {
   upsertPerCaseComment,
   getAnnotations,
   getGlobalComment,
-  getPerCaseComment
+  getPerCaseComment,
+  toggleGlobalStar,
+  setGlobalAcmgClassification,
+  setGlobalAcmgClassificationWithEvidence,
+  getGlobalAcmgEvidence
 }
 
 // Links
@@ -353,7 +362,7 @@ const {
 })
 
 // Template refs
-const annotationDialogsRef = ref<InstanceType<typeof VariantAnnotationDialogs> | null>(null)
+const annotationDialogsRef = ref<InstanceType<typeof AnnotationDialogs> | null>(null)
 
 // @ts-expect-error - These refs ARE used in template bindings
 const { topScrollbarRef, topScrollbarInnerRef, initScrollSync } = useTableScroll()

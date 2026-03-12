@@ -67,6 +67,7 @@
             :has-comment="!!getPerCaseComment(item.chr, item.pos, item.ref, item.alt)"
             :has-global-comment="!!getGlobalComment(item.chr, item.pos, item.ref, item.alt)"
             :show-global-indicators="true"
+            :annotation-scope="annotationScope"
             @star-toggle="annotationDialogsRef?.handleStarToggle(item)"
             @acmg-select="(c) => annotationDialogsRef?.handleQuickAcmgSelect(item, c)"
             @acmg-evidence-click="annotationDialogsRef?.openAcmgEvidenceDialog(item)"

@@ -5,90 +5,59 @@
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Vue](https://img.shields.io/badge/Vue-3-4FC08D.svg)](https://vuejs.org/)
 
-Offline desktop application for genetic variant analysis, built for clinical genomics workflows.
+VarLens is a cross-platform desktop application for offline genetic variant analysis. It provides a data-dense interface for importing, filtering, annotating, and exporting variant data -- all processed locally, with no data leaving your machine.
 
-## Overview
+**[Documentation](https://berntpopp.github.io/VarLens/)** | **[Download](https://github.com/berntpopp/VarLens/releases/latest)**
 
-VarLens provides a data-dense interface for importing, filtering, and analyzing annotated variant data without requiring an internet connection. It stores case data in local SQLite databases with optional encryption and supports cross-platform use on Windows, macOS, and Linux.
+![VarLens variant table view](docs/public/screenshots/variant-table.png)
 
-### Key capabilities
+## Features
 
-- Import annotated variant JSON files (single, batch, or ZIP archive)
-- Filter and search variants by gene, consequence, population frequency, pathogenicity scores, and more
-- Full-text search across gene symbols, consequences, and annotations (SQLite FTS5)
-- Cohort analysis across multiple cases
-- HPO-based phenotype matching and similarity scoring
-- Export results to Excel and CSV
-- Optional database encryption (SQLCipher)
-- Multi-database management with quick switching
+- **Import** annotated variant data from JSON files (single, batch, or ZIP)
+- **Filter** by gene, consequence, population frequency, pathogenicity scores, and more
+- **Annotate** variants with stars, comments, tags, and ACMG classifications
+- **Classify** with ACMG criteria and auto-suggested evidence
+- **Analyze cohorts** with carrier aggregation and gene burden testing
+- **Match phenotypes** using HPO-based similarity scoring
+- **Export** filtered results to Excel or CSV
+- **Store** data locally in SQLite with optional encryption
 
-### Supported annotations
+For a complete walkthrough, see the [feature documentation](https://berntpopp.github.io/VarLens/features/variant-table).
 
-VarLens works with JSON exports containing SNV/indel annotations including gnomAD population frequencies, CADD and REVEL scores, ClinVar classifications, SpliceAI predictions, and HPO phenotype terms.
+## Install
 
-## Tech stack
+Download the latest release for your platform:
 
-| Layer | Technology |
-|-------|------------|
-| Frontend | Vue 3, Vuetify 3 (Material Design), TypeScript |
-| Desktop | Electron, electron-vite |
-| Database | SQLite via better-sqlite3-multiple-ciphers |
-| State | Pinia |
-| Testing | Vitest, happy-dom |
-| CI/CD | GitHub Actions (Windows, macOS, Linux) |
+| Platform | Formats |
+|----------|---------|
+| Windows | [Installer / Portable](https://github.com/berntpopp/VarLens/releases/latest) |
+| macOS | [DMG / ZIP](https://github.com/berntpopp/VarLens/releases/latest) |
+| Linux | [AppImage / DEB](https://github.com/berntpopp/VarLens/releases/latest) |
 
-## Prerequisites
-
-- [Node.js](https://nodejs.org/) 20 or later
-- npm 9 or later
-- **Windows only:** [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the "Desktop development with C++" workload (required for native module compilation)
-
-## Getting started
-
-```bash
-# Install dependencies (automatically rebuilds native modules for Electron)
-npm install
-
-# Start development server with hot reload
-make dev
-```
+See the [installation guide](https://berntpopp.github.io/VarLens/guide/installation) for system requirements and first-launch steps.
 
 ## Development
 
-```bash
-make dev              # Rebuild native modules + start dev server
-make lint             # Lint with auto-fix
-make typecheck        # TypeScript type checking
-make rebuild-node     # Rebuild native modules for Node.js (required before tests)
-make test             # Run test suite
-make ci               # Lint + typecheck + test (mirrors CI pipeline)
-```
-
-### Building
+Requires [Node.js](https://nodejs.org/) 20+ and npm 9+. On Windows, also install [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the C++ workload.
 
 ```bash
-make dist             # Build and package for current platform
-make dist-linux       # Linux (AppImage, deb)
-make dist-mac         # macOS (DMG, ZIP)
-make dist-win         # Windows (NSIS installer, portable, ZIP)
+npm install
+make dev
 ```
 
-### Native modules
+| Command | Description |
+|---------|-------------|
+| `make dev` | Start development server with hot reload |
+| `make lint` | Lint and auto-fix |
+| `make typecheck` | TypeScript type checking |
+| `make test` | Run unit tests |
+| `make ci` | Lint + typecheck + test |
+| `make dist` | Build and package for current platform |
 
-This project uses `better-sqlite3-multiple-ciphers`, a native C++ addon that must be compiled separately for Node.js (tests) and Electron (app). The Makefile handles this automatically. See [CLAUDE.md](CLAUDE.md) for details on the dual-mode rebuild workflow.
+## Tech Stack
 
-## Project structure
-
-```
-src/
-  main/           Electron main process, SQLite database, IPC handlers
-  preload/        Context bridge exposing typed IPC API
-  renderer/       Vue 3 SPA (components, composables, stores)
-  shared/types/   Shared TypeScript type definitions
-tests/            Vitest test suite
-docs/             Additional documentation
-```
+Vue 3 and Vuetify 3 (renderer), Electron 40 with electron-vite (build), SQLite via better-sqlite3-multiple-ciphers (storage), Pinia (state), Vitest and Playwright (testing), GitHub Actions (CI/CD).
 
 ## License
 
-[MIT](LICENSE) -- Labor Berlin
+[MIT](LICENSE)

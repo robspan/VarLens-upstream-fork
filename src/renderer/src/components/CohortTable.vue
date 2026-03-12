@@ -217,7 +217,7 @@ const {
 const selectedVariantKey = ref<string | null>(null)
 const annotationDialogsRef = ref<InstanceType<typeof AnnotationDialogs> | null>(null)
 
-// Export state (moved from CohortAnnotationDialogs)
+// Export state
 const exporting = ref(false)
 const snackbar = ref({
   visible: false,
@@ -332,7 +332,7 @@ const handleRetry = async () => {
   await invalidateAndReload()
 }
 
-// Delegate annotation events to CohortAnnotationDialogs
+// Delegate annotation events to AnnotationDialogs
 const handleStarToggle = (item: CohortVariant) => {
   annotationDialogsRef.value?.handleStarToggle(item)
 }

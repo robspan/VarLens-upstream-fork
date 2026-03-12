@@ -163,11 +163,21 @@ export function useAnnotationDialogs(
     const effectiveScope = scope?.value ?? 'case'
     if (effectiveScope === 'all' && annotations.setGlobalAcmgClassification) {
       await annotations.setGlobalAcmgClassification(
-        item.chr, item.pos, item.ref, item.alt, classification
+        item.chr,
+        item.pos,
+        item.ref,
+        item.alt,
+        classification
       )
     } else if (caseId.value !== null && item.id !== undefined) {
       await annotations.setAcmgClassification(
-        caseId.value, item.id, item.chr, item.pos, item.ref, item.alt, classification
+        caseId.value,
+        item.id,
+        item.chr,
+        item.pos,
+        item.ref,
+        item.alt,
+        classification
       )
     }
   }
@@ -182,11 +192,23 @@ export function useAnnotationDialogs(
     const effectiveScope = scope?.value ?? 'case'
     if (effectiveScope === 'all' && annotations.setGlobalAcmgClassificationWithEvidence) {
       await annotations.setGlobalAcmgClassificationWithEvidence(
-        v.chr, v.pos, v.ref, v.alt, payload.classification, payload.evidenceJson
+        v.chr,
+        v.pos,
+        v.ref,
+        v.alt,
+        payload.classification,
+        payload.evidenceJson
       )
     } else if (caseId.value !== null && v.id !== undefined) {
       await annotations.setAcmgClassificationWithEvidence(
-        caseId.value, v.id, v.chr, v.pos, v.ref, v.alt, payload.classification, payload.evidenceJson
+        caseId.value,
+        v.id,
+        v.chr,
+        v.pos,
+        v.ref,
+        v.alt,
+        payload.classification,
+        payload.evidenceJson
       )
     }
   }
@@ -205,9 +227,20 @@ export function useAnnotationDialogs(
     if (data.globalChanged) {
       await annotations.upsertGlobalComment(v.chr, v.pos, v.ref, v.alt, data.globalComment)
     }
-    if (data.perCaseChanged && effectiveScope === 'case' && caseId.value !== null && v.id !== undefined) {
+    if (
+      data.perCaseChanged &&
+      effectiveScope === 'case' &&
+      caseId.value !== null &&
+      v.id !== undefined
+    ) {
       await annotations.upsertPerCaseComment(
-        caseId.value, v.id, v.chr, v.pos, v.ref, v.alt, data.perCaseComment
+        caseId.value,
+        v.id,
+        v.chr,
+        v.pos,
+        v.ref,
+        v.alt,
+        data.perCaseComment
       )
     }
 

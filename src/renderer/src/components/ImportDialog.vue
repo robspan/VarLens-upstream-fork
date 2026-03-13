@@ -55,6 +55,9 @@
 
       <v-card-actions>
         <v-spacer />
+        <v-btn v-if="isImporting" variant="text" @click="continueInBackground">
+          Continue in Background
+        </v-btn>
         <v-btn :disabled="isSuccess" @click="handleCancel">
           {{ isImporting ? 'Cancel' : 'Close' }}
         </v-btn>
@@ -76,8 +79,10 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { ProgressUpdate, ImportResult } from '../../../shared/types/api'
 import { isIpcError, ErrorCode } from '../../../shared/types/errors'
 import { useApiService } from '../composables/useApiService'
+import { useImportStatusStore } from '../stores/importStatusStore'
 
 const { api } = useApiService()
+const importStore = useImportStatusStore()
 
 const dialog = ref(false)
 const filePath = ref('')
@@ -86,24 +91,21 @@ const isImporting = ref(false)
 const isSuccess = ref(false)
 const errorMessage = ref('')
 const progress = ref<ProgressUpdate>({ phase: 'reading', count: 0, elapsed: 0 })
+const backgroundMode = ref(false)
 
 let cleanupProgress: (() => void) | null = null
 
-// Validation rules for case name
 const caseNameRules = [
   (v: string) => !!v || 'Case name is required',
   (v: string) => v.length >= 3 || 'Minimum 3 characters',
   (v: string) => v.length <= 50 || 'Maximum 50 characters'
 ]
 
-// Check if import button should be enabled
 const canImport = computed(() => {
   if (filePath.value === '' || caseName.value === '') return false
-  // Validate case name meets all rules
   return caseNameRules.every((rule) => rule(caseName.value) === true)
 })
 
-// Format progress text
 const progressText = computed(() => {
   const phaseLabels: Record<string, string> = {
     reading: 'Reading file',
@@ -111,12 +113,10 @@ const progressText = computed(() => {
     inserting: 'Inserting variants'
   }
   const phaseLabel = phaseLabels[progress.value.phase] ?? 'Processing'
-
   const count = progress.value.count.toLocaleString()
   return `${phaseLabel}... ${count}`
 })
 
-// Extract case name from file path (cross-platform)
 const extractCaseName = (path: string): string => {
   const parts = path.split(/[/\\]/)
   let name = parts[parts.length - 1] ?? 'import'
@@ -125,52 +125,73 @@ const extractCaseName = (path: string): string => {
   return name
 }
 
-// Open file browser and populate file path
 const handleBrowse = async (): Promise<void> => {
   const selectedPath = await api!.import.selectFile()
   if (selectedPath !== null) {
     filePath.value = selectedPath
-    // Auto-populate case name if empty
     if (caseName.value === '') {
       caseName.value = extractCaseName(selectedPath)
     }
   }
 }
 
-// Start import process
 const handleImport = async (): Promise<void> => {
   isImporting.value = true
   errorMessage.value = ''
+  backgroundMode.value = false
   progress.value = { phase: 'reading', count: 0, elapsed: 0 }
+
+  importStore.startImport(1)
+  importStore.dialogOpen = true
 
   const result = await api!.import.start(filePath.value, caseName.value)
 
   isImporting.value = false
 
   if (isIpcError(result)) {
-    // Handle error
+    importStore.importError(result.userMessage)
     if (result.code === ErrorCode.UNIQUE_CONSTRAINT) {
       errorMessage.value = 'A case with this name already exists. Please choose a different name.'
     } else {
       errorMessage.value = result.userMessage
     }
   } else {
-    // Success
-    showSuccessAndClose(result)
+    importStore.importComplete({
+      succeeded: 1,
+      failed: 0,
+      skipped: 0,
+      cancelled: false,
+      details: []
+    })
+
+    if (backgroundMode.value) {
+      // Dialog was dismissed — emit completion without showing success UI
+      emit('import-complete', {
+        caseId: result.caseId,
+        variantCount: result.variantCount,
+        caseName: caseName.value
+      })
+    } else {
+      showSuccessAndClose(result)
+    }
   }
 }
 
-// Handle cancel/close
+const continueInBackground = (): void => {
+  backgroundMode.value = true
+  importStore.dialogOpen = false
+  dialog.value = false
+}
+
 const handleCancel = async (): Promise<void> => {
   if (isImporting.value === true) {
-    // Cancel active import
     await api!.import.cancel()
     isImporting.value = false
+    importStore.reset()
   }
   dialog.value = false
 }
 
-// Show success state and auto-close
 const showSuccessAndClose = (result: ImportResult): void => {
   isSuccess.value = true
 
@@ -179,47 +200,57 @@ const showSuccessAndClose = (result: ImportResult): void => {
     dialog.value = false
     isSuccess.value = false
 
-    // Emit event to parent
     emit('import-complete', {
       caseId: result.caseId,
       variantCount: result.variantCount,
       caseName: caseName.value
     })
-  }, 3000) // 3 second delay for user to read success message
+  }, 3000)
 }
 
-// Show dialog and optionally trigger file selection
 const show = async (): Promise<void> => {
-  // Reset state
   dialog.value = true
   filePath.value = ''
   caseName.value = ''
   isImporting.value = false
   isSuccess.value = false
   errorMessage.value = ''
+  backgroundMode.value = false
   progress.value = { phase: 'reading', count: 0, elapsed: 0 }
 
-  // Immediately trigger file selection
   await handleBrowse()
 }
 
-// Setup IPC progress listener
 onMounted(() => {
   cleanupProgress = api!.import.onProgress((update: ProgressUpdate) => {
     progress.value = update
+    if (importStore.isActive) {
+      importStore.updateProgress({
+        fileIndex: 0,
+        totalFiles: 1,
+        fileName: filePath.value.split(/[/\\]/).pop() ?? '',
+        overallPercent: update.phase === 'inserting' ? 90 : update.phase === 'parsing' ? 50 : 10,
+        phase: update.phase,
+        variantCount: update.count,
+        skipped: 0
+      })
+    }
   })
 })
 
-// Cleanup IPC listener
 onUnmounted(() => {
   cleanupProgress?.()
 })
 
-// Define emits
 const emit = defineEmits<{
   'import-complete': [payload: { caseId: number; variantCount: number; caseName: string }]
 }>()
 
-// Expose show method to parent
-defineExpose({ show })
+const reopen = (): void => {
+  if (isImporting.value) {
+    dialog.value = true
+  }
+}
+
+defineExpose({ show, reopen })
 </script>

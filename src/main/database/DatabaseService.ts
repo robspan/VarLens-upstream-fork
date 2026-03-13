@@ -38,6 +38,7 @@ export class DatabaseService {
   private _kysely: Kysely<VarlensDatabase>
   private dbPath: string
   private encrypted: boolean
+  private _encryptionKey?: string
 
   // Repositories — accessed via public getters
   private _cases: CaseRepository
@@ -62,6 +63,7 @@ export class DatabaseService {
   constructor(dbPath: string = ':memory:', encryptionKey?: string) {
     this.dbPath = dbPath
     this.encrypted = encryptionKey !== undefined && encryptionKey !== ''
+    this._encryptionKey = encryptionKey
 
     try {
       this.db = new Database(dbPath)
@@ -196,6 +198,13 @@ export class DatabaseService {
    */
   getPath(): string {
     return this.dbPath
+  }
+
+  /**
+   * Get the encryption key (for worker thread usage)
+   */
+  getEncryptionKey(): string | undefined {
+    return this._encryptionKey
   }
 
   /**

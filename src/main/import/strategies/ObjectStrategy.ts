@@ -34,7 +34,7 @@ export class ObjectStrategy implements ImportStrategy {
     const batchAccumulator = createBatchAccumulator({
       caseId,
       batchSize,
-      db,
+      flushFn: (cId, batch) => db.variants.insertVariantsBatch(cId, batch),
       onProgress: options.onProgress,
       startTime
     })

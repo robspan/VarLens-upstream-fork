@@ -12,7 +12,8 @@ export default defineConfig({
         external: ['better-sqlite3-multiple-ciphers'],
         input: {
           index: resolve(__dirname, 'src/main/index.ts'),
-          'statistics-worker': resolve(__dirname, 'src/main/statistics/worker.ts')
+          'statistics-worker': resolve(__dirname, 'src/main/statistics/worker.ts'),
+          'import-worker': resolve(__dirname, 'src/main/workers/import-worker.ts')
         }
       }
     }

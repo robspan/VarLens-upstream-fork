@@ -52,6 +52,9 @@ export class ImportWorkerClient {
           break
         case 'error':
           callbacks.onError(msg)
+          if (msg.fileIndex === -1) {
+            this.cleanup()
+          }
           break
       }
     })

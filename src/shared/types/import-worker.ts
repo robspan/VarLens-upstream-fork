@@ -15,7 +15,7 @@ export interface VariantInsertRow {
   gnomad_af: number | null
   cadd: number | null
   clinvar: string | null
-  gt_num: number | null
+  gt_num: string | null
   func: string | null
   qual: number | null
   hpo_sim_score: number | null

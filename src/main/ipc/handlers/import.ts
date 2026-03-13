@@ -95,7 +95,7 @@ export function registerImportHandlers({ ipcMain, getDb }: HandlerDependencies):
           throttleMs: API_CONFIG.PROGRESS_THROTTLE_MS,
           onProgress: (msg) => {
             safeEmit('import:progress', {
-              phase: msg.phase,
+              phase: msg.phase === 'finalizing' ? 'inserting' : msg.phase,
               count: msg.variantCount,
               elapsed: 0,
               skipped: msg.skipped
@@ -106,6 +106,16 @@ export function registerImportHandlers({ ipcMain, getDb }: HandlerDependencies):
           },
           onComplete: (msg) => {
             workerClient = null
+            if (msg.results.cancelled === true) {
+              resolve({
+                caseId: 0,
+                variantCount: 0,
+                skipped: 0,
+                errors: ['Import cancelled by user'],
+                elapsed: 0
+              })
+              return
+            }
             const detail = msg.results.details[0]
             if (detail !== undefined && detail.status === 'success') {
               safeEmit('import:progress', {

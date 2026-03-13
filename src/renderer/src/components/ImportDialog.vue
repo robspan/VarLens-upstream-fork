@@ -229,7 +229,14 @@ onMounted(() => {
         fileIndex: 0,
         totalFiles: 1,
         fileName: filePath.value.split(/[/\\]/).pop() ?? '',
-        overallPercent: update.phase === 'inserting' ? 90 : update.phase === 'parsing' ? 50 : 10,
+        overallPercent:
+          (update.phase as string) === 'finalizing'
+            ? 99
+            : update.phase === 'inserting'
+              ? 90
+              : update.phase === 'parsing'
+                ? 50
+                : 10,
         phase: update.phase,
         variantCount: update.count,
         skipped: 0

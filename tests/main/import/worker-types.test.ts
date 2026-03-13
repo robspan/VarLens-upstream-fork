@@ -34,7 +34,7 @@ describe('import worker types', () => {
     }>()
   })
 
-  it('VariantInsertRow has all variant columns', () => {
+  it('VariantInsertRow has core variant columns', () => {
     expectTypeOf<VariantInsertRow>().toMatchTypeOf<{
       chr: string
       pos: number

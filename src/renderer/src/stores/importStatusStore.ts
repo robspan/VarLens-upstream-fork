@@ -39,7 +39,7 @@ export const useImportStatusStore = defineStore('importStatus', () => {
   })
 
   const fileProgress = computed(() =>
-    totalFiles.value > 0 ? `${currentFileIndex.value}/${totalFiles.value}` : ''
+    totalFiles.value > 0 ? `${currentFileIndex.value + 1}/${totalFiles.value}` : ''
   )
 
   function startImport(files: number): void {

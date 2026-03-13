@@ -55,10 +55,13 @@ describe('BatchAccumulator', () => {
 
     expect(accumulator.inserted).toBe(2)
     expect(flushFn).toHaveBeenCalledTimes(1)
-    expect(flushFn).toHaveBeenCalledWith(1, expect.arrayContaining([
-      expect.objectContaining({ chr: '1', pos: 100 }),
-      expect.objectContaining({ chr: '2', pos: 200 })
-    ]))
+    expect(flushFn).toHaveBeenCalledWith(
+      1,
+      expect.arrayContaining([
+        expect.objectContaining({ chr: '1', pos: 100 }),
+        expect.objectContaining({ chr: '2', pos: 200 })
+      ])
+    )
   })
 
   it('reports progress via onProgress callback', async () => {

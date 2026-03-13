@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { WorkerMessage } from '../../../src/shared/types/import-worker'
 
 vi.mock('worker_threads', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { EventEmitter } = require('events')
 
   class MockWorker extends EventEmitter {
@@ -39,8 +40,11 @@ import * as workerThreadsMock from 'worker_threads'
 
 const getMockWorker = (workerThreadsMock as unknown as { __getMockWorker: () => unknown })
   .__getMockWorker
-const getCalls = (workerThreadsMock as unknown as { __getCalls: () => { postMessage: unknown[][]; terminated: boolean } })
-  .__getCalls
+const getCalls = (
+  workerThreadsMock as unknown as {
+    __getCalls: () => { postMessage: unknown[][]; terminated: boolean }
+  }
+).__getCalls
 
 describe('ImportWorkerClient', () => {
   let client: ImportWorkerClient

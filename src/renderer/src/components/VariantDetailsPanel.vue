@@ -238,7 +238,8 @@ const {
   alphamissenseScore,
   spliceaiMaxDelta,
   isLoading,
-  fetchVep
+  fetchVep,
+  clearData: clearVepData
 } = useVepEnrichment()
 
 // Global ACMG classification (for showing in case mode)
@@ -379,6 +380,10 @@ watch(
   () => props.variant,
   async (newVariant) => {
     if (newVariant !== null) {
+      // Clear stale VEP enrichment data immediately — before any async work,
+      // so the UI never shows data from the previous variant
+      clearVepData()
+
       // Load annotations
       if (props.mode === 'case' && props.caseId !== null) {
         await loadAnnotations(
@@ -391,8 +396,6 @@ watch(
       } else {
         await loadGlobalAnnotations(newVariant.chr, newVariant.pos, newVariant.ref, newVariant.alt)
       }
-
-      // VEP enrichment is now fetched on-demand via TranscriptSection button
     }
   },
   { immediate: true }

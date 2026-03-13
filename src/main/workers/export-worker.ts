@@ -34,7 +34,8 @@ function run(msg: ExportMainMessage & { type: 'start' }): void {
     // Open read-only DB connection in worker (WAL mode supports concurrent reads)
     db = new Database(msg.dbPath, { readonly: true })
     if (msg.encryptionKey !== undefined && msg.encryptionKey !== '') {
-      db.pragma(`key='${msg.encryptionKey}'`)
+      const escapedKey = msg.encryptionKey.replace(/'/g, "''")
+      db.pragma(`key='${escapedKey}'`)
     }
     db.pragma('journal_mode = WAL')
 

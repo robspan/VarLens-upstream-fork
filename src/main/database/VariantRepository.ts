@@ -382,7 +382,15 @@ export class VariantRepository extends BaseRepository {
       } else if (part === 'OR') {
         sqlParts.push('OR')
       } else if (part === 'NOT') {
-        sqlParts.push('AND NOT')
+        // Use 'NOT' when at start or after another operator; 'AND NOT' otherwise
+        const lastPart = sqlParts[sqlParts.length - 1]
+        const isAfterOperator =
+          sqlParts.length === 0 ||
+          lastPart === 'AND' ||
+          lastPart === 'OR' ||
+          lastPart === 'NOT' ||
+          lastPart === 'AND NOT'
+        sqlParts.push(isAfterOperator ? 'NOT' : 'AND NOT')
       } else {
         const hgvsPattern = /^[cp]\./
         if (hgvsPattern.test(part)) {

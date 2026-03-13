@@ -92,7 +92,10 @@ export class ExportWorkerClient {
 
   private cleanup(): void {
     if (this.worker !== null) {
-      this.worker.terminate().catch(() => {})
+      this.worker.terminate().catch((err: Error) => {
+        // Worker may already be terminated (e.g. after 'exit' event)
+        mainLogger.warn(`Export worker terminate failed: ${err.message}`, 'ExportWorkerClient')
+      })
       this.worker = null
     }
   }

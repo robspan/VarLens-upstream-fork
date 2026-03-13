@@ -227,8 +227,8 @@ Lines ~494-554 (`emitFilters`) and ~709-759 (`exportToExcel`) contain nearly ide
 
 - Audit `WindowAPI` type in `src/shared/types/api.ts` against actual preload API shape
 - Add missing method signatures
-- Remove all ~20 `as any` casts on `window.api` across renderer (found in `useFilterState.ts`, `CohortTable.vue`, `useVariantData.ts`, `useCohortData.ts`, `useCarriers.ts`, `GeneBurdenTable.vue`, `RegionFileImportDialog.vue`, `GeneListEditorDialog.vue`)
-- Root cause: `WindowAPI` type is missing namespaces for newer features (`regionFiles`, `geneLists`, etc.)
+- Remove all ~29 `as any` casts on `window.api` across renderer (found in `GeneBurdenView.vue` (7), `GeneListEditorDialog.vue` (4), `useFilterState.ts` (4), `CohortTable.vue` (3), `useVariantData.ts` (2), `useCohortData.ts` (2), `RegionFileImportDialog.vue` (2), `CohortFilterBar.vue` (2), `useCarriers.ts` (1), `GeneBurdenTable.vue` (1), `FilterToolbar.vue` (1))
+- Root cause: `WindowAPI` type is missing namespaces for newer features (`regionFiles`, `geneLists`, `association`, etc.)
 
 ### 2.2 — M-08: JSDoc on Singleton Composables
 
@@ -278,7 +278,7 @@ Lines ~494-554 (`emitFilters`) and ~709-759 (`exportToExcel`) contain nearly ide
 - `useFilterState.ts` is under 500 lines after split
 
 ### Phase 2
-- Zero `as any` casts remain on `window.api` (~20 instances removed)
+- Zero `as any` casts remain on `window.api` (~29 instances removed)
 - All `Record<string, unknown>` IPC params in preload replaced with typed Zod schemas
 - All singleton composables have `@singleton` JSDoc warnings
 - All silent catch blocks have explanatory comments or named ignore functions

@@ -2,29 +2,20 @@ import { dialog, BrowserWindow, app } from 'electron'
 import { join, dirname, basename } from 'path'
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
 import type { HandlerDependencies } from '../types'
-import { ImportService, BatchImportService, ZipExtractor, TempDirectoryManager } from '../../import'
+import { ZipExtractor, TempDirectoryManager } from '../../import'
+import { checkDuplicates } from '../../import/batch-utils'
+import { ImportWorkerClient } from '../../workers/import-worker-client'
 import type { DuplicateChoice } from '../../../shared/types/api'
-import type { ProgressUpdate } from '../../import/types'
 import { mainLogger } from '../../services/MainLogger'
 import { API_CONFIG } from '../../../shared/config'
 
-/**
- * Batch Import IPC handlers
- * Channels: batch-import:selectFiles, batch-import:selectFolder,
- *           batch-import:checkDuplicates, batch-import:start, batch-import:cancel,
- *           batch-import:selectZip, batch-import:testZipPassword,
- *           batch-import:extractZip, batch-import:cleanupZipTemp
- * Events: batch-import:progress
- */
-
 // Track current batch import for cancellation
-let currentBatchAbortController: AbortController | null = null
+let workerClient: ImportWorkerClient | null = null
 
 // ZIP extraction utilities
 const zipExtractor = new ZipExtractor()
 let zipTempManager: TempDirectoryManager | null = null
 
-// Settings file for persisting last directory
 const settingsPath = () => join(app.getPath('userData'), 'settings.json')
 
 interface Settings {
@@ -50,13 +41,16 @@ function saveSettings(settings: Settings): void {
   }
 }
 
-// Throttle interval for progress updates (ms)
-const PROGRESS_THROTTLE_MS = API_CONFIG.PROGRESS_THROTTLE_MS
+function safeEmit(channel: string, data: unknown): void {
+  const win = BrowserWindow.getAllWindows()[0]
+  if (win === undefined || win.isDestroyed()) {
+    mainLogger.warn(`Window closed during batch import, skipping ${channel}`, 'import')
+    return
+  }
+  win.webContents.send(channel, data)
+}
 
 export function registerBatchImportHandlers({ ipcMain, getDb }: HandlerDependencies): void {
-  /**
-   * Select multiple files for batch import
-   */
   ipcMain.handle('batch-import:selectFiles', async () => {
     const settings = loadSettings()
 
@@ -75,16 +69,12 @@ export function registerBatchImportHandlers({ ipcMain, getDb }: HandlerDependenc
       return []
     }
 
-    // Save directory for next time (use first file's directory)
     const firstFile = result.filePaths[0]
     saveSettings({ ...settings, lastImportDirectory: dirname(firstFile) })
 
     return result.filePaths
   })
 
-  /**
-   * Select folder and find all JSON.gz files in it
-   */
   ipcMain.handle('batch-import:selectFolder', async () => {
     const settings = loadSettings()
 
@@ -99,11 +89,8 @@ export function registerBatchImportHandlers({ ipcMain, getDb }: HandlerDependenc
     }
 
     const folderPath = result.filePaths[0]
-
-    // Save directory for next time
     saveSettings({ ...settings, lastImportDirectory: folderPath })
 
-    // Read directory and filter for JSON/gz files
     try {
       const entries = readdirSync(folderPath, { withFileTypes: true })
 
@@ -128,18 +115,15 @@ export function registerBatchImportHandlers({ ipcMain, getDb }: HandlerDependenc
 
   /**
    * Check which files have duplicate case names in the database.
-   * Called before start() so user can review duplicates and choose a strategy.
+   * Stays on main thread — lightweight DB read.
    */
   ipcMain.handle(
     'batch-import:checkDuplicates',
     async (_event, filePaths: string[], stripText?: string) => {
       try {
         const db = getDb()
-        const importService = new ImportService(db)
-        const batchImportService = new BatchImportService(db, importService)
-        const result = batchImportService.checkDuplicates(filePaths, stripText)
+        const result = checkDuplicates(db, filePaths, stripText)
 
-        // Return plain object (class instances may fail structured clone)
         return {
           files: result.files.map((f) => ({
             filePath: f.filePath,
@@ -157,97 +141,91 @@ export function registerBatchImportHandlers({ ipcMain, getDb }: HandlerDependenc
   )
 
   /**
-   * Start batch import with a pre-determined duplicate strategy
+   * Start batch import with a pre-determined duplicate strategy.
+   * Delegates to import worker thread.
    */
   ipcMain.handle(
     'batch-import:start',
     async (_event, filePaths: string[], duplicateStrategy: DuplicateChoice, stripText?: string) => {
       try {
         const db = getDb()
-        const importService = new ImportService(db)
-        const batchImportService = new BatchImportService(db, importService)
 
-        // Create abort controller for cancellation
-        currentBatchAbortController = new AbortController()
-
-        // Null-safe emit helper - logs warning if window closed during batch import
-        // Import operation continues to completion even if window closes
-        const safeEmit = (channel: string, data: unknown): boolean => {
-          const win = BrowserWindow.getAllWindows()[0]
-          if (win === undefined || win.isDestroyed()) {
-            mainLogger.warn(`Window closed during batch import, skipping ${channel}`, 'import')
-            return false
-          }
-          win.webContents.send(channel, data)
-          return true
+        if (workerClient?.isRunning === true) {
+          throw new Error('A batch import is already in progress')
         }
 
-        // Throttled batch progress emitter
-        let lastBatchEmitTime = 0
+        // Build FileImportRequest array with duplicate info
+        const checkResult = checkDuplicates(db, filePaths, stripText)
 
-        const onBatchProgress = (progress: {
-          currentIndex: number
-          totalFiles: number
-          fileName: string
-          overallPercent: number
-        }): void => {
-          const now = Date.now()
-          if (now - lastBatchEmitTime >= PROGRESS_THROTTLE_MS) {
-            lastBatchEmitTime = now
+        const files = checkResult.files.map((f) => ({
+          filePath: f.filePath,
+          caseName: f.caseName,
+          isDuplicate: f.isDuplicate,
+          duplicateStrategy
+        }))
 
-            safeEmit('batch-import:progress', {
-              currentIndex: progress.currentIndex,
-              totalFiles: progress.totalFiles,
-              currentFileName: progress.fileName,
-              overallPercent: progress.overallPercent
-            })
-          }
-        }
+        workerClient = new ImportWorkerClient()
 
-        // Throttled file progress emitter
-        let lastFileEmitTime = 0
+        return await new Promise((resolve, reject) => {
+          workerClient!.start({
+            files,
+            dbPath: db.getPath(),
+            encryptionKey: db.getEncryptionKey(),
+            throttleMs: API_CONFIG.PROGRESS_THROTTLE_MS,
+            onProgress: (msg) => {
+              safeEmit('batch-import:progress', {
+                currentIndex: msg.fileIndex,
+                totalFiles: msg.totalFiles,
+                currentFileName: msg.fileName,
+                overallPercent: msg.overallPercent,
+                fileProgress: {
+                  phase: msg.phase,
+                  count: msg.variantCount,
+                  elapsed: 0,
+                  skipped: msg.skipped
+                }
+              })
+            },
+            onFileComplete: () => {
+              // File complete — progress already sent via onProgress
+            },
+            onComplete: (msg) => {
+              workerClient = null
 
-        const onFileProgress = (progress: ProgressUpdate): void => {
-          const now = Date.now()
-          if (now - lastFileEmitTime >= PROGRESS_THROTTLE_MS) {
-            lastFileEmitTime = now
+              // Send final progress
+              safeEmit('batch-import:progress', {
+                currentIndex: msg.results.details.length,
+                totalFiles: msg.results.details.length,
+                currentFileName: '',
+                overallPercent: 100
+              })
 
-            safeEmit('batch-import:progress', {
-              currentIndex: 0,
-              totalFiles: filePaths.length,
-              currentFileName: '',
-              overallPercent: 0,
-              fileProgress: {
-                phase: progress.phase,
-                count: progress.count,
-                elapsed: progress.elapsed,
-                skipped: progress.skipped
+              resolve({
+                succeeded: msg.results.succeeded,
+                failed: msg.results.failed,
+                skipped: msg.results.skipped,
+                cancelled: msg.results.cancelled,
+                details: msg.results.details.map((d) => ({
+                  filePath: d.filePath,
+                  fileName: d.fileName,
+                  status: d.status,
+                  caseName: d.caseName,
+                  variantCount: d.variantCount,
+                  error: d.error
+                }))
+              })
+            },
+            onError: (msg) => {
+              if (msg.fileIndex === -1) {
+                // Fatal error
+                workerClient = null
+                reject(new Error(msg.error))
               }
-            })
-          }
-        }
-
-        const result = await batchImportService.processBatch(filePaths, {
-          duplicateStrategy,
-          stripText,
-          onBatchProgress,
-          onFileProgress,
-          signal: currentBatchAbortController.signal
+            }
+          })
         })
-
-        currentBatchAbortController = null
-
-        // Send final progress (100%)
-        safeEmit('batch-import:progress', {
-          currentIndex: filePaths.length,
-          totalFiles: filePaths.length,
-          currentFileName: '',
-          overallPercent: 100
-        })
-
-        return result
       } catch (error) {
-        currentBatchAbortController = null
+        workerClient = null
         mainLogger.error(`batch-import:start error: ${error}`, 'import')
         return {
           succeeded: 0,
@@ -265,20 +243,12 @@ export function registerBatchImportHandlers({ ipcMain, getDb }: HandlerDependenc
     }
   )
 
-  /**
-   * Cancel current batch import
-   */
   ipcMain.handle('batch-import:cancel', async () => {
-    if (currentBatchAbortController !== null) {
-      currentBatchAbortController.abort()
-      currentBatchAbortController = null
+    if (workerClient !== null) {
+      workerClient.cancel()
     }
   })
 
-  /**
-   * Select a ZIP file for batch import
-   * Returns { filePath, isEncrypted } or null if cancelled
-   */
   ipcMain.handle('batch-import:selectZip', async () => {
     try {
       const settings = loadSettings()
@@ -298,12 +268,9 @@ export function registerBatchImportHandlers({ ipcMain, getDb }: HandlerDependenc
       }
 
       const filePath = result.filePaths[0]
-
-      // Save directory for next time
       saveSettings({ ...settings, lastImportDirectory: dirname(filePath) })
 
       const isEncrypted = zipExtractor.isEncrypted(filePath)
-
       return { filePath, isEncrypted }
     } catch (error) {
       mainLogger.error(`batch-import:selectZip error: ${error}`, 'import')
@@ -311,9 +278,6 @@ export function registerBatchImportHandlers({ ipcMain, getDb }: HandlerDependenc
     }
   })
 
-  /**
-   * Test whether a password is correct for a ZIP file
-   */
   ipcMain.handle(
     'batch-import:testZipPassword',
     async (_event, zipPath: string, password: string) => {
@@ -327,13 +291,8 @@ export function registerBatchImportHandlers({ ipcMain, getDb }: HandlerDependenc
     }
   )
 
-  /**
-   * Extract a ZIP file to a temp directory
-   * Returns { files: string[], errors: string[] }
-   */
   ipcMain.handle('batch-import:extractZip', async (_event, zipPath: string, password?: string) => {
     try {
-      // Clean up any previous temp directory
       if (zipTempManager !== null) {
         zipTempManager.cleanup()
       }
@@ -351,7 +310,6 @@ export function registerBatchImportHandlers({ ipcMain, getDb }: HandlerDependenc
       )
     } catch (error) {
       mainLogger.error(`batch-import:extractZip error: ${error}`, 'import')
-      // Clean up on error
       if (zipTempManager !== null) {
         zipTempManager.cleanup()
         zipTempManager = null
@@ -363,9 +321,6 @@ export function registerBatchImportHandlers({ ipcMain, getDb }: HandlerDependenc
     }
   })
 
-  /**
-   * Clean up the temporary directory used for ZIP extraction
-   */
   ipcMain.handle('batch-import:cleanupZipTemp', async () => {
     if (zipTempManager !== null) {
       zipTempManager.cleanup()

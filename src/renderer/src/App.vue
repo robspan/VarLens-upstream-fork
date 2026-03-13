@@ -8,6 +8,7 @@
       @reset-columns="handleResetColumns"
       @reset-filters="handleResetFilters"
       @delete-all-cases="handleDeleteAllCases"
+      @show-import-progress="handleShowImportProgress"
       @database-switched="handleDatabaseSwitched"
       @database-error="handleDatabaseError"
     />
@@ -38,6 +39,8 @@
     <v-main>
       <router-view />
     </v-main>
+
+    <ImportStatusBar @expand="handleShowImportProgress" @cancel="handleCancelImport" />
 
     <VariantDetailsPanel
       v-model:open="panelOpen"
@@ -81,6 +84,7 @@ import { useResponsiveLayout } from './composables/useResponsiveLayout'
 import { logService } from './services/LogService'
 import { AppStateKey, createAppState } from './composables/useAppState'
 import { useApiService } from './composables/useApiService'
+import ImportStatusBar from './components/ImportStatusBar.vue'
 
 const router = useRouter()
 const { api } = useApiService()
@@ -262,6 +266,16 @@ const handleDatabaseSwitched = async (): Promise<void> => {
   clearMetadataCache()
   await caseListRef.value?.refreshCases()
   dialogHostRef.value?.showSnackbar(`Switched to ${databaseStore.currentName}`, 'success')
+}
+
+const handleShowImportProgress = (): void => {
+  dialogHostRef.value?.reopenImportDialog()
+  dialogHostRef.value?.reopenBatchImportDialog()
+}
+
+const handleCancelImport = async (): Promise<void> => {
+  await api?.import.cancel()
+  await api?.batchImport.cancel()
 }
 
 const handleDatabaseError = (message: string): void => {

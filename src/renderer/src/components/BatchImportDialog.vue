@@ -71,6 +71,9 @@
         >
           Unlock
         </v-btn>
+        <v-btn v-if="phase === 'importing'" variant="text" @click="continueInBackground">
+          Continue in Background
+        </v-btn>
         <v-btn v-if="phase === 'importing'" @click="handleCancel"> Cancel </v-btn>
       </v-card-actions>
     </v-card>
@@ -86,6 +89,7 @@ import type {
   DuplicateCheckItem
 } from '../../../shared/types/api'
 import { useApiService } from '../composables/useApiService'
+import { useImportStatusStore } from '../stores/importStatusStore'
 import BatchReviewPhase from './batch-import/BatchReviewPhase.vue'
 import BatchProgressPhase from './batch-import/BatchProgressPhase.vue'
 import BatchSummaryPhase from './batch-import/BatchSummaryPhase.vue'
@@ -94,6 +98,7 @@ import BatchZipPasswordPhase from './batch-import/BatchZipPasswordPhase.vue'
 type Phase = 'idle' | 'review' | 'importing' | 'summary' | 'zip-password'
 
 const { api } = useApiService()
+const importStore = useImportStatusStore()
 
 const dialog = ref(false)
 const phase = ref<Phase>('idle')
@@ -269,6 +274,8 @@ const extractAndShowReview = async (zipFilePath: string, password?: string): Pro
  */
 const confirmAndStartImport = async (): Promise<void> => {
   phase.value = 'importing'
+  importStore.startImport(selectedFilePaths.value.length)
+  importStore.dialogOpen = true
   const filePaths = [...selectedFilePaths.value]
   const strategy = duplicateCount.value > 0 ? duplicateStrategy.value : 'skip'
   const strip = stripText.value || undefined
@@ -290,6 +297,13 @@ const startImport = async (
 
     summary.value = result
     phase.value = 'summary'
+    importStore.importComplete({
+      succeeded: result.succeeded,
+      failed: result.failed,
+      skipped: result.skipped,
+      cancelled: result.cancelled,
+      details: []
+    })
   } catch (error) {
     summary.value = {
       succeeded: 0,
@@ -306,6 +320,7 @@ const startImport = async (
       ]
     }
     phase.value = 'summary'
+    importStore.importError(error instanceof Error ? error.message : 'Unknown error')
   }
 }
 
@@ -348,6 +363,14 @@ const handleCancel = async (): Promise<void> => {
     // Close dialog — the watch on `dialog` handles cleanup and event emission
     dialog.value = false
   }
+}
+
+/**
+ * Continue import in background (dismiss dialog, import keeps running)
+ */
+const continueInBackground = (): void => {
+  importStore.dialogOpen = false
+  dialog.value = false
 }
 
 /**
@@ -396,6 +419,18 @@ onMounted(() => {
     if (progress.fileProgress !== undefined) {
       variantCount.value = progress.fileProgress.count
     }
+
+    if (importStore.isActive) {
+      importStore.updateProgress({
+        fileIndex: progress.currentIndex,
+        totalFiles: progress.totalFiles,
+        fileName: progress.currentFileName,
+        overallPercent: progress.overallPercent,
+        phase: progress.fileProgress?.phase ?? 'importing',
+        variantCount: progress.fileProgress?.count ?? 0,
+        skipped: 0
+      })
+    }
   })
 })
 
@@ -411,6 +446,13 @@ const emit = defineEmits<{
   'batch-import-complete': [payload: { totalImported: number }]
 }>()
 
-// Expose show method to parent
-defineExpose({ show })
+const reopen = (): void => {
+  if (phase.value === 'importing') {
+    importStore.dialogOpen = true
+    dialog.value = true
+  }
+}
+
+// Expose show and reopen methods to parent
+defineExpose({ show, reopen })
 </script>

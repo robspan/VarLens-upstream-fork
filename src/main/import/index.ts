@@ -1,7 +1,8 @@
-export { ImportService } from './ImportService'
-export { BatchImportService } from './BatchImportService'
 export { ZipExtractor } from './ZipExtractor'
 export { TempDirectoryManager } from './TempDirectoryManager'
+export { detectFormat } from './format-detection'
+export { checkDuplicates, extractFileName, extractCaseName } from './batch-utils'
+export type { DuplicateCheckItem } from './batch-utils'
 export type {
   ImportOptions,
   ImportResult,
@@ -11,5 +12,4 @@ export type {
   BatchImportOptions,
   DuplicateChoice
 } from './types'
-export type { BatchResult, BatchFileDetail, DuplicateCheckItem } from './BatchImportService'
 export type { ZipExtractionResult } from './ZipExtractor'

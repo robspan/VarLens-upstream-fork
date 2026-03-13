@@ -62,6 +62,8 @@
       </template>
     </div>
 
+    <ImportStatusChip @click="$emit('show-import-progress')" />
+
     <v-spacer />
 
     <v-btn-toggle
@@ -144,6 +146,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import DatabasePicker from './DatabasePicker.vue'
 import CaseStatusIcons from './CaseStatusIcons.vue'
+import ImportStatusChip from './ImportStatusChip.vue'
 import { useAppState } from '../composables/useAppState'
 import { useResponsiveLayout } from '../composables/useResponsiveLayout'
 import { useCaseMetadata } from '../composables/useCaseMetadata'
@@ -161,6 +164,7 @@ defineEmits<{
   'show-database-overview': []
   'show-external-links': []
   'show-tag-management': []
+  'show-import-progress': []
   'reset-columns': []
   'reset-filters': []
   'delete-all-cases': []

@@ -123,6 +123,8 @@ defineExpose({
   showCaseMetadata: () => caseMetadataModalRef.value?.show(),
   showSnackbar: (message: string, type: 'success' | 'error') =>
     snackbarRef.value?.show(message, type),
+  reopenImportDialog: () => importDialogRef.value?.reopen(),
+  reopenBatchImportDialog: () => batchImportDialogRef.value?.reopen(),
   toggleLogViewer: () => {
     logViewerOpen.value = !logViewerOpen.value
   },

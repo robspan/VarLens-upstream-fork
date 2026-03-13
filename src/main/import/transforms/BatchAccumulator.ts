@@ -1,14 +1,15 @@
 import { Transform, TransformCallback } from 'node:stream'
 import type { Variant } from '../../database/types'
-import type { DatabaseService } from '../../database/DatabaseService'
 import type { ProgressCallback } from '../types'
 
 type MappedVariant = Omit<Variant, 'id' | 'case_id'>
 
+export type FlushFn = (caseId: number, batch: MappedVariant[]) => void
+
 interface BatchAccumulatorOptions {
   caseId: number
   batchSize: number
-  db: DatabaseService
+  flushFn: FlushFn
   onProgress?: ProgressCallback
   startTime: number
 }
@@ -19,7 +20,7 @@ export class BatchAccumulator extends Transform {
   private skipped = 0
   private readonly caseId: number
   private readonly batchSize: number
-  private readonly db: DatabaseService
+  private readonly flushFn: FlushFn
   private readonly onProgress?: ProgressCallback
   private readonly startTime: number
 
@@ -27,7 +28,7 @@ export class BatchAccumulator extends Transform {
     super({ objectMode: true })
     this.caseId = options.caseId
     this.batchSize = options.batchSize
-    this.db = options.db
+    this.flushFn = options.flushFn
     this.onProgress = options.onProgress
     this.startTime = options.startTime
   }
@@ -64,7 +65,7 @@ export class BatchAccumulator extends Transform {
   private flushBatch(): void {
     if (this.batch.length === 0) return
 
-    this.db.variants.insertVariantsBatch(this.caseId, this.batch)
+    this.flushFn(this.caseId, this.batch)
     this.totalInserted += this.batch.length
 
     if (this.onProgress) {

@@ -169,9 +169,8 @@ export class VariantRepository extends BaseRepository {
       .where('case_id', '=', filter.case_id)
 
     // Simple filters via $if
-    query = query.$if(
-      filter.gene_symbol !== undefined && filter.gene_symbol !== '',
-      (qb) => qb.where('gene_symbol', 'like', `%${filter.gene_symbol}%`)
+    query = query.$if(filter.gene_symbol !== undefined && filter.gene_symbol !== '', (qb) =>
+      qb.where('gene_symbol', 'like', `%${filter.gene_symbol}%`)
     )
 
     // consequence vs consequences — mutually exclusive
@@ -179,7 +178,7 @@ export class VariantRepository extends BaseRepository {
       qb.where('consequence', 'in', filter.consequences!)
     )
     query = query.$if(
-      !(filter.consequences?.length) &&
+      (filter.consequences === undefined || filter.consequences.length === 0) &&
         filter.consequence !== undefined &&
         filter.consequence !== '',
       (qb) => qb.where('consequence', '=', filter.consequence!)
@@ -188,9 +187,7 @@ export class VariantRepository extends BaseRepository {
     // Array filters
     query = query
       .$if((filter.funcs?.length ?? 0) > 0, (qb) => qb.where('func', 'in', filter.funcs!))
-      .$if((filter.clinvars?.length ?? 0) > 0, (qb) =>
-        qb.where('clinvar', 'in', filter.clinvars!)
-      )
+      .$if((filter.clinvars?.length ?? 0) > 0, (qb) => qb.where('clinvar', 'in', filter.clinvars!))
 
     // Range filters with NULL handling
     query = query
@@ -200,9 +197,7 @@ export class VariantRepository extends BaseRepository {
         )
       )
       .$if(filter.cadd_min !== undefined, (qb) =>
-        qb.where(({ or, eb }) =>
-          or([eb('cadd', 'is', null), eb('cadd', '>=', filter.cadd_min!)])
-        )
+        qb.where(({ or, eb }) => or([eb('cadd', 'is', null), eb('cadd', '>=', filter.cadd_min!)]))
       )
 
     // FTS5 search
@@ -347,11 +342,7 @@ export class VariantRepository extends BaseRepository {
         if (value === '' || SORTABLE_COLUMNS[column] === undefined) continue
         const sqlColumn = SORTABLE_COLUMNS[column]
         if (NUMERIC_COLUMNS.has(column)) {
-          query = query.where(
-            sql`CAST(${sql.ref(sqlColumn)} AS TEXT)`,
-            'like',
-            `%${value}%`
-          )
+          query = query.where(sql`CAST(${sql.ref(sqlColumn)} AS TEXT)`, 'like', `%${value}%`)
         } else {
           query = query.where(sql`${sql.ref(sqlColumn)} COLLATE NOCASE`, 'like', `%${value}%`)
         }
@@ -405,7 +396,17 @@ export class VariantRepository extends BaseRepository {
       }
     }
 
-    return query.where(sql.raw(`(${sqlParts.join(' ')})`, params))
+    // Build a sql template literal with interpolated parameters
+    const fullExpr = `(${sqlParts.join(' ')})`
+    const segments = fullExpr.split('?')
+    let paramIdx = 0
+
+    // Start from the first segment
+    let rawExpr = sql<boolean>`${sql.raw(segments[0])}`
+    for (let i = 1; i < segments.length; i++) {
+      rawExpr = sql<boolean>`${rawExpr}${params[paramIdx++]}${sql.raw(segments[i])}`
+    }
+    return query.where(rawExpr)
   }
 
   /**
@@ -420,9 +421,7 @@ export class VariantRepository extends BaseRepository {
     }
     const ftsQuery = `"${token.replace(/"/g, '""')}"*`
     return query.where(
-      'id',
-      'in',
-      sql`SELECT rowid FROM variants_fts WHERE variants_fts MATCH ${ftsQuery}`
+      sql<boolean>`id IN (SELECT rowid FROM variants_fts WHERE variants_fts MATCH ${ftsQuery})`
     )
   }
 
@@ -469,9 +468,7 @@ export class VariantRepository extends BaseRepository {
     const dataQuery = this.buildVariantQuery(filter)
     const compiled = dataQuery.compile()
     const countSql = compiled.sql.replace(/^select \* from/i, 'select count(*) as count from')
-    const countResult = this.db
-      .prepare(countSql)
-      .get(...compiled.parameters) as { count: number }
+    const countResult = this.db.prepare(countSql).get(...compiled.parameters) as { count: number }
     const total_count = countResult.count
 
     // Data query with sort + pagination

@@ -115,10 +115,18 @@ export function registerExportHandlers({ ipcMain, getDb }: HandlerDependencies):
         // Build filter summary for metadata sheet
         const vFilters = validated.data.filters
         const filterSummary: ExportFilterSummary = {
-          ...(vFilters.gene_symbol ? { gene_symbol: vFilters.gene_symbol } : {}),
-          ...(vFilters.consequences?.length ? { consequences: vFilters.consequences } : {}),
-          ...(vFilters.funcs?.length ? { funcs: vFilters.funcs } : {}),
-          ...(vFilters.clinvars?.length ? { clinvars: vFilters.clinvars } : {}),
+          ...(vFilters.gene_symbol !== undefined && vFilters.gene_symbol !== ''
+            ? { gene_symbol: vFilters.gene_symbol }
+            : {}),
+          ...(vFilters.consequences !== undefined && vFilters.consequences.length > 0
+            ? { consequences: vFilters.consequences }
+            : {}),
+          ...(vFilters.funcs !== undefined && vFilters.funcs.length > 0
+            ? { funcs: vFilters.funcs }
+            : {}),
+          ...(vFilters.clinvars !== undefined && vFilters.clinvars.length > 0
+            ? { clinvars: vFilters.clinvars }
+            : {}),
           ...(vFilters.gnomad_af_max !== undefined
             ? { gnomad_af_max: vFilters.gnomad_af_max }
             : {}),
@@ -147,10 +155,7 @@ export function registerExportHandlers({ ipcMain, getDb }: HandlerDependencies):
               }
             },
             onComplete: (filePath, rowCount) => {
-              mainLogger.info(
-                `Export complete: ${rowCount} variants to ${filePath}`,
-                'export'
-              )
+              mainLogger.info(`Export complete: ${rowCount} variants to ${filePath}`, 'export')
               resolve({ success: true, filePath })
             },
             onError: (error) => {

@@ -33,15 +33,16 @@ function run(msg: ExportMainMessage & { type: 'start' }): void {
   try {
     // Open read-only DB connection in worker (WAL mode supports concurrent reads)
     db = new Database(msg.dbPath, { readonly: true })
-    if (msg.encryptionKey) {
+    if (msg.encryptionKey !== undefined && msg.encryptionKey !== '') {
       db.pragma(`key='${msg.encryptionKey}'`)
     }
     db.pragma('journal_mode = WAL')
 
     // Execute the pre-compiled query from main thread
-    const variants = db
-      .prepare(msg.compiledSql)
-      .all(...msg.compiledParams) as Record<string, unknown>[]
+    const variants = db.prepare(msg.compiledSql).all(...msg.compiledParams) as Record<
+      string,
+      unknown
+    >[]
 
     const total = variants.length
     postMsg({ type: 'progress', current: 0, total })
@@ -91,12 +92,18 @@ function run(msg: ExportMainMessage & { type: 'start' }): void {
       ['Export Date', new Date().toISOString()],
       [''],
       ['Active Filters'],
-      ...(filterSummary.gene_symbol ? [['Gene', filterSummary.gene_symbol]] : []),
-      ...(filterSummary.consequences?.length
+      ...(filterSummary.gene_symbol !== undefined && filterSummary.gene_symbol !== ''
+        ? [['Gene', filterSummary.gene_symbol]]
+        : []),
+      ...(filterSummary.consequences !== undefined && filterSummary.consequences.length > 0
         ? [['Consequences', filterSummary.consequences.join(', ')]]
         : []),
-      ...(filterSummary.funcs?.length ? [['Functions', filterSummary.funcs.join(', ')]] : []),
-      ...(filterSummary.clinvars?.length ? [['ClinVar', filterSummary.clinvars.join(', ')]] : []),
+      ...(filterSummary.funcs !== undefined && filterSummary.funcs.length > 0
+        ? [['Functions', filterSummary.funcs.join(', ')]]
+        : []),
+      ...(filterSummary.clinvars !== undefined && filterSummary.clinvars.length > 0
+        ? [['ClinVar', filterSummary.clinvars.join(', ')]]
+        : []),
       ...(filterSummary.gnomad_af_max !== undefined
         ? [['Max gnomAD AF', filterSummary.gnomad_af_max]]
         : []),

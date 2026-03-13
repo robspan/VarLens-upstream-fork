@@ -160,16 +160,24 @@ function createTagFixtures(
   // variant 0 → tag1, variant 1 → tag2, variant 2 → both
   const tagNow = Date.now()
   db.database
-    .prepare(`INSERT INTO variant_tags (case_id, variant_id, tag_id, created_at) VALUES (?, ?, ?, ?)`)
+    .prepare(
+      `INSERT INTO variant_tags (case_id, variant_id, tag_id, created_at) VALUES (?, ?, ?, ?)`
+    )
     .run(caseId, variantIds[0], tagId1, tagNow)
   db.database
-    .prepare(`INSERT INTO variant_tags (case_id, variant_id, tag_id, created_at) VALUES (?, ?, ?, ?)`)
+    .prepare(
+      `INSERT INTO variant_tags (case_id, variant_id, tag_id, created_at) VALUES (?, ?, ?, ?)`
+    )
     .run(caseId, variantIds[1], tagId2, tagNow)
   db.database
-    .prepare(`INSERT INTO variant_tags (case_id, variant_id, tag_id, created_at) VALUES (?, ?, ?, ?)`)
+    .prepare(
+      `INSERT INTO variant_tags (case_id, variant_id, tag_id, created_at) VALUES (?, ?, ?, ?)`
+    )
     .run(caseId, variantIds[2], tagId1, tagNow)
   db.database
-    .prepare(`INSERT INTO variant_tags (case_id, variant_id, tag_id, created_at) VALUES (?, ?, ?, ?)`)
+    .prepare(
+      `INSERT INTO variant_tags (case_id, variant_id, tag_id, created_at) VALUES (?, ?, ?, ?)`
+    )
     .run(caseId, variantIds[2], tagId2, tagNow)
 
   return { variantIds, tagId1, tagId2 }
@@ -1214,10 +1222,7 @@ describe('Variant Operations', () => {
       service.variants.insertVariantsBatch(caseId, createTestVariants(10))
       const { variantIds, tagId1 } = createTagFixtures(service, caseId)
 
-      const result = service.variants.getVariants(
-        { case_id: caseId, tag_ids: [tagId1] },
-        100
-      )
+      const result = service.variants.getVariants({ case_id: caseId, tag_ids: [tagId1] }, 100)
       expect(result.data.length).toBe(2)
       const ids = result.data.map((v) => v.id)
       expect(ids).toContain(variantIds[0])
@@ -1266,9 +1271,7 @@ describe('Variant Operations', () => {
         100
       )
       expect(
-        result.data.every((v) =>
-          ['stop_gained', 'frameshift_variant'].includes(v.consequence!)
-        )
+        result.data.every((v) => ['stop_gained', 'frameshift_variant'].includes(v.consequence!))
       ).toBe(true)
       expect(result.data.some((v) => v.consequence === 'missense_variant')).toBe(false)
     })

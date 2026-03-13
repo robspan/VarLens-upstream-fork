@@ -5,7 +5,7 @@ import { writeFile } from 'fs/promises'
 import { wrapHandler } from '../errorHandler'
 import type { HandlerDependencies } from '../types'
 import { CohortService } from '../../database/cohort'
-import type { Variant, VariantFilter } from '../../database/types'
+import type { VariantFilter } from '../../database/types'
 import type { CohortSearchParams, CohortVariant } from '../../../shared/types/cohort'
 import { mainLogger } from '../../services/MainLogger'
 import {
@@ -13,6 +13,10 @@ import {
   VariantFilterPartialSchema,
   CohortSearchParamsSchema
 } from '../../../shared/types/ipc-schemas'
+import { ExportWorkerClient } from '../../workers/export-worker-client'
+import type { ExportFilterSummary } from '../../../shared/types/export-worker'
+
+const EXPORT_HARD_LIMIT = 100_000
 
 /** Schema for variant export parameters */
 const VariantExportParamsSchema = z.object({
@@ -25,27 +29,6 @@ const VariantExportParamsSchema = z.object({
  * Export IPC handlers
  * Channels: export:variants, export:cohort
  */
-
-// Column headers for Excel export (human-readable)
-const EXPORT_COLUMNS = [
-  { key: 'chr', header: 'Chromosome' },
-  { key: 'pos', header: 'Position' },
-  { key: 'ref', header: 'Reference' },
-  { key: 'alt', header: 'Alternate' },
-  { key: 'gt_num', header: 'Genotype' },
-  { key: 'gene_symbol', header: 'Gene' },
-  { key: 'func', header: 'Function' },
-  { key: 'consequence', header: 'Impact' },
-  { key: 'transcript', header: 'Transcript' },
-  { key: 'cdna', header: 'cDNA Change' },
-  { key: 'aa_change', header: 'AA Change' },
-  { key: 'gnomad_af', header: 'gnomAD AF' },
-  { key: 'cadd', header: 'CADD Score' },
-  { key: 'qual', header: 'Quality' },
-  { key: 'clinvar', header: 'ClinVar' },
-  { key: 'hpo_sim_score', header: 'HPO Score' },
-  { key: 'moi', header: 'Mode of Inheritance' }
-]
 
 // Cohort export column headers
 const COHORT_EXPORT_COLUMNS = [
@@ -87,22 +70,32 @@ export function registerExportHandlers({ ipcMain, getDb }: HandlerDependencies):
         }
 
         mainLogger.debug(
-          `Export handler called with caseId=${validated.data.caseId}, caseName=${validated.data.caseName}, filters=${JSON.stringify(validated.data.filters)}`,
+          `Export handler called with caseId=${validated.data.caseId}, caseName=${validated.data.caseName}`,
           'export'
         )
         const db = getDb()
         const mainWindow = BrowserWindow.getAllWindows()[0]
-        mainLogger.debug(`Main window found: ${mainWindow !== undefined}`, 'export')
 
-        // Check for valid window before showing dialog
         if (mainWindow === undefined || mainWindow.isDestroyed()) {
-          mainLogger.warn('Window closed before export dialog, cannot show save dialog', 'export')
           return { success: false, error: 'No window available for export dialog' }
+        }
+
+        // Pre-check: count matching variants before showing dialog
+        const fullFilter: VariantFilter = {
+          ...validated.data.filters,
+          case_id: validated.data.caseId
+        }
+        const count = db.variants.getExportCount(fullFilter)
+
+        if (count > EXPORT_HARD_LIMIT) {
+          return {
+            success: false,
+            error: `Export limited to ${EXPORT_HARD_LIMIT.toLocaleString()} variants. Current filter matches ${count.toLocaleString()} variants. Please narrow your filters.`
+          }
         }
 
         // Show save dialog
         const defaultFileName = `${validated.data.caseName.replace(/[^a-z0-9]/gi, '_')}_variants.xlsx`
-        mainLogger.debug(`Showing save dialog with default filename: ${defaultFileName}`, 'export')
         const result = await dialog.showSaveDialog(mainWindow, {
           title: 'Export Variants to Excel',
           defaultPath: defaultFileName,
@@ -111,86 +104,66 @@ export function registerExportHandlers({ ipcMain, getDb }: HandlerDependencies):
             { name: 'All Files', extensions: ['*'] }
           ]
         })
-        mainLogger.debug(
-          `Dialog result: canceled=${result.canceled}, filePath=${result.filePath ?? 'none'}`,
-          'export'
-        )
 
         if (result.canceled === true || result.filePath === undefined || result.filePath === '') {
           return { success: false, error: 'Export cancelled' }
         }
 
-        // Get all variants matching the current filters (no pagination)
-        const fullFilter: VariantFilter = {
-          ...validated.data.filters,
-          case_id: validated.data.caseId
-        }
-        const variants = db.variants.getAllVariantsForExport(fullFilter)
+        // Compile query on main thread (uses Kysely, all 17 filter params)
+        const compiled = db.variants.compileExportQuery(fullFilter, EXPORT_HARD_LIMIT)
 
-        // Convert variants to worksheet data
-        const headers = EXPORT_COLUMNS.map((col) => col.header)
-        const rows = variants.map((variant: Variant) =>
-          EXPORT_COLUMNS.map((col) => {
-            const value = variant[col.key as keyof Variant]
-            // Format specific columns
-            if (col.key === 'gnomad_af' && typeof value === 'number') {
-              return value.toExponential(2)
-            }
-            if (col.key === 'cadd' && typeof value === 'number') {
-              return value.toFixed(2)
-            }
-            if (col.key === 'hpo_sim_score' && typeof value === 'number') {
-              return value.toFixed(4)
-            }
-            return value ?? ''
-          })
-        )
-
-        // Create workbook
-        const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
-
-        // Set column widths
-        ws['!cols'] = EXPORT_COLUMNS.map((col) => ({
-          wch: col.key === 'aa_change' ? 20 : 15
-        }))
-
-        const wb = XLSX.utils.book_new()
-        XLSX.utils.book_append_sheet(wb, ws, 'Variants')
-
-        // Add metadata sheet
+        // Build filter summary for metadata sheet
         const vFilters = validated.data.filters
-        const metaData = [
-          ['Export Information'],
-          ['Case Name', validated.data.caseName],
-          ['Total Variants', variants.length],
-          ['Export Date', new Date().toISOString()],
-          [''],
-          ['Active Filters'],
+        const filterSummary: ExportFilterSummary = {
           ...(vFilters.gene_symbol !== undefined && vFilters.gene_symbol !== ''
-            ? [['Gene', vFilters.gene_symbol]]
-            : []),
+            ? { gene_symbol: vFilters.gene_symbol }
+            : {}),
           ...(vFilters.consequences !== undefined && vFilters.consequences.length > 0
-            ? [['Consequences', vFilters.consequences.join(', ')]]
-            : []),
+            ? { consequences: vFilters.consequences }
+            : {}),
           ...(vFilters.funcs !== undefined && vFilters.funcs.length > 0
-            ? [['Functions', vFilters.funcs.join(', ')]]
-            : []),
+            ? { funcs: vFilters.funcs }
+            : {}),
           ...(vFilters.clinvars !== undefined && vFilters.clinvars.length > 0
-            ? [['ClinVar', vFilters.clinvars.join(', ')]]
-            : []),
+            ? { clinvars: vFilters.clinvars }
+            : {}),
           ...(vFilters.gnomad_af_max !== undefined
-            ? [['Max gnomAD AF', vFilters.gnomad_af_max]]
-            : []),
-          ...(vFilters.cadd_min !== undefined ? [['Min CADD', vFilters.cadd_min]] : [])
-        ]
-        const metaWs = XLSX.utils.aoa_to_sheet(metaData)
-        XLSX.utils.book_append_sheet(wb, metaWs, 'Export Info')
+            ? { gnomad_af_max: vFilters.gnomad_af_max }
+            : {}),
+          ...(vFilters.cadd_min !== undefined ? { cadd_min: vFilters.cadd_min } : {})
+        }
 
-        // Write file
-        const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
-        await writeFile(result.filePath, buffer)
+        // Spawn worker for XLSX generation
+        const workerClient = new ExportWorkerClient()
 
-        return { success: true, filePath: result.filePath }
+        return new Promise<{
+          success: boolean
+          filePath?: string
+          error?: string
+        }>((resolve) => {
+          workerClient.start({
+            dbPath: db.getPath(),
+            encryptionKey: db.getEncryptionKey(),
+            compiledSql: compiled.sql,
+            compiledParams: compiled.parameters,
+            outputFilePath: result.filePath!,
+            caseName: validated.data.caseName,
+            filterSummary,
+            onProgress: (current, total) => {
+              if (!mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('export:progress', { current, total })
+              }
+            },
+            onComplete: (filePath, rowCount) => {
+              mainLogger.info(`Export complete: ${rowCount} variants to ${filePath}`, 'export')
+              resolve({ success: true, filePath })
+            },
+            onError: (error) => {
+              mainLogger.error(`Export worker error: ${error}`, 'export')
+              resolve({ success: false, error })
+            }
+          })
+        })
       }) as Promise<{ success: boolean; filePath?: string; error?: string }>
     }
   )

@@ -62,6 +62,127 @@ function createTestVariants(
   return variants
 }
 
+/**
+ * Insert annotation data for scope-dependent filter tests.
+ * Requires at least 6 variants to be inserted first.
+ * Returns the actual variant IDs queried from DB (safe regardless of auto-increment state).
+ */
+function createAnnotationFixtures(db: DatabaseService, caseId: number): number[] {
+  const now = Date.now()
+
+  // Get actual variant IDs from DB
+  const rows = db.database
+    .prepare('SELECT id FROM variants WHERE case_id = ? ORDER BY id LIMIT 6')
+    .all(caseId) as { id: number }[]
+  const variantIds = rows.map((r) => r.id)
+
+  // Star variant 0 in case scope
+  db.database
+    .prepare(
+      `INSERT INTO case_variant_annotations (case_id, variant_id, starred, per_case_comment, acmg_classification, created_at, updated_at)
+       VALUES (?, ?, 1, NULL, NULL, ?, ?)`
+    )
+    .run(caseId, variantIds[0], now, now)
+
+  // Comment on variant 1 in case scope
+  db.database
+    .prepare(
+      `INSERT INTO case_variant_annotations (case_id, variant_id, starred, per_case_comment, acmg_classification, created_at, updated_at)
+       VALUES (?, ?, 0, 'test comment', NULL, ?, ?)`
+    )
+    .run(caseId, variantIds[1], now, now)
+
+  // ACMG classify variant 2 in case scope
+  db.database
+    .prepare(
+      `INSERT INTO case_variant_annotations (case_id, variant_id, starred, per_case_comment, acmg_classification, created_at, updated_at)
+       VALUES (?, ?, 0, NULL, 'Pathogenic', ?, ?)`
+    )
+    .run(caseId, variantIds[2], now, now)
+
+  // Global star on variant 3 (only visible in 'all' scope)
+  const v3 = db.database
+    .prepare('SELECT chr, pos, ref, alt FROM variants WHERE id = ?')
+    .get(variantIds[3]) as { chr: string; pos: number; ref: string; alt: string }
+  db.database
+    .prepare(
+      `INSERT INTO variant_annotations (chr, pos, ref, alt, starred, global_comment, acmg_classification, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 1, NULL, NULL, ?, ?)`
+    )
+    .run(v3.chr, v3.pos, v3.ref, v3.alt, now, now)
+
+  // Global comment on variant 4
+  const v4 = db.database
+    .prepare('SELECT chr, pos, ref, alt FROM variants WHERE id = ?')
+    .get(variantIds[4]) as { chr: string; pos: number; ref: string; alt: string }
+  db.database
+    .prepare(
+      `INSERT INTO variant_annotations (chr, pos, ref, alt, starred, global_comment, acmg_classification, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 0, 'global note', NULL, ?, ?)`
+    )
+    .run(v4.chr, v4.pos, v4.ref, v4.alt, now, now)
+
+  // Global ACMG on variant 5
+  const v5 = db.database
+    .prepare('SELECT chr, pos, ref, alt FROM variants WHERE id = ?')
+    .get(variantIds[5]) as { chr: string; pos: number; ref: string; alt: string }
+  db.database
+    .prepare(
+      `INSERT INTO variant_annotations (chr, pos, ref, alt, starred, global_comment, acmg_classification, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 0, NULL, 'Likely pathogenic', ?, ?)`
+    )
+    .run(v5.chr, v5.pos, v5.ref, v5.alt, now, now)
+
+  return variantIds
+}
+
+/**
+ * Insert tag fixtures for tag filter tests.
+ * Returns the actual variant IDs and tag IDs.
+ */
+function createTagFixtures(
+  db: DatabaseService,
+  caseId: number
+): { variantIds: number[]; tagId1: number; tagId2: number } {
+  const rows = db.database
+    .prepare('SELECT id FROM variants WHERE case_id = ? ORDER BY id LIMIT 3')
+    .all(caseId) as { id: number }[]
+  const variantIds = rows.map((r) => r.id)
+
+  const tagCreatedAt = Date.now()
+  const tagId1 = db.database
+    .prepare(`INSERT INTO tags (name, color, created_at) VALUES ('candidate', '#ff0000', ?)`)
+    .run(tagCreatedAt).lastInsertRowid as number
+  const tagId2 = db.database
+    .prepare(`INSERT INTO tags (name, color, created_at) VALUES ('reviewed', '#00ff00', ?)`)
+    .run(tagCreatedAt).lastInsertRowid as number
+
+  // variant 0 → tag1, variant 1 → tag2, variant 2 → both
+  const tagNow = Date.now()
+  db.database
+    .prepare(
+      `INSERT INTO variant_tags (case_id, variant_id, tag_id, created_at) VALUES (?, ?, ?, ?)`
+    )
+    .run(caseId, variantIds[0], tagId1, tagNow)
+  db.database
+    .prepare(
+      `INSERT INTO variant_tags (case_id, variant_id, tag_id, created_at) VALUES (?, ?, ?, ?)`
+    )
+    .run(caseId, variantIds[1], tagId2, tagNow)
+  db.database
+    .prepare(
+      `INSERT INTO variant_tags (case_id, variant_id, tag_id, created_at) VALUES (?, ?, ?, ?)`
+    )
+    .run(caseId, variantIds[2], tagId1, tagNow)
+  db.database
+    .prepare(
+      `INSERT INTO variant_tags (case_id, variant_id, tag_id, created_at) VALUES (?, ?, ?, ?)`
+    )
+    .run(caseId, variantIds[2], tagId2, tagNow)
+
+  return { variantIds, tagId1, tagId2 }
+}
+
 describe('Variant Operations', () => {
   let service: DatabaseService
 
@@ -1016,6 +1137,190 @@ describe('Variant Operations', () => {
         20
       )
       expect(result.total_count).toBe(2)
+    })
+  })
+
+  describe('scope-dependent annotation filters', () => {
+    let caseId: number
+    let variantIds: number[]
+
+    beforeEach(() => {
+      caseId = createTestCase(service, 'annotation-test')
+      const variants = createTestVariants(10)
+      service.variants.insertVariantsBatch(caseId, variants)
+      variantIds = createAnnotationFixtures(service, caseId)
+    })
+
+    it('starred_only with case scope returns only case-starred variants', () => {
+      const result = service.variants.getVariants(
+        { case_id: caseId, starred_only: true, annotation_scope: 'case' },
+        100
+      )
+      expect(result.data.length).toBe(1)
+      expect(result.data[0].id).toBe(variantIds[0])
+    })
+
+    it('starred_only with all scope returns case-starred AND globally-starred', () => {
+      const result = service.variants.getVariants(
+        { case_id: caseId, starred_only: true, annotation_scope: 'all' },
+        100
+      )
+      expect(result.data.length).toBe(2)
+      const ids = result.data.map((v) => v.id)
+      expect(ids).toContain(variantIds[0])
+      expect(ids).toContain(variantIds[3])
+    })
+
+    it('has_comment with case scope returns only case-commented variants', () => {
+      const result = service.variants.getVariants(
+        { case_id: caseId, has_comment: true, annotation_scope: 'case' },
+        100
+      )
+      expect(result.data.length).toBe(1)
+      expect(result.data[0].id).toBe(variantIds[1])
+    })
+
+    it('has_comment with all scope returns case-commented AND globally-commented', () => {
+      const result = service.variants.getVariants(
+        { case_id: caseId, has_comment: true, annotation_scope: 'all' },
+        100
+      )
+      expect(result.data.length).toBe(2)
+      const ids = result.data.map((v) => v.id)
+      expect(ids).toContain(variantIds[1])
+      expect(ids).toContain(variantIds[4])
+    })
+
+    it('acmg_classifications with case scope filters by case annotation only', () => {
+      const result = service.variants.getVariants(
+        { case_id: caseId, acmg_classifications: ['Pathogenic'], annotation_scope: 'case' },
+        100
+      )
+      expect(result.data.length).toBe(1)
+      expect(result.data[0].id).toBe(variantIds[2])
+    })
+
+    it('acmg_classifications with all scope includes global annotations', () => {
+      const result = service.variants.getVariants(
+        {
+          case_id: caseId,
+          acmg_classifications: ['Pathogenic', 'Likely pathogenic'],
+          annotation_scope: 'all'
+        },
+        100
+      )
+      expect(result.data.length).toBe(2)
+      const ids = result.data.map((v) => v.id)
+      expect(ids).toContain(variantIds[2])
+      expect(ids).toContain(variantIds[5])
+    })
+  })
+
+  describe('tag filters', () => {
+    it('filters by single tag', () => {
+      const caseId = createTestCase(service, 'tag-test')
+      service.variants.insertVariantsBatch(caseId, createTestVariants(10))
+      const { variantIds, tagId1 } = createTagFixtures(service, caseId)
+
+      const result = service.variants.getVariants({ case_id: caseId, tag_ids: [tagId1] }, 100)
+      expect(result.data.length).toBe(2)
+      const ids = result.data.map((v) => v.id)
+      expect(ids).toContain(variantIds[0])
+      expect(ids).toContain(variantIds[2])
+    })
+
+    it('filters by multiple tags (OR logic)', () => {
+      const caseId = createTestCase(service, 'tag-test-2')
+      service.variants.insertVariantsBatch(caseId, createTestVariants(10))
+      const { tagId1, tagId2 } = createTagFixtures(service, caseId)
+
+      const result = service.variants.getVariants(
+        { case_id: caseId, tag_ids: [tagId1, tagId2] },
+        100
+      )
+      expect(result.data.length).toBe(3)
+    })
+  })
+
+  describe('exact variant match filters', () => {
+    it('filters by chr, pos, ref, alt', () => {
+      const caseId = createTestCase(service, 'exact-match')
+      service.variants.insertVariantsBatch(caseId, createTestVariants(5))
+
+      const result = service.variants.getVariants(
+        { case_id: caseId, chr: '1', pos: 10000, ref: 'A', alt: 'G' },
+        100
+      )
+      expect(result.data.length).toBe(1)
+      expect(result.data[0].chr).toBe('1')
+      expect(result.data[0].pos).toBe(10000)
+    })
+  })
+
+  describe('consequence mutual exclusivity', () => {
+    it('consequences array takes precedence over single consequence', () => {
+      const caseId = createTestCase(service, 'consequence-test')
+      service.variants.insertVariantsBatch(caseId, createTestVariants(10))
+
+      const result = service.variants.getVariants(
+        {
+          case_id: caseId,
+          consequence: 'missense_variant',
+          consequences: ['stop_gained', 'frameshift_variant']
+        },
+        100
+      )
+      expect(
+        result.data.every((v) => ['stop_gained', 'frameshift_variant'].includes(v.consequence!))
+      ).toBe(true)
+      expect(result.data.some((v) => v.consequence === 'missense_variant')).toBe(false)
+    })
+  })
+
+  describe('combined filters', () => {
+    it('applies multiple filter types simultaneously', () => {
+      const caseId = createTestCase(service, 'combined-test')
+      service.variants.insertVariantsBatch(caseId, createTestVariants(20))
+
+      const result = service.variants.getVariants(
+        {
+          case_id: caseId,
+          consequences: ['missense_variant'],
+          gnomad_af_max: 0.05,
+          clinvars: ['pathogenic']
+        },
+        100
+      )
+      for (const v of result.data) {
+        expect(v.consequence).toBe('missense_variant')
+        expect(v.gnomad_af === null || v.gnomad_af <= 0.05).toBe(true)
+        expect(v.clinvar).toBe('pathogenic')
+      }
+    })
+  })
+
+  describe('getExportCount', () => {
+    it('returns count matching filter without loading data', () => {
+      const caseId = createTestCase(service, 'count-test')
+      service.variants.insertVariantsBatch(caseId, createTestVariants(20))
+
+      const count = service.variants.getExportCount({
+        case_id: caseId,
+        consequences: ['missense_variant']
+      })
+      const fullResult = service.variants.getVariants(
+        { case_id: caseId, consequences: ['missense_variant'] },
+        1000
+      )
+      expect(count).toBe(fullResult.total_count)
+    })
+
+    it('returns total count with no filters', () => {
+      const caseId = createTestCase(service, 'count-test-all')
+      service.variants.insertVariantsBatch(caseId, createTestVariants(15))
+
+      const count = service.variants.getExportCount({ case_id: caseId })
+      expect(count).toBe(15)
     })
   })
 })

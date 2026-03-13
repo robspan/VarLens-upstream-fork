@@ -1,7 +1,7 @@
 import { BaseRepository } from './BaseRepository'
 import type { CaseRepository } from './CaseRepository'
 import type { Database as DatabaseType } from 'better-sqlite3-multiple-ciphers'
-import type { Kysely } from 'kysely'
+import { sql, type Kysely, type SelectQueryBuilder } from 'kysely'
 import type { VarlensDatabase } from '../../shared/types/database-schema'
 import type { Variant, VariantFilter, PaginatedResult, SortItem } from './types'
 import type { FilterOptions } from '../../shared/types/api'
@@ -10,6 +10,9 @@ import { createFTSTriggers } from './schema'
 import { mainLogger } from '../services/MainLogger'
 
 import { DATABASE_CONFIG } from '../../shared/config'
+
+/** Kysely query builder type for variant queries */
+type VariantQueryBuilder = SelectQueryBuilder<VarlensDatabase, 'variants', Record<string, unknown>>
 
 const BATCH_SIZE = DATABASE_CONFIG.BATCH_INSERT_SIZE
 
@@ -153,230 +156,312 @@ export class VariantRepository extends BaseRepository {
     return result?.count ?? 0
   }
 
-  // ── Shared filter builder (DRY) ──────────────────────────────
+  // ── Kysely query builder (DRY) ──────────────────────────────
 
   /**
-   * Build WHERE conditions and parameters from a VariantFilter.
-   * Used by both getVariants() and getAllVariantsForExport() to avoid duplication.
+   * Build a Kysely SELECT query from a VariantFilter.
+   * Used by both getVariants() and getAllVariantsForExport().
    */
-  private buildFilterConditions(filter: VariantFilter): {
-    conditions: string[]
-    params: (string | number | null)[]
-  } {
-    const conditions: string[] = ['case_id = ?']
-    const params: (string | number | null)[] = [filter.case_id]
+  private buildVariantQuery(filter: VariantFilter): VariantQueryBuilder {
+    let query: VariantQueryBuilder = this.kysely
+      .selectFrom('variants')
+      .selectAll()
+      .where('case_id', '=', filter.case_id)
 
-    if (filter.gene_symbol !== undefined && filter.gene_symbol !== '') {
-      conditions.push('gene_symbol LIKE ?')
-      params.push(`%${filter.gene_symbol}%`)
-    }
+    // Simple filters via $if
+    query = query.$if(filter.gene_symbol !== undefined && filter.gene_symbol !== '', (qb) =>
+      qb.where('gene_symbol', 'like', `%${filter.gene_symbol}%`)
+    )
 
-    if (filter.consequences !== undefined && filter.consequences.length > 0) {
-      const placeholders = filter.consequences.map(() => '?').join(', ')
-      conditions.push(`consequence IN (${placeholders})`)
-      params.push(...filter.consequences)
-    } else if (filter.consequence !== undefined && filter.consequence !== '') {
-      conditions.push('consequence = ?')
-      params.push(filter.consequence)
-    }
+    // consequence vs consequences — mutually exclusive
+    query = query.$if((filter.consequences?.length ?? 0) > 0, (qb) =>
+      qb.where('consequence', 'in', filter.consequences!)
+    )
+    query = query.$if(
+      (filter.consequences === undefined || filter.consequences.length === 0) &&
+        filter.consequence !== undefined &&
+        filter.consequence !== '',
+      (qb) => qb.where('consequence', '=', filter.consequence!)
+    )
 
-    if (filter.funcs !== undefined && filter.funcs.length > 0) {
-      const placeholders = filter.funcs.map(() => '?').join(', ')
-      conditions.push(`func IN (${placeholders})`)
-      params.push(...filter.funcs)
-    }
+    // Array filters
+    query = query
+      .$if((filter.funcs?.length ?? 0) > 0, (qb) => qb.where('func', 'in', filter.funcs!))
+      .$if((filter.clinvars?.length ?? 0) > 0, (qb) => qb.where('clinvar', 'in', filter.clinvars!))
 
-    if (filter.clinvars !== undefined && filter.clinvars.length > 0) {
-      const placeholders = filter.clinvars.map(() => '?').join(', ')
-      conditions.push(`clinvar IN (${placeholders})`)
-      params.push(...filter.clinvars)
-    }
-
-    if (filter.gnomad_af_max !== undefined) {
-      conditions.push('(gnomad_af IS NULL OR gnomad_af <= ?)')
-      params.push(filter.gnomad_af_max)
-    }
-
-    if (filter.cadd_min !== undefined) {
-      conditions.push('(cadd IS NULL OR cadd >= ?)')
-      params.push(filter.cadd_min)
-    }
-
-    if (filter.search_query != null && filter.search_query !== '') {
-      const searchCondition = this.buildSearchCondition(filter.search_query, params)
-      conditions.push(searchCondition)
-    }
-
-    if (filter.chr != null && filter.chr !== '') {
-      conditions.push('chr = ?')
-      params.push(filter.chr)
-    }
-    if (filter.pos != null) {
-      conditions.push('pos = ?')
-      params.push(filter.pos)
-    }
-    if (filter.ref != null && filter.ref !== '') {
-      conditions.push('ref = ?')
-      params.push(filter.ref)
-    }
-    if (filter.alt != null && filter.alt !== '') {
-      conditions.push('alt = ?')
-      params.push(filter.alt)
-    }
-
-    if (filter.tag_ids !== undefined && filter.tag_ids.length > 0) {
-      const placeholders = filter.tag_ids.map(() => '?').join(', ')
-      conditions.push(
-        `id IN (SELECT variant_id FROM variant_tags WHERE case_id = ? AND tag_id IN (${placeholders}))`
+    // Range filters with NULL handling
+    query = query
+      .$if(filter.gnomad_af_max !== undefined, (qb) =>
+        qb.where(({ or, eb }) =>
+          or([eb('gnomad_af', 'is', null), eb('gnomad_af', '<=', filter.gnomad_af_max!)])
+        )
       )
-      params.push(filter.case_id, ...filter.tag_ids)
+      .$if(filter.cadd_min !== undefined, (qb) =>
+        qb.where(({ or, eb }) => or([eb('cadd', 'is', null), eb('cadd', '>=', filter.cadd_min!)]))
+      )
+
+    // FTS5 search
+    if (filter.search_query != null && filter.search_query !== '') {
+      query = this.applySearchFilter(query, filter.search_query)
     }
 
-    if (filter.starred_only === true) {
+    // Exact variant match
+    query = query
+      .$if(filter.chr != null && filter.chr !== '', (qb) => qb.where('chr', '=', filter.chr!))
+      .$if(filter.pos != null, (qb) => qb.where('pos', '=', filter.pos!))
+      .$if(filter.ref != null && filter.ref !== '', (qb) => qb.where('ref', '=', filter.ref!))
+      .$if(filter.alt != null && filter.alt !== '', (qb) => qb.where('alt', '=', filter.alt!))
+
+    // Tag filter
+    query = query.$if((filter.tag_ids?.length ?? 0) > 0, (qb) =>
+      qb.where(
+        'id',
+        'in',
+        this.kysely
+          .selectFrom('variant_tags')
+          .select('variant_id')
+          .where('case_id', '=', filter.case_id)
+          .where('tag_id', 'in', filter.tag_ids!)
+      )
+    )
+
+    // Starred filter (scope-dependent)
+    query = query.$if(filter.starred_only === true, (qb) => {
       if (filter.annotation_scope === 'all') {
-        conditions.push(
-          `(id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND starred = 1)
-            OR EXISTS (
-              SELECT 1 FROM variant_annotations va
-              WHERE va.chr = variants.chr AND va.pos = variants.pos
-                AND va.ref = variants.ref AND va.alt = variants.alt
-                AND va.starred = 1
-            ))`
-        )
-      } else {
-        conditions.push(
-          `id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND starred = 1)`
+        return qb.where(({ or, exists, selectFrom, eb }) =>
+          or([
+            eb(
+              'id',
+              'in',
+              selectFrom('case_variant_annotations')
+                .select('variant_id')
+                .where('case_id', '=', filter.case_id)
+                .where('starred', '=', 1)
+            ),
+            exists(
+              selectFrom('variant_annotations as va')
+                .select(sql`1`.as('one'))
+                .whereRef('va.chr', '=', 'variants.chr')
+                .whereRef('va.pos', '=', 'variants.pos')
+                .whereRef('va.ref', '=', 'variants.ref')
+                .whereRef('va.alt', '=', 'variants.alt')
+                .where('va.starred', '=', 1)
+            )
+          ])
         )
       }
-      params.push(filter.case_id)
-    }
+      return qb.where(
+        'id',
+        'in',
+        this.kysely
+          .selectFrom('case_variant_annotations')
+          .select('variant_id')
+          .where('case_id', '=', filter.case_id)
+          .where('starred', '=', 1)
+      )
+    })
 
-    if (filter.has_comment === true) {
+    // Comment filter (scope-dependent)
+    query = query.$if(filter.has_comment === true, (qb) => {
       if (filter.annotation_scope === 'all') {
-        conditions.push(
-          `(id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND per_case_comment IS NOT NULL AND per_case_comment != '')
-            OR EXISTS (
-              SELECT 1 FROM variant_annotations va
-              WHERE va.chr = variants.chr AND va.pos = variants.pos
-                AND va.ref = variants.ref AND va.alt = variants.alt
-                AND va.global_comment IS NOT NULL AND va.global_comment != ''
-            ))`
-        )
-      } else {
-        conditions.push(
-          `id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND per_case_comment IS NOT NULL AND per_case_comment != '')`
+        return qb.where(({ or, exists, selectFrom, eb }) =>
+          or([
+            eb(
+              'id',
+              'in',
+              selectFrom('case_variant_annotations')
+                .select('variant_id')
+                .where('case_id', '=', filter.case_id)
+                .where('per_case_comment', 'is not', null)
+                .where('per_case_comment', '!=', '')
+            ),
+            exists(
+              selectFrom('variant_annotations as va')
+                .select(sql`1`.as('one'))
+                .whereRef('va.chr', '=', 'variants.chr')
+                .whereRef('va.pos', '=', 'variants.pos')
+                .whereRef('va.ref', '=', 'variants.ref')
+                .whereRef('va.alt', '=', 'variants.alt')
+                .where('va.global_comment', 'is not', null)
+                .where('va.global_comment', '!=', '')
+            )
+          ])
         )
       }
-      params.push(filter.case_id)
-    }
+      return qb.where(
+        'id',
+        'in',
+        this.kysely
+          .selectFrom('case_variant_annotations')
+          .select('variant_id')
+          .where('case_id', '=', filter.case_id)
+          .where('per_case_comment', 'is not', null)
+          .where('per_case_comment', '!=', '')
+      )
+    })
 
-    if (filter.acmg_classifications !== undefined && filter.acmg_classifications.length > 0) {
-      const placeholders = filter.acmg_classifications.map(() => '?').join(', ')
+    // ACMG classification filter (scope-dependent)
+    query = query.$if((filter.acmg_classifications?.length ?? 0) > 0, (qb) => {
       if (filter.annotation_scope === 'all') {
-        conditions.push(
-          `(id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND acmg_classification IN (${placeholders}))
-            OR EXISTS (
-              SELECT 1 FROM variant_annotations va
-              WHERE va.chr = variants.chr AND va.pos = variants.pos
-                AND va.ref = variants.ref AND va.alt = variants.alt
-                AND va.acmg_classification IN (${placeholders})
-            ))`
+        return qb.where(({ or, exists, selectFrom, eb }) =>
+          or([
+            eb(
+              'id',
+              'in',
+              selectFrom('case_variant_annotations')
+                .select('variant_id')
+                .where('case_id', '=', filter.case_id)
+                .where('acmg_classification', 'in', filter.acmg_classifications!)
+            ),
+            exists(
+              selectFrom('variant_annotations as va')
+                .select(sql`1`.as('one'))
+                .whereRef('va.chr', '=', 'variants.chr')
+                .whereRef('va.pos', '=', 'variants.pos')
+                .whereRef('va.ref', '=', 'variants.ref')
+                .whereRef('va.alt', '=', 'variants.alt')
+                .where('va.acmg_classification', 'in', filter.acmg_classifications!)
+            )
+          ])
         )
-        params.push(filter.case_id, ...filter.acmg_classifications, ...filter.acmg_classifications)
-      } else {
-        conditions.push(
-          `id IN (SELECT variant_id FROM case_variant_annotations WHERE case_id = ? AND acmg_classification IN (${placeholders}))`
-        )
-        params.push(filter.case_id, ...filter.acmg_classifications)
       }
-    }
+      return qb.where(
+        'id',
+        'in',
+        this.kysely
+          .selectFrom('case_variant_annotations')
+          .select('variant_id')
+          .where('case_id', '=', filter.case_id)
+          .where('acmg_classification', 'in', filter.acmg_classifications!)
+      )
+    })
 
+    // Column filters (dynamic)
     if (filter.column_filters !== undefined) {
       for (const [column, value] of Object.entries(filter.column_filters)) {
         if (value === '' || SORTABLE_COLUMNS[column] === undefined) continue
         const sqlColumn = SORTABLE_COLUMNS[column]
-        conditions.push(
-          NUMERIC_COLUMNS.has(column)
-            ? `CAST(${sqlColumn} AS TEXT) LIKE ? COLLATE NOCASE`
-            : `${sqlColumn} LIKE ? COLLATE NOCASE`
-        )
-        params.push(`%${value}%`)
+        if (NUMERIC_COLUMNS.has(column)) {
+          query = query.where(sql`CAST(${sql.ref(sqlColumn)} AS TEXT)`, 'like', `%${value}%`)
+        } else {
+          query = query.where(sql`${sql.ref(sqlColumn)} COLLATE NOCASE`, 'like', `%${value}%`)
+        }
       }
     }
 
-    return { conditions, params }
+    return query
   }
 
-  // ── Sort / search / cursor helpers ───────────────────────────
+  // ── Search / sort helpers ─────────────────────────────────────
 
-  private buildSortClause(sortBy?: SortItem[]): string {
-    if (!sortBy || sortBy.length === 0) {
-      return 'pos ASC NULLS LAST, id ASC'
-    }
-
-    const clauses: string[] = []
-    for (const sort of sortBy) {
-      const sqlColumn = SORTABLE_COLUMNS[sort.key]
-      if (sqlColumn === undefined) {
-        mainLogger.warn(`Invalid sort column rejected: ${sort.key}`, 'VariantRepository')
-        continue
-      }
-      const direction = sort.order === 'desc' ? 'DESC' : 'ASC'
-      const nulls = sort.order === 'desc' ? 'NULLS FIRST' : 'NULLS LAST'
-      clauses.push(`${sqlColumn} ${direction} ${nulls}`)
-    }
-
-    if (clauses.length === 0) {
-      return 'pos ASC NULLS LAST, id ASC'
-    }
-
-    if (clauses.some((c) => c.startsWith('id ')) === false) {
-      clauses.push('id ASC')
-    }
-
-    return clauses.join(', ')
-  }
-
-  private buildSearchCondition(query: string, params: (string | number | null)[]): string {
-    const term = query.trim()
+  /**
+   * Apply FTS5 search filter to a Kysely query.
+   * Handles boolean operators (AND/OR/NOT) and HGVS pattern matching.
+   */
+  private applySearchFilter(query: VariantQueryBuilder, searchQuery: string): VariantQueryBuilder {
+    const term = searchQuery.trim()
     const hasBooleanOps = /\b(AND|OR|NOT)\b/.test(term)
 
     if (!hasBooleanOps) {
-      return this.buildSingleSearchToken(term, params)
+      return this.applySingleSearchToken(query, term)
     }
 
+    // For complex boolean queries, build raw SQL since Kysely
+    // can't compose FTS5 MATCH with boolean logic natively
     const parts = term
       .split(/\b(AND|OR|NOT)\b/)
       .map((p) => p.trim())
       .filter((p) => p !== '')
 
     const sqlParts: string[] = []
+    const params: (string | number)[] = []
+
     for (const part of parts) {
       if (part === 'AND') {
         sqlParts.push('AND')
       } else if (part === 'OR') {
         sqlParts.push('OR')
       } else if (part === 'NOT') {
-        sqlParts.push('AND NOT')
+        // Use 'NOT' when at start or after another operator; 'AND NOT' otherwise
+        const lastPart = sqlParts[sqlParts.length - 1]
+        const isAfterOperator =
+          sqlParts.length === 0 ||
+          lastPart === 'AND' ||
+          lastPart === 'OR' ||
+          lastPart === 'NOT' ||
+          lastPart === 'AND NOT'
+        sqlParts.push(isAfterOperator ? 'NOT' : 'AND NOT')
       } else {
-        sqlParts.push(this.buildSingleSearchToken(part, params))
+        const hgvsPattern = /^[cp]\./
+        if (hgvsPattern.test(part)) {
+          sqlParts.push('(cdna LIKE ? OR aa_change LIKE ?)')
+          params.push(`%${part}%`, `%${part}%`)
+        } else {
+          const ftsQuery = `"${part.replace(/"/g, '""')}"*`
+          sqlParts.push('id IN (SELECT rowid FROM variants_fts WHERE variants_fts MATCH ?)')
+          params.push(ftsQuery)
+        }
       }
     }
 
-    return `(${sqlParts.join(' ')})`
+    // Build a sql template literal with interpolated parameters
+    const fullExpr = `(${sqlParts.join(' ')})`
+    const segments = fullExpr.split('?')
+    let paramIdx = 0
+
+    // Start from the first segment
+    let rawExpr = sql<boolean>`${sql.raw(segments[0])}`
+    for (let i = 1; i < segments.length; i++) {
+      rawExpr = sql<boolean>`${rawExpr}${params[paramIdx++]}${sql.raw(segments[i])}`
+    }
+    return query.where(rawExpr)
   }
 
-  private buildSingleSearchToken(token: string, params: (string | number | null)[]): string {
+  /**
+   * Apply a single search token (FTS5 or HGVS pattern).
+   */
+  private applySingleSearchToken(query: VariantQueryBuilder, token: string): VariantQueryBuilder {
     const hgvsPattern = /^[cp]\./
     if (hgvsPattern.test(token)) {
-      const searchPattern = `%${token}%`
-      params.push(searchPattern, searchPattern)
-      return '(cdna LIKE ? OR aa_change LIKE ?)'
+      return query.where(({ or, eb }) =>
+        or([eb('cdna', 'like', `%${token}%`), eb('aa_change', 'like', `%${token}%`)])
+      )
+    }
+    const ftsQuery = `"${token.replace(/"/g, '""')}"*`
+    return query.where(
+      sql<boolean>`id IN (SELECT rowid FROM variants_fts WHERE variants_fts MATCH ${ftsQuery})`
+    )
+  }
+
+  /**
+   * Apply ORDER BY to a Kysely query using sql template literals
+   * for NULLS FIRST/LAST support (not natively available in Kysely 0.28.x).
+   */
+  private applySort(query: VariantQueryBuilder, sortBy?: SortItem[]): VariantQueryBuilder {
+    if (!sortBy || sortBy.length === 0) {
+      return query.orderBy(sql`pos ASC NULLS LAST`).orderBy(sql`id ASC`)
     }
 
-    const ftsQuery = `"${token.replace(/"/g, '""')}"*`
-    params.push(ftsQuery)
-    return 'id IN (SELECT rowid FROM variants_fts WHERE variants_fts MATCH ?)'
+    let sorted = query
+    let hasIdSort = false
+
+    for (const sort of sortBy) {
+      const sqlColumn = SORTABLE_COLUMNS[sort.key]
+      if (sqlColumn === undefined) {
+        mainLogger.warn(`Invalid sort column rejected: ${sort.key}`, 'VariantRepository')
+        continue
+      }
+      const dir = sort.order === 'desc' ? 'DESC' : 'ASC'
+      const nulls = sort.order === 'desc' ? 'NULLS FIRST' : 'NULLS LAST'
+      sorted = sorted.orderBy(sql`${sql.ref(sqlColumn)} ${sql.raw(dir)} ${sql.raw(nulls)}`)
+      if (sort.key === 'id') hasIdSort = true
+    }
+
+    if (!hasIdSort) {
+      sorted = sorted.orderBy(sql`id ASC`)
+    }
+
+    return sorted
   }
 
   // ── Query methods ────────────────────────────────────────────
@@ -387,18 +472,16 @@ export class VariantRepository extends BaseRepository {
     offset: number = 0,
     sortBy?: SortItem[]
   ): PaginatedResult<Variant> {
-    const { conditions, params } = this.buildFilterConditions(filter)
-    const orderByClause = this.buildSortClause(sortBy)
-    const whereClause = conditions.join(' AND ')
-
-    // Count query (same filters, no offset)
-    const countSql = `SELECT COUNT(*) as count FROM variants WHERE ${whereClause}`
-    const countResult = this.db.prepare(countSql).get(...params) as { count: number }
+    // Count query — apply same filters but select count
+    const dataQuery = this.buildVariantQuery(filter)
+    const compiled = dataQuery.compile()
+    const countSql = compiled.sql.replace(/^select \* from/i, 'select count(*) as count from')
+    const countResult = this.db.prepare(countSql).get(...compiled.parameters) as { count: number }
     const total_count = countResult.count
 
-    // Data query with OFFSET
-    const dataSql = `SELECT * FROM variants WHERE ${whereClause} ORDER BY ${orderByClause} LIMIT ? OFFSET ?`
-    const data = this.db.prepare(dataSql).all(...params, limit, offset) as Variant[]
+    // Data query with sort + pagination
+    const sortedQuery = this.applySort(dataQuery, sortBy).limit(limit).offset(offset)
+    const data = this.execAll<Variant>(sortedQuery)
 
     return { data, total_count }
   }
@@ -435,10 +518,35 @@ export class VariantRepository extends BaseRepository {
   }
 
   getAllVariantsForExport(filter: VariantFilter): Variant[] {
-    const { conditions, params } = this.buildFilterConditions(filter)
-    const whereClause = conditions.join(' AND ')
-    const querySql = `SELECT * FROM variants WHERE ${whereClause} ORDER BY chr, pos`
-    return this.db.prepare(querySql).all(...params) as Variant[]
+    const query = this.buildVariantQuery(filter).orderBy('chr', 'asc').orderBy('pos', 'asc')
+    return this.execAll<Variant>(query)
+  }
+
+  /**
+   * Count variants matching export filter without loading data.
+   * Used to enforce hard limit before spawning export worker.
+   */
+  getExportCount(filter: VariantFilter): number {
+    const compiled = this.buildVariantQuery(filter).compile()
+    const countSql = compiled.sql.replace(/^select \* from/i, 'select count(*) as count from')
+    const result = this.db.prepare(countSql).get(...compiled.parameters) as { count: number }
+    return result.count
+  }
+
+  /**
+   * Compile the export query to SQL+params for worker thread execution.
+   * The worker receives compiled SQL and runs it directly, avoiding
+   * filter logic duplication.
+   */
+  compileExportQuery(
+    filter: VariantFilter,
+    limit: number
+  ): { sql: string; parameters: readonly unknown[] } {
+    const query = this.buildVariantQuery(filter)
+      .orderBy('chr', 'asc')
+      .orderBy('pos', 'asc')
+      .limit(limit)
+    return query.compile()
   }
 
   getFilterOptions(caseId: number): FilterOptions {

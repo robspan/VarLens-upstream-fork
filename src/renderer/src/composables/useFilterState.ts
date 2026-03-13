@@ -11,136 +11,33 @@
  *
  * Provides:
  * - Core filter state (search, gene, consequences, funcs, clinvars, numeric, tags)
- * - Preset selections with bidirectional sync
+ * - Preset selections with bidirectional sync (via useFilterPresets)
  * - Active filter tracking (count, list, per-group check)
  * - Filter manipulation (clear, remove tag, clear all)
  * - Gene autocomplete with debounced IPC
  * - Filter emission with debounce
  * - Case-switch reset and filter options reload
- * - Excel export
+ * - Excel export (via useFilterExport)
  */
 
 import { ref, computed, watch, type Ref, type ComputedRef } from 'vue'
 import { useDebounce } from './useDebounce'
 import { useTags } from './useTags'
 import { useApiService } from './useApiService'
-import type { VariantFilter, Tag, FilterOptions } from '../../../shared/types/api'
+import type { FilterOptions } from '../../../shared/types/api'
 import { APP_CONFIG } from '../../../shared/config'
+import {
+  buildFilterFromState,
+  type FilterState,
+  type ActiveFilter,
+  type UseFilterStateOptions,
+  type UseFilterStateReturn
+} from './filter-types'
+import { useFilterPresets } from './useFilterPresets'
+import { useFilterExport } from './useFilterExport'
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-/**
- * Core filter state structure for variant filtering
- */
-export interface FilterState {
-  searchQuery: string
-  geneSymbol: string
-  consequences: string[]
-  funcs: string[]
-  clinvars: string[]
-  maxGnomadAf: number | null
-  minCadd: number | null
-  tagIds: number[]
-  starredOnly: boolean
-  hasCommentOnly: boolean
-  acmgClassifications: string[]
-  annotationScope: 'case' | 'all'
-}
-
-/**
- * Active filter chip data for summary bar display
- */
-export interface ActiveFilter {
-  id: string
-  label: string
-  value: string
-}
-
-/**
- * Options for configuring the useFilterState composable
- */
-export interface UseFilterStateOptions {
-  /** Callback when filters update (replaces emit('update:filters')) */
-  onFiltersUpdate: (filters: Omit<VariantFilter, 'case_id'>) => void
-  /** Callback to reset sort order (replaces emit('reset-sort')) */
-  onResetSort: () => void
-}
-
-/**
- * Export result returned by exportToExcel
- */
-export interface ExportResult {
-  success: boolean
-  filePath?: string
-  error?: string
-  cancelled?: boolean
-}
-
-/**
- * Return type for the useFilterState composable
- */
-export interface UseFilterStateReturn {
-  // State
-  filters: Ref<FilterState>
-  filterOptions: Ref<FilterOptions>
-  geneSymbolSuggestions: Ref<string[]>
-  loadingSuggestions: Ref<boolean>
-  selectedImpactPresets: Ref<string[]>
-  selectedAfPreset: Ref<number | null>
-  selectedCaddPreset: Ref<number | null>
-  exporting: Ref<boolean>
-
-  // Presets (readonly arrays)
-  afPresets: readonly { label: string; value: number }[]
-  caddPresets: readonly { label: string; value: number }[]
-  impactPresets: readonly { label: string; value: string; color: string }[]
-
-  // Tags
-  availableTags: ComputedRef<Tag[]>
-
-  // Computed
-  hasActiveFilters: ComputedRef<boolean>
-  activeFilterCount: ComputedRef<number>
-  activeFiltersList: ComputedRef<ActiveFilter[]>
-
-  // Methods
-  isFilterGroupActive: (groupId: string) => boolean
-  clearFilter: (filterId: string) => void
-  removeTagFilter: (tagId: number) => void
-  clearAllFilters: () => void
-  handleGeneClear: () => void
-  searchGeneSymbols: (query: string) => Promise<void>
-  emitFilters: () => void
-  loadFilterOptions: (caseId: number) => Promise<void>
-  resetForCaseSwitch: () => void
-  setInitialSearch: (search: string) => void
-  exportToExcel: (caseId: number, caseName: string) => Promise<ExportResult | null>
-}
-
-// ---------------------------------------------------------------------------
-// Preset constants
-// ---------------------------------------------------------------------------
-
-const afPresets = [
-  { label: '1%', value: 0.01 },
-  { label: '0.1%', value: 0.001 },
-  { label: '0.01%', value: 0.0001 }
-] as const
-
-const caddPresets = [
-  { label: '10', value: 10 },
-  { label: '15', value: 15 },
-  { label: '20', value: 20 },
-  { label: '25', value: 25 }
-] as const
-
-const impactPresets = [
-  { label: 'HIGH', value: 'HIGH', color: 'error' },
-  { label: 'MOD', value: 'MODERATE', color: 'warning' },
-  { label: 'LOW', value: 'LOW', color: 'info' }
-] as const
+// Re-export types so existing consumers (e.g. filterDrawerTypes.ts) continue to work
+export type { FilterState, ActiveFilter, ExportResult, UseFilterStateReturn } from './filter-types'
 
 // ---------------------------------------------------------------------------
 // Composable
@@ -202,10 +99,43 @@ export function useFilterState(
   // Export state
   const exporting = ref(false)
 
-  // Preset selections
-  const selectedImpactPresets = ref<string[]>([])
-  const selectedAfPreset = ref<number | null>(null)
-  const selectedCaddPreset = ref<number | null>(null)
+  // -------------------------------------------------------------------------
+  // Presets (delegated to useFilterPresets)
+  // -------------------------------------------------------------------------
+
+  // useFilterPresets sets up watchers internally; the `() => debouncedEmit()`
+  // callback is a closure that captures `debouncedEmit` at call time (not
+  // definition time), so it works even though debouncedEmit is defined below.
+  const {
+    selectedImpactPresets,
+    selectedAfPreset,
+    selectedCaddPreset,
+    afPresets,
+    caddPresets,
+    impactPresets,
+    resetPresets
+  } = useFilterPresets(filters, () => debouncedEmit())
+
+  // -------------------------------------------------------------------------
+  // Filter emission
+  // -------------------------------------------------------------------------
+
+  /**
+   * Build VariantFilter from current state and invoke the callback
+   */
+  const emitFilters = () => {
+    const variantFilter = buildFilterFromState(filters.value, selectedImpactPresets.value)
+    onFiltersUpdate(variantFilter)
+  }
+
+  // Create debounced version
+  const { debouncedFn: debouncedEmit } = useDebounce(emitFilters, APP_CONFIG.DEBOUNCE_MS)
+
+  // -------------------------------------------------------------------------
+  // Export (delegated to useFilterExport)
+  // -------------------------------------------------------------------------
+
+  const { exportToExcel } = useFilterExport(filters, selectedImpactPresets, exporting)
 
   // Available tags for filter
   const availableTags = computed(() => getTags())
@@ -306,14 +236,14 @@ export function useFilterState(
       filters.value.maxGnomadAf > 0
     ) {
       const pct = (filters.value.maxGnomadAf * 100).toFixed(2)
-      list.push({ id: 'frequency', label: 'AF ≤', value: `${pct}%` })
+      list.push({ id: 'frequency', label: 'AF \u2264', value: `${pct}%` })
     }
     if (
       filters.value.minCadd !== null &&
       !Number.isNaN(filters.value.minCadd) &&
       filters.value.minCadd >= 0
     ) {
-      list.push({ id: 'cadd', label: 'CADD ≥', value: String(filters.value.minCadd) })
+      list.push({ id: 'cadd', label: 'CADD \u2265', value: String(filters.value.minCadd) })
     }
     if (filters.value.tagIds.length > 0) {
       const tagNames = availableTags.value
@@ -449,9 +379,7 @@ export function useFilterState(
     filters.value.hasCommentOnly = false
     filters.value.acmgClassifications = []
     filters.value.annotationScope = 'case'
-    selectedAfPreset.value = null
-    selectedCaddPreset.value = null
-    selectedImpactPresets.value = []
+    resetPresets()
     // Also reset sort order in parent
     onResetSort()
   }
@@ -485,79 +413,6 @@ export function useFilterState(
   }
 
   // -------------------------------------------------------------------------
-  // Filter emission
-  // -------------------------------------------------------------------------
-
-  /**
-   * Build VariantFilter from current state and invoke the callback
-   */
-  const emitFilters = () => {
-    const variantFilter: Omit<VariantFilter, 'case_id'> = {}
-
-    if (filters.value.searchQuery !== '') {
-      variantFilter.search_query = filters.value.searchQuery
-    }
-
-    if (filters.value.geneSymbol != null && filters.value.geneSymbol !== '') {
-      variantFilter.gene_symbol = filters.value.geneSymbol
-    }
-
-    // Combine impact presets with specific consequences (OR logic)
-    const allConsequences = [...selectedImpactPresets.value, ...filters.value.consequences]
-    if (allConsequences.length > 0) {
-      variantFilter.consequences = [...new Set(allConsequences)] // Dedupe
-    }
-
-    // Add funcs filter
-    if (filters.value.funcs.length > 0) {
-      variantFilter.funcs = filters.value.funcs
-    }
-
-    // Add clinvars filter
-    if (filters.value.clinvars.length > 0) {
-      variantFilter.clinvars = filters.value.clinvars
-    }
-
-    // Only include gnomAD AF if it's a valid positive number
-    const afValue = filters.value.maxGnomadAf
-    if (afValue !== null && Number.isNaN(afValue) === false && afValue > 0) {
-      variantFilter.gnomad_af_max = afValue
-    }
-
-    // Only include CADD if it's a valid non-negative number
-    const caddValue = filters.value.minCadd
-    if (caddValue !== null && Number.isNaN(caddValue) === false && caddValue >= 0) {
-      variantFilter.cadd_min = caddValue
-    }
-
-    // Add tag filter
-    if (filters.value.tagIds.length > 0) {
-      variantFilter.tag_ids = filters.value.tagIds
-    }
-
-    // Annotation filters
-    if (filters.value.starredOnly) {
-      variantFilter.starred_only = true
-    }
-    if (filters.value.hasCommentOnly) {
-      variantFilter.has_comment = true
-    }
-    if (filters.value.acmgClassifications.length > 0) {
-      variantFilter.acmg_classifications = filters.value.acmgClassifications
-    }
-
-    // Annotation scope
-    if (filters.value.annotationScope === 'all') {
-      variantFilter.annotation_scope = 'all'
-    }
-
-    onFiltersUpdate(variantFilter)
-  }
-
-  // Create debounced version
-  const { debouncedFn: debouncedEmit } = useDebounce(emitFilters, APP_CONFIG.DEBOUNCE_MS)
-
-  // -------------------------------------------------------------------------
   // Watchers
   // -------------------------------------------------------------------------
 
@@ -568,51 +423,6 @@ export function useFilterState(
       debouncedEmit()
     },
     { deep: true }
-  )
-
-  // Watch preset selections and sync with text inputs
-  watch(selectedAfPreset, (value) => {
-    if (value !== null) {
-      filters.value.maxGnomadAf = value
-    }
-  })
-
-  watch(selectedCaddPreset, (value) => {
-    if (value !== null) {
-      filters.value.minCadd = value
-    }
-  })
-
-  // Watch impact presets and emit filter changes
-  watch(selectedImpactPresets, () => {
-    debouncedEmit()
-  })
-
-  // Watch text inputs and sync with preset selections
-  watch(
-    () => filters.value.maxGnomadAf,
-    (value) => {
-      if (value !== null) {
-        // Check if value matches a preset
-        const matchingPreset = afPresets.find((p) => p.value === value)
-        selectedAfPreset.value = matchingPreset !== undefined ? matchingPreset.value : null
-      } else {
-        selectedAfPreset.value = null
-      }
-    }
-  )
-
-  watch(
-    () => filters.value.minCadd,
-    (value) => {
-      if (value !== null) {
-        // Check if value matches a preset
-        const matchingPreset = caddPresets.find((p) => p.value === value)
-        selectedCaddPreset.value = matchingPreset !== undefined ? matchingPreset.value : null
-      } else {
-        selectedCaddPreset.value = null
-      }
-    }
   )
 
   // -------------------------------------------------------------------------
@@ -635,9 +445,7 @@ export function useFilterState(
     filters.value.hasCommentOnly = false
     filters.value.acmgClassifications = []
     filters.value.annotationScope = 'case'
-    selectedAfPreset.value = null
-    selectedCaddPreset.value = null
-    selectedImpactPresets.value = []
+    resetPresets()
   }
 
   /**
@@ -682,121 +490,6 @@ export function useFilterState(
   const setInitialSearch = (search: string) => {
     if (search !== undefined && search !== '') {
       filters.value.searchQuery = search
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // Export to Excel
-  // -------------------------------------------------------------------------
-
-  /**
-   * Build current filter state and export to Excel
-   *
-   * @param caseId - Case ID to export
-   * @param caseName - Case name for the file name
-   * @returns Export result or null if cancelled / window.api unavailable
-   */
-  const exportToExcel = async (caseId: number, caseName: string): Promise<ExportResult | null> => {
-    // Guard for browser dev mode
-    if (!api) {
-      console.warn('API not available - running outside Electron')
-      return null
-    }
-
-    exporting.value = true
-    try {
-      // Build current filter state
-      const exportFilters: Omit<VariantFilter, 'case_id'> = {}
-
-      if (filters.value.searchQuery !== '') {
-        exportFilters.search_query = filters.value.searchQuery
-      }
-
-      if (filters.value.geneSymbol != null && filters.value.geneSymbol !== '') {
-        exportFilters.gene_symbol = filters.value.geneSymbol
-      }
-
-      const allConsequences = [...selectedImpactPresets.value, ...filters.value.consequences]
-      if (allConsequences.length > 0) {
-        exportFilters.consequences = [...new Set(allConsequences)]
-      }
-
-      if (filters.value.funcs.length > 0) {
-        exportFilters.funcs = filters.value.funcs
-      }
-
-      if (filters.value.clinvars.length > 0) {
-        exportFilters.clinvars = filters.value.clinvars
-      }
-
-      const afValue = filters.value.maxGnomadAf
-      if (afValue !== null && Number.isNaN(afValue) === false && afValue > 0) {
-        exportFilters.gnomad_af_max = afValue
-      }
-
-      const caddValue = filters.value.minCadd
-      if (caddValue !== null && Number.isNaN(caddValue) === false && caddValue >= 0) {
-        exportFilters.cadd_min = caddValue
-      }
-
-      if (filters.value.tagIds.length > 0) {
-        exportFilters.tag_ids = filters.value.tagIds
-      }
-
-      if (filters.value.starredOnly) {
-        exportFilters.starred_only = true
-      }
-      if (filters.value.hasCommentOnly) {
-        exportFilters.has_comment = true
-      }
-      if (filters.value.acmgClassifications.length > 0) {
-        exportFilters.acmg_classifications = filters.value.acmgClassifications
-      }
-
-      // Annotation scope
-      if (filters.value.annotationScope === 'all') {
-        exportFilters.annotation_scope = 'all'
-      }
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await (api as any).export.variants(
-        caseId,
-        exportFilters,
-        caseName !== '' ? caseName : `case_${caseId}`
-      )
-
-      // Check for error response (SerializableError has code property)
-      if (result !== null && result !== undefined && 'code' in result) {
-        return {
-          success: false,
-          error: result.message ?? result.userMessage ?? 'Unknown error'
-        }
-      }
-
-      if (result !== null && result !== undefined && result.success === true) {
-        return {
-          success: true,
-          filePath: result.filePath
-        }
-      } else if (
-        result !== null &&
-        result !== undefined &&
-        typeof result.error === 'string' &&
-        result.error !== 'Export cancelled'
-      ) {
-        return {
-          success: false,
-          error: result.error
-        }
-      }
-
-      // Cancelled or no result
-      return result?.error === 'Export cancelled' ? { success: false, cancelled: true } : null
-    } catch (error) {
-      console.error('Export error:', error)
-      return null
-    } finally {
-      exporting.value = false
     }
   }
 

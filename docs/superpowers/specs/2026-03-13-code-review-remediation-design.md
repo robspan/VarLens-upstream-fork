@@ -49,45 +49,48 @@ A full codebase code review (July 2025) identified 20 findings across security, 
 
 **Testing strategy:** TDD — write comprehensive filter tests before migrating (also addresses L-04). Capture expected query results for filter combinations, then refactor with confidence.
 
-#### Filter Conditions (24 total, 3 tiers)
+#### Filter Conditions (~17 distinct parameters, 3 tiers)
+
+Note: `consequence` (single) and `consequences` (array) are mutually exclusive — the Kysely migration must preserve this `else if` logic.
 
 **Simple (7) — direct `.where()` / `.$if()`:**
 - `case_id` (equality, required)
 - `gene_symbol` (LIKE substring)
-- `consequence` (single equality)
+- `consequence` / `consequences` (single equality OR IN array — mutually exclusive)
 - `chr`, `pos`, `ref`, `alt` (equality)
 
-**Array/Range (5) — `.where('col', 'in', arr)` + null-aware range:**
-- `consequences` (IN array)
+**Array/Range (4) — `.where('col', 'in', arr)` + null-aware range:**
 - `funcs` (IN array)
 - `clinvars` (IN array)
 - `gnomad_af_max` (range with NULL: `gnomad_af IS NULL OR gnomad_af <= ?`)
 - `cadd_min` (range with NULL: `cadd IS NULL OR cadd >= ?`)
 
-**Complex (12) — expression builder with `exists()`, `or()`, subqueries:**
+**Complex (6 parameters, some with two scope-dependent SQL paths) — expression builder with `exists()`, `or()`, subqueries:**
 - `tag_ids` — `id IN (SELECT variant_id FROM variant_tags WHERE ...)`
-- `starred_only` (case scope) — subquery on `case_variant_annotations`
-- `starred_only` (all scope) — OR of subquery + EXISTS on `variant_annotations`
-- `has_comment` (case scope) — subquery on `case_variant_annotations`
-- `has_comment` (all scope) — OR of subquery + EXISTS on `variant_annotations`
-- `acmg_classifications` (case scope) — subquery with IN
-- `acmg_classifications` (all scope) — OR of subquery + EXISTS with IN
-- `column_filters` (4 dynamic) — LIKE with CAST for numerics
+- `starred_only` — case scope: subquery only; all scope: OR of subquery + EXISTS on `variant_annotations`
+- `has_comment` — case scope: subquery only; all scope: OR of subquery + EXISTS on `variant_annotations`
+- `acmg_classifications` — case scope: subquery with IN; all scope: OR of subquery + EXISTS with IN
+- `column_filters` (dynamic, up to N columns) — LIKE with CAST for numerics
 - `search_query` — FTS5 MATCH via `sql` template tag (no native Kysely support)
 
 #### Implementation Pattern
 
+Note: Kysely's `.where()` parameterizes value arguments — the template literal in `like` patterns (e.g., `` `%${filter.gene_symbol}%` ``) is parameterized by Kysely in the compiled SQL, NOT interpolated into the SQL string.
+
 ```typescript
 private buildVariantQuery(filter: VariantFilter) {
-  return this.kysely
+  let query = this.kysely
     .selectFrom('variants')
     .selectAll()
     .where('case_id', '=', filter.case_id)
     // Simple filters via $if
     .$if(!!filter.gene_symbol, (qb) =>
       qb.where('gene_symbol', 'like', `%${filter.gene_symbol}%`))
+    // consequence vs consequences — mutually exclusive
     .$if(!!filter.consequences?.length, (qb) =>
       qb.where('consequence', 'in', filter.consequences!))
+    .$if(!filter.consequences?.length && !!filter.consequence, (qb) =>
+      qb.where('consequence', '=', filter.consequence!))
     // Range filters with NULL handling
     .$if(filter.gnomad_af_max != null, (qb) =>
       qb.where(({ or, eb }) => or([
@@ -100,20 +103,35 @@ private buildVariantQuery(filter: VariantFilter) {
     // FTS5: sql template tag (no native MATCH support)
     .$if(!!filter.search_query, (qb) =>
       qb.where('id', 'in', sql`SELECT rowid FROM variants_fts WHERE variants_fts MATCH ${ftsQuery}`))
+
+  return query
 }
 ```
 
 #### Sort Clause Migration
 
-Replace `buildSortClause()` string concatenation with `.orderBy()` using existing `SORTABLE_COLUMNS` whitelist:
+Replace `buildSortClause()` string concatenation with `.orderBy()` using existing `SORTABLE_COLUMNS` whitelist.
+
+**Limitation:** Kysely v0.28.x does not natively support `NULLS FIRST` / `NULLS LAST` in its `.orderBy()` API. The current code uses `NULLS FIRST` for DESC and `NULLS LAST` for ASC. Use `sql` template literals for sort clauses to preserve this behavior:
 
 ```typescript
+import { sql } from 'kysely'
+
 private applySort(query, sortBy?: SortItem[]) {
-  if (!sortBy?.length) return query.orderBy('pos asc').orderBy('id asc')
+  if (!sortBy?.length) {
+    return query
+      .orderBy(sql`pos ASC NULLS LAST`)
+      .orderBy(sql`id ASC`)
+  }
   for (const sort of sortBy) {
     const col = SORTABLE_COLUMNS[sort.key]
     if (!col) continue
-    query = query.orderBy(col, sort.order === 'desc' ? 'desc' : 'asc')
+    const dir = sort.order === 'desc' ? 'DESC' : 'ASC'
+    const nulls = sort.order === 'desc' ? 'NULLS FIRST' : 'NULLS LAST'
+    query = query.orderBy(sql`${sql.ref(col)} ${sql.raw(dir)} ${sql.raw(nulls)}`)
+  }
+  if (!sortBy.some(s => s.key === 'id')) {
+    query = query.orderBy(sql`id ASC`)
   }
   return query
 }
@@ -148,17 +166,20 @@ Run `EXPLAIN QUERY PLAN` on migrated queries to confirm equivalent query plans.
 
 #### Worker Design
 
-- Main thread sends filter params + file path to export worker
-- Worker queries database (via its own connection) + builds XLSX incrementally
-- Progress reporting via worker `postMessage` (row count / total)
-- Main thread forwards progress to renderer via IPC
-- On completion, worker returns the output file path
+Follow the existing import worker pattern (`src/main/workers/import-worker-client.ts`):
+
+1. **Main thread (pre-worker):** Show save dialog via `dialog.showSaveDialog()` to get output file path. Run a count query to check if results exceed 100k — if so, return an error before spawning the worker.
+2. **Main thread → worker:** Send `{ dbPath, encryptionKey, filterParams, outputFilePath }` as start message (same pattern as import worker which receives `dbPath` and `encryptionKey`).
+3. **Worker:** Opens its own `better-sqlite3-multiple-ciphers` connection with the provided credentials. Queries variants + builds XLSX incrementally. SQLite WAL mode supports concurrent reads, so the worker's read-only connection is safe alongside the main thread's connection.
+4. **Worker → main thread:** Progress reporting via `postMessage` (row count / total).
+5. **Main thread → renderer:** Forwards progress via IPC.
+6. **On completion:** Worker closes its DB connection and returns the output file path.
 
 #### Error Handling
 
 - Worker catches errors and posts error message back to main thread
 - Main thread serializes error for renderer via existing `wrapHandler()` pattern
-- If row count exceeds 100k, return an error before starting export
+- Row count check happens on main thread BEFORE worker spawn (avoids loading 100k+ rows only to discard them)
 
 ---
 
@@ -182,12 +203,21 @@ useFilterState (core)
   └── useFilterExport (imports filter state to build export params)
 ```
 
+#### Shared Types
+
+The file's top ~120 lines contain type definitions (`FilterState`, `ActiveFilter`, `UseFilterStateOptions`, `ExportResult`, `UseFilterStateReturn`) that will be needed by all three composables. Extract these to a `filter-types.ts` file in the same directory.
+
+#### DRY Opportunity
+
+Lines ~494-554 (`emitFilters`) and ~709-759 (`exportToExcel`) contain nearly identical filter-building logic. The `useFilterExport` extraction should deduplicate this.
+
 #### Migration Strategy
 
-1. Extract `useFilterPresets` first (most independent)
-2. Extract `useFilterExport` second
-3. Update consumers (CaseView, VariantTable area)
-4. Verify all existing tests still pass
+1. Extract shared types to `filter-types.ts`
+2. Extract `useFilterPresets` first (most independent)
+3. Extract `useFilterExport` second (deduplicate filter-building logic)
+4. Update consumers (CaseView, VariantTable area)
+5. Verify all existing tests still pass
 
 ---
 
@@ -197,7 +227,8 @@ useFilterState (core)
 
 - Audit `WindowAPI` type in `src/shared/types/api.ts` against actual preload API shape
 - Add missing method signatures
-- Remove all ~10 `as any` casts on `window.api` in renderer composables/components
+- Remove all ~20 `as any` casts on `window.api` across renderer (found in `useFilterState.ts`, `CohortTable.vue`, `useVariantData.ts`, `useCohortData.ts`, `useCarriers.ts`, `GeneBurdenTable.vue`, `RegionFileImportDialog.vue`, `GeneListEditorDialog.vue`)
+- Root cause: `WindowAPI` type is missing namespaces for newer features (`regionFiles`, `geneLists`, etc.)
 
 ### 2.2 — M-08: JSDoc on Singleton Composables
 
@@ -207,8 +238,10 @@ useFilterState (core)
 
 ### 2.3 — M-09: Stronger IPC Parameter Typing
 
-- Create dedicated Zod schemas for IPC calls currently typed as `unknown` in `src/preload/index.ts` (lines 143, 332, 383)
-- Use `z.infer<>` to generate TypeScript types
+- Two distinct problems in `src/preload/index.ts`:
+  - `unknown` params (e.g., line 143 `runAssociation: (config: unknown)`) — need full Zod schemas
+  - `Record<string, unknown>` params (e.g., lines 332, 383) — already provide some structure but should be tightened to specific typed interfaces
+- Use `z.infer<>` to generate TypeScript types from Zod schemas
 - Extends existing Zod validation pattern used elsewhere
 
 ### 2.4 — L-02: Clean Up Silent Catch Blocks
@@ -216,7 +249,7 @@ useFilterState (core)
 - Replace empty `.catch(() => {})` with either:
   - Named function: `const silentIgnore = () => {}` with JSDoc explaining intent
   - Or inline comment explaining why error is intentionally discarded
-- Targets: `authStore.ts:46`, `import-worker-client.ts:101`
+- Targets: `authStore.ts:46`, `import-worker-client.ts:101`, `DatabaseService.ts:229`
 
 ### 2.5 — L-03: Split Large Vue Components
 
@@ -237,9 +270,17 @@ useFilterState (core)
 
 ## Success Criteria
 
+### Phase 1
 - All 553+ existing tests continue to pass
-- New filter tests cover all 24 conditions (TDD for H-01)
-- No `as any` casts remain on `window.api`
-- Export handles 100k+ variant cases without UI freeze
-- `useFilterState.ts` is under 500 lines
+- New filter tests cover all ~17 filter parameters including scope-dependent paths (TDD for H-01)
 - `EXPLAIN QUERY PLAN` confirms equivalent query performance after Kysely migration
+- Export handles 100k+ variant cases without UI freeze
+- `useFilterState.ts` is under 500 lines after split
+
+### Phase 2
+- Zero `as any` casts remain on `window.api` (~20 instances removed)
+- All `Record<string, unknown>` IPC params in preload replaced with typed Zod schemas
+- All singleton composables have `@singleton` JSDoc warnings
+- All silent catch blocks have explanatory comments or named ignore functions
+- No single-file Vue component exceeds 400 lines (excluding `DnaIcon.vue`)
+- All type barrel files in `src/shared/types/` have module-level JSDoc

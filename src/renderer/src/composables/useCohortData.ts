@@ -15,8 +15,8 @@
  * SOL-02: Centralized cohort data management for CohortTable.vue.
  */
 
-import { ref } from 'vue'
-import type { Ref } from 'vue'
+import { ref, shallowRef } from 'vue'
+import type { Ref, ShallowRef } from 'vue'
 import type { CohortVariant, CohortSummary } from '../../../shared/types/cohort'
 import { useApiService } from './useApiService'
 
@@ -68,7 +68,7 @@ export interface CohortQueryResult {
 
 export interface UseCohortDataReturn {
   /** Array of cohort variants */
-  variants: Ref<CohortVariant[]>
+  variants: ShallowRef<CohortVariant[]>
   /** Total count for pagination */
   totalCount: Ref<number>
   /** Loading state */
@@ -95,12 +95,16 @@ export function useCohortData(): UseCohortDataReturn {
   const { api } = useApiService()
 
   // State refs
-  const variants = ref<CohortVariant[]>([])
+  const variants = shallowRef<CohortVariant[]>([])
   const totalCount = ref(0)
   const isLoading = ref(false)
   const error = ref<Error | null>(null)
   const summary = ref<CohortSummary | null>(null)
   const summaryStale = ref(false)
+
+  // Generation counter and filter cache for count optimization
+  let requestGeneration = 0
+  let cachedFilterHash = ''
 
   // Listen for summary rebuild events and initialize staleness state
   let cleanupSummaryListener: (() => void) | null = null
@@ -193,6 +197,8 @@ export function useCohortData(): UseCohortDataReturn {
 
   /**
    * Fetch variants and update reactive state.
+   * Uses generation counter to discard stale responses and count caching
+   * to skip COUNT queries on pagination/sort changes.
    */
   const fetchVariants = async (params: CohortQueryParams): Promise<void> => {
     if (!api) {
@@ -200,21 +206,55 @@ export function useCohortData(): UseCohortDataReturn {
       return
     }
 
+    const thisGeneration = ++requestGeneration
     isLoading.value = true
     error.value = null
 
     try {
-      const plainParams = globalThis.structuredClone(buildIpcParams(params))
+      // Determine if filters changed (exclude pagination/sort params)
+      const filterHash = JSON.stringify({
+        search_term: params.search_term,
+        gene_symbol: params.gene_symbol,
+        consequences: params.consequences,
+        funcs: params.funcs,
+        clinvars: params.clinvars,
+        gnomad_af_max: params.gnomad_af_max,
+        cadd_min: params.cadd_min,
+        cohort_frequency_min: params.cohort_frequency_min,
+        carrier_count_min: params.carrier_count_min,
+        starred_only: params.starred_only,
+        has_comment: params.has_comment,
+        acmg_classifications: params.acmg_classifications,
+        column_filters: params.column_filters
+      })
+      const filtersChanged = filterHash !== cachedFilterHash
+
+      const ipcParams = buildIpcParams(params)
+      if (!filtersChanged) {
+        ipcParams._count_needed = false
+      }
+
+      // No structuredClone — buildIpcParams already strips Vue Proxies via spread
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await (api as any).cohort.getVariants(plainParams)
+      const result = await (api as any).cohort.getVariants(ipcParams)
+
+      // Discard stale responses from superseded requests
+      if (thisGeneration !== requestGeneration) return
+
       variants.value = result.data ?? []
-      totalCount.value = result.total_count ?? 0
+      if (filtersChanged) {
+        totalCount.value = result.total_count ?? 0
+        cachedFilterHash = filterHash
+      }
     } catch (err) {
+      if (thisGeneration !== requestGeneration) return
       error.value = err instanceof Error ? err : new Error(String(err))
       variants.value = []
       totalCount.value = 0
     } finally {
-      isLoading.value = false
+      if (thisGeneration === requestGeneration) {
+        isLoading.value = false
+      }
     }
   }
 
@@ -245,6 +285,8 @@ export function useCohortData(): UseCohortDataReturn {
     error.value = null
     summary.value = null
     summaryStale.value = false
+    cachedFilterHash = ''
+    requestGeneration = 0
   }
 
   return {

@@ -10,7 +10,12 @@ import {
   REBUILD_VARIANT_SUMMARY_SQL,
   REBUILD_GENE_BURDEN_SQL,
   UPDATE_META_SQL,
-  MARK_STALE_SQL
+  MARK_STALE_SQL,
+  UPDATE_PER_CASE_ANNOTATION_FLAGS_SQL,
+  INCREMENTAL_ADD_SQL,
+  INCREMENTAL_REMOVE_SQL,
+  CLEANUP_ZERO_CARRIERS_SQL,
+  RECOMPUTE_ALL_FREQUENCIES_SQL
 } from '../../shared/sql/cohort-summary-rebuild'
 
 export interface CohortSummaryStatus {
@@ -32,6 +37,7 @@ export class CohortSummaryService {
   rebuild(): void {
     const rebuildTransaction = this.db.transaction(() => {
       this.db.exec(REBUILD_VARIANT_SUMMARY_SQL)
+      this.db.exec(UPDATE_PER_CASE_ANNOTATION_FLAGS_SQL)
       this.db.exec(REBUILD_GENE_BURDEN_SQL)
       this.db.exec(UPDATE_META_SQL)
     })
@@ -46,6 +52,45 @@ export class CohortSummaryService {
     }
     try {
       this.db.exec('ANALYZE gene_burden_summary')
+    } catch {
+      /* best effort */
+    }
+  }
+
+  /**
+   * Incrementally add a single case's variants to the summary.
+   * Much faster than full rebuild for single-case imports (~1,500 variants vs 200k).
+   */
+  incrementalAdd(caseId: number): void {
+    const addTransaction = this.db.transaction(() => {
+      this.db.prepare(INCREMENTAL_ADD_SQL).run(caseId)
+      this.db.exec(RECOMPUTE_ALL_FREQUENCIES_SQL)
+      this.db.exec(MARK_STALE_SQL) // gene_burden_summary not updated
+    })
+    addTransaction()
+
+    try {
+      this.db.exec('ANALYZE cohort_variant_summary')
+    } catch {
+      /* best effort */
+    }
+  }
+
+  /**
+   * Incrementally remove a single case's variants from the summary.
+   * Must be called BEFORE the case is deleted (needs variants data).
+   */
+  incrementalRemove(caseId: number): void {
+    const removeTransaction = this.db.transaction(() => {
+      this.db.prepare(INCREMENTAL_REMOVE_SQL).run(caseId)
+      this.db.exec(CLEANUP_ZERO_CARRIERS_SQL)
+      this.db.exec(RECOMPUTE_ALL_FREQUENCIES_SQL)
+      this.db.exec(MARK_STALE_SQL) // gene_burden_summary not updated
+    })
+    removeTransaction()
+
+    try {
+      this.db.exec('ANALYZE cohort_variant_summary')
     } catch {
       /* best effort */
     }

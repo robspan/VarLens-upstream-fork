@@ -772,4 +772,38 @@ describe('CohortService', () => {
       expect(result.data[0].cadd_phred).toBe(30)
     })
   })
+
+  describe('annotation column filters', () => {
+    it('should filter by has_star column (not EXISTS subquery)', () => {
+      const caseId = insertCase('test')
+      insertVariant(caseId, '1', 100, 'A', 'G', { gene_symbol: 'BRCA1' })
+      insertVariant(caseId, '1', 200, 'C', 'T', { gene_symbol: 'TP53' })
+      summaryService.rebuild()
+
+      db.prepare(
+        `INSERT INTO variant_annotations (chr, pos, ref, alt, starred, created_at, updated_at)
+         VALUES ('1', 100, 'A', 'G', 1, 0, 0)`
+      ).run()
+
+      const result = cohortService.getCohortVariants({ starred_only: true })
+      expect(result.data).toHaveLength(1)
+      expect(result.data[0].gene_symbol).toBe('BRCA1')
+    })
+
+    it('should skip count query when _count_needed is false', () => {
+      const caseId = insertCase('test')
+      insertVariant(caseId, '1', 100, 'A', 'G', { gene_symbol: 'BRCA1' })
+      insertVariant(caseId, '1', 200, 'C', 'T', { gene_symbol: 'TP53' })
+      summaryService.rebuild()
+
+      // With _count_needed: false, total_count should be 0 (not computed)
+      const result = cohortService.getCohortVariants({ _count_needed: false })
+      expect(result.total_count).toBe(0)
+      expect(result.data.length).toBeGreaterThan(0)
+
+      // With _count_needed: true (default), total_count should be computed
+      const result2 = cohortService.getCohortVariants({})
+      expect(result2.total_count).toBe(2)
+    })
+  })
 })

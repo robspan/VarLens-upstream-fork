@@ -76,33 +76,23 @@ export function registerCaseHandlers({ ipcMain, getDb }: HandlerDependencies): v
       }
 
       const db = getDb()
-      db.cases.deleteCase(validated.data)
 
-      // Mark cohort summary stale and spawn deferred rebuild
+      let incrementalSucceeded = false
       try {
+        // Incremental remove BEFORE cascade delete (reads from variants)
+        db.cohortSummary.incrementalRemove(validated.data)
+        incrementalSucceeded = true
+      } catch {
+        // Fallback: mark stale — next full rebuild will correct
         db.cohortSummary.markStale()
         safeEmit('cohort:summaryRebuilt', { is_stale: true })
+      }
 
-        const workerPath = resolve(__dirname, 'rebuild-summary-worker.js')
-        const worker = new Worker(workerPath)
-        worker.postMessage({
-          dbPath: db.getPath(),
-          encryptionKey: db.getEncryptionKey()
-        })
-        worker.on('message', (msg: { type: string }) => {
-          if (msg.type === 'complete') {
-            safeEmit('cohort:summaryRebuilt', { is_stale: false })
-          } else {
-            mainLogger.error('Rebuild summary worker failed after single delete', 'cases')
-          }
-          worker.terminate().catch(() => {})
-        })
-        worker.on('error', (err: Error) => {
-          mainLogger.error(`Rebuild summary worker error: ${err.message}`, 'cases')
-          worker.terminate().catch(() => {})
-        })
-      } catch {
-        // best effort — summary rebuilds on next import
+      db.cases.deleteCase(validated.data)
+
+      if (incrementalSucceeded) {
+        // Variant summary updated but gene_burden still stale
+        safeEmit('cohort:summaryRebuilt', { is_stale: true })
       }
 
       return undefined

@@ -127,7 +127,7 @@ describe('Schema Migrations', () => {
       const versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(13)
+      expect(versionResult.user_version).toBe(14)
 
       service.close()
 
@@ -137,7 +137,7 @@ describe('Schema Migrations', () => {
       const versionAfterReopen = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionAfterReopen.user_version).toBe(13)
+      expect(versionAfterReopen.user_version).toBe(14)
 
       service.close()
     })
@@ -464,7 +464,7 @@ describe('Schema Migrations', () => {
       let versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(13)
+      expect(versionResult.user_version).toBe(14)
 
       service.close()
 
@@ -480,11 +480,11 @@ describe('Schema Migrations', () => {
       expect(tableNamesAfterReopen).toContain('variant_annotations')
       expect(tableNamesAfterReopen).toContain('case_variant_annotations')
 
-      // Verify user_version still 2
+      // Verify user_version still 14
       versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(13)
+      expect(versionResult.user_version).toBe(14)
 
       service.close()
     })
@@ -514,11 +514,11 @@ describe('Schema Migrations', () => {
       expect(tableNames).toContain('variant_tags')
       expect(tableNames).toContain('case_hpo_terms')
 
-      // Verify user_version is 2
+      // Verify user_version is 14
       const versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(13)
+      expect(versionResult.user_version).toBe(14)
 
       service.close()
     })
@@ -756,7 +756,48 @@ describe('Schema Migrations', () => {
       const version = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(version.user_version).toBe(13)
+      expect(version.user_version).toBe(14)
+
+      service.close()
+    })
+  })
+
+  describe('Migration v14 - Annotation flags and cohort_frequency', () => {
+    it('should add annotation columns and frequency to cohort_variant_summary in v14', () => {
+      const dbPath = tempDbPath()
+      const service = new DatabaseService(dbPath)
+
+      const db = service.database
+
+      // Verify new columns exist
+      const columns = db.prepare("PRAGMA table_info('cohort_variant_summary')").all() as {
+        name: string
+        type: string
+        notnull: number
+      }[]
+      const columnNames = columns.map((c) => c.name)
+
+      expect(columnNames).toContain('has_star')
+      expect(columnNames).toContain('has_comment')
+      expect(columnNames).toContain('acmg_best')
+      expect(columnNames).toContain('cohort_frequency')
+
+      // Verify has_star has NOT NULL constraint
+      const hasStar = columns.find((c) => c.name === 'has_star')!
+      expect(hasStar.notnull).toBe(1)
+
+      // Verify cohort_frequency index exists
+      const indexes = db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='cohort_variant_summary'"
+        )
+        .all() as { name: string }[]
+      const indexNames = indexes.map((i) => i.name)
+      expect(indexNames).toContain('idx_cvs_cohort_freq')
+
+      // Verify user_version = 14
+      const version = db.pragma('user_version', { simple: true }) as number
+      expect(version).toBe(14)
 
       service.close()
     })

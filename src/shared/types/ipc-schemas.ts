@@ -113,7 +113,10 @@ export const CohortSearchParamsSchema = z.object({
   column_filters: z
     .record(z.string(), z.string())
     .nullish()
-    .transform((val) => val ?? undefined)
+    .transform((val) => val ?? undefined),
+
+  // Count optimization flag
+  _count_needed: z.boolean().optional()
 })
 
 /**

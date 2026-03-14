@@ -89,6 +89,9 @@ export class DatabaseService {
       this.db.pragma('temp_store = MEMORY')
       this.db.pragma(`mmap_size = ${DATABASE_CONFIG.MMAP_SIZE_BYTES}`)
 
+      // Analyze tables with stale statistics on connection open
+      this.db.pragma('optimize=0x10002')
+
       // Initialize database schema (tables, indexes, FTS5)
       initializeSchema(this.db)
 

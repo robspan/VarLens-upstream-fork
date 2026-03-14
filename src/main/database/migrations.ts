@@ -617,4 +617,417 @@ export function runMigrations(db: Database.Database): void {
 
     db.exec('PRAGMA user_version = 13')
   }
+
+  // ── Migration v14: Cohort performance optimization ──
+  if (currentVersion < 14) {
+    // Denormalized annotation flags
+    db.exec(`
+      ALTER TABLE cohort_variant_summary ADD COLUMN has_star INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE cohort_variant_summary ADD COLUMN has_comment INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE cohort_variant_summary ADD COLUMN acmg_best TEXT;
+      ALTER TABLE cohort_variant_summary ADD COLUMN cohort_frequency REAL;
+    `)
+
+    // Index for frequency filter
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_cvs_cohort_freq
+        ON cohort_variant_summary(cohort_frequency);
+    `)
+
+    // Backfill cohort_frequency for existing rows
+    db.exec(`
+      UPDATE cohort_variant_summary
+      SET cohort_frequency = CAST(carrier_count AS REAL) / NULLIF((SELECT COUNT(*) FROM cases), 0);
+    `)
+
+    // Mark stale to trigger full rebuild (populates annotation flags)
+    db.exec(`
+      INSERT OR REPLACE INTO cohort_summary_meta (key, value)
+      VALUES ('is_stale', '1');
+    `)
+
+    // ── AFTER triggers: keep has_star, has_comment, acmg_best in sync ──
+
+    // Helper: the UPDATE body that recomputes flags from both annotation tables.
+    // Parameterized by the column prefix used to identify the variant (NEW or OLD).
+
+    // --- variant_annotations triggers ---
+
+    db.exec(`
+      CREATE TRIGGER trg_va_after_insert
+      AFTER INSERT ON variant_annotations
+      FOR EACH ROW
+      BEGIN
+        UPDATE cohort_variant_summary SET
+          has_star = (
+            SELECT CASE WHEN EXISTS(
+              SELECT 1 FROM variant_annotations va
+              WHERE va.chr = NEW.chr AND va.pos = NEW.pos AND va.ref = NEW.ref AND va.alt = NEW.alt AND va.starred = 1
+            ) OR EXISTS(
+              SELECT 1 FROM case_variant_annotations cva
+              JOIN variants v ON cva.variant_id = v.id
+              WHERE v.chr = NEW.chr AND v.pos = NEW.pos AND v.ref = NEW.ref AND v.alt = NEW.alt AND cva.starred = 1
+            ) THEN 1 ELSE 0 END
+          ),
+          has_comment = (
+            SELECT CASE WHEN EXISTS(
+              SELECT 1 FROM variant_annotations va
+              WHERE va.chr = NEW.chr AND va.pos = NEW.pos AND va.ref = NEW.ref AND va.alt = NEW.alt
+              AND va.global_comment IS NOT NULL AND va.global_comment != ''
+            ) OR EXISTS(
+              SELECT 1 FROM case_variant_annotations cva
+              JOIN variants v ON cva.variant_id = v.id
+              WHERE v.chr = NEW.chr AND v.pos = NEW.pos AND v.ref = NEW.ref AND v.alt = NEW.alt
+              AND cva.per_case_comment IS NOT NULL AND cva.per_case_comment != ''
+            ) THEN 1 ELSE 0 END
+          ),
+          acmg_best = (
+            SELECT CASE MAX(rank) WHEN 5 THEN 'Pathogenic' WHEN 4 THEN 'Likely pathogenic'
+              WHEN 3 THEN 'Uncertain significance' WHEN 2 THEN 'Likely benign'
+              WHEN 1 THEN 'Benign' ELSE NULL END
+            FROM (
+              SELECT CASE va.acmg_classification
+                WHEN 'Pathogenic' THEN 5 WHEN 'Likely pathogenic' THEN 4
+                WHEN 'Uncertain significance' THEN 3 WHEN 'Likely benign' THEN 2
+                WHEN 'Benign' THEN 1 ELSE 0 END AS rank
+              FROM variant_annotations va
+              WHERE va.chr = NEW.chr AND va.pos = NEW.pos AND va.ref = NEW.ref AND va.alt = NEW.alt
+              AND va.acmg_classification IS NOT NULL
+              UNION ALL
+              SELECT CASE cva.acmg_classification
+                WHEN 'Pathogenic' THEN 5 WHEN 'Likely pathogenic' THEN 4
+                WHEN 'Uncertain significance' THEN 3 WHEN 'Likely benign' THEN 2
+                WHEN 'Benign' THEN 1 ELSE 0 END
+              FROM case_variant_annotations cva
+              JOIN variants v ON cva.variant_id = v.id
+              WHERE v.chr = NEW.chr AND v.pos = NEW.pos AND v.ref = NEW.ref AND v.alt = NEW.alt
+              AND cva.acmg_classification IS NOT NULL
+            )
+          )
+        WHERE chr = NEW.chr AND pos = NEW.pos AND ref = NEW.ref AND alt = NEW.alt;
+      END
+    `)
+
+    db.exec(`
+      CREATE TRIGGER trg_va_after_update
+      AFTER UPDATE ON variant_annotations
+      FOR EACH ROW
+      WHEN OLD.starred != NEW.starred
+        OR OLD.global_comment IS NOT NEW.global_comment
+        OR OLD.acmg_classification IS NOT NEW.acmg_classification
+      BEGIN
+        UPDATE cohort_variant_summary SET
+          has_star = (
+            SELECT CASE WHEN EXISTS(
+              SELECT 1 FROM variant_annotations va
+              WHERE va.chr = NEW.chr AND va.pos = NEW.pos AND va.ref = NEW.ref AND va.alt = NEW.alt AND va.starred = 1
+            ) OR EXISTS(
+              SELECT 1 FROM case_variant_annotations cva
+              JOIN variants v ON cva.variant_id = v.id
+              WHERE v.chr = NEW.chr AND v.pos = NEW.pos AND v.ref = NEW.ref AND v.alt = NEW.alt AND cva.starred = 1
+            ) THEN 1 ELSE 0 END
+          ),
+          has_comment = (
+            SELECT CASE WHEN EXISTS(
+              SELECT 1 FROM variant_annotations va
+              WHERE va.chr = NEW.chr AND va.pos = NEW.pos AND va.ref = NEW.ref AND va.alt = NEW.alt
+              AND va.global_comment IS NOT NULL AND va.global_comment != ''
+            ) OR EXISTS(
+              SELECT 1 FROM case_variant_annotations cva
+              JOIN variants v ON cva.variant_id = v.id
+              WHERE v.chr = NEW.chr AND v.pos = NEW.pos AND v.ref = NEW.ref AND v.alt = NEW.alt
+              AND cva.per_case_comment IS NOT NULL AND cva.per_case_comment != ''
+            ) THEN 1 ELSE 0 END
+          ),
+          acmg_best = (
+            SELECT CASE MAX(rank) WHEN 5 THEN 'Pathogenic' WHEN 4 THEN 'Likely pathogenic'
+              WHEN 3 THEN 'Uncertain significance' WHEN 2 THEN 'Likely benign'
+              WHEN 1 THEN 'Benign' ELSE NULL END
+            FROM (
+              SELECT CASE va.acmg_classification
+                WHEN 'Pathogenic' THEN 5 WHEN 'Likely pathogenic' THEN 4
+                WHEN 'Uncertain significance' THEN 3 WHEN 'Likely benign' THEN 2
+                WHEN 'Benign' THEN 1 ELSE 0 END AS rank
+              FROM variant_annotations va
+              WHERE va.chr = NEW.chr AND va.pos = NEW.pos AND va.ref = NEW.ref AND va.alt = NEW.alt
+              AND va.acmg_classification IS NOT NULL
+              UNION ALL
+              SELECT CASE cva.acmg_classification
+                WHEN 'Pathogenic' THEN 5 WHEN 'Likely pathogenic' THEN 4
+                WHEN 'Uncertain significance' THEN 3 WHEN 'Likely benign' THEN 2
+                WHEN 'Benign' THEN 1 ELSE 0 END
+              FROM case_variant_annotations cva
+              JOIN variants v ON cva.variant_id = v.id
+              WHERE v.chr = NEW.chr AND v.pos = NEW.pos AND v.ref = NEW.ref AND v.alt = NEW.alt
+              AND cva.acmg_classification IS NOT NULL
+            )
+          )
+        WHERE chr = NEW.chr AND pos = NEW.pos AND ref = NEW.ref AND alt = NEW.alt;
+      END
+    `)
+
+    db.exec(`
+      CREATE TRIGGER trg_va_after_delete
+      AFTER DELETE ON variant_annotations
+      FOR EACH ROW
+      BEGIN
+        UPDATE cohort_variant_summary SET
+          has_star = (
+            SELECT CASE WHEN EXISTS(
+              SELECT 1 FROM variant_annotations va
+              WHERE va.chr = OLD.chr AND va.pos = OLD.pos AND va.ref = OLD.ref AND va.alt = OLD.alt AND va.starred = 1
+            ) OR EXISTS(
+              SELECT 1 FROM case_variant_annotations cva
+              JOIN variants v ON cva.variant_id = v.id
+              WHERE v.chr = OLD.chr AND v.pos = OLD.pos AND v.ref = OLD.ref AND v.alt = OLD.alt AND cva.starred = 1
+            ) THEN 1 ELSE 0 END
+          ),
+          has_comment = (
+            SELECT CASE WHEN EXISTS(
+              SELECT 1 FROM variant_annotations va
+              WHERE va.chr = OLD.chr AND va.pos = OLD.pos AND va.ref = OLD.ref AND va.alt = OLD.alt
+              AND va.global_comment IS NOT NULL AND va.global_comment != ''
+            ) OR EXISTS(
+              SELECT 1 FROM case_variant_annotations cva
+              JOIN variants v ON cva.variant_id = v.id
+              WHERE v.chr = OLD.chr AND v.pos = OLD.pos AND v.ref = OLD.ref AND v.alt = OLD.alt
+              AND cva.per_case_comment IS NOT NULL AND cva.per_case_comment != ''
+            ) THEN 1 ELSE 0 END
+          ),
+          acmg_best = (
+            SELECT CASE MAX(rank) WHEN 5 THEN 'Pathogenic' WHEN 4 THEN 'Likely pathogenic'
+              WHEN 3 THEN 'Uncertain significance' WHEN 2 THEN 'Likely benign'
+              WHEN 1 THEN 'Benign' ELSE NULL END
+            FROM (
+              SELECT CASE va.acmg_classification
+                WHEN 'Pathogenic' THEN 5 WHEN 'Likely pathogenic' THEN 4
+                WHEN 'Uncertain significance' THEN 3 WHEN 'Likely benign' THEN 2
+                WHEN 'Benign' THEN 1 ELSE 0 END AS rank
+              FROM variant_annotations va
+              WHERE va.chr = OLD.chr AND va.pos = OLD.pos AND va.ref = OLD.ref AND va.alt = OLD.alt
+              AND va.acmg_classification IS NOT NULL
+              UNION ALL
+              SELECT CASE cva.acmg_classification
+                WHEN 'Pathogenic' THEN 5 WHEN 'Likely pathogenic' THEN 4
+                WHEN 'Uncertain significance' THEN 3 WHEN 'Likely benign' THEN 2
+                WHEN 'Benign' THEN 1 ELSE 0 END
+              FROM case_variant_annotations cva
+              JOIN variants v ON cva.variant_id = v.id
+              WHERE v.chr = OLD.chr AND v.pos = OLD.pos AND v.ref = OLD.ref AND v.alt = OLD.alt
+              AND cva.acmg_classification IS NOT NULL
+            )
+          )
+        WHERE chr = OLD.chr AND pos = OLD.pos AND ref = OLD.ref AND alt = OLD.alt;
+      END
+    `)
+
+    // --- case_variant_annotations triggers ---
+
+    db.exec(`
+      CREATE TRIGGER trg_cva_after_insert
+      AFTER INSERT ON case_variant_annotations
+      FOR EACH ROW
+      BEGIN
+        UPDATE cohort_variant_summary SET
+          has_star = (
+            SELECT CASE WHEN EXISTS(
+              SELECT 1 FROM variant_annotations va
+              WHERE va.chr = cohort_variant_summary.chr AND va.pos = cohort_variant_summary.pos
+              AND va.ref = cohort_variant_summary.ref AND va.alt = cohort_variant_summary.alt AND va.starred = 1
+            ) OR EXISTS(
+              SELECT 1 FROM case_variant_annotations cva
+              JOIN variants v ON cva.variant_id = v.id
+              WHERE v.chr = cohort_variant_summary.chr AND v.pos = cohort_variant_summary.pos
+              AND v.ref = cohort_variant_summary.ref AND v.alt = cohort_variant_summary.alt AND cva.starred = 1
+            ) THEN 1 ELSE 0 END
+          ),
+          has_comment = (
+            SELECT CASE WHEN EXISTS(
+              SELECT 1 FROM variant_annotations va
+              WHERE va.chr = cohort_variant_summary.chr AND va.pos = cohort_variant_summary.pos
+              AND va.ref = cohort_variant_summary.ref AND va.alt = cohort_variant_summary.alt
+              AND va.global_comment IS NOT NULL AND va.global_comment != ''
+            ) OR EXISTS(
+              SELECT 1 FROM case_variant_annotations cva
+              JOIN variants v ON cva.variant_id = v.id
+              WHERE v.chr = cohort_variant_summary.chr AND v.pos = cohort_variant_summary.pos
+              AND v.ref = cohort_variant_summary.ref AND v.alt = cohort_variant_summary.alt
+              AND cva.per_case_comment IS NOT NULL AND cva.per_case_comment != ''
+            ) THEN 1 ELSE 0 END
+          ),
+          acmg_best = (
+            SELECT CASE MAX(rank) WHEN 5 THEN 'Pathogenic' WHEN 4 THEN 'Likely pathogenic'
+              WHEN 3 THEN 'Uncertain significance' WHEN 2 THEN 'Likely benign'
+              WHEN 1 THEN 'Benign' ELSE NULL END
+            FROM (
+              SELECT CASE va.acmg_classification
+                WHEN 'Pathogenic' THEN 5 WHEN 'Likely pathogenic' THEN 4
+                WHEN 'Uncertain significance' THEN 3 WHEN 'Likely benign' THEN 2
+                WHEN 'Benign' THEN 1 ELSE 0 END AS rank
+              FROM variant_annotations va
+              WHERE va.chr = cohort_variant_summary.chr AND va.pos = cohort_variant_summary.pos
+              AND va.ref = cohort_variant_summary.ref AND va.alt = cohort_variant_summary.alt
+              AND va.acmg_classification IS NOT NULL
+              UNION ALL
+              SELECT CASE cva.acmg_classification
+                WHEN 'Pathogenic' THEN 5 WHEN 'Likely pathogenic' THEN 4
+                WHEN 'Uncertain significance' THEN 3 WHEN 'Likely benign' THEN 2
+                WHEN 'Benign' THEN 1 ELSE 0 END
+              FROM case_variant_annotations cva
+              JOIN variants v ON cva.variant_id = v.id
+              WHERE v.chr = cohort_variant_summary.chr AND v.pos = cohort_variant_summary.pos
+              AND v.ref = cohort_variant_summary.ref AND v.alt = cohort_variant_summary.alt
+              AND cva.acmg_classification IS NOT NULL
+            )
+          )
+        WHERE (chr, pos, ref, alt) IN (
+          SELECT chr, pos, ref, alt FROM variants WHERE id = NEW.variant_id
+        );
+      END
+    `)
+
+    db.exec(`
+      CREATE TRIGGER trg_cva_after_update
+      AFTER UPDATE ON case_variant_annotations
+      FOR EACH ROW
+      WHEN OLD.starred != NEW.starred
+        OR OLD.per_case_comment IS NOT NEW.per_case_comment
+        OR OLD.acmg_classification IS NOT NEW.acmg_classification
+      BEGIN
+        UPDATE cohort_variant_summary SET
+          has_star = (
+            SELECT CASE WHEN EXISTS(
+              SELECT 1 FROM variant_annotations va
+              WHERE va.chr = cohort_variant_summary.chr AND va.pos = cohort_variant_summary.pos
+              AND va.ref = cohort_variant_summary.ref AND va.alt = cohort_variant_summary.alt AND va.starred = 1
+            ) OR EXISTS(
+              SELECT 1 FROM case_variant_annotations cva
+              JOIN variants v ON cva.variant_id = v.id
+              WHERE v.chr = cohort_variant_summary.chr AND v.pos = cohort_variant_summary.pos
+              AND v.ref = cohort_variant_summary.ref AND v.alt = cohort_variant_summary.alt AND cva.starred = 1
+            ) THEN 1 ELSE 0 END
+          ),
+          has_comment = (
+            SELECT CASE WHEN EXISTS(
+              SELECT 1 FROM variant_annotations va
+              WHERE va.chr = cohort_variant_summary.chr AND va.pos = cohort_variant_summary.pos
+              AND va.ref = cohort_variant_summary.ref AND va.alt = cohort_variant_summary.alt
+              AND va.global_comment IS NOT NULL AND va.global_comment != ''
+            ) OR EXISTS(
+              SELECT 1 FROM case_variant_annotations cva
+              JOIN variants v ON cva.variant_id = v.id
+              WHERE v.chr = cohort_variant_summary.chr AND v.pos = cohort_variant_summary.pos
+              AND v.ref = cohort_variant_summary.ref AND v.alt = cohort_variant_summary.alt
+              AND cva.per_case_comment IS NOT NULL AND cva.per_case_comment != ''
+            ) THEN 1 ELSE 0 END
+          ),
+          acmg_best = (
+            SELECT CASE MAX(rank) WHEN 5 THEN 'Pathogenic' WHEN 4 THEN 'Likely pathogenic'
+              WHEN 3 THEN 'Uncertain significance' WHEN 2 THEN 'Likely benign'
+              WHEN 1 THEN 'Benign' ELSE NULL END
+            FROM (
+              SELECT CASE va.acmg_classification
+                WHEN 'Pathogenic' THEN 5 WHEN 'Likely pathogenic' THEN 4
+                WHEN 'Uncertain significance' THEN 3 WHEN 'Likely benign' THEN 2
+                WHEN 'Benign' THEN 1 ELSE 0 END AS rank
+              FROM variant_annotations va
+              WHERE va.chr = cohort_variant_summary.chr AND va.pos = cohort_variant_summary.pos
+              AND va.ref = cohort_variant_summary.ref AND va.alt = cohort_variant_summary.alt
+              AND va.acmg_classification IS NOT NULL
+              UNION ALL
+              SELECT CASE cva.acmg_classification
+                WHEN 'Pathogenic' THEN 5 WHEN 'Likely pathogenic' THEN 4
+                WHEN 'Uncertain significance' THEN 3 WHEN 'Likely benign' THEN 2
+                WHEN 'Benign' THEN 1 ELSE 0 END
+              FROM case_variant_annotations cva
+              JOIN variants v ON cva.variant_id = v.id
+              WHERE v.chr = cohort_variant_summary.chr AND v.pos = cohort_variant_summary.pos
+              AND v.ref = cohort_variant_summary.ref AND v.alt = cohort_variant_summary.alt
+              AND cva.acmg_classification IS NOT NULL
+            )
+          )
+        WHERE (chr, pos, ref, alt) IN (
+          SELECT chr, pos, ref, alt FROM variants WHERE id = NEW.variant_id
+        );
+      END
+    `)
+
+    db.exec(`
+      CREATE TRIGGER trg_cva_after_delete
+      AFTER DELETE ON case_variant_annotations
+      FOR EACH ROW
+      BEGIN
+        UPDATE cohort_variant_summary SET
+          has_star = (
+            SELECT CASE WHEN EXISTS(
+              SELECT 1 FROM variant_annotations va
+              WHERE va.chr = cohort_variant_summary.chr AND va.pos = cohort_variant_summary.pos
+              AND va.ref = cohort_variant_summary.ref AND va.alt = cohort_variant_summary.alt AND va.starred = 1
+            ) OR EXISTS(
+              SELECT 1 FROM case_variant_annotations cva
+              JOIN variants v ON cva.variant_id = v.id
+              WHERE v.chr = cohort_variant_summary.chr AND v.pos = cohort_variant_summary.pos
+              AND v.ref = cohort_variant_summary.ref AND v.alt = cohort_variant_summary.alt AND cva.starred = 1
+            ) THEN 1 ELSE 0 END
+          ),
+          has_comment = (
+            SELECT CASE WHEN EXISTS(
+              SELECT 1 FROM variant_annotations va
+              WHERE va.chr = cohort_variant_summary.chr AND va.pos = cohort_variant_summary.pos
+              AND va.ref = cohort_variant_summary.ref AND va.alt = cohort_variant_summary.alt
+              AND va.global_comment IS NOT NULL AND va.global_comment != ''
+            ) OR EXISTS(
+              SELECT 1 FROM case_variant_annotations cva
+              JOIN variants v ON cva.variant_id = v.id
+              WHERE v.chr = cohort_variant_summary.chr AND v.pos = cohort_variant_summary.pos
+              AND v.ref = cohort_variant_summary.ref AND v.alt = cohort_variant_summary.alt
+              AND cva.per_case_comment IS NOT NULL AND cva.per_case_comment != ''
+            ) THEN 1 ELSE 0 END
+          ),
+          acmg_best = (
+            SELECT CASE MAX(rank) WHEN 5 THEN 'Pathogenic' WHEN 4 THEN 'Likely pathogenic'
+              WHEN 3 THEN 'Uncertain significance' WHEN 2 THEN 'Likely benign'
+              WHEN 1 THEN 'Benign' ELSE NULL END
+            FROM (
+              SELECT CASE va.acmg_classification
+                WHEN 'Pathogenic' THEN 5 WHEN 'Likely pathogenic' THEN 4
+                WHEN 'Uncertain significance' THEN 3 WHEN 'Likely benign' THEN 2
+                WHEN 'Benign' THEN 1 ELSE 0 END AS rank
+              FROM variant_annotations va
+              WHERE va.chr = cohort_variant_summary.chr AND va.pos = cohort_variant_summary.pos
+              AND va.ref = cohort_variant_summary.ref AND va.alt = cohort_variant_summary.alt
+              AND va.acmg_classification IS NOT NULL
+              UNION ALL
+              SELECT CASE cva.acmg_classification
+                WHEN 'Pathogenic' THEN 5 WHEN 'Likely pathogenic' THEN 4
+                WHEN 'Uncertain significance' THEN 3 WHEN 'Likely benign' THEN 2
+                WHEN 'Benign' THEN 1 ELSE 0 END
+              FROM case_variant_annotations cva
+              JOIN variants v ON cva.variant_id = v.id
+              WHERE v.chr = cohort_variant_summary.chr AND v.pos = cohort_variant_summary.pos
+              AND v.ref = cohort_variant_summary.ref AND v.alt = cohort_variant_summary.alt
+              AND cva.acmg_classification IS NOT NULL
+            )
+          )
+        WHERE (chr, pos, ref, alt) IN (
+          SELECT chr, pos, ref, alt FROM variants WHERE id = OLD.variant_id
+        );
+      END
+    `)
+
+    // Covering indexes for common filter+sort patterns
+    // Drop v13 indexes that are now prefixes of covering indexes
+    db.exec(`
+      DROP INDEX IF EXISTS idx_cvs_consequence;
+      DROP INDEX IF EXISTS idx_cvs_gene;
+
+      CREATE INDEX IF NOT EXISTS idx_cvs_covering_common
+        ON cohort_variant_summary(consequence, gnomad_af, carrier_count);
+
+      CREATE INDEX IF NOT EXISTS idx_cvs_gene_covering
+        ON cohort_variant_summary(gene_symbol, carrier_count);
+    `)
+
+    db.exec('PRAGMA user_version = 14')
+  }
 }

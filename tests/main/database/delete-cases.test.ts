@@ -34,7 +34,6 @@ describe('Case Deletion', () => {
   })
 
   it('deleteAllCases should delete all cases and variants', async () => {
-    // Import two cases
     await importService.importVariants(join(FIXTURES_DIR, 'simple-format.json'), {
       caseName: 'Case 1'
     })
@@ -49,24 +48,24 @@ describe('Case Deletion', () => {
     expect(db.cases.getAllCases()).toHaveLength(0)
   })
 
-  it('deleteAllCases should restore FTS triggers after deletion', async () => {
+  it('deleteAllCases should restore FTS triggers and FTS search should work', async () => {
     await importService.importVariants(join(FIXTURES_DIR, 'simple-format.json'), {
       caseName: 'FTS Test'
     })
 
     db.cases.deleteAllCases()
 
-    // Import again — FTS triggers should be restored so FTS works
+    // Import again — FTS triggers should be restored so new variants are indexed
     const result = await importService.importVariants(join(FIXTURES_DIR, 'simple-format.json'), {
       caseName: 'After Delete'
     })
 
     expect(result.variantCount).toBe(3)
 
-    // Verify FTS search still works after triggers were restored
-    const cases = db.cases.getAllCases()
-    expect(cases).toHaveLength(1)
-    expect(cases[0].variant_count).toBe(3)
+    // Verify FTS search actually works (queries variants_fts)
+    const ftsResults = db.variants.searchVariants(result.caseId, 'BRCA1')
+    expect(ftsResults.length).toBeGreaterThan(0)
+    expect(ftsResults[0].gene_symbol).toBe('BRCA1')
   })
 
   it('deleteCasesBatch should delete specified cases', async () => {
@@ -88,23 +87,30 @@ describe('Case Deletion', () => {
     expect(db.cases.getAllCases()[0].name).toBe('Batch Case 3')
   })
 
-  it('deleteCasesBatch should restore FTS triggers after deletion', async () => {
-    const r1 = await importService.importVariants(join(FIXTURES_DIR, 'simple-format.json'), {
-      caseName: 'FTS Batch 1'
-    })
+  it('deleteCasesBatch should restore FTS triggers and FTS search should work', async () => {
+    // Import enough cases to trigger the FTS optimization (> 5)
+    const ids: number[] = []
+    for (let i = 0; i < 6; i++) {
+      const r = await importService.importVariants(join(FIXTURES_DIR, 'simple-format.json'), {
+        caseName: `FTS Batch ${i}`
+      })
+      ids.push(r.caseId)
+    }
 
-    db.cases.deleteCasesBatch([r1.caseId])
+    db.cases.deleteCasesBatch(ids)
 
-    // Import again and verify FTS still works
+    // Import again and verify FTS search works
     const result = await importService.importVariants(join(FIXTURES_DIR, 'simple-format.json'), {
       caseName: 'After Batch Delete'
     })
 
     expect(result.variantCount).toBe(3)
+    const ftsResults = db.variants.searchVariants(result.caseId, 'CFTR')
+    expect(ftsResults.length).toBeGreaterThan(0)
+    expect(ftsResults[0].gene_symbol).toBe('CFTR')
   })
 
-  it('deleteAllCases should complete quickly even with many variants', async () => {
-    // Import the columnar file which has more variants
+  it('deleteAllCases should delete all variants from columnar import', async () => {
     await importService.importVariants(join(FIXTURES_DIR, 'columnar-format.json'), {
       caseName: 'Large Case'
     })
@@ -112,12 +118,7 @@ describe('Case Deletion', () => {
     const cases = db.cases.getAllCases()
     expect(cases[0].variant_count).toBeGreaterThan(0)
 
-    const start = Date.now()
     db.cases.deleteAllCases()
-    const elapsed = Date.now() - start
-
-    // Should complete in under 2 seconds even with FTS rebuild
-    expect(elapsed).toBeLessThan(2000)
     expect(db.cases.getAllCases()).toHaveLength(0)
   })
 

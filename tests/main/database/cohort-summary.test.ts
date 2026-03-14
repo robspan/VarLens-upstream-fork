@@ -148,6 +148,119 @@ describe('Annotation Triggers', () => {
   })
 })
 
+describe('Incremental updates', () => {
+  let db: Database.Database
+  let summaryService: CohortSummaryService
+
+  const insertCase = (name: string): number => {
+    return db
+      .prepare(
+        'INSERT INTO cases (name, file_path, file_size, variant_count, created_at) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run(name, `/test/${name}.json`, 1000, 0, Date.now()).lastInsertRowid as number
+  }
+
+  const insertVariant = (
+    caseId: number,
+    chr: string,
+    pos: number,
+    ref: string,
+    alt: string
+  ): number => {
+    return db
+      .prepare(
+        'INSERT INTO variants (case_id, chr, pos, ref, alt, gene_symbol, gt_num) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      )
+      .run(caseId, chr, pos, ref, alt, 'BRCA1', '0/1').lastInsertRowid as number
+  }
+
+  beforeEach(() => {
+    db = new Database(':memory:')
+    db.pragma('journal_mode = WAL')
+    db.pragma('foreign_keys = ON')
+    initializeSchema(db)
+    runMigrations(db)
+    summaryService = new CohortSummaryService(db)
+  })
+
+  afterEach(() => {
+    db.close()
+  })
+
+  it('should incrementally add a case without full rebuild', () => {
+    const case1 = insertCase('case1')
+    insertVariant(case1, '1', 100, 'A', 'G')
+    insertVariant(case1, '1', 200, 'C', 'T')
+    summaryService.rebuild()
+
+    // Add second case sharing one variant
+    const case2 = insertCase('case2')
+    insertVariant(case2, '1', 100, 'A', 'G')
+    insertVariant(case2, '1', 300, 'G', 'A')
+    summaryService.incrementalAdd(case2)
+
+    const shared = db
+      .prepare(
+        "SELECT carrier_count FROM cohort_variant_summary WHERE chr = '1' AND pos = 100"
+      )
+      .get() as { carrier_count: number }
+    expect(shared.carrier_count).toBe(2)
+
+    const newVariant = db
+      .prepare(
+        "SELECT carrier_count FROM cohort_variant_summary WHERE chr = '1' AND pos = 300"
+      )
+      .get() as { carrier_count: number }
+    expect(newVariant.carrier_count).toBe(1)
+
+    const total = db.prepare('SELECT COUNT(*) as c FROM cohort_variant_summary').get() as {
+      c: number
+    }
+    expect(total.c).toBe(3) // 100, 200, 300
+  })
+
+  it('should incrementally remove a case without full rebuild', () => {
+    const case1 = insertCase('case1')
+    insertVariant(case1, '1', 100, 'A', 'G')
+    insertVariant(case1, '1', 200, 'C', 'T')
+    const case2 = insertCase('case2')
+    insertVariant(case2, '1', 100, 'A', 'G')
+    summaryService.rebuild()
+
+    // Remove case2 (shares variant at pos 100)
+    summaryService.incrementalRemove(case2)
+    db.prepare('DELETE FROM cases WHERE id = ?').run(case2)
+
+    const shared = db
+      .prepare(
+        "SELECT carrier_count FROM cohort_variant_summary WHERE chr = '1' AND pos = 100"
+      )
+      .get() as { carrier_count: number }
+    expect(shared.carrier_count).toBe(1)
+
+    // Variant at 200 should be unchanged
+    const unchanged = db
+      .prepare(
+        "SELECT carrier_count FROM cohort_variant_summary WHERE chr = '1' AND pos = 200"
+      )
+      .get() as { carrier_count: number }
+    expect(unchanged.carrier_count).toBe(1)
+  })
+
+  it('should remove summary rows with zero carriers after incremental remove', () => {
+    const case1 = insertCase('case1')
+    insertVariant(case1, '1', 100, 'A', 'G')
+    summaryService.rebuild()
+
+    summaryService.incrementalRemove(case1)
+
+    const row = db
+      .prepare("SELECT * FROM cohort_variant_summary WHERE chr = '1' AND pos = 100")
+      .get()
+    expect(row).toBeUndefined() // removed because carrier_count dropped to 0
+  })
+})
+
 describe('Rebuild with annotation flags', () => {
   let db: Database.Database
   let summaryService: CohortSummaryService

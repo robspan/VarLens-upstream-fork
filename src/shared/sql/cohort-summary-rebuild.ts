@@ -125,3 +125,58 @@ export const MARK_STALE_SQL = `
 /** Check if summary tables exist (for workers on pre-v13 databases) */
 export const CHECK_TABLE_EXISTS_SQL =
   "SELECT COUNT(*) as c FROM sqlite_master WHERE type='table' AND name='cohort_variant_summary'"
+
+export const INCREMENTAL_ADD_SQL = `
+  INSERT INTO cohort_variant_summary (
+    chr, pos, ref, alt, gene_symbol, cdna, aa_change,
+    consequence, func, clinvar, gnomad_af, cadd,
+    transcript, omim_mim_number,
+    carrier_count, het_count, hom_count,
+    cohort_frequency, has_star, has_comment, acmg_best,
+    variant_key
+  )
+  SELECT
+    chr, pos, ref, alt,
+    MAX(gene_symbol), MAX(cdna), MAX(aa_change),
+    MAX(consequence), MAX(func), MAX(clinvar),
+    MAX(gnomad_af), MAX(cadd), MAX(transcript), MAX(omim_mim_number),
+    1,
+    SUM(CASE WHEN gt_num IN ('0/1','1/0','0|1','1|0') THEN 1 ELSE 0 END),
+    SUM(CASE WHEN gt_num IN ('1/1','1|1') THEN 1 ELSE 0 END),
+    CAST(1 AS REAL) / (SELECT COUNT(*) FROM cases),
+    0, 0, NULL,
+    chr || ':' || pos || ':' || ref || ':' || alt
+  FROM variants
+  WHERE case_id = ?
+  GROUP BY chr, pos, ref, alt
+  ON CONFLICT(chr, pos, ref, alt) DO UPDATE SET
+    carrier_count = carrier_count + excluded.carrier_count,
+    het_count = het_count + excluded.het_count,
+    hom_count = hom_count + excluded.hom_count,
+    cohort_frequency = CAST(carrier_count + excluded.carrier_count AS REAL) / (SELECT COUNT(*) FROM cases);
+`
+
+export const INCREMENTAL_REMOVE_SQL = `
+  UPDATE cohort_variant_summary SET
+    carrier_count = cohort_variant_summary.carrier_count - sub.carrier_count,
+    het_count = cohort_variant_summary.het_count - sub.het_count,
+    hom_count = cohort_variant_summary.hom_count - sub.hom_count,
+    cohort_frequency = CAST(cohort_variant_summary.carrier_count - sub.carrier_count AS REAL) / (SELECT COUNT(*) FROM cases)
+  FROM (
+    SELECT chr, pos, ref, alt,
+      COUNT(DISTINCT case_id) AS carrier_count,
+      SUM(CASE WHEN gt_num IN ('0/1','1/0','0|1','1|0') THEN 1 ELSE 0 END) AS het_count,
+      SUM(CASE WHEN gt_num IN ('1/1','1|1') THEN 1 ELSE 0 END) AS hom_count
+    FROM variants
+    WHERE case_id = ?
+    GROUP BY chr, pos, ref, alt
+  ) sub
+  WHERE cohort_variant_summary.chr = sub.chr
+    AND cohort_variant_summary.pos = sub.pos
+    AND cohort_variant_summary.ref = sub.ref
+    AND cohort_variant_summary.alt = sub.alt;
+`
+
+export const CLEANUP_ZERO_CARRIERS_SQL = `
+  DELETE FROM cohort_variant_summary WHERE carrier_count <= 0;
+`

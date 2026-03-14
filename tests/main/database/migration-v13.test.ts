@@ -57,16 +57,16 @@ describe('Migration v13: cohort summary tables', () => {
       )
       .all() as { name: string }[]
     const indexNames = indexes.map((i) => i.name)
-    expect(indexNames).toContain('idx_cvs_gene')
+    expect(indexNames).toContain('idx_cvs_gene_covering')
     expect(indexNames).toContain('idx_cvs_carrier')
     expect(indexNames).toContain('idx_cvs_filters')
-    expect(indexNames).toContain('idx_cvs_consequence')
+    expect(indexNames).toContain('idx_cvs_covering_common')
   })
 
   it('is idempotent (safe to run twice)', () => {
     runMigrations(db)
     expect(() => runMigrations(db)).not.toThrow()
     const version = db.prepare('PRAGMA user_version').get() as { user_version: number }
-    expect(version.user_version).toBe(13)
+    expect(version.user_version).toBe(14)
   })
 })

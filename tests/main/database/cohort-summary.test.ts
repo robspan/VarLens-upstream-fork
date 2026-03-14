@@ -200,16 +200,12 @@ describe('Incremental updates', () => {
     summaryService.incrementalAdd(case2)
 
     const shared = db
-      .prepare(
-        "SELECT carrier_count FROM cohort_variant_summary WHERE chr = '1' AND pos = 100"
-      )
+      .prepare("SELECT carrier_count FROM cohort_variant_summary WHERE chr = '1' AND pos = 100")
       .get() as { carrier_count: number }
     expect(shared.carrier_count).toBe(2)
 
     const newVariant = db
-      .prepare(
-        "SELECT carrier_count FROM cohort_variant_summary WHERE chr = '1' AND pos = 300"
-      )
+      .prepare("SELECT carrier_count FROM cohort_variant_summary WHERE chr = '1' AND pos = 300")
       .get() as { carrier_count: number }
     expect(newVariant.carrier_count).toBe(1)
 
@@ -232,17 +228,13 @@ describe('Incremental updates', () => {
     db.prepare('DELETE FROM cases WHERE id = ?').run(case2)
 
     const shared = db
-      .prepare(
-        "SELECT carrier_count FROM cohort_variant_summary WHERE chr = '1' AND pos = 100"
-      )
+      .prepare("SELECT carrier_count FROM cohort_variant_summary WHERE chr = '1' AND pos = 100")
       .get() as { carrier_count: number }
     expect(shared.carrier_count).toBe(1)
 
     // Variant at 200 should be unchanged
     const unchanged = db
-      .prepare(
-        "SELECT carrier_count FROM cohort_variant_summary WHERE chr = '1' AND pos = 200"
-      )
+      .prepare("SELECT carrier_count FROM cohort_variant_summary WHERE chr = '1' AND pos = 200")
       .get() as { carrier_count: number }
     expect(unchanged.carrier_count).toBe(1)
   })

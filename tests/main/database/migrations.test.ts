@@ -770,9 +770,11 @@ describe('Schema Migrations', () => {
       const db = service.database
 
       // Verify new columns exist
-      const columns = db
-        .prepare("PRAGMA table_info('cohort_variant_summary')")
-        .all() as { name: string; type: string; notnull: number }[]
+      const columns = db.prepare("PRAGMA table_info('cohort_variant_summary')").all() as {
+        name: string
+        type: string
+        notnull: number
+      }[]
       const columnNames = columns.map((c) => c.name)
 
       expect(columnNames).toContain('has_star')

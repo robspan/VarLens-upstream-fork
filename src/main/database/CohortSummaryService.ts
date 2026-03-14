@@ -10,7 +10,8 @@ import {
   REBUILD_VARIANT_SUMMARY_SQL,
   REBUILD_GENE_BURDEN_SQL,
   UPDATE_META_SQL,
-  MARK_STALE_SQL
+  MARK_STALE_SQL,
+  UPDATE_PER_CASE_ANNOTATION_FLAGS_SQL
 } from '../../shared/sql/cohort-summary-rebuild'
 
 export interface CohortSummaryStatus {
@@ -32,6 +33,7 @@ export class CohortSummaryService {
   rebuild(): void {
     const rebuildTransaction = this.db.transaction(() => {
       this.db.exec(REBUILD_VARIANT_SUMMARY_SQL)
+      this.db.exec(UPDATE_PER_CASE_ANNOTATION_FLAGS_SQL)
       this.db.exec(REBUILD_GENE_BURDEN_SQL)
       this.db.exec(UPDATE_META_SQL)
     })

@@ -147,3 +147,77 @@ describe('Annotation Triggers', () => {
     expect(getSummaryRow('1', 12345, 'A', 'G')?.acmg_best).toBe('Likely pathogenic')
   })
 })
+
+describe('Rebuild with annotation flags', () => {
+  let db: Database.Database
+  let summaryService: CohortSummaryService
+
+  const insertCase = (name: string): number => {
+    return db
+      .prepare(
+        'INSERT INTO cases (name, file_path, file_size, variant_count, created_at) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run(name, `/test/${name}.json`, 1000, 0, Date.now()).lastInsertRowid as number
+  }
+
+  const insertVariant = (
+    caseId: number,
+    chr: string,
+    pos: number,
+    ref: string,
+    alt: string
+  ): number => {
+    return db
+      .prepare(
+        'INSERT INTO variants (case_id, chr, pos, ref, alt, gene_symbol, gt_num) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      )
+      .run(caseId, chr, pos, ref, alt, 'BRCA1', '0/1').lastInsertRowid as number
+  }
+
+  beforeEach(() => {
+    db = new Database(':memory:')
+    db.pragma('journal_mode = WAL')
+    db.pragma('foreign_keys = ON')
+    initializeSchema(db)
+    runMigrations(db)
+    summaryService = new CohortSummaryService(db)
+  })
+
+  afterEach(() => {
+    db.close()
+  })
+
+  it('should populate annotation flags and cohort_frequency during rebuild', () => {
+    const caseId = insertCase('test')
+    insertVariant(caseId, '1', 100, 'A', 'G')
+    insertVariant(caseId, '1', 200, 'C', 'T')
+
+    // Star one variant globally
+    db.prepare(
+      `INSERT INTO variant_annotations (chr, pos, ref, alt, starred, global_comment, created_at, updated_at)
+       VALUES ('1', 100, 'A', 'G', 1, 'test comment', 0, 0)`
+    ).run()
+
+    summaryService.rebuild()
+
+    const starred = db
+      .prepare(
+        "SELECT has_star, has_comment, cohort_frequency FROM cohort_variant_summary WHERE chr = '1' AND pos = 100"
+      )
+      .get() as { has_star: number; has_comment: number; cohort_frequency: number }
+
+    expect(starred.has_star).toBe(1)
+    expect(starred.has_comment).toBe(1)
+    expect(starred.cohort_frequency).toBeCloseTo(1.0) // 1 carrier / 1 case
+
+    const unstarred = db
+      .prepare(
+        "SELECT has_star, has_comment, cohort_frequency FROM cohort_variant_summary WHERE chr = '1' AND pos = 200"
+      )
+      .get() as { has_star: number; has_comment: number; cohort_frequency: number }
+
+    expect(unstarred.has_star).toBe(0)
+    expect(unstarred.has_comment).toBe(0)
+    expect(unstarred.cohort_frequency).toBeCloseTo(1.0)
+  })
+})

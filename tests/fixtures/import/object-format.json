@@ -1,0 +1,32 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "exportDate": "2025-01-01"
+  },
+  "samples": {
+    "sample-001": {
+      "variants": [
+        {
+          "chr": "2",
+          "pos": 166105000,
+          "ref": "G",
+          "alt": "A",
+          "gene_symbol": "SCN1A",
+          "consequence": "MODERATE",
+          "gnomad_af": 0.00008,
+          "cadd": 29.4
+        },
+        {
+          "chr": "X",
+          "pos": 108570600,
+          "ref": "G",
+          "alt": "A",
+          "gene_symbol": "COL4A5",
+          "consequence": "HIGH",
+          "gnomad_af": 0.0008,
+          "cadd": 26.4
+        }
+      ]
+    }
+  }
+}

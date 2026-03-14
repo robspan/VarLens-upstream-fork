@@ -1,6 +1,7 @@
 import { BaseRepository } from './BaseRepository'
 import type { Case } from './types'
 import { DatabaseError, NotFoundError, UniqueConstraintError } from './errors'
+import { createFTSTriggers } from './schema'
 
 export class CaseRepository extends BaseRepository {
   createCase(name: string, filePath: string, fileSize: number): number {
@@ -61,14 +62,66 @@ export class CaseRepository extends BaseRepository {
   }
 
   deleteAllCases(): number {
-    return this.execRun(this.kysely.deleteFrom('cases')).changes
+    // Drop FTS triggers before bulk delete to avoid per-row FTS updates
+    // which cause severe blocking on large databases
+    this.db.exec('DROP TRIGGER IF EXISTS variants_fts_ai')
+    this.db.exec('DROP TRIGGER IF EXISTS variants_fts_ad')
+    this.db.exec('DROP TRIGGER IF EXISTS variants_fts_au')
+
+    try {
+      const changes = this.runTransaction(() => {
+        return this.execRun(this.kysely.deleteFrom('cases')).changes
+      })
+
+      // Rebuild FTS index (now empty) and restore triggers
+      try {
+        this.db.exec("INSERT INTO variants_fts(variants_fts) VALUES('rebuild')")
+      } catch {
+        // best effort
+      }
+      this.db.exec(createFTSTriggers)
+
+      return changes
+    } catch (error) {
+      // Restore triggers even on failure
+      try {
+        this.db.exec(createFTSTriggers)
+      } catch {
+        // best effort
+      }
+      throw error
+    }
   }
 
   deleteCasesBatch(ids: number[]): number {
     if (ids.length === 0) return 0
-    return this.runTransaction(() => {
-      const result = this.execRun(this.kysely.deleteFrom('cases').where('id', 'in', ids))
-      return result.changes
-    })
+
+    // Drop FTS triggers before bulk delete to avoid per-row FTS updates
+    this.db.exec('DROP TRIGGER IF EXISTS variants_fts_ai')
+    this.db.exec('DROP TRIGGER IF EXISTS variants_fts_ad')
+    this.db.exec('DROP TRIGGER IF EXISTS variants_fts_au')
+
+    try {
+      const changes = this.runTransaction(() => {
+        return this.execRun(this.kysely.deleteFrom('cases').where('id', 'in', ids)).changes
+      })
+
+      // Rebuild FTS index and restore triggers
+      try {
+        this.db.exec("INSERT INTO variants_fts(variants_fts) VALUES('rebuild')")
+      } catch {
+        // best effort
+      }
+      this.db.exec(createFTSTriggers)
+
+      return changes
+    } catch (error) {
+      try {
+        this.db.exec(createFTSTriggers)
+      } catch {
+        // best effort
+      }
+      throw error
+    }
   }
 }

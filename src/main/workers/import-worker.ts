@@ -1,8 +1,7 @@
 import { parentPort } from 'worker_threads'
 import Database from 'better-sqlite3-multiple-ciphers'
 import type { Database as DatabaseType } from 'better-sqlite3-multiple-ciphers'
-import { createReadStream, statSync, existsSync } from 'node:fs'
-import { createGunzip } from 'node:zlib'
+import { statSync, existsSync } from 'node:fs'
 import { pipeline } from 'node:stream/promises'
 import { parser } from 'stream-json'
 import { pick } from 'stream-json/filters/Pick'
@@ -18,6 +17,7 @@ import { createObjectFormatMapper } from '../import/transforms/ObjectFormatMappe
 import { createBatchAccumulator } from '../import/transforms/BatchAccumulator'
 import { resolveColumnIndices } from '../import/config/fieldMapping'
 import { detectFormat } from '../import/format-detection'
+import { createDecompressedStream } from '../import/stream-utils'
 import { createFTSTriggers } from '../database/schema'
 
 if (!parentPort) throw new Error('Must be run as worker thread')
@@ -433,8 +433,7 @@ async function runImportPipeline(
   switch (formatInfo.format) {
     case 'simple':
       await pipeline(
-        createReadStream(filePath),
-        createGunzip(),
+        createDecompressedStream(filePath),
         parser(),
         pick({ filter: 'variants' }),
         streamArray(),
@@ -446,8 +445,7 @@ async function runImportPipeline(
     case 'object': {
       const samplePath = `samples.${formatInfo.caseKey}.variants`
       await pipeline(
-        createReadStream(filePath),
-        createGunzip(),
+        createDecompressedStream(filePath),
         parser(),
         pick({ filter: samplePath }),
         streamArray(),
@@ -466,8 +464,7 @@ async function runImportPipeline(
       const fieldMapper = createFieldMapper(dictionaries, columnIndices)
 
       await pipeline(
-        createReadStream(filePath),
-        createGunzip(),
+        createDecompressedStream(filePath),
         parser(),
         pick({ filter: dataPath }),
         streamArray(),
@@ -502,8 +499,7 @@ async function parseHeader(
     const fieldsToExtract = new Set(['Gene', 'Transcript', 'HpoSimScore', 'MoI'])
     let resolved = false
 
-    const stream = createReadStream(filePath)
-      .pipe(createGunzip())
+    const stream = createDecompressedStream(filePath)
       .pipe(parser())
       .pipe(pick({ filter: headerPath }))
       .pipe(streamArray())

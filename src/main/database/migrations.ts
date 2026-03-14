@@ -617,4 +617,23 @@ export function runMigrations(db: Database.Database): void {
 
     db.exec('PRAGMA user_version = 13')
   }
+
+  // ── Migration v14: Cohort performance optimization ──
+  if (currentVersion < 14) {
+    // Denormalized annotation flags
+    db.exec(`
+      ALTER TABLE cohort_variant_summary ADD COLUMN has_star INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE cohort_variant_summary ADD COLUMN has_comment INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE cohort_variant_summary ADD COLUMN acmg_best TEXT;
+      ALTER TABLE cohort_variant_summary ADD COLUMN cohort_frequency REAL;
+    `)
+
+    // Index for frequency filter
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_cvs_cohort_freq
+        ON cohort_variant_summary(cohort_frequency);
+    `)
+
+    db.exec('PRAGMA user_version = 14')
+  }
 }

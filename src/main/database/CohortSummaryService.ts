@@ -14,7 +14,8 @@ import {
   UPDATE_PER_CASE_ANNOTATION_FLAGS_SQL,
   INCREMENTAL_ADD_SQL,
   INCREMENTAL_REMOVE_SQL,
-  CLEANUP_ZERO_CARRIERS_SQL
+  CLEANUP_ZERO_CARRIERS_SQL,
+  RECOMPUTE_ALL_FREQUENCIES_SQL
 } from '../../shared/sql/cohort-summary-rebuild'
 
 export interface CohortSummaryStatus {
@@ -63,7 +64,8 @@ export class CohortSummaryService {
   incrementalAdd(caseId: number): void {
     const addTransaction = this.db.transaction(() => {
       this.db.prepare(INCREMENTAL_ADD_SQL).run(caseId)
-      this.db.exec(UPDATE_META_SQL)
+      this.db.exec(RECOMPUTE_ALL_FREQUENCIES_SQL)
+      this.db.exec(MARK_STALE_SQL) // gene_burden_summary not updated
     })
     addTransaction()
 
@@ -82,7 +84,8 @@ export class CohortSummaryService {
     const removeTransaction = this.db.transaction(() => {
       this.db.prepare(INCREMENTAL_REMOVE_SQL).run(caseId)
       this.db.exec(CLEANUP_ZERO_CARRIERS_SQL)
-      this.db.exec(UPDATE_META_SQL)
+      this.db.exec(RECOMPUTE_ALL_FREQUENCIES_SQL)
+      this.db.exec(MARK_STALE_SQL) // gene_burden_summary not updated
     })
     removeTransaction()
 

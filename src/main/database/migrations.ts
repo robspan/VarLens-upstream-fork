@@ -634,6 +634,18 @@ export function runMigrations(db: Database.Database): void {
         ON cohort_variant_summary(cohort_frequency);
     `)
 
+    // Backfill cohort_frequency for existing rows
+    db.exec(`
+      UPDATE cohort_variant_summary
+      SET cohort_frequency = CAST(carrier_count AS REAL) / NULLIF((SELECT COUNT(*) FROM cases), 0);
+    `)
+
+    // Mark stale to trigger full rebuild (populates annotation flags)
+    db.exec(`
+      INSERT OR REPLACE INTO cohort_summary_meta (key, value)
+      VALUES ('is_stale', '1');
+    `)
+
     // ── AFTER triggers: keep has_star, has_comment, acmg_best in sync ──
 
     // Helper: the UPDATE body that recomputes flags from both annotation tables.

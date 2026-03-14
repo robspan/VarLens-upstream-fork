@@ -216,7 +216,7 @@ export class CohortService {
         cvs.aa_change,
         cvs.carrier_count,
         ${totalCases} AS total_cases,
-        CAST(cvs.carrier_count AS REAL) / ${totalCases} AS cohort_frequency,
+        cvs.cohort_frequency,
         cvs.het_count,
         cvs.hom_count,
         cvs.variant_key,

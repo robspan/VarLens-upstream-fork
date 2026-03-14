@@ -200,9 +200,19 @@ describe('Incremental updates', () => {
     summaryService.incrementalAdd(case2)
 
     const shared = db
-      .prepare("SELECT carrier_count FROM cohort_variant_summary WHERE chr = '1' AND pos = 100")
-      .get() as { carrier_count: number }
+      .prepare(
+        "SELECT carrier_count, cohort_frequency FROM cohort_variant_summary WHERE chr = '1' AND pos = 100"
+      )
+      .get() as { carrier_count: number; cohort_frequency: number }
     expect(shared.carrier_count).toBe(2)
+    expect(shared.cohort_frequency).toBeCloseTo(1.0) // 2 carriers / 2 cases
+
+    const case1Only = db
+      .prepare(
+        "SELECT carrier_count, cohort_frequency FROM cohort_variant_summary WHERE chr = '1' AND pos = 200"
+      )
+      .get() as { carrier_count: number; cohort_frequency: number }
+    expect(case1Only.cohort_frequency).toBeCloseTo(0.5) // 1 carrier / 2 cases
 
     const newVariant = db
       .prepare("SELECT carrier_count FROM cohort_variant_summary WHERE chr = '1' AND pos = 300")
@@ -228,9 +238,14 @@ describe('Incremental updates', () => {
     db.prepare('DELETE FROM cases WHERE id = ?').run(case2)
 
     const shared = db
-      .prepare("SELECT carrier_count FROM cohort_variant_summary WHERE chr = '1' AND pos = 100")
-      .get() as { carrier_count: number }
+      .prepare(
+        "SELECT carrier_count, cohort_frequency FROM cohort_variant_summary WHERE chr = '1' AND pos = 100"
+      )
+      .get() as { carrier_count: number; cohort_frequency: number }
     expect(shared.carrier_count).toBe(1)
+    // Frequency recomputed during incrementalRemove (before case delete) uses 2 cases
+    // After case delete, stored frequency is stale (marked stale for full rebuild)
+    expect(shared.cohort_frequency).toBeCloseTo(0.5) // 1 carrier / 2 cases (pre-delete count)
 
     // Variant at 200 should be unchanged
     const unchanged = db

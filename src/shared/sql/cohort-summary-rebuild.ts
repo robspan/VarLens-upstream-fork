@@ -141,32 +141,28 @@ export const INCREMENTAL_ADD_SQL = `
     MAX(consequence), MAX(func), MAX(clinvar),
     MAX(gnomad_af), MAX(cadd), MAX(transcript), MAX(omim_mim_number),
     1,
-    SUM(CASE WHEN gt_num IN ('0/1','1/0','0|1','1|0') THEN 1 ELSE 0 END),
-    SUM(CASE WHEN gt_num IN ('1/1','1|1') THEN 1 ELSE 0 END),
-    CAST(1 AS REAL) / (SELECT COUNT(*) FROM cases),
-    0, 0, NULL,
+    CASE WHEN MAX(gt_num) IN ('0/1','1/0','0|1','1|0') THEN 1 ELSE 0 END,
+    CASE WHEN MAX(gt_num) IN ('1/1','1|1') THEN 1 ELSE 0 END,
+    0.0, 0, 0, NULL,
     chr || ':' || pos || ':' || ref || ':' || alt
   FROM variants
   WHERE case_id = ?
   GROUP BY chr, pos, ref, alt
   ON CONFLICT(chr, pos, ref, alt) DO UPDATE SET
-    carrier_count = carrier_count + excluded.carrier_count,
-    het_count = het_count + excluded.het_count,
-    hom_count = hom_count + excluded.hom_count,
-    cohort_frequency = CAST(carrier_count + excluded.carrier_count AS REAL) / (SELECT COUNT(*) FROM cases);
+    carrier_count = cohort_variant_summary.carrier_count + 1,
+    het_count = cohort_variant_summary.het_count + excluded.het_count,
+    hom_count = cohort_variant_summary.hom_count + excluded.hom_count;
 `
 
 export const INCREMENTAL_REMOVE_SQL = `
   UPDATE cohort_variant_summary SET
-    carrier_count = cohort_variant_summary.carrier_count - sub.carrier_count,
+    carrier_count = cohort_variant_summary.carrier_count - 1,
     het_count = cohort_variant_summary.het_count - sub.het_count,
-    hom_count = cohort_variant_summary.hom_count - sub.hom_count,
-    cohort_frequency = CAST(cohort_variant_summary.carrier_count - sub.carrier_count AS REAL) / (SELECT COUNT(*) FROM cases)
+    hom_count = cohort_variant_summary.hom_count - sub.hom_count
   FROM (
     SELECT chr, pos, ref, alt,
-      COUNT(DISTINCT case_id) AS carrier_count,
-      SUM(CASE WHEN gt_num IN ('0/1','1/0','0|1','1|0') THEN 1 ELSE 0 END) AS het_count,
-      SUM(CASE WHEN gt_num IN ('1/1','1|1') THEN 1 ELSE 0 END) AS hom_count
+      CASE WHEN MAX(gt_num) IN ('0/1','1/0','0|1','1|0') THEN 1 ELSE 0 END AS het_count,
+      CASE WHEN MAX(gt_num) IN ('1/1','1|1') THEN 1 ELSE 0 END AS hom_count
     FROM variants
     WHERE case_id = ?
     GROUP BY chr, pos, ref, alt
@@ -179,4 +175,9 @@ export const INCREMENTAL_REMOVE_SQL = `
 
 export const CLEANUP_ZERO_CARRIERS_SQL = `
   DELETE FROM cohort_variant_summary WHERE carrier_count <= 0;
+`
+
+export const RECOMPUTE_ALL_FREQUENCIES_SQL = `
+  UPDATE cohort_variant_summary
+  SET cohort_frequency = CAST(carrier_count AS REAL) / (SELECT COUNT(*) FROM cases);
 `

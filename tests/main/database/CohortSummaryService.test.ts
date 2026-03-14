@@ -144,9 +144,9 @@ describe('CohortSummaryService', () => {
       expect(status.is_stale).toBe(true)
     })
 
-    it('returns not stale when no meta rows exist', () => {
+    it('returns stale after migration v14 (marks stale by default)', () => {
       const status = service.getStatus()
-      expect(status.is_stale).toBe(false)
+      expect(status.is_stale).toBe(true)
       expect(status.last_rebuilt_at).toBe(0)
     })
   })

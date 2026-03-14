@@ -77,18 +77,23 @@ export function registerCaseHandlers({ ipcMain, getDb }: HandlerDependencies): v
 
       const db = getDb()
 
+      let incrementalSucceeded = false
       try {
         // Incremental remove BEFORE cascade delete (reads from variants)
-        // If this fails, fall back to markStale + full rebuild via worker
         db.cohortSummary.incrementalRemove(validated.data)
+        incrementalSucceeded = true
       } catch {
-        // Fallback: mark stale for next full rebuild
+        // Fallback: mark stale — next full rebuild will correct
         db.cohortSummary.markStale()
         safeEmit('cohort:summaryRebuilt', { is_stale: true })
       }
 
       db.cases.deleteCase(validated.data)
-      safeEmit('cohort:summaryRebuilt', { is_stale: false })
+
+      if (incrementalSucceeded) {
+        // Variant summary updated but gene_burden still stale
+        safeEmit('cohort:summaryRebuilt', { is_stale: true })
+      }
 
       return undefined
     })

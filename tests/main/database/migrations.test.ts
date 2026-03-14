@@ -782,7 +782,7 @@ describe('Schema Migrations', () => {
       expect(columnNames).toContain('acmg_best')
       expect(columnNames).toContain('cohort_frequency')
 
-      // Verify has_star and has_comment have NOT NULL DEFAULT 0
+      // Verify has_star has NOT NULL constraint
       const hasStar = columns.find((c) => c.name === 'has_star')!
       expect(hasStar.notnull).toBe(1)
 

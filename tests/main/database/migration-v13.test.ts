@@ -3,7 +3,7 @@ import Database from 'better-sqlite3-multiple-ciphers'
 import { initializeSchema } from '../../../src/main/database/schema'
 import { runMigrations } from '../../../src/main/database/migrations'
 
-describe('Migration v13: cohort summary tables', () => {
+describe('Migration v13-v14: cohort summary tables', () => {
   let db: Database.Database
 
   beforeEach(() => {

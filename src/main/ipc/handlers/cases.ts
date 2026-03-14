@@ -89,11 +89,16 @@ export function registerCaseHandlers({ ipcMain, getDb }: HandlerDependencies): v
           dbPath: db.getPath(),
           encryptionKey: db.getEncryptionKey()
         })
-        worker.on('message', () => {
-          safeEmit('cohort:summaryRebuilt', { is_stale: false })
+        worker.on('message', (msg: { type: string }) => {
+          if (msg.type === 'complete') {
+            safeEmit('cohort:summaryRebuilt', { is_stale: false })
+          } else {
+            mainLogger.error('Rebuild summary worker failed after single delete', 'cases')
+          }
           worker.terminate().catch(() => {})
         })
-        worker.on('error', () => {
+        worker.on('error', (err: Error) => {
+          mainLogger.error(`Rebuild summary worker error: ${err.message}`, 'cases')
           worker.terminate().catch(() => {})
         })
       } catch {

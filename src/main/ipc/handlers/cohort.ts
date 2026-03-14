@@ -185,6 +185,7 @@ export function registerCohortHandlers({ ipcMain, getDb }: HandlerDependencies):
   ipcMain.handle('cohort:rebuildSummary', async () => {
     return wrapHandler(async () => {
       const db = getDb()
+      safeEmit('cohort:summaryRebuilt', { is_stale: true })
       db.cohortSummary.rebuild()
       safeEmit('cohort:summaryRebuilt', { is_stale: false })
     })

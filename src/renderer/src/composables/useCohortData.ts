@@ -102,7 +102,7 @@ export function useCohortData(): UseCohortDataReturn {
   const summary = ref<CohortSummary | null>(null)
   const summaryStale = ref(false)
 
-  // Listen for summary rebuild events
+  // Listen for summary rebuild events and initialize staleness state
   let cleanupSummaryListener: (() => void) | null = null
   if (api) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -111,6 +111,17 @@ export function useCohortData(): UseCohortDataReturn {
       cleanupSummaryListener = cohortApi.onSummaryRebuilt((status: { is_stale: boolean }) => {
         summaryStale.value = status.is_stale
       })
+    }
+    // Initialize staleness from current status (catches in-progress rebuilds)
+    if (typeof cohortApi.getSummaryStatus === 'function') {
+      cohortApi
+        .getSummaryStatus()
+        .then((status: { is_stale: boolean }) => {
+          summaryStale.value = status.is_stale
+        })
+        .catch(() => {
+          /* best effort */
+        })
     }
   }
 

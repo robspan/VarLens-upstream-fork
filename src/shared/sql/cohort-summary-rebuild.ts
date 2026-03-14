@@ -13,16 +13,33 @@ export const REBUILD_VARIANT_SUMMARY_SQL = `
     transcript, omim_mim_number,
     carrier_count, het_count, hom_count, variant_key
   )
+  WITH deduped AS (
+    SELECT
+      chr, pos, ref, alt, case_id,
+      MAX(gene_symbol) AS gene_symbol,
+      MAX(cdna) AS cdna,
+      MAX(aa_change) AS aa_change,
+      MAX(consequence) AS consequence,
+      MAX(func) AS func,
+      MAX(clinvar) AS clinvar,
+      MAX(gnomad_af) AS gnomad_af,
+      MAX(cadd) AS cadd,
+      MAX(transcript) AS transcript,
+      MAX(omim_mim_number) AS omim_mim_number,
+      MAX(gt_num) AS gt_num
+    FROM variants
+    GROUP BY chr, pos, ref, alt, case_id
+  )
   SELECT
     chr, pos, ref, alt,
     MAX(gene_symbol), MAX(cdna), MAX(aa_change),
     MAX(consequence), MAX(func), MAX(clinvar),
     MAX(gnomad_af), MAX(cadd), MAX(transcript), MAX(omim_mim_number),
-    COUNT(DISTINCT case_id),
+    COUNT(*),
     SUM(CASE WHEN gt_num IN ('0/1','1/0','0|1','1|0') THEN 1 ELSE 0 END),
     SUM(CASE WHEN gt_num IN ('1/1','1|1') THEN 1 ELSE 0 END),
     chr || ':' || pos || ':' || ref || ':' || alt
-  FROM variants
+  FROM deduped
   GROUP BY chr, pos, ref, alt;
 `
 

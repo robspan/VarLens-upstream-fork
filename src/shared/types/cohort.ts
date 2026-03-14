@@ -156,4 +156,6 @@ export interface CohortSearchParams {
   acmg_classifications?: string[]
   /** Per-column text filters (key = column name, value = search text) */
   column_filters?: Record<string, string>
+  /** Whether the total count needs to be recomputed (false = use cached count) */
+  _count_needed?: boolean
 }

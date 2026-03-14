@@ -26,6 +26,7 @@ import { DatabaseOverviewService } from './DatabaseOverviewService'
 import { AuditLogRepository } from './AuditLogRepository'
 import { GeneListRepository } from './GeneListRepository'
 import { AuthService } from '../services/auth'
+import { CohortSummaryService } from './CohortSummaryService'
 
 /**
  * DatabaseService class
@@ -51,6 +52,7 @@ export class DatabaseService {
   private _auditLog: AuditLogRepository
   private _geneLists: GeneListRepository
   private _auth: AuthService
+  private _cohortSummary: CohortSummaryService
   private _currentUser: { id: number; username: string; role: string } | null = null
 
   /**
@@ -107,6 +109,22 @@ export class DatabaseService {
       this._auditLog = new AuditLogRepository(this.db, this._kysely)
       this._geneLists = new GeneListRepository(this.db, this._kysely)
       this._auth = new AuthService(this.db)
+      this._cohortSummary = new CohortSummaryService(this.db)
+
+      // Initial cohort summary rebuild if tables are empty but variants exist
+      try {
+        const summaryCount = this.db
+          .prepare('SELECT COUNT(*) as c FROM cohort_variant_summary')
+          .get() as { c: number }
+        const variantCount = this.db.prepare('SELECT COUNT(*) as c FROM variants').get() as {
+          c: number
+        }
+        if (summaryCount.c === 0 && variantCount.c > 0) {
+          this._cohortSummary.rebuild()
+        }
+      } catch {
+        // Best effort — summary will be rebuilt on next import
+      }
 
       // Clean up expired API cache entries on startup
       this.db.prepare('DELETE FROM api_cache WHERE expires_at < ?').run(Date.now())
@@ -158,6 +176,10 @@ export class DatabaseService {
 
   get auth(): AuthService {
     return this._auth
+  }
+
+  get cohortSummary(): CohortSummaryService {
+    return this._cohortSummary
   }
 
   get user(): { id: number; username: string; role: string } | null {

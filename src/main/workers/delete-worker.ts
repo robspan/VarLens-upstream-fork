@@ -10,6 +10,13 @@ import Database from 'better-sqlite3-multiple-ciphers'
 import type { Database as DatabaseType } from 'better-sqlite3-multiple-ciphers'
 import { DATABASE_CONFIG } from '../../shared/config'
 import { createFTSTriggers } from '../database/schema'
+import {
+  REBUILD_VARIANT_SUMMARY_SQL,
+  REBUILD_GENE_BURDEN_SQL,
+  UPDATE_META_SQL,
+  MARK_STALE_SQL,
+  CHECK_TABLE_EXISTS_SQL
+} from '../../shared/sql/cohort-summary-rebuild'
 
 export interface DeleteWorkerRequest {
   type: 'deleteAll' | 'deleteBatch'
@@ -39,6 +46,13 @@ port.on('message', (msg: DeleteWorkerRequest) => {
     db.exec('DROP TRIGGER IF EXISTS variants_fts_ad')
     db.exec('DROP TRIGGER IF EXISTS variants_fts_au')
 
+    // Mark cohort summary as stale before delete
+    try {
+      db.exec(MARK_STALE_SQL)
+    } catch {
+      /* table may not exist */
+    }
+
     let deleted: number
 
     if (msg.type === 'deleteAll') {
@@ -62,6 +76,7 @@ port.on('message', (msg: DeleteWorkerRequest) => {
     }
 
     restoreFts(db)
+    rebuildCohortSummary(db)
 
     const response: DeleteWorkerResponse = { type: 'complete', deleted }
     port.postMessage(response)
@@ -123,6 +138,24 @@ function restoreFts(db: DatabaseType): void {
   }
   try {
     db.exec('ANALYZE')
+  } catch {
+    // best effort
+  }
+}
+
+function rebuildCohortSummary(db: DatabaseType): void {
+  try {
+    const tableExists = db.prepare(CHECK_TABLE_EXISTS_SQL).get() as { c: number }
+    if (tableExists.c === 0) return
+
+    db.transaction(() => {
+      db.exec(REBUILD_VARIANT_SUMMARY_SQL)
+      db.exec(REBUILD_GENE_BURDEN_SQL)
+      db.exec(UPDATE_META_SQL)
+    })()
+
+    db.exec('ANALYZE cohort_variant_summary')
+    db.exec('ANALYZE gene_burden_summary')
   } catch {
     // best effort
   }

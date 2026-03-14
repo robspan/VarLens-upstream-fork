@@ -9,6 +9,7 @@
  * - Loading state management
  * - Error handling via ref (consumer decides how to display)
  * - Cohort summary fetching
+ * - Summary staleness tracking via IPC listener
  * - Reset method for database context changes
  *
  * SOL-02: Centralized cohort data management for CohortTable.vue.
@@ -59,18 +60,6 @@ export interface CohortQueryParams {
   column_filters?: Record<string, string>
 }
 
-/**
- * Return type for useCohortData composable
- *
- * @property variants - Array of cohort variants
- * @property totalCount - Total number of variants matching query (for pagination)
- * @property isLoading - Loading state indicator
- * @property error - Error object if fetch failed (null when no error)
- * @property summary - Cohort summary statistics (null until fetched)
- * @property fetchVariants - Method to fetch variants with given params
- * @property fetchSummary - Method to fetch cohort summary
- * @property reset - Method to reset all state (for database switches)
- */
 /** Raw result from cohort variant query (before state update) */
 export interface CohortQueryResult {
   data: CohortVariant[]
@@ -88,6 +77,8 @@ export interface UseCohortDataReturn {
   error: Ref<Error | null>
   /** Cohort summary statistics */
   summary: Ref<CohortSummary | null>
+  /** Whether the cohort summary is stale (being rebuilt) */
+  summaryStale: Ref<boolean>
   /** Build IPC-safe params from query parameters */
   buildIpcParams: (params: CohortQueryParams) => Record<string, unknown>
   /** Fetch variants and update reactive state */
@@ -96,39 +87,10 @@ export interface UseCohortDataReturn {
   fetchSummary: () => Promise<void>
   /** Reset all state (for database context changes) */
   reset: () => void
+  /** Clean up IPC listeners (call on component unmount) */
+  cleanupListeners: () => void
 }
 
-/**
- * Composable for cohort variant data loading
- *
- * @returns Object with variant data refs and fetch methods
- *
- * @example
- * ```typescript
- * const { variants, totalCount, isLoading, error, fetchVariants, reset } = useCohortData()
- *
- * // Fetch variants with pagination
- * await fetchVariants({
- *   limit: 50,
- *   offset: 0,
- *   sort_order: 'desc',
- *   gene_symbol: 'BRCA1'
- * })
- *
- * // Handle loading state
- * if (isLoading.value) {
- *   // Show spinner
- * }
- *
- * // Handle error
- * if (error.value) {
- *   // Display error message
- * }
- *
- * // Reset on database switch
- * reset()
- * ```
- */
 export function useCohortData(): UseCohortDataReturn {
   const { api } = useApiService()
 
@@ -138,6 +100,27 @@ export function useCohortData(): UseCohortDataReturn {
   const isLoading = ref(false)
   const error = ref<Error | null>(null)
   const summary = ref<CohortSummary | null>(null)
+  const summaryStale = ref(false)
+
+  // Listen for summary rebuild events
+  let cleanupSummaryListener: (() => void) | null = null
+  if (api) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cohortApi = (api as any).cohort
+    if (typeof cohortApi.onSummaryRebuilt === 'function') {
+      cleanupSummaryListener = cohortApi.onSummaryRebuilt((status: { is_stale: boolean }) => {
+        summaryStale.value = status.is_stale
+      })
+    }
+  }
+
+  const cleanupListeners = (): void => {
+    if (cleanupSummaryListener) {
+      cleanupSummaryListener()
+      cleanupSummaryListener = null
+    }
+  }
+
   /**
    * Build IPC-safe params from query parameters.
    * Filters out undefined values and strips Vue reactive proxies.
@@ -250,6 +233,7 @@ export function useCohortData(): UseCohortDataReturn {
     totalCount.value = 0
     error.value = null
     summary.value = null
+    summaryStale.value = false
   }
 
   return {
@@ -258,9 +242,11 @@ export function useCohortData(): UseCohortDataReturn {
     isLoading,
     error,
     summary,
+    summaryStale,
     buildIpcParams,
     fetchVariants,
     fetchSummary,
-    reset
+    reset,
+    cleanupListeners
   }
 }

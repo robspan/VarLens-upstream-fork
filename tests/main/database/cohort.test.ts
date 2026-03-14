@@ -2,16 +2,21 @@
  * CohortService tests
  *
  * Tests for cohort variant aggregation and filtering functionality.
+ * All queries now read from pre-computed summary tables, so rebuildSummary()
+ * must be called after inserting test data and before querying.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import Database from 'better-sqlite3-multiple-ciphers'
 import { CohortService } from '../../../src/main/database/cohort'
 import { initializeSchema } from '../../../src/main/database/schema'
+import { runMigrations } from '../../../src/main/database/migrations'
+import { CohortSummaryService } from '../../../src/main/database/CohortSummaryService'
 
 describe('CohortService', () => {
   let db: Database.Database
   let cohortService: CohortService
+  let summaryService: CohortSummaryService
 
   // Helper to insert a case
   const insertCase = (name: string): number => {
@@ -65,11 +70,17 @@ describe('CohortService', () => {
     )
   }
 
+  const rebuildSummary = (): void => {
+    summaryService.rebuild()
+  }
+
   beforeEach(() => {
     // Create in-memory database
     db = new Database(':memory:')
     initializeSchema(db)
+    runMigrations(db)
     cohortService = new CohortService(db)
+    summaryService = new CohortSummaryService(db)
   })
 
   afterEach(() => {
@@ -95,6 +106,7 @@ describe('CohortService', () => {
       // Unique variant in case 1 only
       insertVariant(case1, '2', 54321, 'C', 'T', { gene_symbol: 'TP53' })
 
+      rebuildSummary()
       const result = cohortService.getCohortVariants({})
 
       expect(result.total_count).toBe(2)
@@ -121,6 +133,7 @@ describe('CohortService', () => {
       insertVariant(case2, '1', 100, 'A', 'G', { gt_num: '1/1' })
       insertVariant(case3, '1', 100, 'A', 'G', { gt_num: '0/1' })
 
+      rebuildSummary()
       const result = cohortService.getCohortVariants({})
 
       expect(result.data[0].het_count).toBe(2)
@@ -134,6 +147,7 @@ describe('CohortService', () => {
         insertVariant(caseId, '2', 200, 'C', 'T', { gene_symbol: 'TP53' })
         insertVariant(caseId, '3', 300, 'G', 'A', { gene_symbol: 'BRCA2' })
 
+        rebuildSummary()
         const result = cohortService.getCohortVariants({ gene_symbol: 'BRCA1' })
 
         expect(result.total_count).toBe(1)
@@ -148,6 +162,7 @@ describe('CohortService', () => {
         insertVariant(caseId, '2', 200, 'C', 'T', { consequence: 'MODERATE' })
         insertVariant(caseId, '3', 300, 'G', 'A', { consequence: 'LOW' })
 
+        rebuildSummary()
         const result = cohortService.getCohortVariants({ consequences: ['HIGH'] })
 
         expect(result.total_count).toBe(1)
@@ -160,6 +175,7 @@ describe('CohortService', () => {
         insertVariant(caseId, '2', 200, 'C', 'T', { consequence: 'MODERATE' })
         insertVariant(caseId, '3', 300, 'G', 'A', { consequence: 'LOW' })
 
+        rebuildSummary()
         const result = cohortService.getCohortVariants({ consequences: ['HIGH', 'MODERATE'] })
 
         expect(result.total_count).toBe(2)
@@ -177,6 +193,7 @@ describe('CohortService', () => {
         insertVariant(caseId, '2', 200, 'C', 'T', { func: 'synonymous_variant' })
         insertVariant(caseId, '3', 300, 'G', 'A', { func: 'frameshift_variant' })
 
+        rebuildSummary()
         const result = cohortService.getCohortVariants({
           funcs: ['missense_variant', 'frameshift_variant']
         })
@@ -197,6 +214,7 @@ describe('CohortService', () => {
         insertVariant(caseId, '3', 300, 'G', 'A', { clinvar: 'Benign' })
         insertVariant(caseId, '4', 400, 'T', 'C', { clinvar: 'Uncertain_significance' })
 
+        rebuildSummary()
         const result = cohortService.getCohortVariants({ clinvars: ['Pathogenic'] })
 
         expect(result.total_count).toBe(1) // Exact match only
@@ -213,6 +231,7 @@ describe('CohortService', () => {
         insertVariant(caseId, '2', 200, 'C', 'T', { gnomad_af: 0.05 })
         insertVariant(caseId, '3', 300, 'G', 'A', { gnomad_af: 0.5 })
 
+        rebuildSummary()
         const result = cohortService.getCohortVariants({ gnomad_af_max: 0.01 })
 
         expect(result.total_count).toBe(1)
@@ -225,6 +244,7 @@ describe('CohortService', () => {
         insertVariant(caseId, '2', 200, 'C', 'T', {}) // NULL gnomad_af
         insertVariant(caseId, '3', 300, 'G', 'A', { gnomad_af: 0.5 })
 
+        rebuildSummary()
         const result = cohortService.getCohortVariants({ gnomad_af_max: 0.01 })
 
         expect(result.total_count).toBe(2) // Includes rare variant AND null
@@ -241,6 +261,7 @@ describe('CohortService', () => {
         insertVariant(caseId, '2', 200, 'C', 'T', { cadd: 15 })
         insertVariant(caseId, '3', 300, 'G', 'A', { cadd: 5 })
 
+        rebuildSummary()
         const result = cohortService.getCohortVariants({ cadd_min: 20 })
 
         expect(result.total_count).toBe(1)
@@ -266,6 +287,7 @@ describe('CohortService', () => {
         // Variant in 1 case
         insertVariant(case1, '3', 300, 'G', 'A')
 
+        rebuildSummary()
         const result = cohortService.getCohortVariants({ carrier_count_min: 2 })
 
         expect(result.total_count).toBe(2)
@@ -287,6 +309,7 @@ describe('CohortService', () => {
         // Variant in 1 case (50% frequency)
         insertVariant(case1, '2', 200, 'C', 'T')
 
+        rebuildSummary()
         const result = cohortService.getCohortVariants({ cohort_frequency_min: 0.75 })
 
         expect(result.total_count).toBe(1)
@@ -337,6 +360,7 @@ describe('CohortService', () => {
           cadd: 25
         })
 
+        rebuildSummary()
         const result = cohortService.getCohortVariants({
           gene_symbol: 'BRCA1',
           consequences: ['HIGH'],
@@ -357,6 +381,7 @@ describe('CohortService', () => {
           insertVariant(caseId, '1', 100 + i, 'A', 'G')
         }
 
+        rebuildSummary()
         const result = cohortService.getCohortVariants({ limit: 3 })
 
         expect(result.data.length).toBe(3)
@@ -368,6 +393,8 @@ describe('CohortService', () => {
         for (let i = 0; i < 10; i++) {
           insertVariant(caseId, '1', 100 + i, 'A', 'G')
         }
+
+        rebuildSummary()
 
         // Get first page
         const page1 = cohortService.getCohortVariants({ limit: 3, offset: 0 })
@@ -394,6 +421,7 @@ describe('CohortService', () => {
           insertVariant(caseId, '1', 100 + i, 'A', 'G')
         }
 
+        rebuildSummary()
         const page2 = cohortService.getCohortVariants({ limit: 3, offset: 3 })
         expect(page2.data.length).toBe(2)
       })
@@ -404,6 +432,7 @@ describe('CohortService', () => {
           insertVariant(caseId, '1', 100 + i, 'A', 'G')
         }
 
+        rebuildSummary()
         const result = cohortService.getCohortVariants({ limit: 3, offset: 9999 })
         expect(result.data).toEqual([])
         expect(result.total_count).toBe(5)
@@ -414,6 +443,8 @@ describe('CohortService', () => {
         for (let i = 0; i < 6; i++) {
           insertVariant(caseId, '1', 100 + i, 'A', 'G')
         }
+
+        rebuildSummary()
 
         const page1 = cohortService.getCohortVariants({
           limit: 3,
@@ -441,6 +472,8 @@ describe('CohortService', () => {
         insertVariant(case1, '2', 200, 'C', 'T', {}) // NULL gnomad_af
         insertVariant(case2, '3', 300, 'G', 'A', { gnomad_af: 0.05 })
         insertVariant(case1, '4', 400, 'T', 'C', {}) // NULL gnomad_af
+
+        rebuildSummary()
 
         const page1 = cohortService.getCohortVariants({
           limit: 2,
@@ -479,6 +512,8 @@ describe('CohortService', () => {
         insertVariant(case1, '4', 400, 'T', 'C')
         insertVariant(case1, '5', 500, 'A', 'T')
 
+        rebuildSummary()
+
         // Paginate through all results
         const allVariantKeys: string[] = []
         let offset = 0
@@ -507,6 +542,7 @@ describe('CohortService', () => {
         insertVariant(case1, '2', 200, 'C', 'T')
         insertVariant(case2, '2', 200, 'C', 'T')
 
+        rebuildSummary()
         const result = cohortService.getCohortVariants({})
 
         expect(result.data[0].carrier_count).toBe(2)
@@ -519,6 +555,7 @@ describe('CohortService', () => {
         insertVariant(caseId, '1', 100, 'C', 'T')
         insertVariant(caseId, '1', 200, 'G', 'A')
 
+        rebuildSummary()
         const result = cohortService.getCohortVariants({ sort_by: 'pos', sort_order: 'asc' })
 
         expect(result.data[0].pos).toBe(100)
@@ -548,6 +585,7 @@ describe('CohortService', () => {
             cadd: 15,
             gt_num: '1/1'
           })
+          rebuildSummary()
         })
 
         it.each([
@@ -579,9 +617,6 @@ describe('CohortService', () => {
           })
           expect(resultDesc.data.length).toBeGreaterThan(0)
         })
-
-        // Note: Invalid sort column test removed because the service doesn't use BrowserWindow
-        // in tests. The important test is that all valid sortable columns work correctly.
       })
     })
   })
@@ -597,6 +632,7 @@ describe('CohortService', () => {
       insertVariant(case1, '2', 200, 'C', 'T', { gene_symbol: 'GENE2' })
       insertVariant(case1, '3', 300, 'G', 'A', { gene_symbol: 'GENE2' })
 
+      rebuildSummary()
       const summary = cohortService.getCohortSummary()
 
       expect(summary.total_cases).toBe(2)
@@ -642,6 +678,7 @@ describe('CohortService', () => {
       // TP53: 1 variant, 1 case affected
       insertVariant(case1, '2', 300, 'G', 'A', { gene_symbol: 'TP53' })
 
+      rebuildSummary()
       const burden = cohortService.getGeneBurden()
 
       expect(burden.length).toBe(2)
@@ -667,6 +704,7 @@ describe('CohortService', () => {
       insertVariant(case2, '1', 200, 'C', 'T', { gene_symbol: 'BRCA2' })
       insertVariant(case1, '2', 300, 'G', 'A', { gene_symbol: 'TP53' })
 
+      rebuildSummary()
       const result = cohortService.getCohortVariants({ column_filters: { gene_symbol: 'BRCA' } })
       expect(result.total_count).toBe(2)
       expect(result.data.every((v) => v.gene_symbol?.includes('BRCA'))).toBe(true)
@@ -688,6 +726,7 @@ describe('CohortService', () => {
         clinvar: 'Pathogenic'
       })
 
+      rebuildSummary()
       const result = cohortService.getCohortVariants({
         column_filters: { gene_symbol: 'BRCA', clinvar: 'Pathogenic' }
       })
@@ -699,6 +738,7 @@ describe('CohortService', () => {
       const case1 = insertCase('Case 1')
       insertVariant(case1, '1', 100, 'A', 'G')
 
+      rebuildSummary()
       const result = cohortService.getCohortVariants({
         column_filters: { nonexistent_column: 'test' }
       })
@@ -710,6 +750,7 @@ describe('CohortService', () => {
       insertVariant(case1, '1', 100, 'A', 'G', { gene_symbol: 'BRCA1' })
       insertVariant(case1, '1', 200, 'C', 'T', { gene_symbol: 'TP53' })
 
+      rebuildSummary()
       const result = cohortService.getCohortVariants({
         column_filters: { gene_symbol: '' }
       })
@@ -722,6 +763,7 @@ describe('CohortService', () => {
       insertVariant(caseId, '1', 200, 'C', 'T', { cadd: 15 })
       insertVariant(caseId, '1', 300, 'G', 'A', { cadd: 5 })
 
+      rebuildSummary()
       const result = cohortService.getCohortVariants({
         column_filters: { cadd_phred: '30' }
       })

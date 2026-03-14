@@ -507,7 +507,10 @@ export const mockApi: WindowAPI = {
           total_cases: totalCases
         }))
         .sort((a, b) => b.affected_case_count - a.affected_case_count)
-    }
+    },
+    getSummaryStatus: async () => ({ is_stale: false, last_rebuilt_at: Date.now() }),
+    rebuildSummary: async () => {},
+    onSummaryRebuilt: () => () => {}
   },
 
   annotations: {

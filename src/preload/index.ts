@@ -166,6 +166,17 @@ const api = {
       return () => {
         ipcRenderer.removeListener('cohort:geneBurdenProgress', handler)
       }
+    },
+    getSummaryStatus: () => ipcRenderer.invoke('cohort:summaryStatus'),
+    rebuildSummary: () => ipcRenderer.invoke('cohort:rebuildSummary'),
+    onSummaryRebuilt: (callback: (status: { is_stale: boolean }) => void): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, status: { is_stale: boolean }): void => {
+        callback(status)
+      }
+      ipcRenderer.on('cohort:summaryRebuilt', handler)
+      return () => {
+        ipcRenderer.removeListener('cohort:summaryRebuilt', handler)
+      }
     }
   },
 

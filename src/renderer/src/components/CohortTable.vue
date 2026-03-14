@@ -17,6 +17,12 @@
       </div>
     </v-alert>
 
+    <!-- Staleness Indicator -->
+    <v-chip v-if="summaryStale" size="small" color="warning" variant="tonal" class="mb-2">
+      <v-progress-circular indeterminate size="12" width="2" class="mr-1" />
+      Updating cohort...
+    </v-chip>
+
     <!-- Filter Bar -->
     <CohortFilterBar
       :total-count="totalCount"
@@ -85,7 +91,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 // Composables
 import { useOffsetPagination } from '../composables/useOffsetPagination'
 import { useCohortData } from '../composables/useCohortData'
@@ -123,7 +129,7 @@ const emit = defineEmits<{
 
 // API + domain composables
 const { api } = useApiService()
-const { summary, fetchSummary, buildIpcParams } = useCohortData()
+const { summary, summaryStale, fetchSummary, buildIpcParams, cleanupListeners } = useCohortData()
 const { filters, searchTerm, selectedImpactPresets, clearAllFilters, clearFilter } = useFilters()
 const { loadCarriers } = useCarriers()
 const {
@@ -381,9 +387,22 @@ watch(variants, async (newVariants) => {
   }
 })
 
+// Auto-refresh when summary rebuild completes
+watch(summaryStale, (newVal, oldVal) => {
+  if (oldVal === true && newVal === false) {
+    // Summary rebuilt — refresh current page
+    void invalidateAndReload()
+    void fetchSummary()
+  }
+})
+
 // Lifecycle
 onMounted(() => {
   void fetchSummary()
+})
+
+onUnmounted(() => {
+  cleanupListeners()
 })
 
 // Expose refresh method

@@ -1,11 +1,58 @@
 import { z } from 'zod'
+import { Worker } from 'worker_threads'
+import { BrowserWindow } from 'electron'
+import { resolve } from 'node:path'
 import { wrapHandler } from '../errorHandler'
 import type { HandlerDependencies } from '../types'
 import { CaseIdSchema } from '../../../shared/types/ipc-schemas'
 import { mainLogger } from '../../services/MainLogger'
+import type { DeleteWorkerRequest, DeleteWorkerResponse } from '../../workers/delete-worker'
 
 // Schema for batch delete IDs array
 const CaseIdArraySchema = z.array(z.number().int().positive()).min(1)
+
+function safeEmit(channel: string, data: unknown): void {
+  const win = BrowserWindow.getAllWindows()[0]
+  if (win === undefined || win.isDestroyed()) return
+  win.webContents.send(channel, data)
+}
+
+/**
+ * Run a delete operation in a worker thread to avoid blocking the main process.
+ */
+function runDeleteWorker(request: DeleteWorkerRequest): Promise<number> {
+  return new Promise((res, rej) => {
+    const workerPath = resolve(__dirname, 'delete-worker.js')
+    const worker = new Worker(workerPath)
+    let settled = false
+
+    const settle = (fn: typeof res | typeof rej, value: unknown): void => {
+      if (settled) return
+      settled = true
+      fn(value as number)
+      worker.terminate().catch(() => {})
+    }
+
+    worker.on('message', (msg: DeleteWorkerResponse) => {
+      if (msg.type === 'complete') {
+        settle(res, msg.deleted ?? 0)
+      } else {
+        settle(rej, new Error(msg.error ?? 'Delete worker failed'))
+      }
+    })
+
+    worker.on('error', (err: Error) => {
+      mainLogger.error(`Delete worker error: ${err.message}`, 'cases')
+      settle(rej, err)
+    })
+
+    worker.on('exit', (code) => {
+      settle(rej, new Error(`Delete worker exited unexpectedly with code ${code}`))
+    })
+
+    worker.postMessage(request)
+  })
+}
 
 /**
  * Cases IPC handlers
@@ -37,7 +84,23 @@ export function registerCaseHandlers({ ipcMain, getDb }: HandlerDependencies): v
   ipcMain.handle('cases:deleteAll', async () => {
     return wrapHandler(async () => {
       const db = getDb()
-      return db.cases.deleteAllCases()
+      mainLogger.info(`Starting deleteAll worker (db: ${db.getPath()})`, 'cases')
+      try {
+        const deleted = await runDeleteWorker({
+          type: 'deleteAll',
+          dbPath: db.getPath(),
+          encryptionKey: db.getEncryptionKey()
+        })
+        mainLogger.info(`deleteAll completed: ${deleted} cases deleted`, 'cases')
+        safeEmit('cases:deleted', { deleted })
+        return deleted
+      } catch (error) {
+        mainLogger.error(
+          `deleteAll worker failed: ${error instanceof Error ? error.message : error}`,
+          'cases'
+        )
+        throw error
+      }
     })
   })
 
@@ -51,7 +114,14 @@ export function registerCaseHandlers({ ipcMain, getDb }: HandlerDependencies): v
       }
 
       const db = getDb()
-      return db.cases.deleteCasesBatch(validated.data)
+      const deleted = await runDeleteWorker({
+        type: 'deleteBatch',
+        dbPath: db.getPath(),
+        encryptionKey: db.getEncryptionKey(),
+        ids: validated.data
+      })
+      safeEmit('cases:deleted', { deleted })
+      return deleted
     })
   })
 }

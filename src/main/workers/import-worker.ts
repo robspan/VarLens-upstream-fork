@@ -1,8 +1,8 @@
 import { parentPort } from 'worker_threads'
 import Database from 'better-sqlite3-multiple-ciphers'
 import type { Database as DatabaseType } from 'better-sqlite3-multiple-ciphers'
-import { statSync, existsSync } from 'node:fs'
-import { pipeline } from 'node:stream/promises'
+import { statSync } from 'node:fs'
+import type { Readable } from 'node:stream'
 import { parser } from 'stream-json'
 import { pick } from 'stream-json/filters/Pick'
 import { streamArray } from 'stream-json/streamers/StreamArray'
@@ -14,7 +14,6 @@ import type { FormatInfo } from '../import/strategies/ImportStrategy'
 import { DATABASE_CONFIG } from '../../shared/config'
 import { createFieldMapper } from '../import/transforms/FieldMapper'
 import { createObjectFormatMapper } from '../import/transforms/ObjectFormatMapper'
-import { createBatchAccumulator } from '../import/transforms/BatchAccumulator'
 import { resolveColumnIndices } from '../import/config/fieldMapping'
 import { detectFormat } from '../import/format-detection'
 import { createDecompressedStream } from '../import/stream-utils'
@@ -28,6 +27,30 @@ const DROP_FTS_TRIGGERS = `
   DROP TRIGGER IF EXISTS variants_fts_ai;
   DROP TRIGGER IF EXISTS variants_fts_ad;
   DROP TRIGGER IF EXISTS variants_fts_au;
+`
+
+const DROP_INDEXES = `
+  DROP INDEX IF EXISTS idx_variants_gene;
+  DROP INDEX IF EXISTS idx_variants_pos;
+  DROP INDEX IF EXISTS idx_variants_filters;
+  DROP INDEX IF EXISTS idx_variants_chr_pos_ref_alt;
+  DROP INDEX IF EXISTS idx_vt_selected;
+  DROP INDEX IF EXISTS idx_vt_transcript;
+  DROP INDEX IF EXISTS idx_variants_filter_covering;
+  DROP INDEX IF EXISTS idx_variants_case_coords;
+  DROP INDEX IF EXISTS idx_variants_gene_notnull;
+`
+
+const RECREATE_INDEXES = `
+  CREATE INDEX IF NOT EXISTS idx_variants_gene ON variants(gene_symbol);
+  CREATE INDEX IF NOT EXISTS idx_variants_pos ON variants(chr, pos);
+  CREATE INDEX IF NOT EXISTS idx_variants_filters ON variants(gnomad_af, cadd);
+  CREATE INDEX IF NOT EXISTS idx_variants_chr_pos_ref_alt ON variants(chr, pos, ref, alt);
+  CREATE INDEX IF NOT EXISTS idx_vt_selected ON variant_transcripts(variant_id, is_selected);
+  CREATE INDEX IF NOT EXISTS idx_vt_transcript ON variant_transcripts(transcript_id);
+  CREATE INDEX IF NOT EXISTS idx_variants_filter_covering ON variants(case_id, consequence, func, clinvar);
+  CREATE INDEX IF NOT EXISTS idx_variants_case_coords ON variants(case_id, chr, pos, ref, alt);
+  CREATE INDEX IF NOT EXISTS idx_variants_gene_notnull ON variants(gene_symbol) WHERE gene_symbol IS NOT NULL;
 `
 
 let cancelled = false
@@ -47,12 +70,14 @@ port.on('message', async (msg: MainMessage) => {
 
       const stmts = prepareStatements(db)
 
-      // Drop FTS triggers once at start (batch optimization)
+      // Drop FTS triggers and non-essential indexes at start (batch optimization)
       db.exec(DROP_FTS_TRIGGERS)
+      db.exec(DROP_INDEXES)
 
       const totalFiles = msg.files.length
       const batchSize = msg.batchSize ?? DATABASE_CONFIG.BATCH_INSERT_SIZE
       const importedInBatch = new Set<string>()
+      let nextFileParsed: Promise<ParsedFileResult> | null = null
       const results: Array<{
         filePath: string
         fileName: string
@@ -107,9 +132,6 @@ port.on('message', async (msg: MainMessage) => {
           }
 
           // Create case record
-          if (!existsSync(file.filePath)) {
-            throw new Error(`File not found: ${file.filePath}`)
-          }
           const fileSize = statSync(file.filePath).size
           const caseResult = stmts.insertCase.run(
             file.caseName,
@@ -121,16 +143,59 @@ port.on('message', async (msg: MainMessage) => {
 
           const startTime = Date.now()
           let variantCount = 0
-          let fileSkipped = 0
+          const fileSkipped = 0
 
           try {
-            const formatInfo = await detectFormat(file.filePath)
+            let parsedData: ParsedFileResult
 
-            const flushFn = (cId: number, batch: Array<Record<string, unknown>>): void => {
-              stmts.insertBatch(cId, batch)
+            // Emit parsing phase progress
+            sendProgress(
+              fileIndex,
+              totalFiles,
+              fileName,
+              Math.round((fileIndex / totalFiles) * 100),
+              'parsing',
+              0,
+              0
+            )
+
+            // Use pre-parsed data if available (from previous iteration's lookahead)
+            if (nextFileParsed) {
+              parsedData = await nextFileParsed
+              nextFileParsed = null
+            } else {
+              // First file — parse synchronously
+              parsedData = await preParseFile(file.filePath, () => cancelled)
             }
 
-            const onProgress = (): void => {
+            const { formatInfo, variants: parsedVariants } = parsedData
+
+            // Start pre-parsing next file (pipeline parallelism)
+            if (fileIndex + 1 < totalFiles && !cancelled) {
+              const nextFile = msg.files[fileIndex + 1]
+              // Only pre-parse if not a known skip
+              const nextExisting = stmts.getCaseByName.get(nextFile.caseName) as
+                | { id: number }
+                | undefined
+              const nextIsInBatchDup = importedInBatch.has(nextFile.caseName)
+              const nextWillSkip =
+                (nextExisting || nextFile.isDuplicate || nextIsInBatchDup) &&
+                nextFile.duplicateStrategy === 'skip'
+
+              if (!nextWillSkip) {
+                nextFileParsed = preParseFile(nextFile.filePath, () => cancelled)
+              }
+            }
+
+            // Insert pre-parsed variants in batches
+            const totalVariants = parsedVariants.length
+            for (let batchStart = 0; batchStart < totalVariants; batchStart += batchSize) {
+              if (cancelled) break
+              const batchEnd = Math.min(batchStart + batchSize, totalVariants)
+              const batch = parsedVariants.slice(batchStart, batchEnd)
+              stmts.insertBatch(caseId, batch)
+              variantCount = batchEnd
+
               const now = Date.now()
               if (now - lastProgressTime >= msg.throttleMs) {
                 lastProgressTime = now
@@ -147,23 +212,6 @@ port.on('message', async (msg: MainMessage) => {
                 port.postMessage(progressMsg)
               }
             }
-
-            const accumulator = createBatchAccumulator({
-              caseId,
-              batchSize,
-              flushFn,
-              onProgress: (update) => {
-                variantCount = update.count
-                fileSkipped = update.skipped ?? 0
-                onProgress()
-              },
-              startTime
-            })
-
-            await runImportPipeline(file.filePath, formatInfo, accumulator)
-
-            variantCount = accumulator.inserted
-            fileSkipped = accumulator.skippedCount
 
             stmts.updateVariantCount.run(variantCount, caseId)
 
@@ -199,6 +247,11 @@ port.on('message', async (msg: MainMessage) => {
             }
             port.postMessage(fileCompleteMsg)
           } catch (importError) {
+            // Clean up pre-parse promise on error
+            if (nextFileParsed) {
+              nextFileParsed.catch(() => {}) // prevent unhandled rejection
+              nextFileParsed = null
+            }
             stmts.deleteCase.run(caseId)
             throw importError
           }
@@ -238,6 +291,11 @@ port.on('message', async (msg: MainMessage) => {
     } catch (fatalError) {
       if (db) {
         try {
+          db.exec(RECREATE_INDEXES)
+        } catch {
+          // best effort
+        }
+        try {
           db.exec(createFTSTriggers)
         } catch {
           // best effort
@@ -254,6 +312,23 @@ port.on('message', async (msg: MainMessage) => {
       port.postMessage(errorMsg)
     } finally {
       if (db) {
+        try {
+          db.exec(RECREATE_INDEXES)
+        } catch {
+          // best effort — initializeSchema() recreates on next app start
+        }
+        try {
+          db.pragma('wal_checkpoint(TRUNCATE)')
+        } catch {
+          // best effort
+        }
+        try {
+          db.pragma('synchronous = NORMAL')
+          db.pragma('wal_autocheckpoint = 1000')
+          db.pragma('foreign_keys = ON')
+        } catch {
+          // best effort
+        }
         try {
           db.close()
         } catch {
@@ -295,12 +370,13 @@ function openDatabase(dbPath: string, encryptionKey?: string): DatabaseType {
   }
 
   db.pragma('journal_mode = WAL')
-  db.pragma('foreign_keys = ON')
-  db.pragma('synchronous = NORMAL')
+  db.pragma('foreign_keys = OFF')
+  db.pragma('synchronous = OFF')
   db.pragma(`busy_timeout = ${DATABASE_CONFIG.BUSY_TIMEOUT_MS}`)
-  db.pragma(`cache_size = ${DATABASE_CONFIG.CACHE_SIZE_KB}`)
+  db.pragma(`cache_size = ${DATABASE_CONFIG.IMPORT_CACHE_SIZE_KB}`)
   db.pragma('temp_store = MEMORY')
   db.pragma(`mmap_size = ${DATABASE_CONFIG.MMAP_SIZE_BYTES}`)
+  db.pragma('wal_autocheckpoint = 0')
 
   return db
 }
@@ -422,37 +498,69 @@ function rebuildFts(db: DatabaseType): void {
   }
 }
 
+interface ParsedFileResult {
+  formatInfo: FormatInfo
+  variants: Array<Record<string, unknown>>
+}
+
 /**
- * Detect format and run the appropriate streaming pipeline.
+ * Pre-parse a file into an in-memory variant array.
+ * Used for pipeline parallelism: parse next file while current file inserts.
+ *
+ * The mapper transforms (ObjectFormatMapper / FieldMapper) emit plain
+ * Record<string, unknown> objects with variant fields (chr, pos, ref, alt,
+ * _transcripts, etc.) — the same shape that insertBatch expects.
  */
-async function runImportPipeline(
+async function preParseFile(
   filePath: string,
-  formatInfo: FormatInfo,
-  accumulator: ReturnType<typeof createBatchAccumulator>
-): Promise<void> {
-  switch (formatInfo.format) {
-    case 'simple':
-      await pipeline(
-        createDecompressedStream(filePath),
-        parser(),
-        pick({ filter: 'variants' }),
-        streamArray(),
-        createObjectFormatMapper(),
-        accumulator
-      )
+  isCancelled: () => boolean
+): Promise<ParsedFileResult> {
+  const formatInfo = await detectFormat(filePath)
+  const variants: Array<Record<string, unknown>> = []
+
+  const mapperStream = await createMapperPipeline(filePath, formatInfo)
+
+  for await (const chunk of mapperStream) {
+    if (isCancelled()) {
+      // Explicitly destroy the underlying stream to release file handle
+      mapperStream.destroy()
       break
+    }
+    // Mappers emit plain variant objects (or null for skipped variants)
+    if (chunk !== null) {
+      variants.push(chunk as Record<string, unknown>)
+    }
+  }
+
+  return { formatInfo, variants }
+}
+
+/**
+ * Create a readable stream that outputs mapped variant objects.
+ * Pipes: decompress → parse → pick → streamArray → format mapper.
+ *
+ * Output: plain Record<string, unknown> objects (not { key, value } wrappers),
+ * because the mapper transforms consume the streamArray wrapper.
+ */
+async function createMapperPipeline(filePath: string, formatInfo: FormatInfo): Promise<Readable> {
+  switch (formatInfo.format) {
+    case 'simple': {
+      const stream = createDecompressedStream(filePath)
+        .pipe(parser())
+        .pipe(pick({ filter: 'variants' }))
+        .pipe(streamArray())
+        .pipe(createObjectFormatMapper())
+      return stream
+    }
 
     case 'object': {
       const samplePath = `samples.${formatInfo.caseKey}.variants`
-      await pipeline(
-        createDecompressedStream(filePath),
-        parser(),
-        pick({ filter: samplePath }),
-        streamArray(),
-        createObjectFormatMapper(),
-        accumulator
-      )
-      break
+      const stream = createDecompressedStream(filePath)
+        .pipe(parser())
+        .pipe(pick({ filter: samplePath }))
+        .pipe(streamArray())
+        .pipe(createObjectFormatMapper())
+      return stream
     }
 
     case 'columnar': {
@@ -463,15 +571,12 @@ async function runImportPipeline(
       const { dictionaries, columnIndices } = await parseHeader(filePath, headerPath)
       const fieldMapper = createFieldMapper(dictionaries, columnIndices)
 
-      await pipeline(
-        createDecompressedStream(filePath),
-        parser(),
-        pick({ filter: dataPath }),
-        streamArray(),
-        fieldMapper,
-        accumulator
-      )
-      break
+      const stream = createDecompressedStream(filePath)
+        .pipe(parser())
+        .pipe(pick({ filter: dataPath }))
+        .pipe(streamArray())
+        .pipe(fieldMapper)
+      return stream
     }
   }
 }

@@ -1003,6 +1003,19 @@ export function runMigrations(db: Database.Database): void {
       END
     `)
 
+    // Covering indexes for common filter+sort patterns
+    // Drop v13 indexes that are now prefixes of covering indexes
+    db.exec(`
+      DROP INDEX IF EXISTS idx_cvs_consequence;
+      DROP INDEX IF EXISTS idx_cvs_gene;
+
+      CREATE INDEX IF NOT EXISTS idx_cvs_covering_common
+        ON cohort_variant_summary(consequence, gnomad_af, carrier_count);
+
+      CREATE INDEX IF NOT EXISTS idx_cvs_gene_covering
+        ON cohort_variant_summary(gene_symbol, carrier_count);
+    `)
+
     db.exec('PRAGMA user_version = 14')
   }
 }

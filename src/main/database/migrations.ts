@@ -567,4 +567,54 @@ export function runMigrations(db: Database.Database): void {
 
     db.exec('PRAGMA user_version = 12')
   }
+
+  // ── Migration v13: Cohort summary tables (issue #33) ──
+  if (currentVersion < 13) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS cohort_variant_summary (
+        chr TEXT NOT NULL,
+        pos INTEGER NOT NULL,
+        ref TEXT NOT NULL,
+        alt TEXT NOT NULL,
+        gene_symbol TEXT,
+        cdna TEXT,
+        aa_change TEXT,
+        consequence TEXT,
+        func TEXT,
+        clinvar TEXT,
+        gnomad_af REAL,
+        cadd REAL,
+        transcript TEXT,
+        omim_mim_number TEXT,
+        carrier_count INTEGER NOT NULL,
+        het_count INTEGER NOT NULL,
+        hom_count INTEGER NOT NULL,
+        variant_key TEXT NOT NULL,
+        PRIMARY KEY (chr, pos, ref, alt)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_cvs_gene ON cohort_variant_summary(gene_symbol);
+      CREATE INDEX IF NOT EXISTS idx_cvs_carrier ON cohort_variant_summary(carrier_count);
+      CREATE INDEX IF NOT EXISTS idx_cvs_filters ON cohort_variant_summary(gnomad_af, cadd);
+      CREATE INDEX IF NOT EXISTS idx_cvs_consequence ON cohort_variant_summary(consequence);
+
+      CREATE TABLE IF NOT EXISTS gene_burden_summary (
+        gene_symbol TEXT PRIMARY KEY,
+        variant_count INTEGER NOT NULL,
+        unique_variant_count INTEGER NOT NULL,
+        affected_case_count INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_gbs_affected
+        ON gene_burden_summary(affected_case_count DESC);
+
+      CREATE TABLE IF NOT EXISTS cohort_summary_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+    `)
+
+    db.exec('PRAGMA user_version = 13')
+  }
 }

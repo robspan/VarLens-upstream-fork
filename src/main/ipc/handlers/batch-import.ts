@@ -154,6 +154,8 @@ export function registerBatchImportHandlers({ ipcMain, getDb }: HandlerDependenc
           throw new Error('A batch import is already in progress')
         }
 
+        safeEmit('cohort:summaryRebuilt', { is_stale: true })
+
         // Build FileImportRequest array with duplicate info
         const checkResult = checkDuplicates(db, filePaths, stripText)
 
@@ -199,6 +201,8 @@ export function registerBatchImportHandlers({ ipcMain, getDb }: HandlerDependenc
                 currentFileName: '',
                 overallPercent: 100
               })
+
+              safeEmit('cohort:summaryRebuilt', { is_stale: false })
 
               // Notify renderer globally that import completed
               // (even if BatchImportDialog was closed via "Continue in Background")

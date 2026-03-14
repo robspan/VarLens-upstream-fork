@@ -18,6 +18,13 @@ import { resolveColumnIndices } from '../import/config/fieldMapping'
 import { detectFormat } from '../import/format-detection'
 import { createDecompressedStream } from '../import/stream-utils'
 import { createFTSTriggers } from '../database/schema'
+import {
+  REBUILD_VARIANT_SUMMARY_SQL,
+  REBUILD_GENE_BURDEN_SQL,
+  UPDATE_META_SQL,
+  MARK_STALE_SQL,
+  CHECK_TABLE_EXISTS_SQL
+} from '../../shared/sql/cohort-summary-rebuild'
 
 if (!parentPort) throw new Error('Must be run as worker thread')
 
@@ -73,6 +80,13 @@ port.on('message', async (msg: MainMessage) => {
       // Drop FTS triggers and non-essential indexes at start (batch optimization)
       db.exec(DROP_FTS_TRIGGERS)
       db.exec(DROP_INDEXES)
+
+      // Mark cohort summary as stale before import
+      try {
+        db.exec(MARK_STALE_SQL)
+      } catch {
+        /* table may not exist yet */
+      }
 
       const totalFiles = msg.files.length
       const batchSize = msg.batchSize ?? DATABASE_CONFIG.BATCH_INSERT_SIZE
@@ -282,6 +296,7 @@ port.on('message', async (msg: MainMessage) => {
       // FTS rebuild + ANALYZE + optimize
       sendProgress(totalFiles, totalFiles, '', 99, 'finalizing', 0, 0)
       rebuildFts(db)
+      rebuildCohortSummary(db)
 
       const completeMsg: WorkerMessage = {
         type: 'complete',
@@ -495,6 +510,24 @@ function rebuildFts(db: DatabaseType): void {
     db.exec("INSERT INTO variants_fts(variants_fts) VALUES('optimize')")
   } catch {
     // best effort
+  }
+}
+
+function rebuildCohortSummary(db: DatabaseType): void {
+  try {
+    const tableExists = db.prepare(CHECK_TABLE_EXISTS_SQL).get() as { c: number }
+    if (tableExists.c === 0) return
+
+    db.transaction(() => {
+      db.exec(REBUILD_VARIANT_SUMMARY_SQL)
+      db.exec(REBUILD_GENE_BURDEN_SQL)
+      db.exec(UPDATE_META_SQL)
+    })()
+
+    db.exec('ANALYZE cohort_variant_summary')
+    db.exec('ANALYZE gene_burden_summary')
+  } catch {
+    // best effort — summary can be rebuilt on next import/app start
   }
 }
 

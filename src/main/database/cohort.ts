@@ -1,7 +1,8 @@
 /**
  * CohortService - Aggregated variant analysis across all cases
  *
- * Provides cohort-level queries for multi-case analysis.
+ * Reads from pre-computed cohort_variant_summary and gene_burden_summary tables.
+ * Summary tables are populated by CohortSummaryService.rebuild() after import/delete.
  */
 
 import type Database from 'better-sqlite3-multiple-ciphers'
@@ -17,7 +18,7 @@ import type {
 
 /**
  * Sortable columns for cohort queries
- * Maps column keys to SQL column names/expressions
+ * Maps column keys to SQL column names on cohort_variant_summary
  */
 const SORTABLE_COLUMNS: Record<string, string> = {
   chr: 'chr',
@@ -33,26 +34,16 @@ const SORTABLE_COLUMNS: Record<string, string> = {
   func: 'func',
   clinvar: 'clinvar',
   gnomad_af: 'gnomad_af',
-  cadd_phred: 'cadd_phred',
+  cadd_phred: 'cadd',
   transcript: 'transcript'
 }
 
 const NUMERIC_COLUMNS = new Set(['pos', 'gnomad_af', 'cadd_phred'])
 
-// Maps cohort-facing column keys to their raw `variants` table column names.
-// Only entries that differ need to be listed; unlisted keys pass through as-is.
-const PRE_AGGREGATION_COLUMN_MAP: Record<string, string> = {
-  cadd_phred: 'cadd'
-}
-
-// Columns that are computed aggregates (only available after GROUP BY)
-// These must be filtered via HAVING, not WHERE
-const AGGREGATE_COLUMNS = new Set(['carrier_count', 'cohort_frequency', 'het_count', 'hom_count'])
-
 /**
  * CohortService class
  *
- * Provides cohort-level aggregation queries.
+ * Provides cohort-level aggregation queries reading from summary tables.
  */
 export class CohortService {
   private db: Database.Database
@@ -76,13 +67,7 @@ export class CohortService {
   }
 
   /**
-   * Get aggregated cohort variants
-   *
-   * Returns variants grouped by (chr, pos, ref, alt) with carrier counts,
-   * cohort frequency, and het/hom breakdown.
-   *
-   * @param params - Search and pagination parameters
-   * @returns Object with data array and total_count
+   * Get aggregated cohort variants from pre-computed summary table
    */
   getCohortVariants(params: CohortSearchParams): CohortPaginatedResult {
     const limit = params.limit ?? 50
@@ -101,90 +86,101 @@ export class CohortService {
     const totalCases = totalCasesResult.count
 
     if (totalCases === 0) {
-      // No cases in database - return empty result
       return { data: [], total_count: 0 }
     }
 
     // Build WHERE clause for search and filters
     const whereConditions: string[] = []
-    const params_array: (string | number)[] = []
+    const paramsArray: (string | number)[] = []
 
-    // Search term handling with hybrid strategy
+    // Search term handling with LIKE-based strategy
     if (params.search_term !== undefined && params.search_term !== '') {
       const term = params.search_term.trim()
       const hasBooleanOps = /\b(AND|OR|NOT)\b/.test(term)
 
       if (!hasBooleanOps) {
-        // Single-term search — detect type and use best strategy
-        const singleCondition = this.buildSingleTermCondition(term, params_array)
+        const singleCondition = this.buildSingleTermCondition(term, paramsArray)
         whereConditions.push(singleCondition)
       } else {
-        // Multi-term boolean search — split on AND/OR/NOT, classify each token,
-        // build SQL-level boolean combining FTS5 and LIKE conditions
-        const sqlCondition = this.buildBooleanSearchCondition(term, params_array)
+        const sqlCondition = this.buildBooleanSearchCondition(term, paramsArray)
         whereConditions.push(sqlCondition)
       }
     }
 
-    // Gene symbol filter (partial match, consistent with Case Analysis)
+    // Gene symbol filter (partial match)
     if (params.gene_symbol !== undefined && params.gene_symbol !== '') {
-      whereConditions.push('gene_symbol LIKE ?')
-      params_array.push(`%${params.gene_symbol}%`)
+      whereConditions.push('cvs.gene_symbol LIKE ?')
+      paramsArray.push(`%${params.gene_symbol}%`)
     }
 
     // Consequence/Impact filter (IN clause)
     if (params.consequences !== undefined && params.consequences.length > 0) {
       const placeholders = params.consequences.map(() => '?').join(', ')
-      whereConditions.push(`consequence IN (${placeholders})`)
-      params_array.push(...params.consequences)
+      whereConditions.push(`cvs.consequence IN (${placeholders})`)
+      paramsArray.push(...params.consequences)
     }
 
     // Func filter (IN clause)
     if (params.funcs !== undefined && params.funcs.length > 0) {
       const placeholders = params.funcs.map(() => '?').join(', ')
-      whereConditions.push(`func IN (${placeholders})`)
-      params_array.push(...params.funcs)
+      whereConditions.push(`cvs.func IN (${placeholders})`)
+      paramsArray.push(...params.funcs)
     }
 
     // ClinVar filter (exact match via IN clause)
     if (params.clinvars !== undefined && params.clinvars.length > 0) {
       const placeholders = params.clinvars.map(() => '?').join(', ')
-      whereConditions.push(`clinvar IN (${placeholders})`)
-      params_array.push(...params.clinvars)
+      whereConditions.push(`cvs.clinvar IN (${placeholders})`)
+      paramsArray.push(...params.clinvars)
     }
 
     // gnomAD AF max filter
     if (params.gnomad_af_max !== undefined && params.gnomad_af_max > 0) {
-      whereConditions.push('(gnomad_af IS NULL OR gnomad_af <= ?)')
-      params_array.push(params.gnomad_af_max)
+      whereConditions.push('(cvs.gnomad_af IS NULL OR cvs.gnomad_af <= ?)')
+      paramsArray.push(params.gnomad_af_max)
     }
 
-    // CADD min filter (>= 0 allows filtering for any non-null CADD score)
-    // Include NULL values as they represent unknown/missing data and should pass filter
+    // CADD min filter
     if (params.cadd_min !== undefined && params.cadd_min >= 0) {
-      whereConditions.push('(cadd IS NULL OR cadd >= ?)')
-      params_array.push(params.cadd_min)
+      whereConditions.push('(cvs.cadd IS NULL OR cvs.cadd >= ?)')
+      paramsArray.push(params.cadd_min)
     }
 
-    // Annotation filters (global via variant_annotations OR per-case via case_variant_annotations)
+    // Carrier count min filter (now a regular WHERE, not HAVING)
+    if (params.carrier_count_min !== undefined && params.carrier_count_min > 0) {
+      whereConditions.push('cvs.carrier_count >= ?')
+      paramsArray.push(params.carrier_count_min)
+    }
+
+    // Cohort frequency min filter
+    if (params.cohort_frequency_min !== undefined && params.cohort_frequency_min > 0) {
+      whereConditions.push(`CAST(cvs.carrier_count AS REAL) / ${totalCases} >= ?`)
+      paramsArray.push(params.cohort_frequency_min)
+    }
+
+    // Annotation filters (join through variants table for per-case annotations)
     if (params.starred_only === true) {
       whereConditions.push(
         `(EXISTS (SELECT 1 FROM variant_annotations va
-          WHERE va.chr = variants.chr AND va.pos = variants.pos
-          AND va.ref = variants.ref AND va.alt = variants.alt AND va.starred = 1)
+          WHERE va.chr = cvs.chr AND va.pos = cvs.pos
+          AND va.ref = cvs.ref AND va.alt = cvs.alt AND va.starred = 1)
         OR EXISTS (SELECT 1 FROM case_variant_annotations cva
-          WHERE cva.variant_id = variants.id AND cva.starred = 1))`
+          JOIN variants v ON cva.variant_id = v.id
+          WHERE v.chr = cvs.chr AND v.pos = cvs.pos
+          AND v.ref = cvs.ref AND v.alt = cvs.alt AND cva.starred = 1))`
       )
     }
 
     if (params.has_comment === true) {
       whereConditions.push(
         `(EXISTS (SELECT 1 FROM variant_annotations va
-          WHERE va.chr = variants.chr AND va.pos = variants.pos
-          AND va.ref = variants.ref AND va.alt = variants.alt
+          WHERE va.chr = cvs.chr AND va.pos = cvs.pos
+          AND va.ref = cvs.ref AND va.alt = cvs.alt
           AND va.global_comment IS NOT NULL AND va.global_comment != '')
         OR EXISTS (SELECT 1 FROM case_variant_annotations cva
-          WHERE cva.variant_id = variants.id
+          JOIN variants v ON cva.variant_id = v.id
+          WHERE v.chr = cvs.chr AND v.pos = cvs.pos
+          AND v.ref = cvs.ref AND v.alt = cvs.alt
           AND cva.per_case_comment IS NOT NULL AND cva.per_case_comment != ''))`
       )
     }
@@ -193,162 +189,85 @@ export class CohortService {
       const placeholders = params.acmg_classifications.map(() => '?').join(', ')
       whereConditions.push(
         `(EXISTS (SELECT 1 FROM variant_annotations va
-          WHERE va.chr = variants.chr AND va.pos = variants.pos
-          AND va.ref = variants.ref AND va.alt = variants.alt
+          WHERE va.chr = cvs.chr AND va.pos = cvs.pos
+          AND va.ref = cvs.ref AND va.alt = cvs.alt
           AND va.acmg_classification IN (${placeholders}))
         OR EXISTS (SELECT 1 FROM case_variant_annotations cva
-          WHERE cva.variant_id = variants.id
+          JOIN variants v ON cva.variant_id = v.id
+          WHERE v.chr = cvs.chr AND v.pos = cvs.pos
+          AND v.ref = cvs.ref AND v.alt = cvs.alt
           AND cva.acmg_classification IN (${placeholders})))`
       )
-      params_array.push(...params.acmg_classifications, ...params.acmg_classifications)
+      paramsArray.push(...params.acmg_classifications, ...params.acmg_classifications)
     }
 
-    // Per-column text filters (LIKE case-insensitive partial match)
-    // Aggregate columns are deferred to HAVING clause below
-    const aggregateFilterConditions: string[] = []
-    const aggregateFilterParams: (string | number)[] = []
-
+    // Per-column text filters
     if (params.column_filters !== undefined) {
       for (const [column, value] of Object.entries(params.column_filters)) {
         if (value === '' || SORTABLE_COLUMNS[column] === undefined) continue
         const sqlColumn = SORTABLE_COLUMNS[column]
-        if (AGGREGATE_COLUMNS.has(column)) {
-          // Aggregate columns filtered via HAVING after GROUP BY
-          aggregateFilterConditions.push(`CAST(${sqlColumn} AS TEXT) LIKE ? COLLATE NOCASE`)
-          aggregateFilterParams.push(`%${value}%`)
-        } else {
-          // Use raw table column name for pre-aggregation WHERE clause
-          const rawColumn = PRE_AGGREGATION_COLUMN_MAP[column] ?? sqlColumn
-          whereConditions.push(
-            NUMERIC_COLUMNS.has(column)
-              ? `CAST(${rawColumn} AS TEXT) LIKE ? COLLATE NOCASE`
-              : `${rawColumn} LIKE ? COLLATE NOCASE`
-          )
-          params_array.push(`%${value}%`)
-        }
+        whereConditions.push(
+          NUMERIC_COLUMNS.has(column)
+            ? `CAST(cvs.${sqlColumn} AS TEXT) LIKE ? COLLATE NOCASE`
+            : `cvs.${sqlColumn} LIKE ? COLLATE NOCASE`
+        )
+        paramsArray.push(`%${value}%`)
       }
     }
 
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : ''
 
-    // Build HAVING clause for aggregate filters (applied after GROUP BY)
-    const havingConditions: string[] = [...aggregateFilterConditions]
-    const havingParams: (string | number)[] = [...aggregateFilterParams]
-
-    if (params.carrier_count_min !== undefined && params.carrier_count_min > 0) {
-      havingConditions.push('COUNT(*) >= ?')
-      havingParams.push(params.carrier_count_min)
-    }
-
-    if (params.cohort_frequency_min !== undefined && params.cohort_frequency_min > 0) {
-      havingConditions.push(`CAST(COUNT(*) AS REAL) / ${totalCases} >= ?`)
-      havingParams.push(params.cohort_frequency_min)
-    }
-
-    // Build filter-only HAVING clause (no cursor)
-    const filterHavingClause =
-      havingConditions.length > 0 ? `HAVING ${havingConditions.join(' AND ')}` : ''
-
     // Build ORDER BY clause with variant_key as tiebreaker
     const direction = sortOrder.toUpperCase()
     const orderByClause = `ORDER BY ${sortBy} ${direction}, variant_key ASC`
 
-    // Two-CTE query structure:
-    // 1. deduped: deduplicate per case before counting
-    // 2. aggregated: GROUP BY with filter HAVING + COUNT(*) OVER() for total_count
-    // Outer query: ORDER BY, LIMIT, OFFSET
     const sql = `
-      WITH deduped AS (
-        SELECT
-          chr, pos, ref, alt, case_id,
-          MAX(gene_symbol) as gene_symbol,
-          MAX(cdna) as cdna,
-          MAX(aa_change) as aa_change,
-          MAX(gt_num) as gt_num,
-          MAX(consequence) as consequence,
-          MAX(func) as func,
-          MAX(clinvar) as clinvar,
-          MAX(gnomad_af) as gnomad_af,
-          MAX(cadd) as cadd,
-          MAX(transcript) as transcript,
-          MAX(omim_mim_number) as omim_id
-        FROM variants
-        ${whereClause}
-        GROUP BY chr, pos, ref, alt, case_id
-      ),
-      aggregated AS (
-        SELECT
-          chr,
-          pos,
-          ref,
-          alt,
-          MAX(gene_symbol) as gene_symbol,
-          MAX(cdna) as cdna,
-          MAX(aa_change) as aa_change,
-          COUNT(*) as carrier_count,
-          ${totalCases} as total_cases,
-          CAST(COUNT(*) AS REAL) / ${totalCases} as cohort_frequency,
-          SUM(CASE WHEN gt_num IN ('0/1', '1/0', '0|1', '1|0') THEN 1 ELSE 0 END) as het_count,
-          SUM(CASE WHEN gt_num IN ('1/1', '1|1') THEN 1 ELSE 0 END) as hom_count,
-          chr || ':' || pos || ':' || ref || ':' || alt as variant_key,
-          MAX(consequence) as consequence,
-          MAX(func) as func,
-          MAX(clinvar) as clinvar,
-          MAX(gnomad_af) as gnomad_af,
-          MAX(cadd) as cadd_phred,
-          MAX(transcript) as transcript,
-          MAX(omim_id) as omim_id,
-          COUNT(*) OVER() as _total_count
-        FROM deduped
-        GROUP BY chr, pos, ref, alt
-        ${filterHavingClause}
-      )
-      SELECT * FROM aggregated
+      SELECT
+        cvs.chr,
+        cvs.pos,
+        cvs.ref,
+        cvs.alt,
+        cvs.gene_symbol,
+        cvs.cdna,
+        cvs.aa_change,
+        cvs.carrier_count,
+        ${totalCases} AS total_cases,
+        CAST(cvs.carrier_count AS REAL) / ${totalCases} AS cohort_frequency,
+        cvs.het_count,
+        cvs.hom_count,
+        cvs.variant_key,
+        cvs.consequence,
+        cvs.func,
+        cvs.clinvar,
+        cvs.gnomad_af,
+        cvs.cadd AS cadd_phred,
+        cvs.transcript,
+        cvs.omim_mim_number AS omim_id,
+        COUNT(*) OVER() AS _total_count
+      FROM cohort_variant_summary cvs
+      ${whereClause}
       ${orderByClause}
       LIMIT ? OFFSET ?
     `
 
     const stmt = this.getStatement(sql)
-    const rawResults = stmt.all(
-      ...params_array,
-      ...havingParams,
-      limit,
-      offset
-    ) as (CohortVariant & {
+    const rawResults = stmt.all(...paramsArray, limit, offset) as (CohortVariant & {
       _total_count: number
     })[]
 
-    // Extract total count from window function; if empty page (offset beyond data),
-    // run a count-only query to still report the correct total
     let totalCount = 0
     if (rawResults.length > 0) {
       totalCount = rawResults[0]._total_count
     } else if (offset > 0) {
-      // Offset beyond data — need a separate count query
       const countSql = `
-        WITH deduped AS (
-          SELECT chr, pos, ref, alt, case_id,
-            MAX(gt_num) as gt_num
-          FROM variants ${whereClause}
-          GROUP BY chr, pos, ref, alt, case_id
-        ),
-        aggregated AS (
-          SELECT chr, pos, ref, alt, COUNT(*) as carrier_count,
-            CAST(COUNT(*) AS REAL) / ${totalCases} as cohort_frequency,
-            SUM(CASE WHEN gt_num IN ('0/1','1/0','0|1','1|0') THEN 1 ELSE 0 END) as het_count,
-            SUM(CASE WHEN gt_num IN ('1/1','1|1') THEN 1 ELSE 0 END) as hom_count
-          FROM deduped GROUP BY chr, pos, ref, alt
-          ${filterHavingClause}
-        )
-        SELECT COUNT(*) as count FROM aggregated
+        SELECT COUNT(*) as count
+        FROM cohort_variant_summary cvs
+        ${whereClause}
       `
-      const countResult = this.db.prepare(countSql).get(...params_array, ...havingParams) as {
-        count: number
-      }
+      const countResult = this.db.prepare(countSql).get(...paramsArray) as { count: number }
       totalCount = countResult.count
     }
 
-    // Strip internal _total_count field from results
     const results = rawResults.map(({ _total_count, ...row }) => row) as CohortVariant[]
 
     return {
@@ -359,39 +278,36 @@ export class CohortService {
 
   /**
    * Build a SQL condition for a single search token.
-   * Detects genomic position, HGVS, or gene/text and returns the appropriate WHERE fragment.
+   * Uses LIKE-based search on summary table columns.
    */
-  private buildSingleTermCondition(token: string, params_array: (string | number)[]): string {
+  private buildSingleTermCondition(token: string, paramsArray: (string | number)[]): string {
     const genomicPosPattern = /^(?:chr)?(\d{1,2}|X|Y|MT?):(\d+)$/i
     const hgvsPattern = /^[cp]\./
 
     if (genomicPosPattern.test(token)) {
       const match = token.match(genomicPosPattern)
       if (match !== null) {
-        params_array.push(match[1], parseInt(match[2], 10))
-        return '(chr = ? AND pos = ?)'
+        paramsArray.push(match[1], parseInt(match[2], 10))
+        return '(cvs.chr = ? AND cvs.pos = ?)'
       }
     }
 
     if (hgvsPattern.test(token)) {
       const searchPattern = `%${token}%`
-      params_array.push(searchPattern, searchPattern)
-      return '(cdna LIKE ? OR aa_change LIKE ?)'
+      paramsArray.push(searchPattern, searchPattern)
+      return '(cvs.cdna LIKE ? OR cvs.aa_change LIKE ?)'
     }
 
-    // Default: FTS5 for gene symbol / consequence / general text
-    const ftsQuery = `"${token.replace(/"/g, '""')}"*`
-    params_array.push(ftsQuery)
-    return 'id IN (SELECT rowid FROM variants_fts WHERE variants_fts MATCH ?)'
+    // Default: LIKE-based search on gene_symbol, consequence, omim_mim_number
+    const searchPattern = `%${token}%`
+    paramsArray.push(searchPattern, searchPattern, searchPattern)
+    return '(cvs.gene_symbol LIKE ? COLLATE NOCASE OR cvs.consequence LIKE ? COLLATE NOCASE OR cvs.omim_mim_number LIKE ? COLLATE NOCASE)'
   }
 
   /**
    * Build a SQL boolean expression from a search string containing AND/OR/NOT.
-   * Each token is classified independently (FTS5 for genes, LIKE for HGVS, etc.)
-   * and combined with SQL AND/OR/NOT at the WHERE level.
    */
-  private buildBooleanSearchCondition(term: string, params_array: (string | number)[]): string {
-    // Split preserving operators as separate tokens
+  private buildBooleanSearchCondition(term: string, paramsArray: (string | number)[]): string {
     const parts = term
       .split(/\b(AND|OR|NOT)\b/)
       .map((p) => p.trim())
@@ -406,8 +322,7 @@ export class CohortService {
       } else if (part === 'NOT') {
         sqlParts.push('AND NOT')
       } else {
-        // Classify and build condition for this token
-        sqlParts.push(this.buildSingleTermCondition(part, params_array))
+        sqlParts.push(this.buildSingleTermCondition(part, paramsArray))
       }
     }
 
@@ -416,8 +331,6 @@ export class CohortService {
 
   /**
    * Get cohort summary statistics
-   *
-   * @returns Summary with total cases, variants, unique variants, etc.
    */
   getCohortSummary(): CohortSummary {
     // Total cases
@@ -432,18 +345,16 @@ export class CohortService {
     }
     const totalVariants = totalVariantsResult.count
 
-    // Unique variants (distinct chr:pos:ref:alt)
+    // Unique variants — read from pre-computed summary
     const uniqueVariantsResult = this.db
-      .prepare(
-        `SELECT COUNT(DISTINCT chr || ':' || pos || ':' || ref || ':' || alt) as count FROM variants`
-      )
+      .prepare('SELECT COUNT(*) as count FROM cohort_variant_summary')
       .get() as { count: number }
     const uniqueVariants = uniqueVariantsResult.count
 
-    // Genes with variants
+    // Genes with variants — read from pre-computed summary
     const genesResult = this.db
       .prepare(
-        'SELECT COUNT(DISTINCT gene_symbol) as count FROM variants WHERE gene_symbol IS NOT NULL'
+        'SELECT COUNT(DISTINCT gene_symbol) as count FROM cohort_variant_summary WHERE gene_symbol IS NOT NULL'
       )
       .get() as { count: number }
     const genesWithVariants = genesResult.count
@@ -522,14 +433,6 @@ export class CohortService {
 
   /**
    * Get carriers for a specific variant
-   *
-   * Returns individual cases carrying the variant with case name and zygosity.
-   *
-   * @param chr - Chromosome
-   * @param pos - Genomic position
-   * @param ref - Reference allele
-   * @param alt - Alternate allele
-   * @returns Array of carriers with case ID, name, and genotype
    */
   getCarriers(chr: string, pos: number, ref: string, alt: string): CohortCarrier[] {
     const sql = `
@@ -549,26 +452,16 @@ export class CohortService {
   }
 
   /**
-   * Get gene-level burden analysis
-   *
-   * Returns per-gene aggregation showing variant counts and affected case counts.
-   *
-   * @returns Array of gene burden data sorted by affected cases descending
+   * Get gene-level burden analysis from pre-computed summary
    */
   getGeneBurden(): GeneBurden[] {
     const sql = `
-      SELECT
-        gene_symbol,
-        COUNT(*) as variant_count,
-        COUNT(DISTINCT chr || ':' || pos || ':' || ref || ':' || alt) as unique_variant_count,
-        COUNT(DISTINCT case_id) as affected_case_count,
-        (SELECT COUNT(*) FROM cases) as total_cases
-      FROM variants
-      WHERE gene_symbol IS NOT NULL AND gene_symbol != ''
-      GROUP BY gene_symbol
+      SELECT gene_symbol, variant_count, unique_variant_count,
+        affected_case_count,
+        (SELECT COUNT(*) FROM cases) AS total_cases
+      FROM gene_burden_summary
       ORDER BY affected_case_count DESC, variant_count DESC
     `
-
     const stmt = this.getStatement(sql)
     return stmt.all() as GeneBurden[]
   }

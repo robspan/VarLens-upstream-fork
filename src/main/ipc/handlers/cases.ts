@@ -77,6 +77,34 @@ export function registerCaseHandlers({ ipcMain, getDb }: HandlerDependencies): v
 
       const db = getDb()
       db.cases.deleteCase(validated.data)
+
+      // Mark cohort summary stale and spawn deferred rebuild
+      try {
+        db.cohortSummary.markStale()
+        safeEmit('cohort:summaryRebuilt', { is_stale: true })
+
+        const workerPath = resolve(__dirname, 'rebuild-summary-worker.js')
+        const worker = new Worker(workerPath)
+        worker.postMessage({
+          dbPath: db.getPath(),
+          encryptionKey: db.getEncryptionKey()
+        })
+        worker.on('message', (msg: { type: string }) => {
+          if (msg.type === 'complete') {
+            safeEmit('cohort:summaryRebuilt', { is_stale: false })
+          } else {
+            mainLogger.error('Rebuild summary worker failed after single delete', 'cases')
+          }
+          worker.terminate().catch(() => {})
+        })
+        worker.on('error', (err: Error) => {
+          mainLogger.error(`Rebuild summary worker error: ${err.message}`, 'cases')
+          worker.terminate().catch(() => {})
+        })
+      } catch {
+        // best effort — summary rebuilds on next import
+      }
+
       return undefined
     })
   })
@@ -85,6 +113,7 @@ export function registerCaseHandlers({ ipcMain, getDb }: HandlerDependencies): v
     return wrapHandler(async () => {
       const db = getDb()
       mainLogger.info(`Starting deleteAll worker (db: ${db.getPath()})`, 'cases')
+      safeEmit('cohort:summaryRebuilt', { is_stale: true })
       try {
         const deleted = await runDeleteWorker({
           type: 'deleteAll',
@@ -93,6 +122,7 @@ export function registerCaseHandlers({ ipcMain, getDb }: HandlerDependencies): v
         })
         mainLogger.info(`deleteAll completed: ${deleted} cases deleted`, 'cases')
         safeEmit('cases:deleted', { deleted })
+        safeEmit('cohort:summaryRebuilt', { is_stale: false })
         return deleted
       } catch (error) {
         mainLogger.error(
@@ -114,6 +144,7 @@ export function registerCaseHandlers({ ipcMain, getDb }: HandlerDependencies): v
       }
 
       const db = getDb()
+      safeEmit('cohort:summaryRebuilt', { is_stale: true })
       const deleted = await runDeleteWorker({
         type: 'deleteBatch',
         dbPath: db.getPath(),
@@ -121,6 +152,7 @@ export function registerCaseHandlers({ ipcMain, getDb }: HandlerDependencies): v
         ids: validated.data
       })
       safeEmit('cases:deleted', { deleted })
+      safeEmit('cohort:summaryRebuilt', { is_stale: false })
       return deleted
     })
   })

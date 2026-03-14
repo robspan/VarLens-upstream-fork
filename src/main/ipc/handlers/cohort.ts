@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { BrowserWindow } from 'electron'
 import { wrapHandler } from '../errorHandler'
 import type { HandlerDependencies } from '../types'
 import { CohortService } from '../../database/cohort'
@@ -8,6 +9,12 @@ import {
   AssociationConfigSchema
 } from '../../../shared/types/ipc-schemas'
 import { mainLogger } from '../../services/MainLogger'
+
+function safeEmit(channel: string, data: unknown): void {
+  const win = BrowserWindow.getAllWindows()[0]
+  if (win === undefined || win.isDestroyed()) return
+  win.webContents.send(channel, data)
+}
 
 /**
  * Cohort IPC handlers
@@ -164,5 +171,23 @@ export function registerCohortHandlers({ ipcMain, getDb }: HandlerDependencies):
       // Only call abort(); the finally block in geneBurdenCompare clears activeEngine
       activeEngine.abort()
     }
+  })
+
+  // Summary status
+  ipcMain.handle('cohort:summaryStatus', async () => {
+    return wrapHandler(async () => {
+      const db = getDb()
+      return db.cohortSummary.getStatus()
+    })
+  })
+
+  // Manual rebuild trigger
+  ipcMain.handle('cohort:rebuildSummary', async () => {
+    return wrapHandler(async () => {
+      const db = getDb()
+      safeEmit('cohort:summaryRebuilt', { is_stale: true })
+      db.cohortSummary.rebuild()
+      safeEmit('cohort:summaryRebuilt', { is_stale: false })
+    })
   })
 }

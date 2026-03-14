@@ -9,10 +9,13 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import Database from 'better-sqlite3-multiple-ciphers'
 import { CohortService } from '../../../src/main/database/cohort'
 import { initializeSchema } from '../../../src/main/database/schema'
+import { runMigrations } from '../../../src/main/database/migrations'
+import { CohortSummaryService } from '../../../src/main/database/CohortSummaryService'
 
 describe('cohort IPC handlers', () => {
   let db: Database.Database
   let cohortService: CohortService
+  let summaryService: CohortSummaryService
 
   // Helper to insert a case
   const insertCase = (name: string): number => {
@@ -70,11 +73,17 @@ describe('cohort IPC handlers', () => {
     )
   }
 
+  const rebuildSummary = (): void => {
+    summaryService.rebuild()
+  }
+
   beforeEach(() => {
     // Create in-memory database
     db = new Database(':memory:')
     initializeSchema(db)
+    runMigrations(db)
     cohortService = new CohortService(db)
+    summaryService = new CohortSummaryService(db)
   })
 
   afterEach(() => {
@@ -114,6 +123,7 @@ describe('cohort IPC handlers', () => {
         gnomad_af: 0.05
       })
 
+      rebuildSummary()
       const result = cohortService.getCohortVariants({
         limit: 50,
         sort_order: 'desc'
@@ -135,6 +145,7 @@ describe('cohort IPC handlers', () => {
         insertVariant(caseId, '1', 100 + i, 'A', 'G', { gene_symbol: `GENE${i}` })
       }
 
+      rebuildSummary()
       const page1 = cohortService.getCohortVariants({ limit: 3, offset: 0 })
       expect(page1.data.length).toBe(3)
       expect(page1.total_count).toBe(10)
@@ -159,6 +170,7 @@ describe('cohort IPC handlers', () => {
       insertVariant(case2, '1', 100, 'A', 'G', { gene_symbol: 'BRCA1' })
       insertVariant(case1, '2', 200, 'C', 'T', { gene_symbol: 'TP53' })
 
+      rebuildSummary()
       const result = cohortService.getCohortSummary()
 
       // Snapshot captures structure
@@ -203,6 +215,7 @@ describe('cohort IPC handlers', () => {
       // Variant with high gnomAD AF
       insertVariant(caseId, '3', 300, 'G', 'A', { gnomad_af: 0.5 })
 
+      rebuildSummary()
       const result = cohortService.getCohortVariants({ gnomad_af_max: 0.01 })
 
       // NULL should be included (matches production behavior from 26-01)
@@ -226,6 +239,7 @@ describe('cohort IPC handlers', () => {
       // Variant with low CADD
       insertVariant(caseId, '3', 300, 'G', 'A', { cadd: 5 })
 
+      rebuildSummary()
       const result = cohortService.getCohortVariants({ cadd_min: 20 })
 
       // NULL should be included (same behavior as gnomAD filter)
@@ -246,6 +260,7 @@ describe('cohort IPC handlers', () => {
       insertVariant(caseId, '2', 200, 'C', 'T', { clinvar: 'Likely_pathogenic' })
       insertVariant(caseId, '3', 300, 'G', 'A', { clinvar: 'Benign' })
 
+      rebuildSummary()
       const result = cohortService.getCohortVariants({ clinvars: ['Pathogenic'] })
 
       // Exact match only — should NOT match Likely_pathogenic
@@ -288,6 +303,7 @@ describe('cohort IPC handlers', () => {
         cadd: 25
       })
 
+      rebuildSummary()
       const result = cohortService.getCohortVariants({
         gene_symbol: 'BRCA1',
         consequences: ['HIGH'],

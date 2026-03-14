@@ -152,53 +152,24 @@ export class CohortService {
       paramsArray.push(params.carrier_count_min)
     }
 
-    // Cohort frequency min filter
     if (params.cohort_frequency_min !== undefined && params.cohort_frequency_min > 0) {
-      whereConditions.push(`CAST(cvs.carrier_count AS REAL) / ${totalCases} >= ?`)
+      whereConditions.push('cvs.cohort_frequency >= ?')
       paramsArray.push(params.cohort_frequency_min)
     }
 
-    // Annotation filters (join through variants table for per-case annotations)
+    // Annotation filters (use denormalized columns from v14)
     if (params.starred_only === true) {
-      whereConditions.push(
-        `(EXISTS (SELECT 1 FROM variant_annotations va
-          WHERE va.chr = cvs.chr AND va.pos = cvs.pos
-          AND va.ref = cvs.ref AND va.alt = cvs.alt AND va.starred = 1)
-        OR EXISTS (SELECT 1 FROM case_variant_annotations cva
-          JOIN variants v ON cva.variant_id = v.id
-          WHERE v.chr = cvs.chr AND v.pos = cvs.pos
-          AND v.ref = cvs.ref AND v.alt = cvs.alt AND cva.starred = 1))`
-      )
+      whereConditions.push('cvs.has_star = 1')
     }
 
     if (params.has_comment === true) {
-      whereConditions.push(
-        `(EXISTS (SELECT 1 FROM variant_annotations va
-          WHERE va.chr = cvs.chr AND va.pos = cvs.pos
-          AND va.ref = cvs.ref AND va.alt = cvs.alt
-          AND va.global_comment IS NOT NULL AND va.global_comment != '')
-        OR EXISTS (SELECT 1 FROM case_variant_annotations cva
-          JOIN variants v ON cva.variant_id = v.id
-          WHERE v.chr = cvs.chr AND v.pos = cvs.pos
-          AND v.ref = cvs.ref AND v.alt = cvs.alt
-          AND cva.per_case_comment IS NOT NULL AND cva.per_case_comment != ''))`
-      )
+      whereConditions.push('cvs.has_comment = 1')
     }
 
     if (params.acmg_classifications !== undefined && params.acmg_classifications.length > 0) {
       const placeholders = params.acmg_classifications.map(() => '?').join(', ')
-      whereConditions.push(
-        `(EXISTS (SELECT 1 FROM variant_annotations va
-          WHERE va.chr = cvs.chr AND va.pos = cvs.pos
-          AND va.ref = cvs.ref AND va.alt = cvs.alt
-          AND va.acmg_classification IN (${placeholders}))
-        OR EXISTS (SELECT 1 FROM case_variant_annotations cva
-          JOIN variants v ON cva.variant_id = v.id
-          WHERE v.chr = cvs.chr AND v.pos = cvs.pos
-          AND v.ref = cvs.ref AND v.alt = cvs.alt
-          AND cva.acmg_classification IN (${placeholders})))`
-      )
-      paramsArray.push(...params.acmg_classifications, ...params.acmg_classifications)
+      whereConditions.push(`cvs.acmg_best IN (${placeholders})`)
+      paramsArray.push(...params.acmg_classifications)
     }
 
     // Per-column text filters
@@ -217,10 +188,23 @@ export class CohortService {
 
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : ''
 
-    // Build ORDER BY clause with variant_key as tiebreaker
-    const direction = sortOrder.toUpperCase()
-    const orderByClause = `ORDER BY ${sortBy} ${direction}, variant_key ASC`
+    // Count query (only when filters change, not on page/sort change)
+    let totalCount = 0
+    if (params._count_needed !== false) {
+      const countSql = `
+        SELECT COUNT(*) as count
+        FROM cohort_variant_summary cvs
+        ${whereClause}
+      `
+      const countResult = this.db.prepare(countSql).get(...paramsArray) as { count: number }
+      totalCount = countResult.count
+    }
 
+    // Build ORDER BY — use PK columns as tiebreaker instead of variant_key
+    const direction = sortOrder.toUpperCase()
+    const orderByClause = `ORDER BY ${sortBy} ${direction}, chr ASC, pos ASC, ref ASC, alt ASC`
+
+    // Data query — no window function, LIMIT benefits from early termination
     const sql = `
       SELECT
         cvs.chr,
@@ -242,8 +226,7 @@ export class CohortService {
         cvs.gnomad_af,
         cvs.cadd AS cadd_phred,
         cvs.transcript,
-        cvs.omim_mim_number AS omim_id,
-        COUNT(*) OVER() AS _total_count
+        cvs.omim_mim_number AS omim_id
       FROM cohort_variant_summary cvs
       ${whereClause}
       ${orderByClause}
@@ -251,24 +234,7 @@ export class CohortService {
     `
 
     const stmt = this.getStatement(sql)
-    const rawResults = stmt.all(...paramsArray, limit, offset) as (CohortVariant & {
-      _total_count: number
-    })[]
-
-    let totalCount = 0
-    if (rawResults.length > 0) {
-      totalCount = rawResults[0]._total_count
-    } else if (offset > 0) {
-      const countSql = `
-        SELECT COUNT(*) as count
-        FROM cohort_variant_summary cvs
-        ${whereClause}
-      `
-      const countResult = this.db.prepare(countSql).get(...paramsArray) as { count: number }
-      totalCount = countResult.count
-    }
-
-    const results = rawResults.map(({ _total_count, ...row }) => row) as CohortVariant[]
+    const results = stmt.all(...paramsArray, limit, offset) as CohortVariant[]
 
     return {
       data: results,

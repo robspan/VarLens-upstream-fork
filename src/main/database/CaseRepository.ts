@@ -1,6 +1,8 @@
 import { BaseRepository } from './BaseRepository'
 import type { Case } from './types'
 import { DatabaseError, NotFoundError, UniqueConstraintError } from './errors'
+import { createFTSTriggers } from './schema'
+import { mainLogger } from '../services/MainLogger'
 
 export class CaseRepository extends BaseRepository {
   createCase(name: string, filePath: string, fileSize: number): number {
@@ -61,14 +63,79 @@ export class CaseRepository extends BaseRepository {
   }
 
   deleteAllCases(): number {
-    return this.execRun(this.kysely.deleteFrom('cases')).changes
+    // Drop FTS triggers before bulk delete to avoid per-row FTS updates
+    // which cause severe blocking on large databases.
+    // Concurrency note: better-sqlite3 is synchronous and single-threaded
+    // per connection. The import worker uses its own separate connection,
+    // but imports and deleteAll should not run concurrently by design
+    // (the UI prevents this).
+    this.dropFtsTriggers()
+
+    try {
+      const changes = this.runTransaction(() => {
+        return this.execRun(this.kysely.deleteFrom('cases')).changes
+      })
+
+      this.rebuildFtsAndRestoreTriggers()
+      return changes
+    } catch (error) {
+      this.restoreFtsTriggersSafe()
+      throw error
+    }
   }
 
   deleteCasesBatch(ids: number[]): number {
     if (ids.length === 0) return 0
-    return this.runTransaction(() => {
-      const result = this.execRun(this.kysely.deleteFrom('cases').where('id', 'in', ids))
-      return result.changes
-    })
+
+    // For small batches, let FTS triggers handle per-row updates normally.
+    // The trigger-drop optimization is only worthwhile for larger deletes
+    // where per-row FTS overhead dominates.
+    const useOptimization = ids.length > 5
+    if (useOptimization) {
+      this.dropFtsTriggers()
+    }
+
+    try {
+      const changes = this.runTransaction(() => {
+        return this.execRun(this.kysely.deleteFrom('cases').where('id', 'in', ids)).changes
+      })
+
+      if (useOptimization) {
+        this.rebuildFtsAndRestoreTriggers()
+      }
+      return changes
+    } catch (error) {
+      if (useOptimization) {
+        this.restoreFtsTriggersSafe()
+      }
+      throw error
+    }
+  }
+
+  private dropFtsTriggers(): void {
+    this.db.exec('DROP TRIGGER IF EXISTS variants_fts_ai')
+    this.db.exec('DROP TRIGGER IF EXISTS variants_fts_ad')
+    this.db.exec('DROP TRIGGER IF EXISTS variants_fts_au')
+  }
+
+  private rebuildFtsAndRestoreTriggers(): void {
+    try {
+      this.db.exec("INSERT INTO variants_fts(variants_fts) VALUES('rebuild')")
+    } catch (error) {
+      mainLogger.error(`Failed to rebuild FTS index: ${error}`, 'CaseRepository')
+    }
+    try {
+      this.db.exec(createFTSTriggers)
+    } catch (error) {
+      mainLogger.error(`Failed to recreate FTS triggers: ${error}`, 'CaseRepository')
+    }
+  }
+
+  private restoreFtsTriggersSafe(): void {
+    try {
+      this.db.exec(createFTSTriggers)
+    } catch (error) {
+      mainLogger.error(`Failed to restore FTS triggers after error: ${error}`, 'CaseRepository')
+    }
   }
 }

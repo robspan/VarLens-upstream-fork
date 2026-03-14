@@ -1,5 +1,3 @@
-import { createReadStream } from 'node:fs'
-import { createGunzip } from 'node:zlib'
 import { pipeline } from 'node:stream/promises'
 import { parser } from 'stream-json'
 import { pick } from 'stream-json/filters/Pick'
@@ -9,6 +7,7 @@ import { createBatchAccumulator } from '../transforms/BatchAccumulator'
 import type { ImportOptions, ImportResult } from '../types'
 import type { ImportStrategy, FormatInfo, StrategyContext } from './ImportStrategy'
 import { importRegistry } from './StrategyRegistry'
+import { createDecompressedStream } from '../stream-utils'
 
 /**
  * Strategy for simple format: { "person_id": ..., "variants": [...] }
@@ -48,8 +47,7 @@ export class SimpleStrategy implements ImportStrategy {
 
     // Build the pipeline for simple format
     await pipeline(
-      createReadStream(filePath),
-      createGunzip(),
+      createDecompressedStream(filePath),
       parser(),
       pick({ filter: 'variants' }),
       streamArray(),

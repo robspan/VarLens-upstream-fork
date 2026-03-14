@@ -1,7 +1,6 @@
-import { createReadStream } from 'node:fs'
-import { createGunzip } from 'node:zlib'
 import { parser } from 'stream-json'
 import type { FileFormat, FormatInfo } from './strategies/ImportStrategy'
+import { createDecompressedStream } from './stream-utils'
 
 /**
  * Detect the file format by examining top-level keys in a gzipped JSON file.
@@ -13,7 +12,7 @@ import type { FileFormat, FormatInfo } from './strategies/ImportStrategy'
  */
 export async function detectFormat(filePath: string): Promise<FormatInfo> {
   return new Promise((resolve, reject) => {
-    const stream = createReadStream(filePath).pipe(createGunzip()).pipe(parser())
+    const stream = createDecompressedStream(filePath).pipe(parser())
 
     const topLevelKeys: string[] = []
     let depth = 0
@@ -113,7 +112,7 @@ export async function detectFormat(filePath: string): Promise<FormatInfo> {
  */
 export async function extractFirstSampleId(filePath: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const stream = createReadStream(filePath).pipe(createGunzip()).pipe(parser())
+    const stream = createDecompressedStream(filePath).pipe(parser())
 
     let inSamples = false
     let sampleId: string | null = null

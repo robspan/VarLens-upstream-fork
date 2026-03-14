@@ -1,5 +1,3 @@
-import { createReadStream } from 'node:fs'
-import { createGunzip } from 'node:zlib'
 import { pipeline } from 'node:stream/promises'
 import { parser } from 'stream-json'
 import { pick } from 'stream-json/filters/Pick'
@@ -10,6 +8,7 @@ import { resolveColumnIndices, type ColumnIndices } from '../config/fieldMapping
 import type { ImportOptions, ImportResult, DataDictionaries } from '../types'
 import type { ImportStrategy, FormatInfo, StrategyContext } from './ImportStrategy'
 import { importRegistry } from './StrategyRegistry'
+import { createDecompressedStream } from '../stream-utils'
 
 /** Result of parsing the header: dictionaries + dynamic column positions */
 interface HeaderInfo {
@@ -68,8 +67,7 @@ export class ColumnarStrategy implements ImportStrategy {
 
     // Build the pipeline
     await pipeline(
-      createReadStream(filePath),
-      createGunzip(),
+      createDecompressedStream(filePath),
       parser(),
       pick({ filter: dataPath }),
       streamArray(),
@@ -113,8 +111,7 @@ export class ColumnarStrategy implements ImportStrategy {
       const fieldsToExtract = new Set(['Gene', 'Transcript', 'HpoSimScore', 'MoI'])
       let resolved = false
 
-      const stream = createReadStream(filePath)
-        .pipe(createGunzip())
+      const stream = createDecompressedStream(filePath)
         .pipe(parser())
         .pipe(pick({ filter: headerPath }))
         .pipe(streamArray())

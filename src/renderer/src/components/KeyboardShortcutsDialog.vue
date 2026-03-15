@@ -30,9 +30,13 @@
 </template>
 
 <script setup lang="ts">
+/* global navigator */
 const model = defineModel<boolean>({ default: false })
 
-const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
+const isMac =
+  typeof navigator !== 'undefined' &&
+  typeof navigator.platform === 'string' &&
+  navigator.platform.toUpperCase().indexOf('MAC') >= 0
 const mod = isMac ? 'Cmd' : 'Ctrl'
 
 const shortcutGroups = [

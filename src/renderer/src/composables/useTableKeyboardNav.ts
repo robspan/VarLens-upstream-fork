@@ -58,7 +58,7 @@ export function useTableKeyboardNav<T>(
     const clamped = Math.max(0, Math.min(index, items.value.length - 1))
     selectedIndex.value = clamped
     const item = items.value[clamped]
-    if (item) onSelect(item)
+    if (item !== undefined) onSelect(item)
   }
 
   function selectByClick(item: T): void {

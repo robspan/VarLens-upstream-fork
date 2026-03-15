@@ -68,7 +68,9 @@
         >
           <v-icon start size="small">mdi-table-column</v-icon>
           Columns
-          <v-tooltip activator="parent" location="bottom">Toggle columns ({{ mod }}+Shift+C)</v-tooltip>
+          <v-tooltip activator="parent" location="bottom"
+            >Toggle columns ({{ mod }}+Shift+C)</v-tooltip
+          >
         </v-btn>
 
         <!-- Export -->
@@ -120,6 +122,7 @@
 </template>
 
 <script setup lang="ts">
+/* global navigator */
 interface ActiveFilter {
   id: string
   label: string
@@ -145,7 +148,10 @@ interface Props {
 
 defineProps<Props>()
 
-const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
+const isMac =
+  typeof navigator !== 'undefined' &&
+  typeof navigator.platform === 'string' &&
+  navigator.platform.toUpperCase().indexOf('MAC') >= 0
 const mod = isMac ? 'Cmd' : 'Ctrl'
 
 const emit = defineEmits<{

@@ -623,13 +623,25 @@ export function runMigrations(db: Database.Database): void {
 
   // ── Migration v14: Cohort performance optimization ──
   if (currentVersion < 14) {
-    // Denormalized annotation flags
-    db.exec(`
-      ALTER TABLE cohort_variant_summary ADD COLUMN has_star INTEGER NOT NULL DEFAULT 0;
-      ALTER TABLE cohort_variant_summary ADD COLUMN has_comment INTEGER NOT NULL DEFAULT 0;
-      ALTER TABLE cohort_variant_summary ADD COLUMN acmg_best TEXT;
-      ALTER TABLE cohort_variant_summary ADD COLUMN cohort_frequency REAL;
-    `)
+    // Denormalized annotation flags (idempotent — check before adding)
+    const cvsCols = db.prepare('PRAGMA table_info(cohort_variant_summary)').all() as {
+      name: string
+    }[]
+    const cvsColNames = new Set(cvsCols.map((c) => c.name))
+    if (!cvsColNames.has('has_star')) {
+      db.exec('ALTER TABLE cohort_variant_summary ADD COLUMN has_star INTEGER NOT NULL DEFAULT 0')
+    }
+    if (!cvsColNames.has('has_comment')) {
+      db.exec(
+        'ALTER TABLE cohort_variant_summary ADD COLUMN has_comment INTEGER NOT NULL DEFAULT 0'
+      )
+    }
+    if (!cvsColNames.has('acmg_best')) {
+      db.exec('ALTER TABLE cohort_variant_summary ADD COLUMN acmg_best TEXT')
+    }
+    if (!cvsColNames.has('cohort_frequency')) {
+      db.exec('ALTER TABLE cohort_variant_summary ADD COLUMN cohort_frequency REAL')
+    }
 
     // Index for frequency filter
     db.exec(`
@@ -637,11 +649,19 @@ export function runMigrations(db: Database.Database): void {
         ON cohort_variant_summary(cohort_frequency);
     `)
 
-    // Backfill cohort_frequency for existing rows
-    db.exec(`
-      UPDATE cohort_variant_summary
-      SET cohort_frequency = CAST(carrier_count AS REAL) / NULLIF((SELECT COUNT(*) FROM cases), 0);
-    `)
+    // Backfill cohort_frequency for existing rows (skip if already populated)
+    const needsBackfill = db
+      .prepare(
+        'SELECT 1 FROM cohort_variant_summary WHERE cohort_frequency IS NULL AND carrier_count > 0 LIMIT 1'
+      )
+      .get()
+    if (needsBackfill !== undefined) {
+      db.exec(`
+        UPDATE cohort_variant_summary
+        SET cohort_frequency = CAST(carrier_count AS REAL) / NULLIF((SELECT COUNT(*) FROM cases), 0)
+        WHERE cohort_frequency IS NULL;
+      `)
+    }
 
     // Mark stale to trigger full rebuild (populates annotation flags)
     db.exec(`
@@ -657,7 +677,7 @@ export function runMigrations(db: Database.Database): void {
     // --- variant_annotations triggers ---
 
     db.exec(`
-      CREATE TRIGGER trg_va_after_insert
+      CREATE TRIGGER IF NOT EXISTS trg_va_after_insert
       AFTER INSERT ON variant_annotations
       FOR EACH ROW
       BEGIN
@@ -712,7 +732,7 @@ export function runMigrations(db: Database.Database): void {
     `)
 
     db.exec(`
-      CREATE TRIGGER trg_va_after_update
+      CREATE TRIGGER IF NOT EXISTS trg_va_after_update
       AFTER UPDATE ON variant_annotations
       FOR EACH ROW
       WHEN OLD.starred != NEW.starred
@@ -770,7 +790,7 @@ export function runMigrations(db: Database.Database): void {
     `)
 
     db.exec(`
-      CREATE TRIGGER trg_va_after_delete
+      CREATE TRIGGER IF NOT EXISTS trg_va_after_delete
       AFTER DELETE ON variant_annotations
       FOR EACH ROW
       BEGIN
@@ -827,7 +847,7 @@ export function runMigrations(db: Database.Database): void {
     // --- case_variant_annotations triggers ---
 
     db.exec(`
-      CREATE TRIGGER trg_cva_after_insert
+      CREATE TRIGGER IF NOT EXISTS trg_cva_after_insert
       AFTER INSERT ON case_variant_annotations
       FOR EACH ROW
       BEGIN
@@ -890,7 +910,7 @@ export function runMigrations(db: Database.Database): void {
     `)
 
     db.exec(`
-      CREATE TRIGGER trg_cva_after_update
+      CREATE TRIGGER IF NOT EXISTS trg_cva_after_update
       AFTER UPDATE ON case_variant_annotations
       FOR EACH ROW
       WHEN OLD.starred != NEW.starred
@@ -956,7 +976,7 @@ export function runMigrations(db: Database.Database): void {
     `)
 
     db.exec(`
-      CREATE TRIGGER trg_cva_after_delete
+      CREATE TRIGGER IF NOT EXISTS trg_cva_after_delete
       AFTER DELETE ON case_variant_annotations
       FOR EACH ROW
       BEGIN

@@ -115,6 +115,9 @@ const {
   cohortViewRef
 } = appState
 
+// Keyboard shortcuts help dialog
+const showKeyboardHelp = ref(false)
+
 // Responsive layout
 const { tier } = useResponsiveLayout()
 
@@ -290,7 +293,11 @@ useKeyboardShortcuts({
   onFaq: () => dialogHostRef.value?.showFaq(),
   onLogViewer: () => dialogHostRef.value?.toggleLogViewer(),
   onToggleFilterDrawer: () => filterToolbarRef.value?.toggleFilterDrawer(),
-  onToggleColumnsDrawer: () => filterToolbarRef.value?.toggleColumnsDrawer()
+  onToggleColumnsDrawer: () => filterToolbarRef.value?.toggleColumnsDrawer(),
+  onSearchFocus: () => filterToolbarRef.value?.focusSearch(),
+  onHelp: () => {
+    showKeyboardHelp.value = true
+  }
 })
 
 // Global listener for background import completion

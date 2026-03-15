@@ -450,6 +450,57 @@ onKeyStroke(
   { dedupe: true }
 )
 
+// Action shortcuts on selected row
+onKeyStroke(
+  's',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    if (navSelectedItem.value === null) return
+    e.preventDefault()
+    emit('star-toggle', navSelectedItem.value)
+  },
+  { dedupe: true }
+)
+
+onKeyStroke(
+  'c',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    if (navSelectedItem.value === null) return
+    e.preventDefault()
+    emit('comment-click', navSelectedItem.value)
+  },
+  { dedupe: true }
+)
+
+onKeyStroke(
+  'a',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    if (navSelectedItem.value === null) return
+    e.preventDefault()
+    emit('acmg-evidence-click', navSelectedItem.value)
+  },
+  { dedupe: true }
+)
+
+onKeyStroke(
+  'e',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    if (navSelectedItem.value === null) return
+    e.preventDefault()
+    const key = navSelectedItem.value.variant_key
+    const idx = expandedRows.value.indexOf(key)
+    if (idx === -1) {
+      expandedRows.value = [...expandedRows.value, key]
+    } else {
+      expandedRows.value = expandedRows.value.filter((k) => k !== key)
+    }
+  },
+  { dedupe: true }
+)
+
 // Scroll selected row into view
 watch(selectedIndex, async (newIndex) => {
   if (newIndex === null) return

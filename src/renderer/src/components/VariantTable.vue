@@ -449,6 +449,40 @@ onKeyStroke(
   { dedupe: true }
 )
 
+// Action shortcuts on selected row
+onKeyStroke(
+  's',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    if (selectedItem.value === null) return
+    e.preventDefault()
+    annotationDialogsRef.value?.handleStarToggle(selectedItem.value)
+  },
+  { dedupe: true }
+)
+
+onKeyStroke(
+  'c',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    if (selectedItem.value === null) return
+    e.preventDefault()
+    annotationDialogsRef.value?.openCommentDialog(selectedItem.value)
+  },
+  { dedupe: true }
+)
+
+onKeyStroke(
+  'a',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    if (selectedItem.value === null) return
+    e.preventDefault()
+    annotationDialogsRef.value?.openAcmgEvidenceDialog(selectedItem.value)
+  },
+  { dedupe: true }
+)
+
 // Scroll selected row into view
 watch(selectedIndex, async (newIndex) => {
   if (newIndex === null) return

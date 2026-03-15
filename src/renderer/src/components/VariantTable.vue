@@ -49,8 +49,10 @@
             :is-sorted="isSorted"
             :sort-by="slotSortBy"
             :has-filter="hasFilter(col.key)"
-            :filter-value="columnFilters[col.key] || ''"
-            @update:filter="(v) => setColumnFilter(col.key, v)"
+            :current-filter="getFilter(col.key)"
+            :column-meta="columnMetaMap[col.key]"
+            :filter-mode="columnFilterModes[col.key] ?? 'text-suggest'"
+            @apply-filter="(f) => setColumnFilter(col.key, f)"
             @clear-filter="clearColumnFilter(col.key)"
           />
         </template>
@@ -241,6 +243,25 @@
           />
           <span v-else class="text-grey">--</span>
         </template>
+
+        <!-- Empty state when filters produce no results -->
+        <template #no-data>
+          <div
+            class="text-center pa-8"
+            role="status"
+            aria-label="No variants match the current filters"
+          >
+            <v-icon size="48" color="grey-lighten-1" class="mb-4">mdi-filter-off-outline</v-icon>
+            <div class="text-h6 text-medium-emphasis mb-2">No variants match your filters</div>
+            <div class="text-body-2 text-medium-emphasis mb-4">
+              Try adjusting your filter criteria or clearing all filters.
+            </div>
+            <v-btn variant="tonal" color="primary" size="small" @click="emit('clear-filters')">
+              <v-icon start size="small">mdi-filter-off</v-icon>
+              Clear filters
+            </v-btn>
+          </div>
+        </template>
       </v-data-table-server>
     </template>
 
@@ -257,6 +278,9 @@
 import { ref, computed, toRef, watch, onMounted, nextTick } from 'vue'
 import type { Variant, VariantFilter } from '../../../shared/types/api'
 import type { AnnotationScope } from '../../../shared/types/annotations'
+import type { ActiveFilter } from '../../../shared/types/filters'
+import { buildActiveFiltersList } from '../utils/filters/activeFilters'
+import { useColumnFilterMeta } from '../composables/useColumnFilterMeta'
 import { useAnnotations } from '../composables/useAnnotations'
 import { useColumnPreferences } from '../composables/useColumnPreferences'
 import { useVariantLinks } from '../composables/useVariantLinks'
@@ -296,6 +320,7 @@ const emit = defineEmits<{
   'update:hasSort': [hasSort: boolean]
   'row-click': [variant: Variant]
   deselect: []
+  'clear-filters': []
 }>()
 
 // Annotations
@@ -357,18 +382,47 @@ const {
   loadVariants,
   resetSort,
   getRowProps,
-  columnFilters,
+  columnMeta,
   hasActiveFilters: hasColumnFilters,
   activeFilterCount: columnFilterCount,
   setColumnFilter,
   clearColumnFilter,
   clearAllColumnFilters,
-  hasFilter
+  hasFilter,
+  getFilter,
+  getColumnFiltersParam
 } = useVariantData({
   caseId: toRef(props, 'caseId'),
   filters: toRef(props, 'filters'),
   onCountsUpdate: (counts) => emit('update:counts', counts),
   onSortUpdate: (hasSort) => emit('update:hasSort', hasSort)
+})
+
+// Column metadata map + filter modes (shared composable)
+const { columnMetaMap, columnFilterModes } = useColumnFilterMeta(columnMeta)
+
+// Column active filter chips for the toolbar
+const columnActiveFilters = computed<ActiveFilter[]>(() => {
+  const colFilters = getColumnFiltersParam()
+  if (!colFilters) return []
+  return buildActiveFiltersList(
+    {
+      searchQuery: '',
+      geneSymbol: '',
+      consequences: [],
+      funcs: [],
+      clinvars: [],
+      maxGnomadAf: null,
+      minCadd: null,
+      minCohortFrequency: null,
+      minCarriers: null,
+      starredOnly: false,
+      hasCommentOnly: false,
+      acmgClassifications: []
+    },
+    [],
+    colFilters
+  ).filter((f) => f.id.startsWith('col:'))
 })
 
 // Template refs
@@ -513,7 +567,9 @@ defineExpose({
   columns: computed(() => headers.value.map((h) => ({ key: h.key, title: h.title }))),
   hasColumnFilters,
   columnFilterCount,
-  clearAllColumnFilters
+  clearAllColumnFilters,
+  clearColumnFilter,
+  columnActiveFilters
 })
 </script>
 

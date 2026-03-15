@@ -80,6 +80,14 @@ function handleExportError(error: string): void {
   showSnack(`Export failed: ${error}`, 'error', { timeout: APP_CONFIG.SNACKBAR_ERROR_MS })
 }
 
+function handleClearColumnFilters(): void {
+  variantTableRef.value?.clearAllColumnFilters()
+}
+
+function handleClearColumnFilter(columnKey: string): void {
+  variantTableRef.value?.clearColumnFilter(columnKey)
+}
+
 // filterToolbarRef is used as template ref (not detected by vue-tsc from destructured composable)
 void filterToolbarRef
 
@@ -101,10 +109,13 @@ defineExpose({
         :has-sort="hasSort"
         :initial-search="initialSearch"
         :columns="variantTableRef?.columns"
+        :column-active-filters="variantTableRef?.columnActiveFilters"
         @update:filters="handleFiltersUpdate"
         @reset-sort="handleResetSort"
         @export-success="handleExportSuccess"
         @export-error="handleExportError"
+        @clear-column-filters="handleClearColumnFilters"
+        @clear-column-filter="handleClearColumnFilter"
       />
     </div>
     <VariantTable
@@ -116,6 +127,7 @@ defineExpose({
       @update:has-sort="handleSortUpdate"
       @row-click="handleRowClick"
       @deselect="handleDeselect"
+      @clear-filters="filterToolbarRef?.handleClearAll()"
     />
   </div>
 </template>

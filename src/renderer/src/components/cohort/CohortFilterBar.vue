@@ -2,10 +2,10 @@
   <SlimFilterToolbar
     :filtered-count="totalCount ?? 0"
     :total-count="cohortSummary?.unique_variants ?? null"
-    :has-active-filters="hasActiveFilters"
+    :has-active-filters="mergedHasActiveFilters"
     :has-clearable-state="props.hasSort"
     :active-filter-count="activeFilterCount"
-    :active-filters-list="activeFiltersList"
+    :active-filters-list="mergedActiveFilters"
     :exporting="exporting"
     :columns="columns"
     @clear-all="handleClearAll"
@@ -15,17 +15,17 @@
     @export="handleExport"
   >
     <template #filters>
-      <!-- Search field -->
-      <v-text-field
-        :model-value="searchTerm"
-        variant="outlined"
-        hide-details
-        clearable
-        placeholder="Gene, position, HGVS..."
-        prepend-inner-icon="mdi-magnify"
+      <!-- DSL search bar (same component as variant table) -->
+      <DslSearchBar
+        :raw-input="dslInput"
+        :suggestions="dslSuggestions"
+        :is-dsl-mode="isDslMode"
+        :errors="dslErrors"
         class="filter-search-input mr-2"
-        :class="{ 'filter-active': searchTerm !== '' }"
-        @update:model-value="handleSearchChange"
+        @update:raw-input="dslInput = $event"
+        @apply="applyDslFilters"
+        @clear="handleDslClear"
+        @select-suggestion="applySuggestion"
       />
 
       <!-- Star toggle -->
@@ -92,6 +92,17 @@
       <!-- Impact preset chips moved to filter drawer only -->
     </template>
 
+    <template #preset-bar>
+      <PresetBar
+        :visible-presets="visiblePresets"
+        :is-preset-active="isPresetActive"
+        :has-active-filters="mergedHasActiveFilters"
+        @toggle="handlePresetToggle"
+        @save="showSavePresetDialog = true"
+        @manage="showManagePresetsDialog = true"
+      />
+    </template>
+
     <template #drawers>
       <ColumnsDrawer
         v-if="columns && columns.length > 0"
@@ -104,20 +115,42 @@
         @reset="handleResetColumns"
       />
       <CohortFilterDrawer v-model:open="filterDrawerOpen" />
+      <PresetSaveDialog
+        v-model="showSavePresetDialog"
+        :saving="savingPreset"
+        @save="handleSavePreset"
+      />
+      <PresetManageDialog
+        v-model="showManagePresetsDialog"
+        :presets="allPresets"
+        @toggle-visibility="handleToggleVisibility"
+        @delete="handleDeletePreset"
+      />
     </template>
   </SlimFilterToolbar>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, provide } from 'vue'
+import { ref, computed, watch, provide, onMounted, nextTick } from 'vue'
 import { useFilters } from '../../composables/useFilters'
 import { useDebounce } from '../../composables/useDebounce'
+import { useFilterPresetStore } from '../../composables/useFilterPresetStore'
 import SlimFilterToolbar from '../SlimFilterToolbar.vue'
+import DslSearchBar from '../DslSearchBar.vue'
+import { useDslFilterIntegration } from '../../composables/useDslFilterIntegration'
 import ColumnsDrawer from '../ColumnsDrawer.vue'
 import CohortFilterDrawer from './CohortFilterDrawer.vue'
+import PresetBar from '../PresetBar.vue'
+import PresetSaveDialog from '../PresetSaveDialog.vue'
+import PresetManageDialog from '../PresetManageDialog.vue'
+import type { ActiveFilter } from '../../../../shared/types/filters'
 import type { CohortVariant } from '../../../../shared/types/cohort'
 import type { CohortFilterDrawerState } from './cohortFilterDrawerTypes'
-import { ACMG_FILTER_OPTIONS } from '../../utils/filters'
+import {
+  ACMG_FILTER_OPTIONS,
+  applyPresetStateToFilters,
+  isPresetDiverged
+} from '../../utils/filters'
 
 interface Props {
   totalCount: number | null
@@ -126,6 +159,8 @@ interface Props {
   visibleColumns: string[]
   exporting: boolean
   hasSort?: boolean
+  /** Per-column active filter chips from CohortDataTable */
+  columnActiveFilters?: ActiveFilter[]
 }
 
 const props = defineProps<Props>()
@@ -134,6 +169,8 @@ const emit = defineEmits<{
   'filter-change': []
   'clear-all': []
   'clear-filter': [filterId: string]
+  'clear-column-filter': [columnKey: string]
+  'clear-column-filters': []
   export: []
   'toggle-column': [key: string]
   'reorder-columns': [keys: string[]]
@@ -156,6 +193,107 @@ const {
   clearAllFilters,
   clearFilter
 } = useFilters()
+
+// Preset store
+const {
+  presets: allPresets,
+  visiblePresets,
+  activePresetIds,
+  loadPresets,
+  togglePreset,
+  isPresetActive,
+  clearActivePresets,
+  getActiveFilterState,
+  savePreset,
+  updatePreset: updatePresetStore,
+  deletePreset: deletePresetStore
+} = useFilterPresetStore()
+
+// Dialog state
+const showSavePresetDialog = ref(false)
+const showManagePresetsDialog = ref(false)
+const savingPreset = ref(false)
+let applyingPresets = false
+
+// Preset toggle handler — applies merged preset filters
+function handlePresetToggle(presetId: number): void {
+  togglePreset(presetId)
+  applyActivePresets()
+}
+
+/**
+ * Reset preset-managed filter fields to defaults, then re-apply
+ * all currently active presets. Routes consequences to selectedImpactPresets
+ * because the cohort query reads from that ref, not filters.consequences.
+ */
+function applyActivePresets(): void {
+  applyingPresets = true
+  applyPresetStateToFilters({
+    filters,
+    presetState: getActiveFilterState(),
+    consequencesTarget: selectedImpactPresets,
+    includeCohortFields: true
+  })
+  void nextTick(() => {
+    applyingPresets = false
+  })
+}
+
+// Auto-deactivate presets when user manually changes filter values
+watch(
+  [filters, selectedImpactPresets],
+  () => {
+    if (applyingPresets || activePresetIds.value.size === 0) return
+    const idsToDeactivate: number[] = []
+    for (const id of activePresetIds.value) {
+      const preset = allPresets.value.find((p) => p.id === id)
+      if (
+        preset !== undefined &&
+        isPresetDiverged({
+          filters: filters.value,
+          presetFilterJson: preset.filterJson,
+          consequencesValue: selectedImpactPresets.value
+        })
+      ) {
+        idsToDeactivate.push(id)
+      }
+    }
+    for (const id of idsToDeactivate) {
+      togglePreset(id)
+    }
+  },
+  { deep: true }
+)
+
+async function handleSavePreset(data: { name: string; description: string | null }): Promise<void> {
+  savingPreset.value = true
+  try {
+    // Deep-clone via JSON to strip Vue reactive proxies for IPC serialization
+    const plainFilters = JSON.parse(JSON.stringify(filters.value))
+    const result = await savePreset({
+      name: data.name,
+      description: data.description,
+      filterJson: plainFilters
+    })
+    // Check if IPC returned a serializable error
+    if (result !== null && typeof result === 'object' && 'code' in result) {
+      return
+    }
+    showSavePresetDialog.value = false
+  } catch {
+    // Save failed — dialog stays open so user can retry
+  } finally {
+    savingPreset.value = false
+  }
+}
+
+async function handleToggleVisibility(id: number, visible: boolean): Promise<void> {
+  await updatePresetStore(id, { isVisible: visible })
+}
+
+async function handleDeletePreset(id: number): Promise<void> {
+  await deletePresetStore(id)
+}
 
 // Drawer state
 const columnsDrawerOpen = ref(false)
@@ -192,8 +330,22 @@ const caddPresets = [
   { label: '25', value: 25 }
 ]
 
-// Filter count only reflects actual filters, not sort
-const activeFilterCount = computed(() => activeFiltersList.value.length)
+// Merged active filters: regular filters + column filters
+const mergedActiveFilters = computed<ActiveFilter[]>(() => [
+  ...activeFiltersList.value,
+  ...(props.columnActiveFilters ?? [])
+])
+
+// Merged has-active check (includes column filters + DSL filters)
+const mergedHasActiveFilters = computed(
+  () =>
+    hasActiveFilters.value || (props.columnActiveFilters ?? []).length > 0 || hasDslFilters.value
+)
+
+// Filter count reflects actual filters + DSL column filters, not sort
+const activeFilterCount = computed(
+  () => mergedActiveFilters.value.length + Object.keys(dslColumnFilters.value).length
+)
 
 // Gene autocomplete state
 const geneSymbolSuggestions = ref<string[]>([])
@@ -288,6 +440,35 @@ const searchGeneSymbols = async (query: string) => {
   }
 }
 
+// Debounced filter change emission
+const { debouncedFn: emitFilterChange } = useDebounce(() => emit('filter-change'), 300)
+
+// Watch filter state changes
+watch(filters, () => emitFilterChange(), { deep: true })
+watch(selectedImpactPresets, () => emitFilterChange())
+watch([selectedCohortFreqPreset, selectedAfPreset, selectedCaddPreset], () => emitFilterChange())
+
+// DSL search integration — same composable as variant table (DRY)
+const {
+  dslInput,
+  dslSuggestions,
+  isDslMode,
+  dslErrors,
+  dslColumnFilters,
+  hasDslFilters,
+  applyDslFilters,
+  handleDslClear,
+  applySuggestion
+} = useDslFilterIntegration({
+  presetNames: () => allPresets.value.map((p) => p.name.toLowerCase().replace(/\s+/g, '_')),
+  searchQueryRef: searchTerm,
+  emitFilters: emitFilterChange,
+  clearConflictingDrawerFields: (columnFilters) => {
+    if ('gnomad_af' in columnFilters) filters.value.maxGnomadAf = null
+    if ('cadd' in columnFilters) filters.value.minCadd = null
+  }
+})
+
 // Provide shared filter state for CohortFilterDrawer (via provide/inject)
 provide<CohortFilterDrawerState>('cohortFilterDrawerState', {
   filters,
@@ -312,30 +493,47 @@ provide<CohortFilterDrawerState>('cohortFilterDrawerState', {
   isFilterGroupActive,
   clearAllFilters,
   clearFilter,
-  searchGeneSymbols
+  searchGeneSymbols,
+
+  // Preset store integration
+  visiblePresets,
+  isPresetActive,
+  onPresetToggle: handlePresetToggle,
+  onPresetSave: () => {
+    showSavePresetDialog.value = true
+  },
+  onPresetManage: () => {
+    showManagePresetsDialog.value = true
+  },
+  hasActiveFiltersForSave: mergedHasActiveFilters,
+
+  // DSL search state
+  dslInput,
+  dslSuggestions,
+  isDslMode,
+  dslErrors,
+  onDslApply: applyDslFilters,
+  onDslClear: handleDslClear,
+  onDslSuggestionSelect: applySuggestion,
+  dslColumnFilters
 })
 
-// Debounced filter change emission
-const { debouncedFn: emitFilterChange } = useDebounce(() => emit('filter-change'), 300)
-
-// Watch filter state changes
-watch(filters, () => emitFilterChange(), { deep: true })
-watch(selectedImpactPresets, () => emitFilterChange())
-watch([selectedCohortFreqPreset, selectedAfPreset, selectedCaddPreset], () => emitFilterChange())
-
-const handleSearchChange = (value: string | null) => {
-  searchTerm.value = value ?? ''
-  emitFilterChange()
-}
-
 const handleClearAll = () => {
+  handleDslClear() // Must be first — clears dslColumnFilters before filter watchers fire
   clearAllFilters()
+  clearActivePresets()
+  emit('clear-column-filters')
   emit('clear-all')
 }
 
 const handleClearFilter = (filterId: string) => {
-  clearFilter(filterId)
-  emit('clear-filter', filterId)
+  if (filterId.startsWith('col:')) {
+    const columnKey = filterId.slice(4)
+    emit('clear-column-filter', columnKey)
+  } else {
+    clearFilter(filterId)
+    emit('clear-filter', filterId)
+  }
 }
 
 const handleToggleColumn = (key: string) => {
@@ -353,30 +551,21 @@ const handleResetColumns = () => {
 const handleExport = () => {
   emit('export')
 }
+
+// Load presets on mount
+onMounted(async () => {
+  await loadPresets()
+})
+
+// Expose DSL column filters for CohortTable to merge into query
+defineExpose({ dslColumnFilters })
 </script>
 
 <style scoped>
 .filter-search-input {
-  max-width: 240px;
+  min-width: 180px;
+  max-width: 320px;
   flex-shrink: 1;
-}
-
-.filter-search-input :deep(.v-field) {
-  border-radius: 6px;
-  border-color: rgba(0, 0, 0, 0.15);
-}
-
-.filter-search-input :deep(.v-field--focused) {
-  box-shadow: 0 0 0 2px color-mix(in srgb, rgb(var(--v-theme-primary)) 15%, transparent);
-}
-
-.filter-search-input :deep(.v-field__input) {
-  font-size: 0.85rem;
-}
-
-.filter-search-input.filter-active :deep(.v-field) {
-  border-color: rgb(var(--v-theme-primary));
-  border-width: 2px;
-  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 4%, transparent);
+  flex-grow: 1;
 }
 </style>

@@ -75,6 +75,8 @@ import type {
   MyVariantFetchResult,
   SpliceAIFetchResult
 } from './api-enrichment'
+import type { ColumnFilterMeta } from './column-filters'
+import type { FilterPreset, FilterPresetCreate, FilterPresetUpdate } from './filter-presets'
 import type { LogMessage } from './log'
 import type { TranscriptAnnotation, TranscriptInsertRow } from './transcript'
 import type { DatabaseOverview } from './database-overview'
@@ -141,6 +143,8 @@ export interface FilterOptions {
   maxCadd: number | null
   minGnomadAf: number | null
   maxGnomadAf: number | null
+  /** Per-column metadata for filter UI auto-detection */
+  columnMeta: ColumnFilterMeta[]
 }
 
 export interface ImportAPI {
@@ -273,6 +277,7 @@ export interface CohortAPI {
   getSummary: () => Promise<CohortSummary>
   getCarriers: (chr: string, pos: number, ref: string, alt: string) => Promise<CohortCarrier[]>
   getGeneBurden: () => Promise<GeneBurden[]>
+  getColumnMeta: () => Promise<ColumnFilterMeta[]>
   getSummaryStatus: () => Promise<{ is_stale: boolean; last_rebuilt_at: number }>
   rebuildSummary: () => Promise<void>
   onSummaryRebuilt: (callback: (status: { is_stale: boolean }) => void) => () => void
@@ -521,6 +526,15 @@ export interface WindowAPI {
   updater: UpdaterAPI
   audit: AuditLogAPI
   auth: AuthAPI
+  presets: PresetsAPI
+}
+
+export interface PresetsAPI {
+  list: () => Promise<FilterPreset[]>
+  create: (params: FilterPresetCreate) => Promise<FilterPreset>
+  update: (id: number, updates: FilterPresetUpdate) => Promise<FilterPreset>
+  delete: (id: number) => Promise<void>
+  reorder: (items: { id: number; sortOrder: number }[]) => Promise<void>
 }
 
 export interface AuthAPI {

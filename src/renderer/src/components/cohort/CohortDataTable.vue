@@ -43,8 +43,10 @@
           :is-sorted="isSorted"
           :sort-by="slotSortBy"
           :has-filter="hasColumnFilter(col.key)"
-          :filter-value="columnFilters[col.key] || ''"
-          @update:filter="(v) => setColumnFilter(col.key, v)"
+          :current-filter="getColumnFilter(col.key)"
+          :column-meta="columnMetaMap[col.key]"
+          :filter-mode="columnFilterModes[col.key] ?? 'text-suggest'"
+          @apply-filter="(f: ColumnFilter) => setColumnFilter(col.key, f)"
           @clear-filter="clearColumnFilter(col.key)"
         />
       </template>
@@ -209,6 +211,14 @@ import {
 import CarrierExpandedRow from './CarrierExpandedRow.vue'
 import VariantColumnHeader from '../variant-table/VariantColumnHeader.vue'
 import { useColumnFilters } from '../../composables/useColumnFilters'
+import { useColumnFilterMeta } from '../../composables/useColumnFilterMeta'
+import type {
+  ColumnFilter,
+  ColumnFilterMeta,
+  ColumnFiltersParam
+} from '../../../../shared/types/column-filters'
+import type { ActiveFilter } from '../../../../shared/types/filters'
+import { buildActiveFiltersList } from '../../utils/filters/activeFilters'
 import { useDebounce } from '../../composables/useDebounce'
 import { useExternalLinksStore, type ExternalLinkConfig } from '../../stores/externalLinksStore'
 import { APP_CONFIG } from '../../../../shared/config'
@@ -226,6 +236,8 @@ interface Props {
     align?: 'start' | 'center' | 'end'
   }>
   selectedVariantKey: string | null
+  /** Per-column metadata for filter UI auto-detection (optional, defaults to text-suggest) */
+  columnMeta?: ColumnFilterMeta[]
   // Annotation lookup functions passed from parent
   isGlobalStarred: (chr: string, pos: number, ref: string, alt: string) => boolean
   getGlobalAcmgClassification: (
@@ -246,7 +258,7 @@ const emit = defineEmits<{
   'comment-click': [item: CohortVariant]
   'navigate-to-case': [payload: { caseId: number; item: CohortVariant }]
   'load-carriers': [variant: CohortVariant]
-  'column-filters-change': [filters: Record<string, string> | undefined]
+  'column-filters-change': [filters: ColumnFiltersParam | undefined]
   deselect: []
 }>()
 
@@ -290,10 +302,13 @@ const {
 
 // Per-column text filters
 const {
-  columnFilters,
   setColumnFilter,
   clearColumnFilter,
+  clearAllColumnFilters,
+  hasActiveFilters: hasColumnFilters,
+  activeFilterCount: columnFilterCount,
   hasFilter: hasColumnFilter,
+  getFilter: getColumnFilter,
   getColumnFiltersParam
 } = useColumnFilters()
 
@@ -308,9 +323,13 @@ const filterableColumns = computed(() =>
   )
 )
 
+// Column metadata map + filter modes (shared composable)
+const columnMetaRef = computed<ColumnFilterMeta[]>(() => props.columnMeta ?? [])
+const { columnMetaMap, columnFilterModes } = useColumnFilterMeta(columnMetaRef)
+
 // Debounced emit when column filters change
 const { debouncedFn: debouncedEmitColumnFilters } = useDebounce(
-  (newFilters: Record<string, string> | undefined) => {
+  (newFilters: ColumnFiltersParam | undefined) => {
     emit('column-filters-change', newFilters)
   },
   300
@@ -545,14 +564,45 @@ onMounted(async () => {
   }
 })
 
+// Column active filter chips for the toolbar
+const columnActiveFilters = computed<ActiveFilter[]>(() => {
+  const colFilters = getColumnFiltersParam()
+  if (!colFilters) return []
+  return buildActiveFiltersList(
+    {
+      searchQuery: '',
+      geneSymbol: '',
+      consequences: [],
+      funcs: [],
+      clinvars: [],
+      maxGnomadAf: null,
+      minCadd: null,
+      minCohortFrequency: null,
+      minCarriers: null,
+      starredOnly: false,
+      hasCommentOnly: false,
+      acmgClassifications: []
+    },
+    [],
+    colFilters
+  ).filter((f) => f.id.startsWith('col:'))
+})
+
 /**
- * Expose refresh method for parent to call
+ * Expose refresh method and column filter state for parent to call
  */
 const refresh = (): void => {
   clearCarrierCache()
 }
 
-defineExpose({ refresh })
+defineExpose({
+  refresh,
+  columnActiveFilters,
+  clearColumnFilter,
+  clearAllColumnFilters,
+  hasColumnFilters,
+  columnFilterCount
+})
 </script>
 
 <style scoped>

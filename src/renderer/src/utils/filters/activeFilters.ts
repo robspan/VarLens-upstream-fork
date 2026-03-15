@@ -8,6 +8,46 @@
  */
 
 import type { FilterState, ActiveFilter } from '../../../../shared/types/filters'
+import type { ColumnFiltersParam } from '../../../../shared/types/column-filters'
+
+/** Human-readable labels for column filter keys */
+const COLUMN_LABELS: Record<string, string> = {
+  chr: 'Chr',
+  pos: 'Position',
+  gene_symbol: 'Gene',
+  cdna: 'cDNA',
+  aa_change: 'AA Change',
+  consequence: 'Consequence',
+  func: 'Function',
+  clinvar: 'ClinVar',
+  gnomad_af: 'gnomAD AF',
+  cadd_phred: 'CADD',
+  cadd: 'CADD',
+  transcript: 'Transcript',
+  carrier_count: 'Carriers',
+  cohort_frequency: 'Cohort Freq',
+  het_count: 'Het',
+  hom_count: 'Hom',
+  ref: 'Ref',
+  alt: 'Alt'
+}
+
+/**
+ * Format a column filter value for chip display.
+ * - numeric: "CADD >= 20"
+ * - categorical (in): "Consequence: 3 selected"
+ * - text (like): "Gene ~ BRCA"
+ */
+function formatColumnFilterValue(operator: string, value: string | number | string[]): string {
+  if (operator === 'in' && Array.isArray(value)) {
+    return `${value.length} selected`
+  }
+  if (operator === 'like') {
+    return `~ ${value}`
+  }
+  // Numeric operators: =, !=, <, >, <=, >=
+  return `${operator} ${value}`
+}
 
 /**
  * Build active filters list for chip display
@@ -15,19 +55,21 @@ import type { FilterState, ActiveFilter } from '../../../../shared/types/filters
  *
  * @param filters - Current filter state
  * @param impactPresets - Selected impact preset names (optional)
+ * @param columnFilters - Per-column typed filters (optional)
  * @returns Array of active filters for chip display
  *
  * @example
  * ```typescript
  * // In component:
  * const activeFiltersList = computed(() =>
- *   buildActiveFiltersList(filters.value, selectedImpactPresets.value)
+ *   buildActiveFiltersList(filters.value, selectedImpactPresets.value, columnFiltersParam)
  * )
  * ```
  */
 export function buildActiveFiltersList(
   filters: FilterState,
-  impactPresets: string[] = []
+  impactPresets: string[] = [],
+  columnFilters: ColumnFiltersParam = {}
 ): ActiveFilter[] {
   const list: ActiveFilter[] = []
 
@@ -54,20 +96,20 @@ export function buildActiveFiltersList(
     list.push({ id: 'clinvars', label: 'ClinVar', value: `${filters.clinvars.length} selected` })
   }
 
-  // Numeric filters - format for display
+  // Numeric filters - operator goes in value for cleaner chip display
   if (filters.maxGnomadAf !== null && filters.maxGnomadAf > 0) {
     const pct = (filters.maxGnomadAf * 100).toFixed(2)
-    list.push({ id: 'frequency', label: 'AF <=', value: `${pct}%` })
+    list.push({ id: 'frequency', label: 'AF', value: `<= ${pct}%` })
   }
   if (filters.minCadd !== null && filters.minCadd >= 0) {
-    list.push({ id: 'cadd', label: 'CADD >=', value: String(filters.minCadd) })
+    list.push({ id: 'cadd', label: 'CADD', value: `>= ${filters.minCadd}` })
   }
   if (filters.minCohortFrequency !== null && filters.minCohortFrequency > 0) {
     const pct = (filters.minCohortFrequency * 100).toFixed(1)
-    list.push({ id: 'cohortFreq', label: 'Cohort >=', value: `${pct}%` })
+    list.push({ id: 'cohortFreq', label: 'Cohort', value: `>= ${pct}%` })
   }
   if (filters.minCarriers !== null && filters.minCarriers > 0) {
-    list.push({ id: 'carriers', label: 'Carriers >=', value: String(filters.minCarriers) })
+    list.push({ id: 'carriers', label: 'Carriers', value: `>= ${filters.minCarriers}` })
   }
 
   // Annotation filters
@@ -79,6 +121,13 @@ export function buildActiveFiltersList(
   }
   if (filters.acmgClassifications.length > 0) {
     list.push({ id: 'acmg', label: 'ACMG', value: filters.acmgClassifications.join(', ') })
+  }
+
+  // Per-column typed filters
+  for (const [key, filter] of Object.entries(columnFilters)) {
+    const label = COLUMN_LABELS[key] ?? key
+    const displayValue = formatColumnFilterValue(filter.operator, filter.value)
+    list.push({ id: `col:${key}`, label, value: displayValue })
   }
 
   return list

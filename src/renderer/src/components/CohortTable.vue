@@ -62,6 +62,7 @@
       @navigate-to-case="handleNavigateToCase"
       @load-carriers="handleLoadCarriers"
       @column-filters-change="handleColumnFiltersChange"
+      @deselect="emit('deselect')"
     />
 
     <!-- Annotation Dialogs (Comment, ACMG Evidence) -->
@@ -125,6 +126,7 @@ const emit = defineEmits<{
     }
   ]
   'row-click': [variant: CohortVariant]
+  deselect: []
 }>()
 
 // API + domain composables

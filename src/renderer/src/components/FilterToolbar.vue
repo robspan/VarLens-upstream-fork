@@ -17,6 +17,7 @@
     <template #filters>
       <!-- Search field -->
       <v-text-field
+        ref="searchFieldRef"
         v-model="filters.searchQuery"
         variant="outlined"
         hide-details
@@ -168,6 +169,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, provide } from 'vue'
+import type { VTextField } from 'vuetify/components'
 import { useFilterState } from '../composables/useFilterState'
 import { useColumnPreferences } from '../composables/useColumnPreferences'
 import SlimFilterToolbar from './SlimFilterToolbar.vue'
@@ -357,8 +359,16 @@ const toggleColumnsDrawer = () => {
   columnsDrawerOpen.value = !columnsDrawerOpen.value
 }
 
-// Expose drawer toggles for parent keyboard shortcuts
-defineExpose({ toggleFilterDrawer, toggleColumnsDrawer })
+// Search field ref and focus method
+const searchFieldRef = ref<InstanceType<typeof VTextField> | null>(null)
+
+function focusSearch(): void {
+  const input = searchFieldRef.value?.$el?.querySelector('input') as HTMLInputElement | null
+  input?.focus()
+}
+
+// Expose drawer toggles and search focus for parent keyboard shortcuts
+defineExpose({ toggleFilterDrawer, toggleColumnsDrawer, focusSearch })
 
 // Load filter options on mount
 onMounted(async () => {

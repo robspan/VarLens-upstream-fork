@@ -197,6 +197,18 @@
           </v-list>
         </v-menu>
 
+        <!-- Keyboard shortcuts help -->
+        <v-btn
+          icon
+          size="small"
+          variant="text"
+          aria-label="Keyboard shortcuts"
+          @click="$emit('open-shortcuts-help')"
+        >
+          <v-icon>mdi-keyboard</v-icon>
+          <v-tooltip activator="parent" location="top">Keyboard Shortcuts (?)</v-tooltip>
+        </v-btn>
+
         <!-- Dev tool: Console -->
         <v-btn
           icon
@@ -233,6 +245,7 @@ const emit = defineEmits<{
   'toggle-log-viewer': []
   'open-disclaimer': []
   'open-faq': []
+  'open-shortcuts-help': []
 }>()
 
 // Responsive layout

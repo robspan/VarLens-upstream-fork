@@ -11,6 +11,7 @@
           ref="cohortTableRef"
           @navigate-to-case="$emit('navigate-to-case', $event)"
           @row-click="$emit('row-click', $event)"
+          @deselect="$emit('deselect')"
         />
       </v-tabs-window-item>
       <v-tabs-window-item value="burden" class="fill-height" style="overflow-y: auto">
@@ -44,6 +45,7 @@ defineEmits<{
     }
   ]
   'row-click': [variant: CohortVariant]
+  deselect: []
 }>()
 
 const activeTab = ref('variants')

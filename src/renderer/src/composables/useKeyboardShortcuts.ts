@@ -1,4 +1,5 @@
 import { onKeyStroke } from '@vueuse/core'
+import { isInputFocused } from './useTableKeyboardNav'
 
 interface KeyboardShortcutCallbacks {
   onDisclaimer?: () => void
@@ -6,6 +7,8 @@ interface KeyboardShortcutCallbacks {
   onLogViewer?: () => void
   onToggleFilterDrawer?: () => void
   onToggleColumnsDrawer?: () => void
+  onSearchFocus?: () => void
+  onHelp?: () => void
 }
 
 export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks): void {
@@ -42,5 +45,17 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks): void
       e.preventDefault()
       callbacks.onToggleColumnsDrawer?.()
     }
+  })
+
+  onKeyStroke('/', (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    e.preventDefault()
+    callbacks.onSearchFocus?.()
+  })
+
+  onKeyStroke('?', (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    e.preventDefault()
+    callbacks.onHelp?.()
   })
 }

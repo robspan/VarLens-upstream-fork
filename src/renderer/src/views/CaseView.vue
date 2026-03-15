@@ -60,6 +60,12 @@ function handleRowClick(variant: Variant): void {
   panelOpen.value = true
 }
 
+function handleDeselect(): void {
+  if (panelOpen.value) {
+    panelOpen.value = false
+  }
+}
+
 function handleExportSuccess(data: {
   filePath: string
   action: { text: string; callback: () => void }
@@ -109,6 +115,7 @@ defineExpose({
       @update:counts="handleCountsUpdate"
       @update:has-sort="handleSortUpdate"
       @row-click="handleRowClick"
+      @deselect="handleDeselect"
     />
   </div>
 </template>

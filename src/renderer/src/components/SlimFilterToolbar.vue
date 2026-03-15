@@ -54,8 +54,8 @@
             class="ml-1"
           />
           <v-tooltip activator="parent" location="bottom">
-            Open full filter panel{{
-              activeFilterCount > 0 ? ` (${activeFilterCount} active)` : ''
+            Toggle filters ({{ mod }}+Shift+F){{
+              activeFilterCount > 0 ? ` \u2014 ${activeFilterCount} active` : ''
             }}
           </v-tooltip>
         </v-btn>
@@ -68,7 +68,7 @@
         >
           <v-icon start size="small">mdi-table-column</v-icon>
           Columns
-          <v-tooltip activator="parent" location="bottom">Show/hide and reorder columns</v-tooltip>
+          <v-tooltip activator="parent" location="bottom">Toggle columns ({{ mod }}+Shift+C)</v-tooltip>
         </v-btn>
 
         <!-- Export -->
@@ -144,6 +144,9 @@ interface Props {
 }
 
 defineProps<Props>()
+
+const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
+const mod = isMac ? 'Cmd' : 'Ctrl'
 
 const emit = defineEmits<{
   'clear-all': []

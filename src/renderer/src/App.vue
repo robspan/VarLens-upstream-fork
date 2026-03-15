@@ -55,6 +55,7 @@
       @toggle-log-viewer="dialogHostRef?.toggleLogViewer()"
       @open-disclaimer="dialogHostRef?.showDisclaimer()"
       @open-faq="dialogHostRef?.showFaq()"
+      @open-shortcuts-help="showKeyboardHelp = true"
     />
 
     <AppDialogHost
@@ -62,6 +63,8 @@
       @import-complete="handleImportComplete"
       @batch-import-complete="handleBatchImportComplete"
     />
+
+    <KeyboardShortcutsDialog v-model="showKeyboardHelp" />
   </v-app>
 </template>
 
@@ -72,6 +75,7 @@ import AppToolbar from './components/AppToolbar.vue'
 import AppSidebar from './components/AppSidebar.vue'
 import CaseList from './components/CaseList.vue'
 import AppFooter from './components/AppFooter.vue'
+import KeyboardShortcutsDialog from './components/KeyboardShortcutsDialog.vue'
 import AppDialogHost from './components/AppDialogHost.vue'
 import VariantDetailsPanel from './components/VariantDetailsPanel.vue'
 import { usePanelResize } from './composables/usePanelResize'

@@ -186,6 +186,8 @@
 
 <script setup lang="ts">
 import { ref, watch, computed, onMounted, nextTick } from 'vue'
+import { useTableKeyboardNav } from '../../composables/useTableKeyboardNav'
+import { onKeyStroke } from '@vueuse/core'
 import type { CohortVariant } from '../../../../shared/types/cohort'
 import type { AcmgClassification } from '../../../../main/database/types'
 import type { SortItem } from '../../composables/useOffsetPagination'
@@ -245,6 +247,7 @@ const emit = defineEmits<{
   'navigate-to-case': [payload: { caseId: number; item: CohortVariant }]
   'load-carriers': [variant: CohortVariant]
   'column-filters-change': [filters: Record<string, string> | undefined]
+  deselect: []
 }>()
 
 // v-model props for pagination state (controlled by parent via useOffsetPagination)
@@ -266,6 +269,24 @@ const { getRowProps } = useTableRowProps<CohortVariant>({
   getItemId: (item: CohortVariant) => item.variant_key
 })
 const { expandedRows, getCarriers, hasCarriers, clearCache: clearCarrierCache } = useCarriers()
+
+// Keyboard navigation
+const {
+  selectedIndex,
+  selectedItem: navSelectedItem,
+  selectByClick,
+  moveUp,
+  moveDown,
+  clearSelection,
+  isInputFocused
+} = useTableKeyboardNav({
+  items: computed(() => props.variants),
+  getItemId: (item: CohortVariant) => item.variant_key,
+  onSelect: () => {
+    // onSelect intentionally empty — row-click is emitted by handleRowClick
+    // (mouse) and Enter handler (keyboard) separately.
+  }
+})
 
 // Per-column text filters
 const {
@@ -382,8 +403,63 @@ const handleTableOptions = (options: any): void => {
  * Handle row click
  */
 const handleRowClick = (_event: Event, data: { item: CohortVariant }): void => {
+  selectByClick(data.item)
   emit('row-click', data.item)
 }
+
+// Keyboard navigation handlers
+onKeyStroke(
+  'ArrowDown',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    e.preventDefault()
+    moveDown()
+  },
+  { dedupe: true }
+)
+
+onKeyStroke(
+  'ArrowUp',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    e.preventDefault()
+    moveUp()
+  },
+  { dedupe: true }
+)
+
+onKeyStroke(
+  'Enter',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    if (navSelectedItem.value === null) return
+    e.preventDefault()
+    emit('row-click', navSelectedItem.value)
+  },
+  { dedupe: true }
+)
+
+onKeyStroke(
+  'Escape',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    e.preventDefault()
+    clearSelection()
+    emit('deselect')
+  },
+  { dedupe: true }
+)
+
+// Scroll selected row into view
+watch(selectedIndex, async (newIndex) => {
+  if (newIndex === null) return
+  await nextTick()
+  const tableEl = dataTableRef.value?.$el as HTMLElement | undefined
+  if (!tableEl) return
+  const rows = tableEl.querySelectorAll('tbody tr')
+  const row = rows[newIndex] as HTMLElement | undefined
+  row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+})
 
 /**
  * Watch for expanded rows - emit load-carriers event for parent orchestration

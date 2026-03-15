@@ -254,7 +254,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, toRef, onMounted, nextTick } from 'vue'
+import { ref, computed, toRef, watch, onMounted, nextTick } from 'vue'
 import type { Variant, VariantFilter } from '../../../shared/types/api'
 import type { AnnotationScope } from '../../../shared/types/annotations'
 import { useAnnotations } from '../composables/useAnnotations'
@@ -262,6 +262,8 @@ import { useColumnPreferences } from '../composables/useColumnPreferences'
 import { useVariantLinks } from '../composables/useVariantLinks'
 import { formatConsequence } from '../utils/formatters'
 import { useTableScroll } from '../composables/useTableScroll'
+import { useTableKeyboardNav } from '../composables/useTableKeyboardNav'
+import { onKeyStroke } from '@vueuse/core'
 import VariantColumnHeader from './variant-table/VariantColumnHeader.vue'
 import AnnotationDialogs from './AnnotationDialogs.vue'
 import { useVariantColumns } from './variant-table/columns'
@@ -293,6 +295,7 @@ const emit = defineEmits<{
   'update:counts': [counts: { filtered: number; total: number }]
   'update:hasSort': [hasSort: boolean]
   'row-click': [variant: Variant]
+  deselect: []
 }>()
 
 // Annotations
@@ -378,11 +381,84 @@ const dataTableRef = ref<InstanceType<typeof import('vuetify/components').VDataT
   null
 )
 
+// Keyboard navigation
+const {
+  selectedIndex,
+  selectedItem,
+  selectByClick,
+  moveUp,
+  moveDown,
+  clearSelection,
+  isInputFocused
+} = useTableKeyboardNav({
+  items: variants,
+  getItemId: (item: Variant) => item.id,
+  onSelect: (item: Variant) => {
+    selectedVariantId.value = item.id
+  }
+})
+
 // Row click handler
 const handleRowClick = (_event: unknown, { item }: { item: Variant }): void => {
+  selectByClick(item)
   selectedVariantId.value = item.id
   emit('row-click', item)
 }
+
+// Keyboard navigation handlers
+onKeyStroke(
+  'ArrowDown',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    e.preventDefault()
+    moveDown()
+  },
+  { dedupe: true }
+)
+
+onKeyStroke(
+  'ArrowUp',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    e.preventDefault()
+    moveUp()
+  },
+  { dedupe: true }
+)
+
+onKeyStroke(
+  'Enter',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    if (selectedItem.value === null) return
+    e.preventDefault()
+    emit('row-click', selectedItem.value)
+  },
+  { dedupe: true }
+)
+
+onKeyStroke(
+  'Escape',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    e.preventDefault()
+    clearSelection()
+    selectedVariantId.value = null
+    emit('deselect')
+  },
+  { dedupe: true }
+)
+
+// Scroll selected row into view
+watch(selectedIndex, async (newIndex) => {
+  if (newIndex === null) return
+  await nextTick()
+  const tableEl = dataTableRef.value?.$el as HTMLElement | undefined
+  if (!tableEl) return
+  const rows = tableEl.querySelectorAll('tbody tr')
+  const row = rows[newIndex] as HTMLElement | undefined
+  row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+})
 
 // Setup scroll sync after mount
 onMounted(async () => {

@@ -60,6 +60,12 @@ function handleRowClick(variant: Variant): void {
   panelOpen.value = true
 }
 
+function handleDeselect(): void {
+  if (panelOpen.value) {
+    panelOpen.value = false
+  }
+}
+
 function handleExportSuccess(data: {
   filePath: string
   action: { text: string; callback: () => void }
@@ -72,6 +78,14 @@ function handleExportSuccess(data: {
 
 function handleExportError(error: string): void {
   showSnack(`Export failed: ${error}`, 'error', { timeout: APP_CONFIG.SNACKBAR_ERROR_MS })
+}
+
+function handleClearColumnFilters(): void {
+  variantTableRef.value?.clearAllColumnFilters()
+}
+
+function handleClearColumnFilter(columnKey: string): void {
+  variantTableRef.value?.clearColumnFilter(columnKey)
 }
 
 // filterToolbarRef is used as template ref (not detected by vue-tsc from destructured composable)
@@ -95,10 +109,13 @@ defineExpose({
         :has-sort="hasSort"
         :initial-search="initialSearch"
         :columns="variantTableRef?.columns"
+        :column-active-filters="variantTableRef?.columnActiveFilters"
         @update:filters="handleFiltersUpdate"
         @reset-sort="handleResetSort"
         @export-success="handleExportSuccess"
         @export-error="handleExportError"
+        @clear-column-filters="handleClearColumnFilters"
+        @clear-column-filter="handleClearColumnFilter"
       />
     </div>
     <VariantTable
@@ -109,6 +126,8 @@ defineExpose({
       @update:counts="handleCountsUpdate"
       @update:has-sort="handleSortUpdate"
       @row-click="handleRowClick"
+      @deselect="handleDeselect"
+      @clear-filters="filterToolbarRef?.handleClearAll()"
     />
   </div>
 </template>

@@ -49,8 +49,10 @@
             :is-sorted="isSorted"
             :sort-by="slotSortBy"
             :has-filter="hasFilter(col.key)"
-            :filter-value="columnFilters[col.key] || ''"
-            @update:filter="(v) => setColumnFilter(col.key, v)"
+            :current-filter="getFilter(col.key)"
+            :column-meta="columnMetaMap[col.key]"
+            :filter-mode="columnFilterModes[col.key] ?? 'text-suggest'"
+            @apply-filter="(f) => setColumnFilter(col.key, f)"
             @clear-filter="clearColumnFilter(col.key)"
           />
         </template>
@@ -157,7 +159,7 @@
             :label="value"
             @click="openExternalLink"
           />
-          <span v-else class="text-grey">&mdash;</span>
+          <EmptyPlaceholder v-else />
         </template>
 
         <!-- Consequence (handle null) -->
@@ -167,7 +169,8 @@
 
         <!-- GT (handle null) -->
         <template #[`item.gt_num`]="{ value }">
-          {{ value ?? '-' }}
+          <template v-if="value !== null && value !== undefined">{{ value }}</template>
+          <EmptyPlaceholder v-else />
         </template>
 
         <!-- Func (handle null) with human-readable formatting -->
@@ -180,12 +183,13 @@
             </template>
             <span class="text-body-small">{{ value }}</span>
           </v-tooltip>
-          <span v-else>-</span>
+          <EmptyPlaceholder v-else />
         </template>
 
         <!-- Qual score (handle null) -->
         <template #[`item.qual`]="{ value }">
-          {{ value !== null ? value.toFixed(1) : '-' }}
+          <template v-if="value !== null">{{ value.toFixed(1) }}</template>
+          <EmptyPlaceholder v-else />
         </template>
 
         <!-- Transcript (handle null, truncate long IDs) -->
@@ -198,27 +202,31 @@
             </template>
             {{ value }}
           </v-tooltip>
-          <span v-else>-</span>
+          <EmptyPlaceholder v-else />
         </template>
 
         <!-- cDNA (handle null) -->
         <template #[`item.cdna`]="{ value }">
-          <span class="hgvs-notation">{{ value ?? '-' }}</span>
+          <span v-if="value" class="hgvs-notation">{{ value }}</span>
+          <EmptyPlaceholder v-else />
         </template>
 
         <!-- AA Change (handle null) -->
         <template #[`item.aa_change`]="{ value }">
-          <span class="hgvs-notation">{{ value ?? '-' }}</span>
+          <span v-if="value" class="hgvs-notation">{{ value }}</span>
+          <EmptyPlaceholder v-else />
         </template>
 
         <!-- HPO Sim Score (handle null) -->
         <template #[`item.hpo_sim_score`]="{ value }">
-          {{ value !== null ? value.toFixed(2) : '-' }}
+          <template v-if="value !== null">{{ value.toFixed(2) }}</template>
+          <EmptyPlaceholder v-else />
         </template>
 
         <!-- MoI (handle null) -->
         <template #[`item.moi`]="{ value }">
-          {{ value ?? '-' }}
+          <template v-if="value !== null && value !== undefined">{{ value }}</template>
+          <EmptyPlaceholder v-else />
         </template>
 
         <!-- Dynamic virtual link columns from store -->
@@ -235,6 +243,25 @@
           />
           <span v-else class="text-grey">--</span>
         </template>
+
+        <!-- Empty state when filters produce no results -->
+        <template #no-data>
+          <div
+            class="text-center pa-8"
+            role="status"
+            aria-label="No variants match the current filters"
+          >
+            <v-icon size="48" color="grey-lighten-1" class="mb-4">mdi-filter-off-outline</v-icon>
+            <div class="text-h6 text-medium-emphasis mb-2">No variants match your filters</div>
+            <div class="text-body-2 text-medium-emphasis mb-4">
+              Try adjusting your filter criteria or clearing all filters.
+            </div>
+            <v-btn variant="tonal" color="primary" size="small" @click="emit('clear-filters')">
+              <v-icon start size="small">mdi-filter-off</v-icon>
+              Clear filters
+            </v-btn>
+          </div>
+        </template>
       </v-data-table-server>
     </template>
 
@@ -248,14 +275,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, toRef, onMounted, nextTick } from 'vue'
+import { ref, computed, toRef, watch, onMounted, nextTick } from 'vue'
 import type { Variant, VariantFilter } from '../../../shared/types/api'
 import type { AnnotationScope } from '../../../shared/types/annotations'
+import type { ActiveFilter } from '../../../shared/types/filters'
+import { buildActiveFiltersList } from '../utils/filters/activeFilters'
+import { useColumnFilterMeta } from '../composables/useColumnFilterMeta'
 import { useAnnotations } from '../composables/useAnnotations'
 import { useColumnPreferences } from '../composables/useColumnPreferences'
 import { useVariantLinks } from '../composables/useVariantLinks'
 import { formatConsequence } from '../utils/formatters'
 import { useTableScroll } from '../composables/useTableScroll'
+import { useTableKeyboardNav } from '../composables/useTableKeyboardNav'
+import { onKeyStroke } from '@vueuse/core'
 import VariantColumnHeader from './variant-table/VariantColumnHeader.vue'
 import AnnotationDialogs from './AnnotationDialogs.vue'
 import { useVariantColumns } from './variant-table/columns'
@@ -269,7 +301,8 @@ import {
   GeneSymbolCell,
   ConsequenceCell,
   ExternalLinkCell,
-  AnnotationsCell
+  AnnotationsCell,
+  EmptyPlaceholder
 } from './table-cells'
 
 interface Props {
@@ -286,6 +319,8 @@ const emit = defineEmits<{
   'update:counts': [counts: { filtered: number; total: number }]
   'update:hasSort': [hasSort: boolean]
   'row-click': [variant: Variant]
+  deselect: []
+  'clear-filters': []
 }>()
 
 // Annotations
@@ -347,18 +382,47 @@ const {
   loadVariants,
   resetSort,
   getRowProps,
-  columnFilters,
+  columnMeta,
   hasActiveFilters: hasColumnFilters,
   activeFilterCount: columnFilterCount,
   setColumnFilter,
   clearColumnFilter,
   clearAllColumnFilters,
-  hasFilter
+  hasFilter,
+  getFilter,
+  getColumnFiltersParam
 } = useVariantData({
   caseId: toRef(props, 'caseId'),
   filters: toRef(props, 'filters'),
   onCountsUpdate: (counts) => emit('update:counts', counts),
   onSortUpdate: (hasSort) => emit('update:hasSort', hasSort)
+})
+
+// Column metadata map + filter modes (shared composable)
+const { columnMetaMap, columnFilterModes } = useColumnFilterMeta(columnMeta)
+
+// Column active filter chips for the toolbar
+const columnActiveFilters = computed<ActiveFilter[]>(() => {
+  const colFilters = getColumnFiltersParam()
+  if (!colFilters) return []
+  return buildActiveFiltersList(
+    {
+      searchQuery: '',
+      geneSymbol: '',
+      consequences: [],
+      funcs: [],
+      clinvars: [],
+      maxGnomadAf: null,
+      minCadd: null,
+      minCohortFrequency: null,
+      minCarriers: null,
+      starredOnly: false,
+      hasCommentOnly: false,
+      acmgClassifications: []
+    },
+    [],
+    colFilters
+  ).filter((f) => f.id.startsWith('col:'))
 })
 
 // Template refs
@@ -371,11 +435,118 @@ const dataTableRef = ref<InstanceType<typeof import('vuetify/components').VDataT
   null
 )
 
+// Keyboard navigation
+const {
+  selectedIndex,
+  selectedItem,
+  selectByClick,
+  moveUp,
+  moveDown,
+  clearSelection,
+  isInputFocused
+} = useTableKeyboardNav({
+  items: variants,
+  getItemId: (item: Variant) => item.id,
+  onSelect: (item: Variant) => {
+    selectedVariantId.value = item.id
+  }
+})
+
 // Row click handler
 const handleRowClick = (_event: unknown, { item }: { item: Variant }): void => {
+  selectByClick(item)
   selectedVariantId.value = item.id
   emit('row-click', item)
 }
+
+// Keyboard navigation handlers
+onKeyStroke(
+  'ArrowDown',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    e.preventDefault()
+    moveDown()
+  },
+  { dedupe: true }
+)
+
+onKeyStroke(
+  'ArrowUp',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    e.preventDefault()
+    moveUp()
+  },
+  { dedupe: true }
+)
+
+onKeyStroke(
+  'Enter',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    if (selectedItem.value === null) return
+    e.preventDefault()
+    emit('row-click', selectedItem.value)
+  },
+  { dedupe: true }
+)
+
+onKeyStroke(
+  'Escape',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    e.preventDefault()
+    clearSelection()
+    selectedVariantId.value = null
+    emit('deselect')
+  },
+  { dedupe: true }
+)
+
+// Action shortcuts on selected row
+onKeyStroke(
+  's',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    if (selectedItem.value === null) return
+    e.preventDefault()
+    annotationDialogsRef.value?.handleStarToggle(selectedItem.value)
+  },
+  { dedupe: true }
+)
+
+onKeyStroke(
+  'c',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    if (selectedItem.value === null) return
+    e.preventDefault()
+    annotationDialogsRef.value?.openCommentDialog(selectedItem.value)
+  },
+  { dedupe: true }
+)
+
+onKeyStroke(
+  'a',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    if (selectedItem.value === null) return
+    e.preventDefault()
+    annotationDialogsRef.value?.openAcmgEvidenceDialog(selectedItem.value)
+  },
+  { dedupe: true }
+)
+
+// Scroll selected row into view
+watch(selectedIndex, async (newIndex) => {
+  if (newIndex === null) return
+  await nextTick()
+  const tableEl = dataTableRef.value?.$el as HTMLElement | undefined
+  if (!tableEl) return
+  const rows = tableEl.querySelectorAll('tbody tr')
+  const row = rows[newIndex] as HTMLElement | undefined
+  row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+})
 
 // Setup scroll sync after mount
 onMounted(async () => {
@@ -396,7 +567,9 @@ defineExpose({
   columns: computed(() => headers.value.map((h) => ({ key: h.key, title: h.title }))),
   hasColumnFilters,
   columnFilterCount,
-  clearAllColumnFilters
+  clearAllColumnFilters,
+  clearColumnFilter,
+  columnActiveFilters
 })
 </script>
 

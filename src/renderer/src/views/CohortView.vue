@@ -65,6 +65,12 @@ function handleRowClick(variant: Variant | CohortVariant): void {
   selectedPanelVariant.value = variant
   panelOpen.value = true
 }
+
+function handleDeselect(): void {
+  if (panelOpen.value) {
+    panelOpen.value = false
+  }
+}
 </script>
 
 <template>
@@ -72,5 +78,6 @@ function handleRowClick(variant: Variant | CohortVariant): void {
     ref="cohortViewRef"
     @navigate-to-case="handleNavigateToCase"
     @row-click="handleRowClick"
+    @deselect="handleDeselect"
   />
 </template>

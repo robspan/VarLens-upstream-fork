@@ -208,35 +208,67 @@ export function initializeSchema(db: Database.Database): void {
   migrateVariantsTable(db)
   db.exec(createIndexes)
 
-  // Rebuild FTS5 to include any new columns (e.g., omim_mim_number)
-  // DROP first since IF NOT EXISTS won't update existing table structure
-  db.exec('DROP TABLE IF EXISTS variants_fts')
-  // Also drop triggers that reference the old FTS table
-  db.exec('DROP TRIGGER IF EXISTS variants_fts_ai')
-  db.exec('DROP TRIGGER IF EXISTS variants_fts_ad')
-  db.exec('DROP TRIGGER IF EXISTS variants_fts_au')
-
   // Check if variants table has omim_mim_number column
   const columns = db.prepare('PRAGMA table_info(variants)').all() as { name: string }[]
   const hasOmim = columns.some((c) => c.name === 'omim_mim_number')
 
-  if (hasOmim) {
-    // Create FTS5 with omim_mim_number
-    db.exec(createFTSTable)
-    // Repopulate FTS5 index from existing data
-    db.exec(`
-      INSERT INTO variants_fts(rowid, gene_symbol, consequence, omim_mim_number)
-      SELECT id, gene_symbol, consequence, omim_mim_number FROM variants
-    `)
-    // Create triggers for future changes
-    db.exec(createFTSTriggers)
+  // Check if FTS table already exists and has the expected schema.
+  // Only rebuild if it's missing or its column set doesn't match.
+  const ftsRow = db
+    .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='variants_fts'")
+    .get()
+  const ftsExists = ftsRow !== undefined
+
+  let needsFtsRebuild = !ftsExists
+
+  if (ftsExists) {
+    // Inspect existing FTS columns to detect schema drift.
+    // FTS5 tables expose their column names via the content of the _config table.
+    try {
+      const ftsColRow = db
+        .prepare("SELECT * FROM variants_fts_config WHERE k = 'content'")
+        .get() as { k: string; v: string } | undefined
+      // If the FTS was created with omim but variants lacks it (or vice-versa), rebuild.
+      if (hasOmim && ftsColRow !== undefined) {
+        // Check if omim_mim_number is indexed by trying a match
+        const cols = db.pragma('table_info(variants_fts)') as { name: string }[]
+        const ftsHasOmim = cols.some((c) => c.name === 'omim_mim_number')
+        needsFtsRebuild = !ftsHasOmim
+      }
+    } catch {
+      // If we can't inspect, rebuild to be safe
+      needsFtsRebuild = true
+    }
+  }
+
+  if (needsFtsRebuild) {
+    // DROP first since IF NOT EXISTS won't update existing table structure
+    db.exec('DROP TABLE IF EXISTS variants_fts')
+    db.exec('DROP TRIGGER IF EXISTS variants_fts_ai')
+    db.exec('DROP TRIGGER IF EXISTS variants_fts_ad')
+    db.exec('DROP TRIGGER IF EXISTS variants_fts_au')
+
+    if (hasOmim) {
+      db.exec(createFTSTable)
+      db.exec(`
+        INSERT INTO variants_fts(rowid, gene_symbol, consequence, omim_mim_number)
+        SELECT id, gene_symbol, consequence, omim_mim_number FROM variants
+      `)
+      db.exec(createFTSTriggers)
+    } else {
+      db.exec(createFTSTableLegacy)
+      db.exec(`
+        INSERT INTO variants_fts(rowid, gene_symbol, consequence)
+        SELECT id, gene_symbol, consequence FROM variants
+      `)
+      db.exec(createFTSTriggersLegacy)
+    }
   } else {
-    // Legacy database without omim column -- use old FTS structure
-    db.exec(createFTSTableLegacy)
-    db.exec(`
-      INSERT INTO variants_fts(rowid, gene_symbol, consequence)
-      SELECT id, gene_symbol, consequence FROM variants
-    `)
-    db.exec(createFTSTriggersLegacy)
+    // FTS table exists and schema matches — just ensure triggers are present
+    if (hasOmim) {
+      db.exec(createFTSTriggers)
+    } else {
+      db.exec(createFTSTriggersLegacy)
+    }
   }
 }

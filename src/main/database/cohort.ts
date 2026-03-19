@@ -15,6 +15,7 @@ import type {
   GeneBurden,
   CohortPaginatedResult
 } from '../../shared/types/cohort'
+import type { ColumnFilterMeta } from '../../shared/types/column-filters'
 
 /**
  * Sortable columns for cohort queries
@@ -38,7 +39,16 @@ const SORTABLE_COLUMNS: Record<string, string> = {
   transcript: 'transcript'
 }
 
-const NUMERIC_COLUMNS = new Set(['pos', 'gnomad_af', 'cadd_phred'])
+/** Numeric columns for column metadata auto-detection (data type inference) */
+const NUMERIC_COLUMNS = new Set([
+  'pos',
+  'carrier_count',
+  'cohort_frequency',
+  'het_count',
+  'hom_count',
+  'gnomad_af',
+  'cadd_phred'
+])
 
 /**
  * CohortService class
@@ -172,17 +182,42 @@ export class CohortService {
       paramsArray.push(...params.acmg_classifications)
     }
 
-    // Per-column text filters
+    // Per-column typed filters
     if (params.column_filters !== undefined) {
-      for (const [column, value] of Object.entries(params.column_filters)) {
-        if (value === '' || SORTABLE_COLUMNS[column] === undefined) continue
+      for (const [column, filterDef] of Object.entries(params.column_filters)) {
+        if (SORTABLE_COLUMNS[column] === undefined) continue
         const sqlColumn = SORTABLE_COLUMNS[column]
-        whereConditions.push(
-          NUMERIC_COLUMNS.has(column)
-            ? `CAST(cvs.${sqlColumn} AS TEXT) LIKE ? COLLATE NOCASE`
-            : `cvs.${sqlColumn} LIKE ? COLLATE NOCASE`
-        )
-        paramsArray.push(`%${value}%`)
+        const { operator, value } = filterDef
+
+        if (operator === 'in' && Array.isArray(value)) {
+          if (value.length === 0) continue
+          const placeholders = value.map(() => '?').join(', ')
+          whereConditions.push(`cvs.${sqlColumn} IN (${placeholders})`)
+          paramsArray.push(...value)
+        } else if (operator === 'like' && typeof value === 'string') {
+          if (value.trim() === '') continue // Skip empty — LIKE '%%' excludes NULLs unnecessarily
+          whereConditions.push(`cvs.${sqlColumn} LIKE ? COLLATE NOCASE`)
+          paramsArray.push(`%${value}%`)
+        } else if (
+          ['=', '!='].includes(operator) &&
+          (typeof value === 'string' || typeof value === 'number')
+        ) {
+          // Exact match — NULLs excluded
+          whereConditions.push(`cvs.${sqlColumn} ${operator} ?`)
+          paramsArray.push(value)
+        } else if (
+          ['<', '>', '<=', '>='].includes(operator) &&
+          (typeof value === 'string' || typeof value === 'number')
+        ) {
+          // Range comparison — includeEmpty defaults to true
+          const includeNulls = filterDef.includeEmpty !== false
+          if (includeNulls) {
+            whereConditions.push(`(cvs.${sqlColumn} IS NULL OR cvs.${sqlColumn} ${operator} ?)`)
+          } else {
+            whereConditions.push(`cvs.${sqlColumn} ${operator} ?`)
+          }
+          paramsArray.push(value)
+        }
       }
     }
 
@@ -202,7 +237,7 @@ export class CohortService {
 
     // Build ORDER BY — use PK columns as tiebreaker instead of variant_key
     const direction = sortOrder.toUpperCase()
-    const orderByClause = `ORDER BY ${sortBy} ${direction}, chr ASC, pos ASC, ref ASC, alt ASC`
+    const orderByClause = `ORDER BY ${sortBy} ${direction} NULLS LAST, chr ASC, pos ASC, ref ASC, alt ASC`
 
     // Data query — no window function, LIMIT benefits from early termination
     const sql = `
@@ -430,6 +465,59 @@ export class CohortService {
     `
     const stmt = this.getStatement(sql)
     return stmt.all() as GeneBurden[]
+  }
+
+  /**
+   * Get per-column metadata from cohort_variant_summary for filter UI auto-detection.
+   *
+   * Returns distinct count, data type, distinct values (if few), and min/max for numerics.
+   */
+  getColumnMeta(): ColumnFilterMeta[] {
+    const DISTINCT_THRESHOLD = 50
+    const meta: ColumnFilterMeta[] = []
+
+    for (const [key, sqlCol] of Object.entries(SORTABLE_COLUMNS)) {
+      const isNumeric = NUMERIC_COLUMNS.has(key)
+
+      // Get distinct count
+      const countResult = this.db
+        .prepare(
+          `SELECT COUNT(DISTINCT ${sqlCol}) as cnt FROM cohort_variant_summary WHERE ${sqlCol} IS NOT NULL`
+        )
+        .get() as { cnt: number }
+      const distinctCount = countResult?.cnt ?? 0
+
+      const entry: ColumnFilterMeta = {
+        key,
+        dataType: isNumeric ? 'numeric' : 'text',
+        distinctCount
+      }
+
+      // For numeric columns: fetch min/max
+      if (isNumeric) {
+        const rangeResult = this.db
+          .prepare(
+            `SELECT MIN(${sqlCol}) as min_val, MAX(${sqlCol}) as max_val FROM cohort_variant_summary WHERE ${sqlCol} IS NOT NULL`
+          )
+          .get() as { min_val: number | null; max_val: number | null }
+        entry.min = rangeResult?.min_val ?? undefined
+        entry.max = rangeResult?.max_val ?? undefined
+      }
+
+      // Populate distinct values if count is within threshold
+      if (distinctCount > 0 && distinctCount <= DISTINCT_THRESHOLD) {
+        const rows = this.db
+          .prepare(
+            `SELECT DISTINCT ${sqlCol} as val FROM cohort_variant_summary WHERE ${sqlCol} IS NOT NULL ORDER BY ${sqlCol}`
+          )
+          .all() as Array<{ val: unknown }>
+        entry.distinctValues = rows.map((r) => String(r.val))
+      }
+
+      meta.push(entry)
+    }
+
+    return meta
   }
 
   /**

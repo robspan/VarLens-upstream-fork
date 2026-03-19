@@ -9,15 +9,33 @@
     @clear-all="clearAllFilters"
   >
     <v-expansion-panels v-model="expandedPanels" multiple variant="accordion">
-      <!-- Search -->
+      <!-- === VARIANT PROPERTIES === -->
+      <div class="filter-section-header text-overline text-medium-emphasis px-3 pt-3 pb-1">
+        Variant Properties
+      </div>
+
+      <!-- Search (ALWAYS first) -->
       <v-expansion-panel value="search">
         <FilterPanelTitle
           icon="mdi-magnify"
           label="Search"
           :active="isFilterGroupActive('search')"
+          :value-summary="searchSummary"
         />
         <v-expansion-panel-text>
+          <DslSearchBar
+            v-if="dslInput"
+            :raw-input="dslInput"
+            :suggestions="dslSuggestions ?? []"
+            :is-dsl-mode="isDslMode ?? false"
+            :errors="dslErrors ?? []"
+            @update:raw-input="dslInput = $event"
+            @apply="onDslApply?.()"
+            @clear="onDslClear?.()"
+            @select-suggestion="onDslSuggestionSelect?.($event)"
+          />
           <v-text-field
+            v-else
             v-model="filters.searchQuery"
             density="compact"
             variant="outlined"
@@ -29,9 +47,56 @@
         </v-expansion-panel-text>
       </v-expansion-panel>
 
+      <!-- Preset chips (below Search, above remaining filters) -->
+      <div
+        v-if="visiblePresets && visiblePresets.length > 0"
+        class="preset-drawer-section px-3 pt-2 pb-1"
+      >
+        <div class="d-flex align-center mb-1">
+          <v-icon size="x-small" class="mr-1 text-medium-emphasis">mdi-bookmark-multiple</v-icon>
+          <span class="text-overline text-medium-emphasis">Presets</span>
+          <v-spacer />
+          <v-btn
+            v-if="hasActiveFiltersForSave"
+            size="x-small"
+            variant="text"
+            color="primary"
+            density="compact"
+            @click="onPresetSave?.()"
+          >
+            Save
+          </v-btn>
+          <v-btn size="x-small" variant="text" density="compact" @click="onPresetManage?.()">
+            <v-icon size="x-small">mdi-cog-outline</v-icon>
+          </v-btn>
+        </div>
+        <div class="d-flex ga-1 flex-wrap pb-1">
+          <v-chip
+            v-for="preset in visiblePresets"
+            :key="preset.id"
+            :color="isPresetActive?.(preset.id) ? 'primary' : undefined"
+            :variant="isPresetActive?.(preset.id) ? 'flat' : 'outlined'"
+            size="small"
+            label
+            @click="onPresetToggle?.(preset.id)"
+          >
+            {{ preset.name }}
+            <v-tooltip activator="parent" location="bottom">
+              {{ preset.description || 'No description' }}
+            </v-tooltip>
+          </v-chip>
+        </div>
+        <v-divider class="mt-1" />
+      </div>
+
       <!-- Gene -->
       <v-expansion-panel value="gene">
-        <FilterPanelTitle icon="mdi-dna" label="Gene" :active="isFilterGroupActive('gene')" />
+        <FilterPanelTitle
+          icon="mdi-dna"
+          label="Gene"
+          :active="isFilterGroupActive('gene')"
+          :value-summary="geneSummary"
+        />
         <v-expansion-panel-text>
           <v-autocomplete
             v-model="filters.geneSymbol"
@@ -51,7 +116,12 @@
 
       <!-- Impact -->
       <v-expansion-panel value="impact">
-        <FilterPanelTitle icon="mdi-flash" label="Impact" :active="isFilterGroupActive('impact')" />
+        <FilterPanelTitle
+          icon="mdi-flash"
+          label="Impact"
+          :active="isFilterGroupActive('impact')"
+          :value-summary="impactSummary"
+        />
         <v-expansion-panel-text>
           <div class="d-flex ga-1 flex-wrap mb-2">
             <v-chip
@@ -87,6 +157,7 @@
           icon="mdi-function"
           label="Consequence"
           :active="isFilterGroupActive('function')"
+          :value-summary="funcSummary"
         />
         <v-expansion-panel-text>
           <GroupedMultiSelect
@@ -106,6 +177,7 @@
           icon="mdi-hospital-box"
           label="ClinVar"
           :active="isFilterGroupActive('clinvar')"
+          :value-summary="clinvarSummary"
         />
         <v-expansion-panel-text>
           <GroupedMultiSelect
@@ -119,12 +191,19 @@
         </v-expansion-panel-text>
       </v-expansion-panel>
 
+      <!-- === POPULATION & SCORES === -->
+      <div class="filter-section-header text-overline text-medium-emphasis px-3 pt-3 pb-1">
+        <v-divider class="mb-2" />
+        Population &amp; Scores
+      </div>
+
       <!-- Frequency -->
       <v-expansion-panel value="frequency">
         <FilterPanelTitle
           icon="mdi-earth"
           label="Frequency"
           :active="isFilterGroupActive('frequency')"
+          :value-summary="frequencySummary"
         />
         <v-expansion-panel-text>
           <div class="d-flex ga-1 flex-wrap mb-2">
@@ -161,6 +240,7 @@
           icon="mdi-alert-circle"
           label="CADD"
           :active="isFilterGroupActive('cadd')"
+          :value-summary="caddSummary"
         />
         <v-expansion-panel-text>
           <div class="d-flex ga-1 flex-wrap mb-2">
@@ -192,12 +272,19 @@
         </v-expansion-panel-text>
       </v-expansion-panel>
 
+      <!-- === ANNOTATIONS === -->
+      <div class="filter-section-header text-overline text-medium-emphasis px-3 pt-3 pb-1">
+        <v-divider class="mb-2" />
+        Annotations
+      </div>
+
       <!-- Tags -->
       <v-expansion-panel value="tags">
         <FilterPanelTitle
           icon="mdi-tag-multiple"
           label="Tags"
           :active="isFilterGroupActive('tags')"
+          :value-summary="tagsSummary"
         />
         <v-expansion-panel-text>
           <v-select
@@ -242,6 +329,7 @@
           icon="mdi-star-circle"
           label="Annotations"
           :active="isFilterGroupActive('annotations')"
+          :value-summary="annotationsSummary"
         />
         <v-expansion-panel-text>
           <div class="d-flex ga-2 mb-3">
@@ -266,6 +354,8 @@
               Commented
             </v-btn>
           </div>
+          <div class="text-body-small text-medium-emphasis mb-1 mt-1">Annotation Scope</div>
+          <AnnotationScopeToggle v-model="filters.annotationScope" class="mb-3" />
           <div class="text-body-small text-medium-emphasis mb-1">ACMG Classification</div>
           <div class="d-flex flex-wrap ga-1">
             <v-chip
@@ -287,9 +377,11 @@
 </template>
 
 <script setup lang="ts">
-import { inject, ref } from 'vue'
+import { inject, ref, computed } from 'vue'
 import FilterDrawerShell from './filters/FilterDrawerShell.vue'
 import FilterPanelTitle from './filters/FilterPanelTitle.vue'
+import AnnotationScopeToggle from './AnnotationScopeToggle.vue'
+import DslSearchBar from './DslSearchBar.vue'
 import GroupedMultiSelect from './GroupedMultiSelect.vue'
 import { consequenceGroups, clinvarGroups } from '../config/filterGroups'
 import { ACMG_FILTER_OPTIONS_LONG } from '../utils/filters'
@@ -343,8 +435,72 @@ const {
   clearAllFilters,
   handleGeneClear,
   searchGeneSymbols,
-  removeTagFilter
+  removeTagFilter,
+  visiblePresets,
+  isPresetActive,
+  onPresetToggle,
+  onPresetSave,
+  onPresetManage,
+  hasActiveFiltersForSave,
+  dslInput,
+  dslSuggestions,
+  isDslMode,
+  dslErrors,
+  onDslApply,
+  onDslClear,
+  onDslSuggestionSelect
 } = state
+
+// Value summaries for collapsed panel previews
+const searchSummary = computed(() => filters.value.searchQuery || '')
+const geneSummary = computed(() => filters.value.geneSymbol || '')
+
+const impactSummary = computed(() => {
+  if (selectedImpactPresets.value.length > 0) {
+    return selectedImpactPresets.value.join(', ')
+  }
+  if (filters.value.consequences.length > 0) {
+    return `${filters.value.consequences.length} selected`
+  }
+  return ''
+})
+
+const funcSummary = computed(() =>
+  filters.value.funcs.length > 0 ? `${filters.value.funcs.length} selected` : ''
+)
+
+const clinvarSummary = computed(() =>
+  filters.value.clinvars.length > 0 ? `${filters.value.clinvars.length} selected` : ''
+)
+
+const frequencySummary = computed(() => {
+  if (filters.value.maxGnomadAf !== null && filters.value.maxGnomadAf > 0) {
+    const pct = (filters.value.maxGnomadAf * 100).toFixed(2)
+    return `<= ${pct}%`
+  }
+  return ''
+})
+
+const caddSummary = computed(() => {
+  if (filters.value.minCadd !== null && filters.value.minCadd >= 0) {
+    return `>= ${filters.value.minCadd}`
+  }
+  return ''
+})
+
+const tagsSummary = computed(() =>
+  filters.value.tagIds.length > 0 ? `${filters.value.tagIds.length} tags` : ''
+)
+
+const annotationsSummary = computed(() => {
+  const parts: string[] = []
+  if (filters.value.starredOnly) parts.push('Starred')
+  if (filters.value.hasCommentOnly) parts.push('Comments')
+  if (filters.value.acmgClassifications.length > 0) {
+    parts.push(`ACMG: ${filters.value.acmgClassifications.length}`)
+  }
+  return parts.join(', ')
+})
 
 const acmgFilterOptions = ACMG_FILTER_OPTIONS_LONG
 
@@ -375,5 +531,15 @@ const toggleAcmgFilter = (value: string): void => {
 
 :deep(.v-expansion-panel-text__wrapper) {
   padding: 8px 12px 12px;
+}
+
+.filter-section-header {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+}
+
+.preset-drawer-section {
+  background: color-mix(in srgb, rgb(var(--v-theme-surface)) 95%, rgb(var(--v-theme-primary)));
 }
 </style>

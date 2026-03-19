@@ -7,6 +7,7 @@
 
 import type Database from 'better-sqlite3-multiple-ciphers'
 import { CLINICAL_METRICS } from './clinical-metrics'
+import { BUILT_IN_PRESETS } from './built-in-presets'
 
 /**
  * Run schema migrations based on PRAGMA user_version
@@ -27,6 +28,8 @@ import { CLINICAL_METRICS } from './clinical-metrics'
  * - 9: v0.21.0 case_data_info table (import provenance, platform, pre-filtering)
  * - 10: v0.21.0 gene_lists and gene_list_items tables (curated reusable gene lists)
  * - 11: v0.21.0 remove non-clinical predefined metrics (genetics, QC, variant stats)
+ * - 15: Filter presets table with built-in preset seeding
+ * - 16: Rework built-in presets to clinical combo presets
  *
  * @param db - better-sqlite3-multiple-ciphers Database instance
  */
@@ -620,13 +623,25 @@ export function runMigrations(db: Database.Database): void {
 
   // ── Migration v14: Cohort performance optimization ──
   if (currentVersion < 14) {
-    // Denormalized annotation flags
-    db.exec(`
-      ALTER TABLE cohort_variant_summary ADD COLUMN has_star INTEGER NOT NULL DEFAULT 0;
-      ALTER TABLE cohort_variant_summary ADD COLUMN has_comment INTEGER NOT NULL DEFAULT 0;
-      ALTER TABLE cohort_variant_summary ADD COLUMN acmg_best TEXT;
-      ALTER TABLE cohort_variant_summary ADD COLUMN cohort_frequency REAL;
-    `)
+    // Denormalized annotation flags (idempotent — check before adding)
+    const cvsCols = db.prepare('PRAGMA table_info(cohort_variant_summary)').all() as {
+      name: string
+    }[]
+    const cvsColNames = new Set(cvsCols.map((c) => c.name))
+    if (!cvsColNames.has('has_star')) {
+      db.exec('ALTER TABLE cohort_variant_summary ADD COLUMN has_star INTEGER NOT NULL DEFAULT 0')
+    }
+    if (!cvsColNames.has('has_comment')) {
+      db.exec(
+        'ALTER TABLE cohort_variant_summary ADD COLUMN has_comment INTEGER NOT NULL DEFAULT 0'
+      )
+    }
+    if (!cvsColNames.has('acmg_best')) {
+      db.exec('ALTER TABLE cohort_variant_summary ADD COLUMN acmg_best TEXT')
+    }
+    if (!cvsColNames.has('cohort_frequency')) {
+      db.exec('ALTER TABLE cohort_variant_summary ADD COLUMN cohort_frequency REAL')
+    }
 
     // Index for frequency filter
     db.exec(`
@@ -634,11 +649,19 @@ export function runMigrations(db: Database.Database): void {
         ON cohort_variant_summary(cohort_frequency);
     `)
 
-    // Backfill cohort_frequency for existing rows
-    db.exec(`
-      UPDATE cohort_variant_summary
-      SET cohort_frequency = CAST(carrier_count AS REAL) / NULLIF((SELECT COUNT(*) FROM cases), 0);
-    `)
+    // Backfill cohort_frequency for existing rows (skip if already populated)
+    const needsBackfill = db
+      .prepare(
+        'SELECT 1 FROM cohort_variant_summary WHERE cohort_frequency IS NULL AND carrier_count > 0 LIMIT 1'
+      )
+      .get()
+    if (needsBackfill !== undefined) {
+      db.exec(`
+        UPDATE cohort_variant_summary
+        SET cohort_frequency = CAST(carrier_count AS REAL) / NULLIF((SELECT COUNT(*) FROM cases), 0)
+        WHERE cohort_frequency IS NULL;
+      `)
+    }
 
     // Mark stale to trigger full rebuild (populates annotation flags)
     db.exec(`
@@ -654,7 +677,7 @@ export function runMigrations(db: Database.Database): void {
     // --- variant_annotations triggers ---
 
     db.exec(`
-      CREATE TRIGGER trg_va_after_insert
+      CREATE TRIGGER IF NOT EXISTS trg_va_after_insert
       AFTER INSERT ON variant_annotations
       FOR EACH ROW
       BEGIN
@@ -709,7 +732,7 @@ export function runMigrations(db: Database.Database): void {
     `)
 
     db.exec(`
-      CREATE TRIGGER trg_va_after_update
+      CREATE TRIGGER IF NOT EXISTS trg_va_after_update
       AFTER UPDATE ON variant_annotations
       FOR EACH ROW
       WHEN OLD.starred != NEW.starred
@@ -767,7 +790,7 @@ export function runMigrations(db: Database.Database): void {
     `)
 
     db.exec(`
-      CREATE TRIGGER trg_va_after_delete
+      CREATE TRIGGER IF NOT EXISTS trg_va_after_delete
       AFTER DELETE ON variant_annotations
       FOR EACH ROW
       BEGIN
@@ -824,7 +847,7 @@ export function runMigrations(db: Database.Database): void {
     // --- case_variant_annotations triggers ---
 
     db.exec(`
-      CREATE TRIGGER trg_cva_after_insert
+      CREATE TRIGGER IF NOT EXISTS trg_cva_after_insert
       AFTER INSERT ON case_variant_annotations
       FOR EACH ROW
       BEGIN
@@ -887,7 +910,7 @@ export function runMigrations(db: Database.Database): void {
     `)
 
     db.exec(`
-      CREATE TRIGGER trg_cva_after_update
+      CREATE TRIGGER IF NOT EXISTS trg_cva_after_update
       AFTER UPDATE ON case_variant_annotations
       FOR EACH ROW
       WHEN OLD.starred != NEW.starred
@@ -953,7 +976,7 @@ export function runMigrations(db: Database.Database): void {
     `)
 
     db.exec(`
-      CREATE TRIGGER trg_cva_after_delete
+      CREATE TRIGGER IF NOT EXISTS trg_cva_after_delete
       AFTER DELETE ON case_variant_annotations
       FOR EACH ROW
       BEGIN
@@ -1029,5 +1052,85 @@ export function runMigrations(db: Database.Database): void {
     `)
 
     db.exec('PRAGMA user_version = 14')
+  }
+
+  // ── Migration v15: Filter presets table ──────────────────
+  if (currentVersion < 15) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS filter_presets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        filter_json TEXT NOT NULL DEFAULT '{}',
+        is_built_in INTEGER NOT NULL DEFAULT 0,
+        is_visible INTEGER NOT NULL DEFAULT 1,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_filter_presets_name
+        ON filter_presets(name);
+    `)
+
+    // Seed built-in presets
+    const now = Date.now()
+    const insertStmt = db.prepare(
+      `INSERT OR IGNORE INTO filter_presets
+        (name, description, filter_json, is_built_in, is_visible, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, 1, 1, ?, ?, ?)`
+    )
+    for (const preset of BUILT_IN_PRESETS) {
+      insertStmt.run(
+        preset.name,
+        preset.description,
+        JSON.stringify(preset.filterJson),
+        preset.sortOrder,
+        now,
+        now
+      )
+    }
+
+    db.exec('PRAGMA user_version = 15')
+  }
+
+  // ── Migration v16: Rework built-in presets to clinical combos ──
+  if (currentVersion < 16) {
+    // Preserve user visibility preferences for built-in presets before reseeding
+    const existingVisibility = new Map<string, number>()
+    const existingRows = db
+      .prepare('SELECT name, is_visible FROM filter_presets WHERE is_built_in = 1')
+      .all() as { name: string; is_visible: number }[]
+    for (const row of existingRows) {
+      existingVisibility.set(row.name, row.is_visible)
+    }
+    // Delete old built-in presets and re-seed with clinically meaningful combos
+    db.exec('DELETE FROM filter_presets WHERE is_built_in = 1')
+
+    const now = Date.now()
+    const insertStmt = db.prepare(
+      `INSERT OR IGNORE INTO filter_presets
+        (name, description, filter_json, is_built_in, is_visible, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, 1, 1, ?, ?, ?)`
+    )
+    for (const preset of BUILT_IN_PRESETS) {
+      insertStmt.run(
+        preset.name,
+        preset.description,
+        JSON.stringify(preset.filterJson),
+        preset.sortOrder,
+        now,
+        now
+      )
+    }
+
+    // Restore user visibility preferences for presets that existed before
+    const restoreStmt = db.prepare(
+      'UPDATE filter_presets SET is_visible = ? WHERE name = ? AND is_built_in = 1'
+    )
+    for (const [name, isVisible] of existingVisibility) {
+      restoreStmt.run(isVisible, name)
+    }
+
+    db.exec('PRAGMA user_version = 16')
   }
 }

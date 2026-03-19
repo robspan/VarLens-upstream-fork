@@ -1,5 +1,6 @@
 import { ref, watch, type Ref } from 'vue'
 import type { Variant, VariantFilter } from '../../../../shared/types/api'
+import type { ColumnFilterMeta } from '../../../../shared/types/column-filters'
 import { useOffsetPagination } from '../../composables/useOffsetPagination'
 import { useAnnotations } from '../../composables/useAnnotations'
 import { useColumnFilters } from '../../composables/useColumnFilters'
@@ -52,9 +53,9 @@ export function useVariantData(options: UseVariantDataOptions) {
       const plainFilters = JSON.parse(JSON.stringify(filters.value))
       const colFilters = getColumnFiltersParam()
       if (colFilters !== undefined) {
-        plainFilters.column_filters = colFilters
+        // Deep-clone to strip reactive proxies for IPC structured clone
+        plainFilters.column_filters = JSON.parse(JSON.stringify(colFilters))
       }
-
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await (api as any).variants.query(
         caseId.value,
@@ -75,6 +76,7 @@ export function useVariantData(options: UseVariantDataOptions) {
   // Domain-specific state
   const unfilteredCount = ref(0)
   const selectedVariantId = ref<number | null>(null)
+  const columnMeta = ref<ColumnFilterMeta[]>([])
 
   // Row props for zebra striping and selection highlighting
   const getRowProps = ({ item, index }: { item: Variant; index: number }) => {
@@ -103,6 +105,15 @@ export function useVariantData(options: UseVariantDataOptions) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const result = await (api as any).variants.query(newCaseId, {}, undefined, 1, [])
         unfilteredCount.value = result.total_count
+
+        // Fetch column metadata for filter UI auto-detection
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const options = await (api as any).variants.getFilterOptions(newCaseId)
+          columnMeta.value = options.columnMeta ?? []
+        } catch {
+          columnMeta.value = []
+        }
       }
     },
     { immediate: true }
@@ -113,7 +124,7 @@ export function useVariantData(options: UseVariantDataOptions) {
 
   // Debounced reload when per-column filters change
   const { debouncedFn: debouncedColumnFilterReload } = useDebounce(invalidateAndReload, 300)
-  watch(getColumnFiltersParam, debouncedColumnFilterReload, { deep: true })
+  watch(columnFilterState.columnFilters, debouncedColumnFilterReload, { deep: true })
 
   // Load annotations when variants change
   watch(
@@ -136,6 +147,7 @@ export function useVariantData(options: UseVariantDataOptions) {
     sortBy,
     itemsPerPageOptions,
     selectedVariantId,
+    columnMeta,
 
     // Methods
     loadVariants,

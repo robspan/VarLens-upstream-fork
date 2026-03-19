@@ -8,6 +8,7 @@ import {
   UniqueConstraintError,
   TransactionError
 } from '../../../src/main/database'
+import { DATABASE_CONFIG } from '../../../src/shared/config'
 
 describe('DatabaseService', () => {
   let service: DatabaseService
@@ -75,7 +76,7 @@ describe('DatabaseService', () => {
           | undefined
         // mmap_size is set but the return format varies by platform
         if (mmapSize !== undefined) {
-          expect(mmapSize.mmap_size).toBe(268435456)
+          expect(mmapSize.mmap_size).toBe(DATABASE_CONFIG.MMAP_SIZE_BYTES)
         }
       } finally {
         fileService.close()

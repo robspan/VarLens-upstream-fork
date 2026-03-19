@@ -43,8 +43,10 @@
           :is-sorted="isSorted"
           :sort-by="slotSortBy"
           :has-filter="hasColumnFilter(col.key)"
-          :filter-value="columnFilters[col.key] || ''"
-          @update:filter="(v) => setColumnFilter(col.key, v)"
+          :current-filter="getColumnFilter(col.key)"
+          :column-meta="columnMetaMap[col.key]"
+          :filter-mode="columnFilterModes[col.key] ?? 'text-suggest'"
+          @apply-filter="(f: ColumnFilter) => setColumnFilter(col.key, f)"
           @clear-filter="clearColumnFilter(col.key)"
         />
       </template>
@@ -186,6 +188,8 @@
 
 <script setup lang="ts">
 import { ref, watch, computed, onMounted, nextTick } from 'vue'
+import { useTableKeyboardNav } from '../../composables/useTableKeyboardNav'
+import { onKeyStroke } from '@vueuse/core'
 import type { CohortVariant } from '../../../../shared/types/cohort'
 import type { AcmgClassification } from '../../../../main/database/types'
 import type { SortItem } from '../../composables/useOffsetPagination'
@@ -207,6 +211,14 @@ import {
 import CarrierExpandedRow from './CarrierExpandedRow.vue'
 import VariantColumnHeader from '../variant-table/VariantColumnHeader.vue'
 import { useColumnFilters } from '../../composables/useColumnFilters'
+import { useColumnFilterMeta } from '../../composables/useColumnFilterMeta'
+import type {
+  ColumnFilter,
+  ColumnFilterMeta,
+  ColumnFiltersParam
+} from '../../../../shared/types/column-filters'
+import type { ActiveFilter } from '../../../../shared/types/filters'
+import { buildActiveFiltersList } from '../../utils/filters/activeFilters'
 import { useDebounce } from '../../composables/useDebounce'
 import { useExternalLinksStore, type ExternalLinkConfig } from '../../stores/externalLinksStore'
 import { APP_CONFIG } from '../../../../shared/config'
@@ -224,6 +236,8 @@ interface Props {
     align?: 'start' | 'center' | 'end'
   }>
   selectedVariantKey: string | null
+  /** Per-column metadata for filter UI auto-detection (optional, defaults to text-suggest) */
+  columnMeta?: ColumnFilterMeta[]
   // Annotation lookup functions passed from parent
   isGlobalStarred: (chr: string, pos: number, ref: string, alt: string) => boolean
   getGlobalAcmgClassification: (
@@ -244,7 +258,8 @@ const emit = defineEmits<{
   'comment-click': [item: CohortVariant]
   'navigate-to-case': [payload: { caseId: number; item: CohortVariant }]
   'load-carriers': [variant: CohortVariant]
-  'column-filters-change': [filters: Record<string, string> | undefined]
+  'column-filters-change': [filters: ColumnFiltersParam | undefined]
+  deselect: []
 }>()
 
 // v-model props for pagination state (controlled by parent via useOffsetPagination)
@@ -267,12 +282,33 @@ const { getRowProps } = useTableRowProps<CohortVariant>({
 })
 const { expandedRows, getCarriers, hasCarriers, clearCache: clearCarrierCache } = useCarriers()
 
+// Keyboard navigation
+const {
+  selectedIndex,
+  selectedItem: navSelectedItem,
+  selectByClick,
+  moveUp,
+  moveDown,
+  clearSelection,
+  isInputFocused
+} = useTableKeyboardNav({
+  items: computed(() => props.variants),
+  getItemId: (item: CohortVariant) => item.variant_key,
+  onSelect: () => {
+    // onSelect intentionally empty — row-click is emitted by handleRowClick
+    // (mouse) and Enter handler (keyboard) separately.
+  }
+})
+
 // Per-column text filters
 const {
-  columnFilters,
   setColumnFilter,
   clearColumnFilter,
+  clearAllColumnFilters,
+  hasActiveFilters: hasColumnFilters,
+  activeFilterCount: columnFilterCount,
   hasFilter: hasColumnFilter,
+  getFilter: getColumnFilter,
   getColumnFiltersParam
 } = useColumnFilters()
 
@@ -287,9 +323,13 @@ const filterableColumns = computed(() =>
   )
 )
 
+// Column metadata map + filter modes (shared composable)
+const columnMetaRef = computed<ColumnFilterMeta[]>(() => props.columnMeta ?? [])
+const { columnMetaMap, columnFilterModes } = useColumnFilterMeta(columnMetaRef)
+
 // Debounced emit when column filters change
 const { debouncedFn: debouncedEmitColumnFilters } = useDebounce(
-  (newFilters: Record<string, string> | undefined) => {
+  (newFilters: ColumnFiltersParam | undefined) => {
     emit('column-filters-change', newFilters)
   },
   300
@@ -382,8 +422,114 @@ const handleTableOptions = (options: any): void => {
  * Handle row click
  */
 const handleRowClick = (_event: Event, data: { item: CohortVariant }): void => {
+  selectByClick(data.item)
   emit('row-click', data.item)
 }
+
+// Keyboard navigation handlers
+onKeyStroke(
+  'ArrowDown',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    e.preventDefault()
+    moveDown()
+  },
+  { dedupe: true }
+)
+
+onKeyStroke(
+  'ArrowUp',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    e.preventDefault()
+    moveUp()
+  },
+  { dedupe: true }
+)
+
+onKeyStroke(
+  'Enter',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    if (navSelectedItem.value === null) return
+    e.preventDefault()
+    emit('row-click', navSelectedItem.value)
+  },
+  { dedupe: true }
+)
+
+onKeyStroke(
+  'Escape',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    e.preventDefault()
+    clearSelection()
+    emit('deselect')
+  },
+  { dedupe: true }
+)
+
+// Action shortcuts on selected row
+onKeyStroke(
+  's',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    if (navSelectedItem.value === null) return
+    e.preventDefault()
+    emit('star-toggle', navSelectedItem.value)
+  },
+  { dedupe: true }
+)
+
+onKeyStroke(
+  'c',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    if (navSelectedItem.value === null) return
+    e.preventDefault()
+    emit('comment-click', navSelectedItem.value)
+  },
+  { dedupe: true }
+)
+
+onKeyStroke(
+  'a',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    if (navSelectedItem.value === null) return
+    e.preventDefault()
+    emit('acmg-evidence-click', navSelectedItem.value)
+  },
+  { dedupe: true }
+)
+
+onKeyStroke(
+  'e',
+  (e: KeyboardEvent) => {
+    if (isInputFocused()) return
+    if (navSelectedItem.value === null) return
+    e.preventDefault()
+    const key = navSelectedItem.value.variant_key
+    const idx = expandedRows.value.indexOf(key)
+    if (idx === -1) {
+      expandedRows.value = [...expandedRows.value, key]
+    } else {
+      expandedRows.value = expandedRows.value.filter((k) => k !== key)
+    }
+  },
+  { dedupe: true }
+)
+
+// Scroll selected row into view
+watch(selectedIndex, async (newIndex) => {
+  if (newIndex === null) return
+  await nextTick()
+  const tableEl = dataTableRef.value?.$el as HTMLElement | undefined
+  if (!tableEl) return
+  const rows = tableEl.querySelectorAll('tbody tr')
+  const row = rows[newIndex] as HTMLElement | undefined
+  row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+})
 
 /**
  * Watch for expanded rows - emit load-carriers event for parent orchestration
@@ -418,14 +564,45 @@ onMounted(async () => {
   }
 })
 
+// Column active filter chips for the toolbar
+const columnActiveFilters = computed<ActiveFilter[]>(() => {
+  const colFilters = getColumnFiltersParam()
+  if (!colFilters) return []
+  return buildActiveFiltersList(
+    {
+      searchQuery: '',
+      geneSymbol: '',
+      consequences: [],
+      funcs: [],
+      clinvars: [],
+      maxGnomadAf: null,
+      minCadd: null,
+      minCohortFrequency: null,
+      minCarriers: null,
+      starredOnly: false,
+      hasCommentOnly: false,
+      acmgClassifications: []
+    },
+    [],
+    colFilters
+  ).filter((f) => f.id.startsWith('col:'))
+})
+
 /**
- * Expose refresh method for parent to call
+ * Expose refresh method and column filter state for parent to call
  */
 const refresh = (): void => {
   clearCarrierCache()
 }
 
-defineExpose({ refresh })
+defineExpose({
+  refresh,
+  columnActiveFilters,
+  clearColumnFilter,
+  clearAllColumnFilters,
+  hasColumnFilters,
+  columnFilterCount
+})
 </script>
 
 <style scoped>

@@ -2,33 +2,32 @@
   <SlimFilterToolbar
     :filtered-count="filteredCount"
     :total-count="totalCount"
-    :has-active-filters="hasActiveFilters"
+    :has-active-filters="mergedHasActiveFilters"
     :has-clearable-state="props.hasSort"
-    :active-filter-count="activeFilterCount"
-    :active-filters-list="activeFiltersList"
+    :active-filter-count="mergedActiveFilterCount"
+    :active-filters-list="mergedActiveFiltersList"
     :exporting="exporting"
     :columns="columns"
-    @clear-all="clearAllFilters"
-    @clear-filter="clearFilter"
+    @clear-all="handleClearAll"
+    @clear-filter="handleClearFilter"
     @open-filter-drawer="filterDrawerOpen = true"
     @open-columns-drawer="columnsDrawerOpen = true"
     @export="exportToExcel"
   >
     <template #filters>
-      <!-- Search field -->
-      <v-text-field
-        v-model="filters.searchQuery"
-        variant="outlined"
-        hide-details
-        clearable
-        placeholder="Gene, chr:pos, c./p. HGVS..."
-        prepend-inner-icon="mdi-magnify"
+      <!-- DSL search bar (replaces plain text search) -->
+      <DslSearchBar
+        ref="searchFieldRef"
+        :raw-input="dslInput"
+        :suggestions="dslSuggestions"
+        :is-dsl-mode="isDslMode"
+        :errors="dslErrors"
         class="filter-search-input mr-2"
-        :class="{ 'filter-active': filters.searchQuery !== '' }"
+        @update:raw-input="dslInput = $event"
+        @apply="applyDslFilters"
+        @clear="handleDslClear"
+        @select-suggestion="applySuggestion"
       />
-
-      <!-- Annotation scope toggle -->
-      <AnnotationScopeToggle v-model="filters.annotationScope" class="mr-2" />
 
       <!-- Star toggle -->
       <v-tooltip location="bottom">
@@ -76,8 +75,13 @@
         }}
       </v-tooltip>
 
-      <!-- ACMG classification chips -->
-      <v-chip-group v-model="filters.acmgClassifications" multiple class="ml-2 flex-nowrap">
+      <!-- ACMG classification chips (hidden at narrow widths, available in drawer) -->
+      <v-chip-group
+        v-if="showToolbarAcmg"
+        v-model="filters.acmgClassifications"
+        multiple
+        class="ml-2 flex-nowrap"
+      >
         <v-chip
           v-for="cls in acmgFilterOptions"
           :key="cls.value"
@@ -90,46 +94,17 @@
           {{ cls.label }}
         </v-chip>
       </v-chip-group>
+    </template>
 
-      <!-- Tag filter -->
-      <v-select
-        v-if="availableTags.length > 0"
-        v-model="filters.tagIds"
-        :items="availableTags"
-        item-title="name"
-        item-value="id"
-        multiple
-        chips
-        closable-chips
-        density="compact"
-        variant="outlined"
-        hide-details
-        clearable
-        placeholder="Tags..."
-        prepend-inner-icon="mdi-tag-multiple"
-        class="filter-tag-input ml-1"
-        :class="{ 'filter-active': filters.tagIds.length > 0 }"
-      >
-        <template #chip="{ item }">
-          <v-chip
-            closable
-            size="x-small"
-            :color="(item as unknown as Tag).color"
-            variant="flat"
-            @click:close="removeTagFilter((item as unknown as Tag).id)"
-          >
-            {{ (item as unknown as Tag).name }}
-          </v-chip>
-        </template>
-        <template #item="{ item, props: itemProps }">
-          <v-list-item v-bind="itemProps" :title="undefined">
-            <template #prepend>
-              <v-icon :color="(item as unknown as Tag).color" size="small">mdi-circle</v-icon>
-            </template>
-            <v-list-item-title>{{ (item as unknown as Tag).name }}</v-list-item-title>
-          </v-list-item>
-        </template>
-      </v-select>
+    <template #preset-bar>
+      <PresetBar
+        :visible-presets="visiblePresets"
+        :is-preset-active="isPresetActive"
+        :has-active-filters="mergedHasActiveFilters"
+        @toggle="handlePresetToggle"
+        @save="showSavePresetDialog = true"
+        @manage="showManagePresetsDialog = true"
+      />
     </template>
 
     <template #hints>
@@ -162,21 +137,40 @@
         @reorder="setColumnOrder"
         @reset="resetColumnDefaults"
       />
+      <PresetSaveDialog
+        v-model="showSavePresetDialog"
+        :saving="savingPreset"
+        @save="handleSavePreset"
+      />
+      <PresetManageDialog
+        v-model="showManagePresetsDialog"
+        :presets="allPresets"
+        @toggle-visibility="handleToggleVisibility"
+        @delete="handleDeletePreset"
+      />
     </template>
   </SlimFilterToolbar>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, provide } from 'vue'
+import { ref, computed, watch, onMounted, provide, nextTick } from 'vue'
 import { useFilterState } from '../composables/useFilterState'
 import { useColumnPreferences } from '../composables/useColumnPreferences'
+import { useFilterPresetStore } from '../composables/useFilterPresetStore'
+import { useDslFilterIntegration } from '../composables/useDslFilterIntegration'
 import SlimFilterToolbar from './SlimFilterToolbar.vue'
-import AnnotationScopeToggle from './AnnotationScopeToggle.vue'
+import DslSearchBar from './DslSearchBar.vue'
 import ColumnsDrawer from './ColumnsDrawer.vue'
 import FilterDrawer from './FilterDrawer.vue'
-import type { VariantFilter, Tag } from '../../../shared/types/api'
+import PresetBar from './PresetBar.vue'
+import PresetSaveDialog from './PresetSaveDialog.vue'
+import PresetManageDialog from './PresetManageDialog.vue'
+import type { VariantFilter } from '../../../shared/types/api'
+import type { ColumnFilter } from '../../../shared/types/column-filters'
+import type { ActiveFilter } from '../../../shared/types/filters'
 import type { FilterDrawerState } from './filterDrawerTypes'
-import { ACMG_FILTER_OPTIONS } from '../utils/filters'
+import { ACMG_FILTER_OPTIONS, applyPresetStateToFilters, isPresetDiverged } from '../utils/filters'
+import { useResponsiveLayout } from '../composables/useResponsiveLayout'
 
 interface ColumnDef {
   key: string
@@ -191,6 +185,8 @@ interface Props {
   hasSort?: boolean
   initialSearch?: string
   columns?: ColumnDef[]
+  /** Additional active filter chips from column filters (appended to drawer filter chips) */
+  columnActiveFilters?: ActiveFilter[]
 }
 
 const props = defineProps<Props>()
@@ -198,6 +194,8 @@ const props = defineProps<Props>()
 interface Emits {
   (e: 'update:filters', filters: Omit<VariantFilter, 'case_id'>): void
   (e: 'reset-sort'): void
+  (e: 'clear-column-filters'): void
+  (e: 'clear-column-filter', columnKey: string): void
   (
     e: 'export-success',
     data: { filePath: string; action: { text: string; callback: () => void } }
@@ -206,6 +204,10 @@ interface Emits {
 }
 
 const emit = defineEmits<Emits>()
+
+// Forward ref for DSL column filters — populated by useDslFilterIntegration below.
+// Used in onFiltersUpdate closure to merge DSL column filters into the emitted payload.
+const dslColumnFiltersRef = ref<Record<string, ColumnFilter>>({})
 
 // Filter state composable - single source of truth for all filter logic
 const {
@@ -232,14 +234,157 @@ const {
   searchGeneSymbols,
   loadFilterOptions,
   setInitialSearch,
+  emitFilters,
   exportToExcel: composableExportToExcel
 } = useFilterState(
   computed(() => props.caseId),
   {
-    onFiltersUpdate: (f) => emit('update:filters', f),
+    onFiltersUpdate: (f) => {
+      // Merge DSL column filters — dslIntegration is initialized after this
+      // but the closure captures the ref which is populated later
+      if (Object.keys(dslColumnFiltersRef.value).length > 0) {
+        emit('update:filters', {
+          ...f,
+          column_filters: { ...(f.column_filters ?? {}), ...dslColumnFiltersRef.value }
+        })
+      } else {
+        emit('update:filters', f)
+      }
+    },
     onResetSort: () => emit('reset-sort')
   }
 )
+
+// Preset store
+const {
+  presets: allPresets,
+  visiblePresets,
+  activePresetIds,
+  loadPresets,
+  togglePreset,
+  isPresetActive,
+  clearActivePresets,
+  getActiveFilterState,
+  savePreset,
+  updatePreset: updatePresetStore,
+  deletePreset: deletePresetStore
+} = useFilterPresetStore()
+
+// DSL search integration — shared composable for all filter toolbars
+const {
+  dslInput,
+  dslSuggestions,
+  isDslMode,
+  dslErrors,
+  dslColumnFilters,
+  hasDslFilters,
+  applyDslFilters,
+  handleDslClear,
+  applySuggestion
+} = useDslFilterIntegration({
+  columnFiltersRef: dslColumnFiltersRef,
+  presetNames: () => allPresets.value.map((p) => p.name.toLowerCase().replace(/\s+/g, '_')),
+  searchQueryRef: computed({
+    get: () => filters.value.searchQuery,
+    set: (v) => {
+      filters.value.searchQuery = v
+    }
+  }),
+  emitFilters,
+  clearConflictingDrawerFields: (columnFilters) => {
+    if ('gnomad_af' in columnFilters) filters.value.maxGnomadAf = null
+    if ('cadd' in columnFilters) filters.value.minCadd = null
+  },
+  resolvePreset: (presetName) => {
+    const preset = allPresets.value.find(
+      (p) => p.name.toLowerCase().replace(/\s+/g, '_') === presetName
+    )
+    if (preset && !isPresetActive(preset.id)) {
+      handlePresetToggle(preset.id)
+    }
+  }
+})
+
+// Dialog state
+const showSavePresetDialog = ref(false)
+const showManagePresetsDialog = ref(false)
+const savingPreset = ref(false)
+let applyingPresets = false // guard to skip divergence check during applyActivePresets
+
+// Preset toggle handler — applies merged preset filters
+function handlePresetToggle(presetId: number): void {
+  togglePreset(presetId)
+  applyActivePresets()
+}
+
+/**
+ * Reset preset-managed filter fields to defaults, then re-apply
+ * all currently active presets. This ensures toggling OFF a preset
+ * properly clears its contributed values.
+ */
+function applyActivePresets(): void {
+  applyingPresets = true
+  applyPresetStateToFilters({
+    filters,
+    presetState: getActiveFilterState()
+  })
+  // Reset guard after Vue reactivity settles
+  void nextTick(() => {
+    applyingPresets = false
+  })
+}
+
+// Auto-deactivate presets when user manually changes filter values
+watch(
+  filters,
+  () => {
+    if (applyingPresets || activePresetIds.value.size === 0) return
+    const idsToDeactivate: number[] = []
+    for (const id of activePresetIds.value) {
+      const preset = allPresets.value.find((p) => p.id === id)
+      if (
+        preset !== undefined &&
+        isPresetDiverged({ filters: filters.value, presetFilterJson: preset.filterJson })
+      ) {
+        idsToDeactivate.push(id)
+      }
+    }
+    for (const id of idsToDeactivate) {
+      togglePreset(id)
+    }
+  },
+  { deep: true }
+)
+
+async function handleSavePreset(data: { name: string; description: string | null }): Promise<void> {
+  savingPreset.value = true
+  try {
+    // Deep-clone via JSON to strip Vue reactive proxies for IPC serialization
+    const plainFilters = JSON.parse(JSON.stringify(filters.value))
+    const result = await savePreset({
+      name: data.name,
+      description: data.description,
+      filterJson: plainFilters
+    })
+    // Check if IPC returned a serializable error
+    if (result !== null && typeof result === 'object' && 'code' in result) {
+      return
+    }
+    showSavePresetDialog.value = false
+  } catch {
+    // Save failed — dialog stays open so user can retry
+  } finally {
+    savingPreset.value = false
+  }
+}
+
+async function handleToggleVisibility(id: number, visible: boolean): Promise<void> {
+  await updatePresetStore(id, { isVisible: visible })
+}
+
+async function handleDeletePreset(id: number): Promise<void> {
+  await deletePresetStore(id)
+}
 
 // Toggle methods for star/comment
 const toggleStarred = () => {
@@ -251,6 +396,10 @@ const toggleCommented = () => {
 
 // ACMG classification options (shared constant)
 const acmgFilterOptions = ACMG_FILTER_OPTIONS
+
+// Responsive layout — hide ACMG chips at compact/narrow widths (available in drawer)
+const { tier } = useResponsiveLayout()
+const showToolbarAcmg = computed(() => tier.value === 'full')
 
 // Drawer states with mutual exclusion
 const filterDrawerOpen = ref(false)
@@ -285,7 +434,30 @@ provide<FilterDrawerState>('filterDrawerState', {
   removeTagFilter,
   clearAllFilters,
   handleGeneClear,
-  searchGeneSymbols
+  searchGeneSymbols,
+
+  // Preset store integration for FilterDrawer
+  visiblePresets,
+  isPresetActive,
+  onPresetToggle: handlePresetToggle,
+  onPresetSave: () => {
+    showSavePresetDialog.value = true
+  },
+  onPresetManage: () => {
+    showManagePresetsDialog.value = true
+  },
+  hasActiveFiltersForSave: computed(
+    () => hasActiveFilters.value || (props.columnActiveFilters?.length ?? 0) > 0
+  ),
+
+  // DSL search state for DslSearchBar in drawer
+  dslInput,
+  dslSuggestions,
+  isDslMode,
+  dslErrors,
+  onDslApply: applyDslFilters,
+  onDslClear: handleDslClear,
+  onDslSuggestionSelect: applySuggestion
 })
 
 // Watch initialSearch prop to pre-populate search from cohort navigation
@@ -357,58 +529,65 @@ const toggleColumnsDrawer = () => {
   columnsDrawerOpen.value = !columnsDrawerOpen.value
 }
 
-// Expose drawer toggles for parent keyboard shortcuts
-defineExpose({ toggleFilterDrawer, toggleColumnsDrawer })
+// Search field ref and focus method
+const searchFieldRef = ref<InstanceType<typeof DslSearchBar> | null>(null)
 
-// Load filter options on mount
+function focusSearch(): void {
+  searchFieldRef.value?.focus()
+}
+
+// Merge badge counts to include column filters + DSL filters
+const mergedHasActiveFilters = computed(
+  () =>
+    hasActiveFilters.value || (props.columnActiveFilters?.length ?? 0) > 0 || hasDslFilters.value
+)
+
+const mergedActiveFilterCount = computed(
+  () =>
+    activeFilterCount.value +
+    (props.columnActiveFilters?.length ?? 0) +
+    Object.keys(dslColumnFilters.value).length
+)
+
+// Merge drawer active filters with column active filters
+const mergedActiveFiltersList = computed(() => [
+  ...activeFiltersList.value,
+  ...(props.columnActiveFilters ?? [])
+])
+
+// Clear all: reset drawer filters + presets + DSL + notify parent to clear column filters
+function handleClearAll() {
+  handleDslClear() // Must be first — clears dslColumnFilters before filter watchers fire
+  clearAllFilters()
+  clearActivePresets()
+  emit('clear-column-filters')
+}
+
+// Handle clear-filter — route column filter clears to parent
+function handleClearFilter(filterId: string) {
+  if (filterId.startsWith('col:')) {
+    emit('clear-column-filter', filterId.slice(4))
+  } else {
+    clearFilter(filterId)
+  }
+}
+
+// Expose drawer toggles, search focus, and clear-all for parent keyboard shortcuts
+defineExpose({ toggleFilterDrawer, toggleColumnsDrawer, focusSearch, handleClearAll })
+
+// Load filter options and presets on mount
 onMounted(async () => {
   await loadFilterOptions(props.caseId)
+  await loadPresets()
 })
 </script>
 
 <style scoped>
 .filter-search-input {
-  max-width: 240px;
+  min-width: 180px;
+  max-width: 320px;
   flex-shrink: 1;
-}
-
-.filter-search-input :deep(.v-field) {
-  border-radius: 6px;
-  border-color: rgba(0, 0, 0, 0.15);
-}
-
-.filter-search-input :deep(.v-field--focused) {
-  box-shadow: 0 0 0 2px color-mix(in srgb, rgb(var(--v-theme-primary)) 15%, transparent);
-}
-
-.filter-search-input :deep(.v-field__input) {
-  font-size: 0.85rem;
-}
-
-.filter-search-input.filter-active :deep(.v-field) {
-  border-color: rgb(var(--v-theme-primary));
-  border-width: 2px;
-  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 4%, transparent);
-}
-
-.filter-tag-input {
-  max-width: 200px;
-  flex-shrink: 1;
-}
-
-.filter-tag-input :deep(.v-field) {
-  border-radius: 6px;
-  border-color: rgba(0, 0, 0, 0.15);
-}
-
-.filter-tag-input :deep(.v-field__input) {
-  font-size: 0.85rem;
-}
-
-.filter-tag-input.filter-active :deep(.v-field) {
-  border-color: rgb(var(--v-theme-primary));
-  border-width: 2px;
-  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 4%, transparent);
+  flex-grow: 1;
 }
 
 /* Annotation hint bar */

@@ -25,15 +25,19 @@
 
     <!-- Filter Bar -->
     <CohortFilterBar
+      ref="cohortFilterBarRef"
       :total-count="totalCount"
       :cohort-summary="summary"
       :columns="orderedColumns.map((h) => ({ key: h.key, title: h.title }))"
       :visible-columns="visibleHeaders.map((h) => h.key)"
       :exporting="exporting"
       :has-sort="hasSort"
+      :column-active-filters="cohortDataTableRef?.columnActiveFilters ?? []"
       @filter-change="handleFilterChange"
       @clear-all="handleClearAll"
       @clear-filter="handleClearFilter"
+      @clear-column-filter="handleClearColumnFilter"
+      @clear-column-filters="handleClearColumnFilters"
       @export="handleExport"
       @toggle-column="toggleColumnVisibility"
       @reorder-columns="setColumnOrder"
@@ -42,6 +46,7 @@
 
     <!-- Data Table -->
     <CohortDataTable
+      ref="cohortDataTableRef"
       v-model:page="page"
       v-model:items-per-page="itemsPerPage"
       v-model:sort-by="sortBy"
@@ -49,6 +54,7 @@
       :total-count="totalCount"
       :loading="loading"
       :headers="visibleHeaders"
+      :column-meta="columnMeta"
       :selected-variant-key="selectedVariantKey"
       :is-global-starred="isGlobalStarred"
       :get-global-acmg-classification="getGlobalAcmgClassification"
@@ -62,6 +68,7 @@
       @navigate-to-case="handleNavigateToCase"
       @load-carriers="handleLoadCarriers"
       @column-filters-change="handleColumnFiltersChange"
+      @deselect="emit('deselect')"
     />
 
     <!-- Annotation Dialogs (Comment, ACMG Evidence) -->
@@ -110,6 +117,7 @@ import { useCohortColumns } from './cohort/useCohortColumns'
 // Types
 import type { CohortVariant } from '../../../shared/types/cohort'
 import type { CohortQueryParams } from '../composables/useCohortData'
+import type { ColumnFiltersParam } from '../../../shared/types/column-filters'
 
 // Emit for navigation and row click
 const emit = defineEmits<{
@@ -125,11 +133,20 @@ const emit = defineEmits<{
     }
   ]
   'row-click': [variant: CohortVariant]
+  deselect: []
 }>()
 
 // API + domain composables
 const { api } = useApiService()
-const { summary, summaryStale, fetchSummary, buildIpcParams, cleanupListeners } = useCohortData()
+const {
+  summary,
+  summaryStale,
+  columnMeta,
+  fetchSummary,
+  fetchColumnMeta,
+  buildIpcParams,
+  cleanupListeners
+} = useCohortData()
 const { filters, searchTerm, selectedImpactPresets, clearAllFilters, clearFilter } = useFilters()
 const { loadCarriers } = useCarriers()
 const {
@@ -148,8 +165,11 @@ const { prefs, resetToDefaults, toggleColumnVisibility, setColumnOrder } =
   useColumnPreferences('cohort-table')
 const { orderedColumns, visibleHeaders } = useCohortColumns(prefs)
 
+// Ref to CohortFilterBar for accessing DSL column filters
+const cohortFilterBarRef = ref<InstanceType<typeof CohortFilterBar> | null>(null)
+
 // Per-column text filters from CohortDataTable
-const cohortColumnFilters = ref<Record<string, string> | undefined>(undefined)
+const cohortColumnFilters = ref<ColumnFiltersParam | undefined>(undefined)
 
 // Sort state for filter bar
 const hasSort = ref(false)
@@ -173,7 +193,14 @@ const buildCohortQueryParams = (): Omit<
     filters.value.acmgClassifications.length > 0
       ? [...filters.value.acmgClassifications]
       : undefined,
-  column_filters: cohortColumnFilters.value
+  column_filters:
+    cohortColumnFilters.value != null ||
+    Object.keys(cohortFilterBarRef.value?.dslColumnFilters ?? {}).length > 0
+      ? {
+          ...(cohortColumnFilters.value ?? {}),
+          ...(cohortFilterBarRef.value?.dslColumnFilters ?? {})
+        }
+      : undefined
 })
 
 // Shared offset pagination (same composable as case view)
@@ -222,6 +249,7 @@ const {
 // Local state
 const selectedVariantKey = ref<string | null>(null)
 const annotationDialogsRef = ref<InstanceType<typeof AnnotationDialogs> | null>(null)
+const cohortDataTableRef = ref<InstanceType<typeof CohortDataTable> | null>(null)
 
 // Export state
 const exporting = ref(false)
@@ -311,6 +339,7 @@ const handleFilterChange = () => invalidateAndReload()
 
 const handleClearAll = async () => {
   clearAllFilters()
+  cohortDataTableRef.value?.clearAllColumnFilters()
   resetSort()
   await invalidateAndReload()
 }
@@ -328,9 +357,17 @@ const handleRowClick = (variant: CohortVariant) => {
 // Debounced reload when per-column filters change
 const { debouncedFn: debouncedColumnFilterReload } = useDebounce(invalidateAndReload, 300)
 
-const handleColumnFiltersChange = (newFilters: Record<string, string> | undefined): void => {
+const handleColumnFiltersChange = (newFilters: ColumnFiltersParam | undefined): void => {
   cohortColumnFilters.value = newFilters
   debouncedColumnFilterReload()
+}
+
+const handleClearColumnFilter = (columnKey: string): void => {
+  cohortDataTableRef.value?.clearColumnFilter(columnKey)
+}
+
+const handleClearColumnFilters = (): void => {
+  cohortDataTableRef.value?.clearAllColumnFilters()
 }
 
 const handleRetry = async () => {
@@ -390,15 +427,17 @@ watch(variants, async (newVariants) => {
 // Auto-refresh when summary rebuild completes
 watch(summaryStale, (newVal, oldVal) => {
   if (oldVal === true && newVal === false) {
-    // Summary rebuilt — refresh current page
+    // Summary rebuilt — refresh current page and metadata
     void invalidateAndReload()
     void fetchSummary()
+    void fetchColumnMeta()
   }
 })
 
 // Lifecycle
 onMounted(() => {
   void fetchSummary()
+  void fetchColumnMeta()
 })
 
 onUnmounted(() => {

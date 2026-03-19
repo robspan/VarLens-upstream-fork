@@ -27,6 +27,7 @@ import { AuditLogRepository } from './AuditLogRepository'
 import { GeneListRepository } from './GeneListRepository'
 import { AuthService } from '../services/auth'
 import { CohortSummaryService } from './CohortSummaryService'
+import { FilterPresetRepository } from './FilterPresetRepository'
 
 /**
  * DatabaseService class
@@ -53,6 +54,7 @@ export class DatabaseService {
   private _geneLists: GeneListRepository
   private _auth: AuthService
   private _cohortSummary: CohortSummaryService
+  private _filterPresets: FilterPresetRepository
   private _currentUser: { id: number; username: string; role: string } | null = null
 
   /**
@@ -88,9 +90,7 @@ export class DatabaseService {
       this.db.pragma(`cache_size = ${DATABASE_CONFIG.CACHE_SIZE_KB}`)
       this.db.pragma('temp_store = MEMORY')
       this.db.pragma(`mmap_size = ${DATABASE_CONFIG.MMAP_SIZE_BYTES}`)
-
-      // Analyze tables with stale statistics on connection open
-      this.db.pragma('optimize=0x10002')
+      this.db.pragma(`analysis_limit = ${DATABASE_CONFIG.ANALYSIS_LIMIT}`)
 
       // Initialize database schema (tables, indexes, FTS5)
       initializeSchema(this.db)
@@ -113,24 +113,11 @@ export class DatabaseService {
       this._geneLists = new GeneListRepository(this.db, this._kysely)
       this._auth = new AuthService(this.db)
       this._cohortSummary = new CohortSummaryService(this.db)
+      this._filterPresets = new FilterPresetRepository(this.db, this._kysely)
 
-      // Initial cohort summary rebuild if tables are empty but variants exist
-      try {
-        const summaryCount = this.db
-          .prepare('SELECT COUNT(*) as c FROM cohort_variant_summary')
-          .get() as { c: number }
-        const variantCount = this.db.prepare('SELECT COUNT(*) as c FROM variants').get() as {
-          c: number
-        }
-        if (summaryCount.c === 0 && variantCount.c > 0) {
-          this._cohortSummary.rebuild()
-        }
-      } catch {
-        // Best effort — summary will be rebuilt on next import
-      }
-
-      // Clean up expired API cache entries on startup
-      this.db.prepare('DELETE FROM api_cache WHERE expires_at < ?').run(Date.now())
+      // Defer heavy housekeeping to after the constructor returns so the
+      // window can render while these run on the next event-loop tick.
+      this._deferredInit()
     } catch (error) {
       throw new DatabaseError(
         `Failed to initialize database at ${dbPath}`,
@@ -185,6 +172,10 @@ export class DatabaseService {
     return this._cohortSummary
   }
 
+  get filterPresets(): FilterPresetRepository {
+    return this._filterPresets
+  }
+
   get user(): { id: number; username: string; role: string } | null {
     return this._currentUser
   }
@@ -195,6 +186,41 @@ export class DatabaseService {
 
   isAccountsEnabled(): boolean {
     return this._auth.isAccountsEnabled()
+  }
+
+  // ── Deferred initialisation ────────────────────────────────
+
+  /**
+   * Run non-critical housekeeping after the constructor returns so that
+   * the Electron window can render without waiting for these operations.
+   *
+   * Uses process.nextTick so the work executes on the very next event-loop
+   * turn — still on the main thread (better-sqlite3 is synchronous) but
+   * after the BrowserWindow has had a chance to show.
+   */
+  private _deferredInit(): void {
+    process.nextTick(() => {
+      try {
+        // Rebuild cohort summary if stale (lightweight EXISTS instead of COUNT(*))
+        const summaryRow = this.db.prepare('SELECT 1 FROM cohort_variant_summary LIMIT 1').get()
+        const variantRow = this.db.prepare('SELECT 1 FROM variants LIMIT 1').get()
+        const summaryEmpty = summaryRow === undefined
+        const hasVariants = variantRow !== undefined
+
+        if (summaryEmpty && hasVariants) {
+          this._cohortSummary.rebuild()
+        }
+      } catch {
+        // Best effort — summary will be rebuilt on next import
+      }
+
+      try {
+        // Clean up expired API cache entries
+        this.db.prepare('DELETE FROM api_cache WHERE expires_at < ?').run(Date.now())
+      } catch {
+        // Best effort
+      }
+    })
   }
 
   // ── Utility methods ─────────────────────────────────────────
@@ -253,9 +279,14 @@ export class DatabaseService {
   close(): void {
     this._kysely.destroy().catch(() => {})
     try {
+      // Cap ANALYZE sampling so optimize finishes quickly even on large tables
+      this.db.pragma(`analysis_limit = ${DATABASE_CONFIG.ANALYSIS_LIMIT}`)
+      // Analyse tables whose statistics have gone stale since the connection opened
       this.db.pragma('optimize')
+      // Merge the WAL back into the main DB file so the next open is fast
+      this.db.pragma('wal_checkpoint(TRUNCATE)')
     } catch {
-      // Best-effort optimization; ignore failures to ensure the database still closes
+      // Best-effort; ignore failures to ensure the database still closes
     } finally {
       this.db.close()
     }

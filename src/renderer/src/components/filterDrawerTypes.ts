@@ -6,6 +6,9 @@
 import type { Ref, ComputedRef } from 'vue'
 import type { FilterState, ActiveFilter } from '../composables/useFilterState'
 import type { Tag, FilterOptions } from '../../../shared/types/api'
+import type { FilterPreset } from '../../../shared/types/filter-presets'
+import type { Suggestion } from '../dsl/autocomplete'
+import type { DslParseError } from '../dsl/types'
 
 /**
  * Shape of the object provided by FilterToolbar under the 'filterDrawerState' key.
@@ -41,4 +44,21 @@ export interface FilterDrawerState {
   clearAllFilters: () => void
   handleGeneClear: () => void
   searchGeneSymbols: (query: string) => Promise<void>
+
+  // Preset store (optional — only present when preset system is active)
+  visiblePresets?: ComputedRef<FilterPreset[]>
+  isPresetActive?: (id: number) => boolean
+  onPresetToggle?: (id: number) => void
+  onPresetSave?: () => void
+  onPresetManage?: () => void
+  hasActiveFiltersForSave?: ComputedRef<boolean>
+
+  // DSL search state (shared with DslSearchBar in drawer)
+  dslInput?: Ref<string>
+  dslSuggestions?: Ref<Suggestion[]>
+  isDslMode?: ComputedRef<boolean>
+  dslErrors?: ComputedRef<DslParseError[]>
+  onDslApply?: () => void
+  onDslClear?: () => void
+  onDslSuggestionSelect?: (suggestion: Suggestion) => void
 }

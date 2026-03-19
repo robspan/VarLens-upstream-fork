@@ -5,6 +5,7 @@ import { sql, type Kysely, type SelectQueryBuilder } from 'kysely'
 import type { VarlensDatabase } from '../../shared/types/database-schema'
 import type { Variant, VariantFilter, PaginatedResult, SortItem } from './types'
 import type { FilterOptions } from '../../shared/types/api'
+import type { ColumnFilterMeta } from '../../shared/types/column-filters'
 import type { TranscriptInsertRow } from '../../shared/types/transcript'
 import { createFTSTriggers } from './schema'
 import { mainLogger } from '../services/MainLogger'
@@ -336,15 +337,44 @@ export class VariantRepository extends BaseRepository {
       )
     })
 
-    // Column filters (dynamic)
+    // Column filters (dynamic, type-aware)
     if (filter.column_filters !== undefined) {
-      for (const [column, value] of Object.entries(filter.column_filters)) {
-        if (value === '' || SORTABLE_COLUMNS[column] === undefined) continue
+      for (const [column, filterDef] of Object.entries(filter.column_filters)) {
+        if (SORTABLE_COLUMNS[column] === undefined) continue
         const sqlColumn = SORTABLE_COLUMNS[column]
-        if (NUMERIC_COLUMNS.has(column)) {
-          query = query.where(sql`CAST(${sql.ref(sqlColumn)} AS TEXT)`, 'like', `%${value}%`)
-        } else {
+        const { operator, value } = filterDef
+
+        if (operator === 'in' && Array.isArray(value)) {
+          if (value.length === 0) continue
+          // Parameterized IN clause using sql.join
+          const params = sql.join(value.map((v) => sql`${String(v)}`))
+          query = query.where(sql<boolean>`${sql.ref(sqlColumn)} IN (${params})`)
+        } else if (operator === 'like' && typeof value === 'string') {
+          if (value.trim() === '') continue // Skip empty — LIKE '%%' excludes NULLs unnecessarily
           query = query.where(sql`${sql.ref(sqlColumn)} COLLATE NOCASE`, 'like', `%${value}%`)
+        } else if (
+          (operator === '=' || operator === '!=') &&
+          (typeof value === 'string' || typeof value === 'number')
+        ) {
+          // Exact match — NULLs excluded (user is looking for specific values)
+          const num = Number(value)
+          const compValue = typeof value === 'number' ? value : Number.isFinite(num) ? num : value
+          query = query.where(sqlColumn as keyof Variant, operator as '=' | '!=', compValue)
+        } else if (
+          (operator === '<' || operator === '>' || operator === '<=' || operator === '>=') &&
+          (typeof value === 'string' || typeof value === 'number')
+        ) {
+          // Range comparison — includeEmpty defaults to true (don't lose unannotated variants)
+          const num = Number(value)
+          const compValue = typeof value === 'number' ? value : Number.isFinite(num) ? num : value
+          const col = sqlColumn as keyof Variant
+          const op = operator as '<' | '>' | '<=' | '>='
+          const includeNulls = filterDef.includeEmpty !== false
+          if (includeNulls) {
+            query = query.where(({ or, eb }) => or([eb(col, 'is', null), eb(col, op, compValue)]))
+          } else {
+            query = query.where(col, op, compValue)
+          }
         }
       }
     }
@@ -452,7 +482,7 @@ export class VariantRepository extends BaseRepository {
         continue
       }
       const dir = sort.order === 'desc' ? 'DESC' : 'ASC'
-      const nulls = sort.order === 'desc' ? 'NULLS FIRST' : 'NULLS LAST'
+      const nulls = 'NULLS LAST'
       sorted = sorted.orderBy(sql`${sql.ref(sqlColumn)} ${sql.raw(dir)} ${sql.raw(nulls)}`)
       if (sort.key === 'id') hasIdSort = true
     }
@@ -549,6 +579,68 @@ export class VariantRepository extends BaseRepository {
     return query.compile()
   }
 
+  /**
+   * Gather per-column metadata for filter UI auto-detection.
+   * For each filterable column: distinct count, min/max (numeric), distinct values (if <= 50).
+   */
+  private getColumnMeta(caseId: number): ColumnFilterMeta[] {
+    const DISTINCT_THRESHOLD = 50
+    const meta: ColumnFilterMeta[] = []
+
+    for (const [key, sqlCol] of Object.entries(SORTABLE_COLUMNS)) {
+      const isNumeric = NUMERIC_COLUMNS.has(key)
+
+      // Get distinct count
+      const countResult = this.execFirst<{ cnt: number }>(
+        this.kysely
+          .selectFrom('variants')
+          .select(sql<number>`COUNT(DISTINCT ${sql.ref(sqlCol)})`.as('cnt'))
+          .where('case_id', '=', caseId)
+          .where(sql.ref(sqlCol), 'is not', null)
+      )
+      const distinctCount = countResult?.cnt ?? 0
+
+      const entry: ColumnFilterMeta = {
+        key,
+        dataType: isNumeric ? 'numeric' : 'text',
+        distinctCount
+      }
+
+      // For numeric columns: fetch min/max
+      if (isNumeric) {
+        const rangeResult = this.execFirst<{ min_val: number | null; max_val: number | null }>(
+          this.kysely
+            .selectFrom('variants')
+            .select(({ fn }) => [
+              fn.min(sql.ref(sqlCol)).as('min_val'),
+              fn.max(sql.ref(sqlCol)).as('max_val')
+            ])
+            .where('case_id', '=', caseId)
+            .where(sql.ref(sqlCol), 'is not', null)
+        )
+        entry.min = rangeResult?.min_val ?? undefined
+        entry.max = rangeResult?.max_val ?? undefined
+      }
+
+      // Populate distinct values if count is within threshold
+      if (distinctCount > 0 && distinctCount <= DISTINCT_THRESHOLD) {
+        const rows = this.execAll<Record<string, unknown>>(
+          this.kysely
+            .selectFrom('variants')
+            .select(sql`DISTINCT ${sql.ref(sqlCol)}`.as('val'))
+            .where('case_id', '=', caseId)
+            .where(sql.ref(sqlCol), 'is not', null)
+            .orderBy(sql.ref(sqlCol))
+        )
+        entry.distinctValues = rows.map((r) => String(r.val))
+      }
+
+      meta.push(entry)
+    }
+
+    return meta
+  }
+
   getFilterOptions(caseId: number): FilterOptions {
     const consequences = this.execAll<{ consequence: string }>(
       this.kysely
@@ -603,7 +695,8 @@ export class VariantRepository extends BaseRepository {
       minCadd: caddRange?.min_cadd ?? null,
       maxCadd: caddRange?.max_cadd ?? null,
       minGnomadAf: afRange?.min_af ?? null,
-      maxGnomadAf: afRange?.max_af ?? null
+      maxGnomadAf: afRange?.max_af ?? null,
+      columnMeta: this.getColumnMeta(caseId)
     }
   }
 }

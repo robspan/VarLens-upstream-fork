@@ -73,10 +73,15 @@ export async function detectFormat(filePath: string): Promise<FormatInfo> {
         }
 
         // Check for unwrapped columnar: data + header at top level
-        if (topLevelKeys.includes('data') && topLevelKeys.includes('header')) {
-          resolve({ format: 'columnar', caseKey: '', wrapped: false })
+        // Resolve early if 'data' is the first key — avoids parsing the entire
+        // data array (can be 200MB+) just to discover 'header' comes after it.
+        if (
+          (topLevelKeys.includes('data') && topLevelKeys.includes('header')) ||
+          (topLevelKeys[0] === 'data' && topLevelKeys.length === 1)
+        ) {
           resolved = true
           cleanup()
+          resolve({ format: 'columnar', caseKey: '', wrapped: false })
           return
         }
       }

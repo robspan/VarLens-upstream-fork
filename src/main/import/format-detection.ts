@@ -40,6 +40,8 @@ export async function detectFormat(filePath: string): Promise<FormatInfo> {
       reject(error)
     }
 
+    let pendingDataKey = false
+
     stream.on('data', (data: { name?: string; value?: unknown }) => {
       if (resolved) return
 
@@ -48,6 +50,20 @@ export async function detectFormat(filePath: string): Promise<FormatInfo> {
         depth++
       } else if (data.name === 'endObject' || data.name === 'endArray') {
         depth--
+      }
+
+      // Early resolve: if 'data' was the first key, check if its value is an
+      // array (unwrapped columnar) vs object (wrapped columnar with case ID "data").
+      // This avoids parsing through the entire data array (200MB+) to find 'header'.
+      if (pendingDataKey && depth === 2) {
+        pendingDataKey = false
+        if (data.name === 'startArray') {
+          resolved = true
+          cleanup()
+          resolve({ format: 'columnar', caseKey: '', wrapped: false })
+          return
+        }
+        // startObject means wrapped columnar — fall through to normal detection
       }
 
       // Collect top-level keys
@@ -72,17 +88,17 @@ export async function detectFormat(filePath: string): Promise<FormatInfo> {
           return
         }
 
-        // Check for unwrapped columnar: data + header at top level
-        // Resolve early if 'data' is the first key — avoids parsing the entire
-        // data array (can be 200MB+) just to discover 'header' comes after it.
-        if (
-          (topLevelKeys.includes('data') && topLevelKeys.includes('header')) ||
-          (topLevelKeys[0] === 'data' && topLevelKeys.length === 1)
-        ) {
+        // Check for unwrapped columnar: data + header both seen at top level
+        if (topLevelKeys.includes('data') && topLevelKeys.includes('header')) {
           resolved = true
           cleanup()
           resolve({ format: 'columnar', caseKey: '', wrapped: false })
           return
+        }
+
+        // If 'data' is the first key, defer resolution until we see the value type
+        if (topLevelKeys[0] === 'data' && topLevelKeys.length === 1) {
+          pendingDataKey = true
         }
       }
     })

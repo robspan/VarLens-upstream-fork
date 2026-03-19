@@ -56,7 +56,7 @@ describe('createDataPipeline', () => {
 
     expect(formatInfo.format).toBe('columnar')
     expect(formatInfo.caseKey).toBe('')
-    expect((formatInfo as { wrapped?: boolean }).wrapped).toBe(false)
+    expect(formatInfo.wrapped).toBe(false)
 
     const items: unknown[] = []
     for await (const chunk of stream) {

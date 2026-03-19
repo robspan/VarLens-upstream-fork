@@ -49,4 +49,19 @@ describe('createDataPipeline', () => {
     }
     expect(items.length).toBeGreaterThan(0)
   })
+
+  it('detects unwrapped columnar format when data key comes before header', async () => {
+    const filePath = join(FIXTURES, 'columnar-unwrapped-format.json.gz')
+    const { formatInfo, stream } = await createDataPipeline(filePath)
+
+    expect(formatInfo.format).toBe('columnar')
+    expect(formatInfo.caseKey).toBe('')
+    expect(formatInfo.wrapped).toBe(false)
+
+    const items: unknown[] = []
+    for await (const chunk of stream) {
+      items.push(chunk.value)
+    }
+    expect(items.length).toBe(2)
+  })
 })

@@ -7,6 +7,7 @@
  */
 
 import type { Token } from './types'
+import { findColumn } from './column-registry'
 
 /** Two-char operators that must be checked before single-char */
 const COMPOUND_OPS = ['>=', '<=', '!=', '!~']
@@ -155,14 +156,29 @@ export function tokenize(input: string): Token[] {
 
 /**
  * Detect whether an input string contains DSL syntax.
- * DSL mode activates when colons are detected in a column:op:value pattern.
+ * DSL mode activates when colons are detected in a column:op:value or
+ * column:value pattern (shorthand defaults to 'like').
  * Plain text without colons is treated as FTS search.
  */
 export function isDslInput(input: string): boolean {
-  return (
+  if (
     /\w+:[<>=!~^$]/.test(input) ||
     /\w+:is:(null|notnull)/i.test(input) ||
     /\w+:[^:\s]+:[^:\s]/.test(input) ||
     input.startsWith('@')
-  )
+  ) {
+    return true
+  }
+
+  // Shorthand: column:value (no explicit operator), anywhere in the input
+  // Only triggers DSL if the part before the colon is a known column
+  const shorthandRegex = /(\w+):(\S+)/g
+  let shorthandMatch: RegExpExecArray | null
+  while ((shorthandMatch = shorthandRegex.exec(input)) !== null) {
+    if (findColumn(shorthandMatch[1]) !== undefined) {
+      return true
+    }
+  }
+
+  return false
 }

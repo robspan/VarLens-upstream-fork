@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { tokenize } from '../../../src/renderer/src/dsl/tokenizer'
+import { tokenize, isDslInput } from '../../../src/renderer/src/dsl/tokenizer'
 
 describe('tokenizer', () => {
   it('tokenizes a simple filter rule', () => {
@@ -68,5 +68,21 @@ describe('tokenizer', () => {
 
   it('returns empty array for empty input', () => {
     expect(tokenize('')).toEqual([])
+  })
+
+  it('isDslInput recognizes shorthand for known columns', () => {
+    expect(isDslInput('gene_symbol:PKD1')).toBe(true)
+    expect(isDslInput('gene:BRCA1')).toBe(true)
+    expect(isDslInput('consequence:HIGH')).toBe(true)
+    expect(isDslInput('gnomad_af:0.01')).toBe(true)
+    expect(isDslInput('(gene_symbol:PKD1)')).toBe(true)
+    expect(isDslInput('(@rare_pathogenic AND gene:BRCA1)')).toBe(true)
+  })
+
+  it('isDslInput rejects shorthand for unknown columns and URL-like text', () => {
+    expect(isDslInput('unknown:value')).toBe(false)
+    expect(isDslInput('PKD1:something')).toBe(false)
+    expect(isDslInput('http://example.com')).toBe(false)
+    expect(isDslInput('https://example.com')).toBe(false)
   })
 })

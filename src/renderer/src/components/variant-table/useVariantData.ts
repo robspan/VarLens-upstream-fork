@@ -52,9 +52,12 @@ export function useVariantData(options: UseVariantDataOptions) {
       // Deep-clone filters to strip reactive proxies for IPC
       const plainFilters = JSON.parse(JSON.stringify(filters.value))
       const colFilters = getColumnFiltersParam()
-      if (colFilters !== undefined) {
-        // Deep-clone to strip reactive proxies for IPC structured clone
-        plainFilters.column_filters = JSON.parse(JSON.stringify(colFilters))
+      if (colFilters !== undefined || plainFilters.column_filters !== undefined) {
+        // Merge: header filters first, DSL filters override for same column
+        plainFilters.column_filters = {
+          ...JSON.parse(JSON.stringify(colFilters ?? {})),
+          ...(plainFilters.column_filters ?? {})
+        }
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await (api as any).variants.query(

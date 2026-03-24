@@ -134,4 +134,73 @@ describe('parseDsl', () => {
       expect(result.ast.value).toBe('X')
     }
   })
+
+  // Shorthand: column:value (no explicit operator)
+  it('supports shorthand gene_symbol:PKD1 → like match', () => {
+    const result = parseDsl('gene_symbol:PKD1')
+    expect(result.errors).toEqual([])
+    expect(result.isDsl).toBe(true)
+    expect(result.ast?.type).toBe('rule')
+    if (result.ast?.type === 'rule') {
+      expect(result.ast.column).toBe('gene_symbol')
+      expect(result.ast.operator).toBe('~')
+      expect(result.ast.value).toBe('PKD1')
+    }
+  })
+
+  it('supports shorthand with alias gene:BRCA1', () => {
+    const result = parseDsl('gene:BRCA1')
+    expect(result.errors).toEqual([])
+    expect(result.ast?.type).toBe('rule')
+    if (result.ast?.type === 'rule') {
+      expect(result.ast.column).toBe('gene_symbol')
+      expect(result.ast.operator).toBe('~')
+    }
+  })
+
+  it('shorthand defaults to = for numeric columns with numeric coercion', () => {
+    const result = parseDsl('gnomad_af:0.01')
+    expect(result.errors).toEqual([])
+    expect(result.ast?.type).toBe('rule')
+    if (result.ast?.type === 'rule') {
+      expect(result.ast.column).toBe('gnomad_af')
+      expect(result.ast.operator).toBe('=')
+      expect(result.ast.value).toBe(0.01)
+      expect(typeof result.ast.value).toBe('number')
+    }
+  })
+
+  it('shorthand defaults to ~ for categorical columns', () => {
+    const result = parseDsl('consequence:HIGH')
+    expect(result.errors).toEqual([])
+    expect(result.ast?.type).toBe('rule')
+    if (result.ast?.type === 'rule') {
+      expect(result.ast.column).toBe('consequence')
+      expect(result.ast.operator).toBe('~')
+    }
+  })
+
+  it('shorthand defaults to = for columns that do not support ~', () => {
+    // chr only supports = and != (no LIKE)
+    const result = parseDsl('chr:1')
+    expect(result.errors).toEqual([])
+    expect(result.ast?.type).toBe('rule')
+    if (result.ast?.type === 'rule') {
+      expect(result.ast.column).toBe('chr')
+      expect(result.ast.operator).toBe('=')
+      expect(result.ast.value).toBe('1')
+    }
+  })
+
+  it('shorthand does not trigger for unknown columns', () => {
+    const result = parseDsl('unknown_col:value')
+    // Should be treated as FTS, not DSL
+    expect(result.isDsl).toBe(false)
+  })
+
+  it('shorthand works in compound expressions', () => {
+    const result = parseDsl('gene:BRCA1 AND consequence:HIGH')
+    expect(result.errors).toEqual([])
+    expect(result.ast?.type).toBe('group')
+  })
 })

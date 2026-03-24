@@ -158,7 +158,40 @@ class Parser {
 
     this.expect('colon')
 
-    const opToken = this.peek()
+    const afterColon = this.peek()
+
+    // Shorthand: column:value (no explicit operator)
+    // Defaults to '~' (LIKE) for text/categorical, '=' for numeric
+    // e.g. gene_symbol:PKD1 → gene_symbol:~:PKD1, gnomad_af:0.01 → gnomad_af:=:0.01
+    // Only apply when the value is NOT followed by a colon (which would
+    // indicate a malformed column:badOp:value expression)
+    if (afterColon?.type === 'value') {
+      const afterValue = this.tokens[this.pos + 1]
+      if (afterValue === undefined || afterValue.type !== 'colon') {
+        this.advance()
+        const colDef = findColumn(colToken.value)
+        const canonicalKey = colDef?.key ?? colToken.value
+        // Use '~' (LIKE) if the column supports it, otherwise '=' (exact match)
+        const supportsLike = colDef?.operators.includes('~' as DslOperator) ?? false
+        const defaultOp: DslOperator = colDef?.type === 'numeric' || !supportsLike ? '=' : '~'
+        // Coerce numeric values to match the explicit column:op:value path
+        let coercedValue: string | number = afterColon.value
+        if (colDef?.type === 'numeric') {
+          const num = Number(afterColon.value)
+          if (!Number.isNaN(num)) {
+            coercedValue = num
+          }
+        }
+        return {
+          type: 'rule',
+          column: canonicalKey,
+          operator: defaultOp,
+          value: coercedValue
+        }
+      }
+    }
+
+    const opToken = afterColon
     if (!opToken || opToken.type !== 'operator') {
       this.errors.push({
         message: `Expected operator after '${colToken.value}:', got ${opToken?.type ?? 'end of input'}`,

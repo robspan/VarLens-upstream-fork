@@ -158,14 +158,15 @@ describe('parseDsl', () => {
     }
   })
 
-  it('shorthand defaults to = for numeric columns', () => {
+  it('shorthand defaults to = for numeric columns with numeric coercion', () => {
     const result = parseDsl('gnomad_af:0.01')
     expect(result.errors).toEqual([])
     expect(result.ast?.type).toBe('rule')
     if (result.ast?.type === 'rule') {
       expect(result.ast.column).toBe('gnomad_af')
       expect(result.ast.operator).toBe('=')
-      expect(result.ast.value).toBe('0.01')
+      expect(result.ast.value).toBe(0.01)
+      expect(typeof result.ast.value).toBe('number')
     }
   })
 

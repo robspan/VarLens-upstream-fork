@@ -53,10 +53,10 @@ export function useVariantData(options: UseVariantDataOptions) {
       const plainFilters = JSON.parse(JSON.stringify(filters.value))
       const colFilters = getColumnFiltersParam()
       if (colFilters !== undefined || plainFilters.column_filters !== undefined) {
-        // Merge header column filters with DSL column filters (from filters.value)
+        // Merge: header filters first, DSL filters override for same column
         plainFilters.column_filters = {
-          ...(plainFilters.column_filters ?? {}),
-          ...JSON.parse(JSON.stringify(colFilters ?? {}))
+          ...JSON.parse(JSON.stringify(colFilters ?? {})),
+          ...(plainFilters.column_filters ?? {})
         }
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

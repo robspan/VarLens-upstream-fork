@@ -172,11 +172,19 @@ class Parser {
         const colDef = findColumn(colToken.value)
         const canonicalKey = colDef?.key ?? colToken.value
         const defaultOp: DslOperator = colDef?.type === 'numeric' ? '=' : '~'
+        // Coerce numeric values to match the explicit column:op:value path
+        let coercedValue: string | number = afterColon.value
+        if (colDef?.type === 'numeric') {
+          const num = Number(afterColon.value)
+          if (!Number.isNaN(num)) {
+            coercedValue = num
+          }
+        }
         return {
           type: 'rule',
           column: canonicalKey,
           operator: defaultOp,
-          value: afterColon.value
+          value: coercedValue
         }
       }
     }

@@ -170,11 +170,14 @@ export function isDslInput(input: string): boolean {
     return true
   }
 
-  // Shorthand: column:value (no explicit operator)
+  // Shorthand: column:value (no explicit operator), anywhere in the input
   // Only triggers DSL if the part before the colon is a known column
-  const shorthandMatch = input.match(/^(\w+):(\S+)/)
-  if (shorthandMatch && findColumn(shorthandMatch[1]) !== undefined) {
-    return true
+  const shorthandRegex = /(\w+):(\S+)/g
+  let shorthandMatch: RegExpExecArray | null
+  while ((shorthandMatch = shorthandRegex.exec(input)) !== null) {
+    if (findColumn(shorthandMatch[1]) !== undefined) {
+      return true
+    }
   }
 
   return false

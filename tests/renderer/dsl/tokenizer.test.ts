@@ -75,6 +75,8 @@ describe('tokenizer', () => {
     expect(isDslInput('gene:BRCA1')).toBe(true)
     expect(isDslInput('consequence:HIGH')).toBe(true)
     expect(isDslInput('gnomad_af:0.01')).toBe(true)
+    expect(isDslInput('(gene_symbol:PKD1)')).toBe(true)
+    expect(isDslInput('(@rare_pathogenic AND gene:BRCA1)')).toBe(true)
   })
 
   it('isDslInput rejects shorthand for unknown columns', () => {

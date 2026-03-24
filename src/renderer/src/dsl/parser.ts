@@ -171,7 +171,9 @@ class Parser {
         this.advance()
         const colDef = findColumn(colToken.value)
         const canonicalKey = colDef?.key ?? colToken.value
-        const defaultOp: DslOperator = colDef?.type === 'numeric' ? '=' : '~'
+        // Use '~' (LIKE) if the column supports it, otherwise '=' (exact match)
+        const supportsLike = colDef?.operators.includes('~' as DslOperator) ?? false
+        const defaultOp: DslOperator = colDef?.type === 'numeric' || !supportsLike ? '=' : '~'
         // Coerce numeric values to match the explicit column:op:value path
         let coercedValue: string | number = afterColon.value
         if (colDef?.type === 'numeric') {

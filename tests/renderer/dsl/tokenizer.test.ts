@@ -79,8 +79,10 @@ describe('tokenizer', () => {
     expect(isDslInput('(@rare_pathogenic AND gene:BRCA1)')).toBe(true)
   })
 
-  it('isDslInput rejects shorthand for unknown columns', () => {
+  it('isDslInput rejects shorthand for unknown columns and URL-like text', () => {
     expect(isDslInput('unknown:value')).toBe(false)
     expect(isDslInput('PKD1:something')).toBe(false)
+    expect(isDslInput('http://example.com')).toBe(false)
+    expect(isDslInput('https://example.com')).toBe(false)
   })
 })

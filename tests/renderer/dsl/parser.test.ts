@@ -180,6 +180,18 @@ describe('parseDsl', () => {
     }
   })
 
+  it('shorthand defaults to = for columns that do not support ~', () => {
+    // chr only supports = and != (no LIKE)
+    const result = parseDsl('chr:1')
+    expect(result.errors).toEqual([])
+    expect(result.ast?.type).toBe('rule')
+    if (result.ast?.type === 'rule') {
+      expect(result.ast.column).toBe('chr')
+      expect(result.ast.operator).toBe('=')
+      expect(result.ast.value).toBe('1')
+    }
+  })
+
   it('shorthand does not trigger for unknown columns', () => {
     const result = parseDsl('unknown_col:value')
     // Should be treated as FTS, not DSL

@@ -135,7 +135,7 @@
     "electron-updater": "^6.8.3",
     "file-saver": "^2.0.5",
     "jstat": "^1.9.6",
-    "kysely": "^0.28.12",
+    "kysely": "^0.28.14",
     "markdown-it": "^14.1.0",
     "nanoid": "^5.1.7",
     "pinia": "^3.0.4",

@@ -105,7 +105,7 @@ async function render(): Promise<void> {
   Plotly.newPlot(plotContainer.value, data, layout, { responsive: true })
 }
 
-watch(() => props.results, render, { deep: true })
+watch(() => props.results, render)
 onMounted(render)
 onBeforeUnmount(() => {
   if (plotContainer.value !== undefined && Plotly !== null) Plotly.purge(plotContainer.value)

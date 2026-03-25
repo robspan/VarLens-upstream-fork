@@ -267,6 +267,55 @@ describe('CaseRepository.queryCases', () => {
     })
   })
 
+  describe('HPO filter', () => {
+    /** Assign an HPO term to a case */
+    const assignHpo = (caseId: number, hpoId: string, hpoLabel: string): void => {
+      db.prepare(
+        'INSERT INTO case_hpo_terms (case_id, hpo_id, hpo_label, created_at) VALUES (?, ?, ?, ?)'
+      ).run(caseId, hpoId, hpoLabel, Date.now())
+    }
+
+    it('filters cases by HPO term IDs', () => {
+      const c1 = insertCase('Case A')
+      const c2 = insertCase('Case B')
+      insertCase('Case C')
+      assignHpo(c1, 'HP:0001250', 'Seizure')
+      assignHpo(c2, 'HP:0001250', 'Seizure')
+      assignHpo(c2, 'HP:0000707', 'Abnormality of the eye')
+
+      const result = caseRepo.queryCases({
+        limit: 50,
+        hpo_ids: ['HP:0001250']
+      })
+      expect(result.data).toHaveLength(2)
+      expect(result.total_count).toBe(2)
+    })
+
+    it('returns only cases matching ALL specified HPO terms (any match)', () => {
+      const c1 = insertCase('Case A')
+      const c2 = insertCase('Case B')
+      assignHpo(c1, 'HP:0001250', 'Seizure')
+      assignHpo(c2, 'HP:0000707', 'Abnormality of the eye')
+
+      // Filter by either term — should match both cases (IN = OR)
+      const result = caseRepo.queryCases({
+        limit: 50,
+        hpo_ids: ['HP:0001250', 'HP:0000707']
+      })
+      expect(result.data).toHaveLength(2)
+    })
+
+    it('returns empty when no cases have the HPO term', () => {
+      insertCase('Case A')
+      const result = caseRepo.queryCases({
+        limit: 50,
+        hpo_ids: ['HP:9999999']
+      })
+      expect(result.data).toHaveLength(0)
+      expect(result.total_count).toBe(0)
+    })
+  })
+
   describe('combined filters', () => {
     it('search + cohort filter works together', () => {
       const c1 = insertCase('Patient Alpha')

@@ -138,7 +138,7 @@ export function useOffsetPagination<T>(options: UseOffsetPaginationOptions<T>) {
           const result = await cached
 
           // A pre-fetched result always used skipCount=true, so keep cached count
-          items.value = result.data.map((item) => markRaw(item))
+          items.value = result.data.map((item) => markRaw(item as object) as T)
           totalCount.value = cachedTotalCount ?? result.total_count
 
           prefetchNextPage()
@@ -159,7 +159,7 @@ export function useOffsetPagination<T>(options: UseOffsetPaginationOptions<T>) {
         skipCount
       })
 
-      items.value = result.data.map((item) => markRaw(item))
+      items.value = result.data.map((item) => markRaw(item as object) as T)
 
       if (skipCount) {
         // Keep the cached count; the backend may return 0 or a stale value

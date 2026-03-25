@@ -1,5 +1,36 @@
 import type { ColumnFiltersParam } from '../../shared/types/column-filters'
 
+/** Affected status for case metadata */
+export type AffectedStatus = 'affected' | 'unaffected' | 'unknown'
+/** Biological sex for case metadata */
+export type CaseSex = 'unknown' | 'male' | 'female' | 'other'
+
+/**
+ * CaseWithCohorts - Case entity enriched with cohort membership and metadata
+ *
+ * Returned by CaseRepository.queryCases() which uses a single JOIN query
+ * instead of per-case metadata lookups.
+ */
+export interface CaseWithCohorts extends Case {
+  cohort_names: string[]
+  cohort_ids: number[]
+  affected_status?: AffectedStatus | null
+  sex?: CaseSex | null
+}
+
+/**
+ * CaseSearchParams - Pagination, sorting, and filtering for case queries
+ */
+export interface CaseSearchParams {
+  limit: number
+  offset?: number
+  sort_by?: 'name' | 'created_at' | 'variant_count'
+  sort_order?: 'asc' | 'desc'
+  search_term?: string
+  cohort_ids?: number[]
+  _count_needed?: boolean
+}
+
 /**
  * Database entity types for Varlens
  *

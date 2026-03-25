@@ -17,6 +17,26 @@ const variants = [...mockVariants]
 export const mockApi: WindowAPI = {
   cases: {
     list: async () => cases,
+    query: async (params) => {
+      let result = [...cases]
+      if (params.search_term !== undefined && params.search_term !== '') {
+        const q = params.search_term.toLowerCase()
+        result = result.filter((c) => c.name.toLowerCase().includes(q))
+      }
+      const total_count = result.length
+      const offset = params.offset ?? 0
+      result = result.slice(offset, offset + params.limit)
+      return {
+        data: result.map((c) => ({
+          ...c,
+          cohort_names: [] as string[],
+          cohort_ids: [] as number[],
+          affected_status: null,
+          sex: null
+        })),
+        total_count
+      }
+    },
     delete: async (id: number) => {
       cases = cases.filter((c) => c.id !== id)
     },
@@ -114,7 +134,10 @@ export const mockApi: WindowAPI = {
 
   system: {
     getVersion: async () => ({ app: '0.6.0-mock', electron: 'browser-mode' }),
-    getUserDataPath: async () => '/mock/user/data'
+    getUserDataPath: async () => '/mock/user/data',
+    getCpuCount: async () => 4,
+    setWorkerThreads: async () => {},
+    getWorkerThreads: async () => 0
   },
 
   export: {

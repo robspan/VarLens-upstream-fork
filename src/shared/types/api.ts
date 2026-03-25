@@ -34,6 +34,10 @@ export interface UpdaterAPI {
 // Import database and import types for reuse
 import type {
   Case,
+  CaseWithCohorts,
+  CaseSearchParams,
+  AffectedStatus,
+  CaseSex,
   Variant,
   VariantFilter,
   PaginatedResult,
@@ -84,6 +88,10 @@ import type { DatabaseOverview } from './database-overview'
 // Re-export for convenience
 export type {
   Case,
+  CaseWithCohorts,
+  CaseSearchParams,
+  AffectedStatus,
+  CaseSex,
   Variant,
   VariantFilter,
   PaginatedResult,
@@ -118,6 +126,7 @@ export type {
 
 export interface CasesAPI {
   list: () => Promise<Case[]>
+  query: (params: CaseSearchParams) => Promise<{ data: CaseWithCohorts[]; total_count: number }>
   delete: (id: number) => Promise<void>
   deleteAll: () => Promise<number>
   deleteBatch: (ids: number[]) => Promise<number>
@@ -157,6 +166,9 @@ export interface ImportAPI {
 export interface SystemAPI {
   getVersion: () => Promise<{ app: string; electron: string }>
   getUserDataPath: () => Promise<string>
+  getCpuCount: () => Promise<number>
+  setWorkerThreads: (count: number) => Promise<void>
+  getWorkerThreads: () => Promise<number>
 }
 
 export interface ShellOpenExternalResult {
@@ -359,9 +371,6 @@ export interface SpliceAIAPI {
 }
 
 // Case metadata types
-export type AffectedStatus = 'affected' | 'unaffected' | 'unknown'
-export type CaseSex = 'unknown' | 'male' | 'female' | 'other'
-
 export interface CaseMetadataUpdates {
   affected_status?: AffectedStatus | null
   sex?: CaseSex | null

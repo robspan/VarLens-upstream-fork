@@ -1,7 +1,9 @@
 import { app } from 'electron'
 import { readFileSync, existsSync } from 'fs'
 import { join, dirname } from 'path'
+import os from 'os'
 import type { HandlerDependencies } from '../types'
+import { setWorkerThreads, getWorkerThreads } from '../dbPoolManager'
 
 /**
  * System IPC handlers
@@ -43,5 +45,17 @@ export function registerSystemHandlers({ ipcMain }: HandlerDependencies): void {
 
   ipcMain.handle('system:userDataPath', async () => {
     return app.getPath('userData')
+  })
+
+  ipcMain.handle('system:getCpuCount', () => {
+    return os.cpus().length
+  })
+
+  ipcMain.handle('system:setWorkerThreads', (_event, count: number) => {
+    setWorkerThreads(count)
+  })
+
+  ipcMain.handle('system:getWorkerThreads', () => {
+    return getWorkerThreads()
   })
 }

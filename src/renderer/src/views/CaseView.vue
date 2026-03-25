@@ -34,7 +34,7 @@ const lastSeenGeneration = ref(dataGeneration.value)
 onActivated(() => {
   if (dataGeneration.value !== lastSeenGeneration.value) {
     lastSeenGeneration.value = dataGeneration.value
-    if (selectedCaseId.value) {
+    if (selectedCaseId.value != null) {
       variantTableRef.value?.refresh()
     }
   }

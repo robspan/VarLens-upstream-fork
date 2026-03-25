@@ -359,8 +359,8 @@ watch(
 async function handleSavePreset(data: { name: string; description: string | null }): Promise<void> {
   savingPreset.value = true
   try {
-    // Deep-clone via JSON to strip Vue reactive proxies for IPC serialization
-    const plainFilters = JSON.parse(JSON.stringify(filters.value))
+    // Deep-clone to strip Vue reactive proxies for IPC serialization
+    const plainFilters = structuredClone(filters.value)
     const result = await savePreset({
       name: data.name,
       description: data.description,

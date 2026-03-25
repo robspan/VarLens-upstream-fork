@@ -130,7 +130,7 @@ export function useVariantData(options: UseVariantDataOptions) {
 
   // Debounced reload when per-column filters change
   const { debouncedFn: debouncedColumnFilterReload } = useDebounce(invalidateAndReload, 300)
-  watch(columnFilterState.columnFilters, debouncedColumnFilterReload, { deep: true })
+  watch(columnFilterState.columnFilters, debouncedColumnFilterReload)
 
   // Load annotations when variants change
   watch(

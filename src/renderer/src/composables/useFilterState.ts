@@ -417,14 +417,11 @@ export function useFilterState(
   // Watchers
   // -------------------------------------------------------------------------
 
-  // Watch filters and emit changes
-  watch(
-    filters,
-    () => {
-      debouncedEmit()
-    },
-    { deep: true }
-  )
+  // Watch filters and emit changes (serialized key avoids deep traversal)
+  const filterEmitKey = computed(() => JSON.stringify(filters.value))
+  watch(filterEmitKey, () => {
+    debouncedEmit()
+  })
 
   // -------------------------------------------------------------------------
   // Case switching and filter options loading

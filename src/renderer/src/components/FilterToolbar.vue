@@ -589,8 +589,7 @@ defineExpose({
 
 // Load filter options and presets on mount
 onMounted(async () => {
-  await loadFilterOptions(props.caseId)
-  await loadPresets()
+  await Promise.all([loadFilterOptions(props.caseId), loadPresets()])
 })
 </script>
 

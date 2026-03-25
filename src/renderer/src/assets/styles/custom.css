@@ -136,3 +136,40 @@ html::-webkit-scrollbar-thumb {
   font-weight: 500;
 }
 
+/* ========================================
+   Desktop-fast Vuetify transitions (100ms enter, 75ms exit)
+   Material Design 3 recommends 100-200ms for desktop apps.
+   ======================================== */
+.fade-transition-enter-active,
+.scale-transition-enter-active,
+.slide-x-transition-enter-active,
+.slide-y-transition-enter-active,
+.scroll-y-transition-enter-active,
+.dialog-transition-enter-active {
+  transition-duration: 100ms !important;
+}
+
+.fade-transition-leave-active,
+.scale-transition-leave-active,
+.slide-x-transition-leave-active,
+.slide-y-transition-leave-active,
+.scroll-y-transition-leave-active,
+.dialog-transition-leave-active {
+  transition-duration: 75ms !important;
+}
+
+/* Overlay backdrop fades faster */
+.v-overlay__scrim {
+  transition-duration: 100ms !important;
+}
+
+/* Navigation drawer slide: fast but not instant (retains spatial context) */
+.v-navigation-drawer {
+  transition-duration: 150ms !important;
+  will-change: transform;
+}
+
+/* CSS containment on table rows for rendering isolation */
+.v-data-table__tr {
+  contain: layout style paint;
+}

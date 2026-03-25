@@ -85,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import type { VTextField } from 'vuetify/components'
 import type { Suggestion } from '../dsl/autocomplete'
 import { mdiMagnify } from '@mdi/js'
@@ -178,13 +178,20 @@ function onClear(): void {
   showMenu.value = false
 }
 
+let blurTimeout: ReturnType<typeof setTimeout> | null = null
+
 function onBlur(): void {
   // Delay to allow click on suggestion to fire first
-
-  globalThis.setTimeout(() => {
+  blurTimeout = globalThis.setTimeout(() => {
     showMenu.value = false
   }, 200)
 }
+
+onBeforeUnmount(() => {
+  if (blurTimeout !== null) {
+    clearTimeout(blurTimeout)
+  }
+})
 
 function handleSelect(suggestion: Suggestion): void {
   emit('select-suggestion', suggestion)

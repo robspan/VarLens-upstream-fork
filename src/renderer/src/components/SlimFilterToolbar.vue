@@ -204,7 +204,7 @@ watch(
     countPulsing.value = true
     globalThis.setTimeout(() => {
       countPulsing.value = false
-    }, 300)
+    }, 200)
   }
 )
 
@@ -245,7 +245,7 @@ const emit = defineEmits<{
 }
 
 .results-chip.count-updated {
-  animation: count-pulse 300ms ease;
+  animation: count-pulse 200ms ease;
 }
 
 @keyframes count-pulse {

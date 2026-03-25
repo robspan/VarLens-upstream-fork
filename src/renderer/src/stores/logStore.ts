@@ -3,7 +3,7 @@
  * Manages circular buffer of log entries with configurable size and statistics tracking
  */
 
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
 import type { LogEntry, LogConfig, LogStatistics } from '../types/log'
 import { APP_CONFIG } from '../../../shared/config'
@@ -49,7 +49,7 @@ export const useLogStore = defineStore('log', () => {
   // State
   const config = ref<LogConfig>(loadConfig())
   const maxEntries = ref(config.value.maxEntries)
-  const entries = ref<LogEntry[]>([])
+  const entries = shallowRef<LogEntry[]>([])
   const stats = ref<LogStatistics>({
     totalReceived: 0,
     totalDropped: 0,
@@ -72,14 +72,13 @@ export const useLogStore = defineStore('log', () => {
     // Assign unique ID based on total received count
     const id = stats.value.totalReceived
 
-    // If buffer is full, drop oldest entry
+    // shallowRef requires array replacement (push/shift don't trigger reactivity)
     if (entries.value.length >= maxEntries.value) {
-      entries.value.shift()
+      entries.value = [...entries.value.slice(1), { ...entry, id }]
       stats.value.totalDropped++
+    } else {
+      entries.value = [...entries.value, { ...entry, id }]
     }
-
-    // Add new entry
-    entries.value.push({ ...entry, id })
 
     // Update statistics
     stats.value.totalReceived++

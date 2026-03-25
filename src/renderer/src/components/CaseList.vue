@@ -319,8 +319,8 @@ const resetList = (): void => {
 const { debouncedFn: debouncedReset } = useDebounce(resetList, 300)
 
 watch(searchTerm, debouncedReset)
-watch(selectedCohortIds, resetList, { deep: true })
-watch(selectedHpoIds, resetList, { deep: true })
+watch(selectedCohortIds, resetList)
+watch(selectedHpoIds, resetList)
 
 // Format date as relative time ("2 days ago") with full date on hover
 const formatDate = (timestamp: number): string => {

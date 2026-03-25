@@ -178,11 +178,30 @@ import AnnotationScoresSection from './AnnotationScoresSection.vue'
 import TranscriptSection from './TranscriptSection.vue'
 
 // Lazy-load non-critical panel sections to speed up initial open
-const ExternalLinksSection = defineAsyncComponent(() => import('./ExternalLinksSection.vue'))
-const CommentsSection = defineAsyncComponent(() => import('./CommentsSection.vue'))
-const TagsSection = defineAsyncComponent(() => import('./TagsSection.vue'))
-const AcmgClassificationPanel = defineAsyncComponent(() => import('./AcmgClassificationPanel.vue'))
-const ActivityLogPanel = defineAsyncComponent(() => import('./ActivityLogPanel.vue'))
+import SectionSkeleton from './SectionSkeleton.vue'
+
+const asyncOpts = { delay: 0, loadingComponent: SectionSkeleton }
+
+const ExternalLinksSection = defineAsyncComponent({
+  loader: () => import('./ExternalLinksSection.vue'),
+  ...asyncOpts
+})
+const CommentsSection = defineAsyncComponent({
+  loader: () => import('./CommentsSection.vue'),
+  ...asyncOpts
+})
+const TagsSection = defineAsyncComponent({
+  loader: () => import('./TagsSection.vue'),
+  ...asyncOpts
+})
+const AcmgClassificationPanel = defineAsyncComponent({
+  loader: () => import('./AcmgClassificationPanel.vue'),
+  ...asyncOpts
+})
+const ActivityLogPanel = defineAsyncComponent({
+  loader: () => import('./ActivityLogPanel.vue'),
+  ...asyncOpts
+})
 import type { Variant } from '../../../shared/types/api'
 import type { CohortVariant } from '../../../shared/types/cohort'
 import type { AcmgClassification } from '../../../main/database/types'

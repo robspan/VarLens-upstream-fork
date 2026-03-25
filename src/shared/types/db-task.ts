@@ -41,6 +41,8 @@ export type DbTaskType =
   | 'case-metadata:getFullMetadata'
   // Database
   | 'database:overview'
+  // Association analysis
+  | 'association:build'
 
 export interface DbTask {
   /** IPC-style channel name — must be a valid DbTaskType */

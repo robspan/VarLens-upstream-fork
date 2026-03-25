@@ -194,10 +194,15 @@ export function registerCohortHandlers({ ipcMain, getDb, getDbPool }: HandlerDep
       }
 
       const db = getDb()
+      const pool = getDbPool?.() ?? null
 
-      activeEngine = new AssociationEngine(db.database, (completed, total) => {
-        event.sender.send('cohort:geneBurdenProgress', { completed, total })
-      })
+      activeEngine = new AssociationEngine(
+        db.database,
+        (completed, total) => {
+          event.sender.send('cohort:geneBurdenProgress', { completed, total })
+        },
+        pool
+      )
 
       try {
         const results = await activeEngine.run(config)

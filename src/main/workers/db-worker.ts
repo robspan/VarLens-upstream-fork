@@ -12,6 +12,8 @@ import { workerData } from 'worker_threads'
 import { DATABASE_CONFIG } from '../../shared/config'
 import { createRepositories } from '../database/createRepositories'
 import type { Repositories } from '../database/createRepositories'
+import { AssociationDataBuilder } from '../database/AssociationDataBuilder'
+import type { VariantFilters } from '../statistics/types'
 import type { DbTask } from '../../shared/types/db-task'
 
 // ── Initialise connection from workerData ──────────────────────
@@ -168,6 +170,17 @@ export default function run(task: DbTask): unknown {
           dataInfo: repos.metadata.getCaseDataInfo(params[0] as number),
           externalIds: repos.metadata.listCaseExternalIds(params[0] as number)
         }
+
+      // ── Association analysis ─────────────────────────────
+      case 'association:build': {
+        const builder = new AssociationDataBuilder(db)
+        return builder.build(
+          params[0] as number[],
+          params[1] as number[],
+          params[2] as VariantFilters,
+          params[3] as string[]
+        )
+      }
 
       // ── Database ──────────────────────────────────────────
       case 'database:overview': {

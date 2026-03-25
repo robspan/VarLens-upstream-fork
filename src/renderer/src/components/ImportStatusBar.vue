@@ -48,10 +48,12 @@ defineEmits<{
 
 // Local elapsed timer — only ticks while this component is mounted and import is active
 const elapsedTick = ref(0)
+// eslint-disable-next-line no-undef
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
 
 function startTimer(): void {
   if (elapsedTimer !== null) return
+  // eslint-disable-next-line no-undef
   elapsedTimer = setInterval(() => {
     elapsedTick.value++
   }, 1000)
@@ -59,6 +61,7 @@ function startTimer(): void {
 
 function stopTimer(): void {
   if (elapsedTimer !== null) {
+    // eslint-disable-next-line no-undef
     clearInterval(elapsedTimer)
     elapsedTimer = null
   }

@@ -36,7 +36,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useImportStatusStore } from '../stores/importStatusStore'
 
 const importStore = useImportStatusStore()
@@ -46,8 +46,43 @@ defineEmits<{
   cancel: []
 }>()
 
+// Local elapsed timer — only ticks while this component is mounted and import is active
+const elapsedTick = ref(0)
+let elapsedTimer: ReturnType<typeof setInterval> | null = null
+
+function startTimer(): void {
+  if (elapsedTimer !== null) return
+  elapsedTimer = setInterval(() => {
+    elapsedTick.value++
+  }, 1000)
+}
+
+function stopTimer(): void {
+  if (elapsedTimer !== null) {
+    clearInterval(elapsedTimer)
+    elapsedTimer = null
+  }
+}
+
+watch(
+  () => importStore.isActive,
+  (active) => {
+    if (active) {
+      elapsedTick.value = 0
+      startTimer()
+    } else {
+      stopTimer()
+    }
+  },
+  { immediate: true }
+)
+
+onUnmounted(stopTimer)
+
 const formattedElapsed = computed(() => {
-  const ms = importStore.elapsedMs
+  void elapsedTick.value // reactive dependency
+  if (!importStore.isActive) return '0s'
+  const ms = Date.now() - importStore.startTime
   const seconds = Math.floor(ms / 1000)
   const minutes = Math.floor(seconds / 60)
   const remainingSeconds = seconds % 60

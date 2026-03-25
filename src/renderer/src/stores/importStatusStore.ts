@@ -26,17 +26,7 @@ export const useImportStatusStore = defineStore('importStatus', () => {
   const details = ref<ImportFileDetail[]>([])
   const errorMessage = ref('')
 
-  // Reactive elapsed timer
-  const elapsedTick = ref(0)
-
-  let elapsedTimer: ReturnType<typeof setInterval> | null = null
-
   const isActive = computed(() => phase.value === 'importing' || phase.value === 'finalizing')
-
-  const elapsedMs = computed(() => {
-    void elapsedTick.value // reactive dependency
-    return isActive.value ? Date.now() - startTime.value : 0
-  })
 
   const fileProgress = computed(() =>
     totalFiles.value > 0 ? `${currentFileIndex.value + 1}/${totalFiles.value}` : ''
@@ -52,10 +42,6 @@ export const useImportStatusStore = defineStore('importStatus', () => {
     startTime.value = Date.now()
     details.value = []
     errorMessage.value = ''
-    if (elapsedTimer !== null) clearInterval(elapsedTimer)
-    elapsedTimer = setInterval(() => {
-      elapsedTick.value++
-    }, 1000)
   }
 
   function updateProgress(data: {
@@ -94,20 +80,11 @@ export const useImportStatusStore = defineStore('importStatus', () => {
     phase.value = result.cancelled ? 'cancelled' : 'complete'
     details.value = result.details
     overallPercent.value = 100
-    stopTimer()
   }
 
   function importError(error: string): void {
     phase.value = 'error'
     errorMessage.value = error
-    stopTimer()
-  }
-
-  function stopTimer(): void {
-    if (elapsedTimer !== null) {
-      clearInterval(elapsedTimer)
-      elapsedTimer = null
-    }
   }
 
   function reset(): void {
@@ -123,8 +100,6 @@ export const useImportStatusStore = defineStore('importStatus', () => {
     dialogOpen.value = false
     details.value = []
     errorMessage.value = ''
-    stopTimer()
-    elapsedTick.value = 0
   }
 
   return {
@@ -141,7 +116,6 @@ export const useImportStatusStore = defineStore('importStatus', () => {
     details,
     errorMessage,
     isActive,
-    elapsedMs,
     fileProgress,
     startImport,
     updateProgress,

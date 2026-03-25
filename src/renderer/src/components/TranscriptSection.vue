@@ -9,6 +9,7 @@ import {
   type UnifiedTranscriptRow
 } from '../utils/mergeTranscripts'
 import { EMPTY_VALUE_PLACEHOLDER } from '../utils/formatters'
+import { mdiCheckAll, mdiChevronDown, mdiChevronUp, mdiCloud, mdiCloudDownload, mdiDatabase } from '@mdi/js'
 
 const props = defineProps<{
   variantId: number | null
@@ -96,9 +97,9 @@ function impactColor(impact: string | null): string {
 }
 
 function sourceIcon(source: string): string {
-  if (source === 'imported') return 'mdi-database'
-  if (source === 'vep') return 'mdi-cloud'
-  return 'mdi-check-all'
+  if (source === 'imported') return mdiDatabase
+  if (source === 'vep') return mdiCloud
+  return mdiCheckAll
 }
 
 function sourceColor(source: string): string {
@@ -172,7 +173,7 @@ async function handleUse(row: UnifiedTranscriptRow): Promise<void> {
         size="x-small"
         variant="tonal"
         color="deep-purple"
-        prepend-icon="mdi-cloud-download"
+        :prepend-icon="mdiCloudDownload"
         @click="handleFetchVep"
       >
         Fetch VEP
@@ -189,7 +190,7 @@ async function handleUse(row: UnifiedTranscriptRow): Promise<void> {
         v-if="hasTranscripts"
         size="x-small"
         variant="text"
-        :icon="tableExpanded ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+        :icon="tableExpanded ? mdiChevronUp : mdiChevronDown"
         class="ml-1"
         @click="tableExpanded = !tableExpanded"
       />

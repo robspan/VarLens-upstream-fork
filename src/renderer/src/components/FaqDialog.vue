@@ -6,7 +6,7 @@
         <v-text-field
           v-model="searchInput"
           label="Search questions..."
-          prepend-inner-icon="mdi-magnify"
+          :prepend-inner-icon="mdiMagnify"
           clearable
           variant="outlined"
           density="compact"
@@ -47,6 +47,7 @@
 import { ref, computed, watch } from 'vue'
 import faqConfig from '../config/faqConfig.json'
 import { useDebounce } from '../composables/useDebounce'
+import { mdiMagnify } from '@mdi/js'
 
 interface FaqItem {
   category: string

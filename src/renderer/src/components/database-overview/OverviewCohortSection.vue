@@ -4,10 +4,8 @@
       class="text-title-small mb-2 d-flex align-center cursor-pointer"
       @click="expanded = !expanded"
     >
-      <v-icon size="small" class="mr-1">
-        {{ expanded ? 'mdi-chevron-down' : 'mdi-chevron-right' }}
-      </v-icon>
-      <v-icon size="small" class="mr-1">mdi-account-multiple</v-icon>
+      <v-icon size="small" class="mr-1" :icon="expanded ? mdiChevronDown : mdiChevronRight" />
+      <v-icon size="small" class="mr-1" :icon="mdiAccountMultiple" />
       Cohort Groups ({{ cohortGroups.length }})
     </div>
 
@@ -30,20 +28,20 @@
                   v-if="group.member_count === 0"
                   size="x-small"
                   start
-                  icon="mdi-alert-circle-outline"
+                  :icon="mdiAlertCircleOutline"
                 />
                 {{ group.member_count }}
                 {{ group.member_count === 1 ? 'member' : 'members' }}
               </v-chip>
               <v-btn
-                icon="mdi-pencil"
+                :icon="mdiPencil"
                 size="x-small"
                 variant="text"
                 class="ml-1"
                 @click.stop="startEditCohort(group)"
               />
               <v-btn
-                icon="mdi-delete"
+                :icon="mdiDelete"
                 size="x-small"
                 variant="text"
                 color="error"
@@ -113,7 +111,7 @@
           >?
         </p>
         <p v-if="cohortToDelete && cohortToDelete.member_count > 0" class="text-warning mt-2">
-          <v-icon icon="mdi-alert" size="small" class="mr-1" />
+          <v-icon :icon="mdiAlert" size="small" class="mr-1" />
           This group has {{ cohortToDelete.member_count }}
           {{ cohortToDelete.member_count === 1 ? 'case' : 'cases' }} assigned. Deleting it will
           unlink all cases from this group.
@@ -141,6 +139,7 @@
 import { ref, computed } from 'vue'
 import type { OverviewCohortGroup } from '../../../../shared/types/database-overview'
 import { useApiService } from '../../composables/useApiService'
+import { mdiAccountMultiple, mdiAlert, mdiAlertCircleOutline, mdiChevronDown, mdiChevronRight, mdiDelete, mdiPencil } from '@mdi/js'
 
 const props = defineProps<{
   cohortGroups: OverviewCohortGroup[]

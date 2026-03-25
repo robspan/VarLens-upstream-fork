@@ -23,15 +23,15 @@
         <!-- Action buttons -->
         <div class="log-viewer-actions d-flex align-center">
           <v-btn icon size="small" variant="text" @click="handleExport">
-            <v-icon size="small">mdi-download</v-icon>
+            <v-icon size="small" :icon="mdiDownload" />
             <v-tooltip activator="parent" location="top">Download logs</v-tooltip>
           </v-btn>
           <v-btn icon size="small" variant="text" @click="handleClear">
-            <v-icon size="small">mdi-delete-outline</v-icon>
+            <v-icon size="small" :icon="mdiDeleteOutline" />
             <v-tooltip activator="parent" location="top">Clear logs</v-tooltip>
           </v-btn>
           <v-btn icon size="small" variant="text" @click="isOpen = false">
-            <v-icon size="small">mdi-close</v-icon>
+            <v-icon size="small" :icon="mdiClose" />
             <v-tooltip activator="parent" location="top">Close</v-tooltip>
           </v-btn>
         </div>
@@ -41,7 +41,7 @@
       <div class="d-flex align-center px-2 py-1 bg-grey-lighten-3 flex-grow-0">
         <v-text-field
           v-model="searchInput"
-          prepend-inner-icon="mdi-magnify"
+          :prepend-inner-icon="mdiMagnify"
           placeholder="Search..."
           density="compact"
           hide-details
@@ -115,7 +115,7 @@
         <!-- Scroll to latest FAB -->
         <v-btn
           v-if="!isAutoScroll"
-          icon="mdi-chevron-down"
+          :icon="mdiChevronDown"
           size="small"
           color="primary"
           class="scroll-to-latest-fab"
@@ -136,6 +136,7 @@ import { useLogStore } from '../stores/logStore'
 import { logService } from '../services/LogService'
 import { useDebounce } from '../composables/useDebounce'
 import { LOG_LEVELS, LOG_LEVEL_COLORS, type LogLevel } from '../types/log'
+import { mdiChevronDown, mdiClose, mdiDeleteOutline, mdiDownload, mdiMagnify } from '@mdi/js'
 
 // Props
 const isOpen = defineModel<boolean>('open', { default: false })

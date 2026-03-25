@@ -5,7 +5,7 @@
       :model-value="zipPassword"
       label="Password"
       :type="showZipPassword ? 'text' : 'password'"
-      :append-inner-icon="showZipPassword ? 'mdi-eye-off' : 'mdi-eye'"
+      :append-inner-icon="showZipPassword ? mdiEyeOff : mdiEye"
       :error-messages="zipErrorMessage"
       autofocus
       @update:model-value="$emit('update:zipPassword', $event)"
@@ -16,6 +16,7 @@
 </template>
 
 <script setup lang="ts">
+import { mdiEye, mdiEyeOff } from '@mdi/js'
 defineProps<{
   zipPassword: string
   showZipPassword: boolean

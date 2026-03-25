@@ -3,10 +3,10 @@
     <v-card>
       <v-card-title class="d-flex align-center justify-space-between pa-3">
         <div class="d-flex align-center ga-2">
-          <v-icon size="small" color="primary">mdi-clipboard-check-outline</v-icon>
+          <v-icon size="small" color="primary" :icon="mdiClipboardCheckOutline" />
           <span class="text-body-2 font-weight-bold">ACMG Evidence Classification</span>
         </div>
-        <v-btn icon="mdi-close" size="x-small" variant="text" @click="dialogOpen = false" />
+        <v-btn :icon="mdiClose" size="x-small" variant="text" @click="dialogOpen = false" />
       </v-card-title>
 
       <v-divider />
@@ -35,6 +35,7 @@ import { ref } from 'vue'
 import type { AcmgClassification } from '../../../main/database/types'
 import type { VariantAnnotationData } from '../utils/acmg/acmg-suggestions'
 import AcmgClassificationPanel from './AcmgClassificationPanel.vue'
+import { mdiClipboardCheckOutline, mdiClose } from '@mdi/js'
 
 defineProps<{
   /** Evidence JSON from database */

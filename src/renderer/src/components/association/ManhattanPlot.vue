@@ -27,7 +27,7 @@ const CHR_COLORS = ['#1f77b4', '#aec7e8']
 
 async function loadPlotly(): Promise<void> {
   if (Plotly !== null) return
-  Plotly = await import('plotly.js-dist-min')
+  Plotly = await import('plotly.js-basic-dist-min')
 }
 
 async function render(): Promise<void> {

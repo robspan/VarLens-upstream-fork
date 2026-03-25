@@ -10,11 +10,11 @@
       <!-- Header -->
       <v-toolbar density="compact" flat>
         <v-toolbar-title class="text-body-large font-weight-medium">
-          <v-icon size="small" class="mr-1">mdi-table-column</v-icon>
+          <v-icon size="small" class="mr-1" :icon="mdiTableColumn" />
           Columns
         </v-toolbar-title>
         <v-spacer />
-        <v-btn icon="mdi-close" size="small" variant="text" @click="emit('update:open', false)" />
+        <v-btn :icon="mdiClose" size="small" variant="text" @click="emit('update:open', false)" />
       </v-toolbar>
       <v-divider />
 
@@ -59,9 +59,7 @@
                 <template #item="{ element: column }">
                   <v-list-item class="px-1" :ripple="false">
                     <template #prepend>
-                      <v-icon class="column-drag-handle mr-1" size="x-small"
-                        >mdi-drag-vertical</v-icon
-                      >
+                      <v-icon class="column-drag-handle mr-1" size="x-small" :icon="mdiDragVertical" />
                       <v-checkbox-btn
                         :model-value="visibleColumns.includes(column.key)"
                         density="compact"
@@ -88,7 +86,7 @@
         </span>
         <v-spacer />
         <v-btn size="small" variant="text" class="mr-1" @click="showAll"> Show All </v-btn>
-        <v-btn size="small" variant="tonal" prepend-icon="mdi-refresh" @click="emit('reset')">
+        <v-btn size="small" variant="tonal" :prepend-icon="mdiRefresh" @click="emit('reset')">
           Reset
         </v-btn>
       </div>
@@ -100,6 +98,7 @@
 import { computed } from 'vue'
 import draggable from 'vuedraggable'
 import { groupColumns, getGroupConfig } from '../config/columnGroups'
+import { mdiClose, mdiDragVertical, mdiHelpCircleOutline, mdiRefresh, mdiTableColumn } from '@mdi/js'
 
 interface Column {
   key: string
@@ -125,7 +124,7 @@ const groupedColumns = computed(() => groupColumns(props.columns))
 
 /** Get icon for a group */
 const groupIcon = (groupId: string): string => {
-  return getGroupConfig(groupId)?.icon ?? 'mdi-help-circle-outline'
+  return getGroupConfig(groupId)?.icon ?? mdiHelpCircleOutline
 }
 
 /** Get label for a group */

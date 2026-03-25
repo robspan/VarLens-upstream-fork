@@ -25,7 +25,7 @@
           aria-live="polite"
           :aria-label="`${filteredCount} of ${totalCount ?? 'unknown'} variants shown`"
         >
-          <v-icon start size="small">mdi-filter-variant</v-icon>
+          <v-icon start size="small" :icon="mdiFilterVariant" />
           <strong>{{ filteredCount.toLocaleString() }}</strong>
           <template v-if="totalCount !== null">
             <span class="mx-1 text-medium-emphasis">/</span>
@@ -40,14 +40,14 @@
           :variant="hasActiveFilters || hasClearableState ? 'tonal' : 'text'"
           @click="emit('clear-all')"
         >
-          <v-icon start size="small">mdi-filter-off</v-icon>
+          <v-icon start size="small" :icon="mdiFilterOff" />
           Clear
           <v-tooltip activator="parent" location="bottom">Clear all filters</v-tooltip>
         </v-btn>
 
         <!-- Open filter drawer -->
         <v-btn variant="tonal" @click="emit('open-filter-drawer')">
-          <v-icon start size="small">mdi-filter-variant</v-icon>
+          <v-icon start size="small" :icon="mdiFilterVariant" />
           Filters
           <v-badge
             v-if="activeFilterCount > 0"
@@ -70,7 +70,7 @@
             variant="tonal"
             @click="emit('open-columns-drawer')"
           >
-            <v-icon start size="small">mdi-table-column</v-icon>
+            <v-icon start size="small" :icon="mdiTableColumn" />
             Columns
             <v-tooltip activator="parent" location="bottom"
               >Toggle columns ({{ mod }}+Shift+C)</v-tooltip
@@ -84,7 +84,7 @@
             variant="tonal"
             @click="emit('export')"
           >
-            <v-icon start size="small">mdi-microsoft-excel</v-icon>
+            <v-icon start size="small" :icon="mdiMicrosoftExcel" />
             Export
             <v-tooltip activator="parent" location="bottom">
               Export {{ filteredCount.toLocaleString() }} variants to Excel
@@ -96,19 +96,19 @@
         <v-menu v-else>
           <template #activator="{ props: menuProps }">
             <v-btn v-bind="menuProps" icon size="small" variant="text">
-              <v-icon>mdi-dots-vertical</v-icon>
+              <v-icon :icon="mdiDotsVertical" />
               <v-tooltip activator="parent" location="bottom">More actions</v-tooltip>
             </v-btn>
           </template>
           <v-list density="compact">
             <v-list-item
               v-if="columns && columns.length > 0"
-              prepend-icon="mdi-table-column"
+              :prepend-icon="mdiTableColumn"
               title="Columns"
               @click="emit('open-columns-drawer')"
             />
             <v-list-item
-              prepend-icon="mdi-microsoft-excel"
+              :prepend-icon="mdiMicrosoftExcel"
               title="Export"
               :disabled="filteredCount === 0"
               @click="emit('export')"
@@ -124,7 +124,7 @@
     <!-- Applied Filters Summary Bar -->
     <v-expand-transition>
       <div v-if="activeFiltersList.length > 0" class="applied-filters-bar">
-        <v-icon size="small" class="text-medium-emphasis mr-1">mdi-filter-check</v-icon>
+        <v-icon size="small" class="text-medium-emphasis mr-1" :icon="mdiFilterCheck" />
         <v-chip
           v-for="filter in activeFiltersList"
           :key="filter.id"
@@ -161,6 +161,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useResponsiveLayout } from '../composables/useResponsiveLayout'
+import { mdiDotsVertical, mdiFilterCheck, mdiFilterOff, mdiFilterVariant, mdiMicrosoftExcel, mdiTableColumn } from '@mdi/js'
 
 interface ActiveFilter {
   id: string

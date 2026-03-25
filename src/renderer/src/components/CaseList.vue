@@ -1,7 +1,7 @@
 <template>
   <v-text-field
     v-model="searchTerm"
-    prepend-inner-icon="mdi-magnify"
+    :prepend-inner-icon="mdiMagnify"
     placeholder="Search cases..."
     density="compact"
     hide-details
@@ -15,7 +15,7 @@
       :items="cohortGroupsCache"
       item-title="name"
       item-value="id"
-      prepend-inner-icon="mdi-account-group"
+      :prepend-inner-icon="mdiAccountGroup"
       label="Cohort"
       density="compact"
       hide-details
@@ -30,7 +30,7 @@
       :items="availableHpoTerms"
       item-title="label"
       item-value="hpo_id"
-      prepend-inner-icon="mdi-human"
+      :prepend-inner-icon="mdiHuman"
       label="HPO"
       density="compact"
       hide-details
@@ -48,11 +48,11 @@
       <v-list-item>
         <v-list-item-title class="text-grey text-center py-4">
           <template v-if="hasActiveFilters">
-            <v-icon class="mb-1">mdi-filter-off</v-icon>
+            <v-icon class="mb-1" :icon="mdiFilterOff" />
             <div>No matching cases</div>
           </template>
           <template v-else>
-            <v-icon class="mb-1">mdi-folder-open-outline</v-icon>
+            <v-icon class="mb-1" :icon="mdiFolderOpenOutline" />
             <div>No cases yet</div>
             <div class="text-body-small mt-1">Click + to import</div>
           </template>
@@ -76,7 +76,7 @@
           <v-icon
             v-if="isMultiSelectMode"
             :icon="
-              isMultiSelected(caseItem.id) ? 'mdi-checkbox-marked' : 'mdi-checkbox-blank-outline'
+              isMultiSelected(caseItem.id) ? mdiCheckboxMarked : mdiCheckboxBlankOutline
             "
             :color="isMultiSelected(caseItem.id) ? 'primary' : 'grey'"
             size="small"
@@ -137,7 +137,7 @@
       <!-- Edit single case -->
       <v-list-item @click="handleEdit">
         <template #prepend>
-          <v-icon>mdi-pencil</v-icon>
+          <v-icon :icon="mdiPencil" />
         </template>
         <v-list-item-title>Edit</v-list-item-title>
       </v-list-item>
@@ -145,21 +145,21 @@
       <!-- Delete selected when multi-select active -->
       <v-list-item v-if="isMultiSelectMode" @click="handleDeleteSelected">
         <template #prepend>
-          <v-icon color="error">mdi-delete</v-icon>
+          <v-icon color="error" :icon="mdiDelete" />
         </template>
         <v-list-item-title>Delete {{ multiSelectedCount }} Selected</v-list-item-title>
       </v-list-item>
       <!-- Single delete option -->
       <v-list-item @click="handleDelete">
         <template #prepend>
-          <v-icon>mdi-delete</v-icon>
+          <v-icon :icon="mdiDelete" />
         </template>
         <v-list-item-title>Delete</v-list-item-title>
       </v-list-item>
       <!-- Clear selection when multi-select active -->
       <v-list-item v-if="isMultiSelectMode" @click="clearMultiSelect">
         <template #prepend>
-          <v-icon>mdi-selection-off</v-icon>
+          <v-icon :icon="mdiSelectionOff" />
         </template>
         <v-list-item-title>Clear Selection</v-list-item-title>
       </v-list-item>
@@ -191,6 +191,7 @@ import { useApiService } from '../composables/useApiService'
 import CaseStatusIcons from './CaseStatusIcons.vue'
 import DeleteCaseDialog from './DeleteCaseDialog.vue'
 import AppSnackbar from './AppSnackbar.vue'
+import { mdiAccountGroup, mdiCheckboxBlankOutline, mdiCheckboxMarked, mdiDelete, mdiFilterOff, mdiFolderOpenOutline, mdiHuman, mdiMagnify, mdiPencil, mdiSelectionOff } from '@mdi/js'
 
 const PAGE_SIZE = 50
 

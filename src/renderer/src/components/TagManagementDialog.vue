@@ -16,9 +16,9 @@
               <v-list-item-title>{{ tag.name }}</v-list-item-title>
 
               <template #append>
-                <v-btn icon="mdi-pencil" size="x-small" variant="text" @click="startEditTag(tag)" />
+                <v-btn :icon="mdiPencil" size="x-small" variant="text" @click="startEditTag(tag)" />
                 <v-btn
-                  icon="mdi-delete"
+                  :icon="mdiDelete"
                   size="x-small"
                   variant="text"
                   @click="confirmDeleteTag(tag)"
@@ -34,7 +34,7 @@
           <v-btn
             color="primary"
             variant="outlined"
-            prepend-icon="mdi-plus"
+            :prepend-icon="mdiPlus"
             class="mt-2"
             @click="startAddTag"
           >
@@ -97,7 +97,7 @@
             Are you sure you want to delete the tag "{{ tagToDelete.name }}"?
           </p>
           <p v-if="deleteUsageCount > 0" class="text-warning mt-2">
-            <v-icon icon="mdi-alert" size="small" class="mr-1" />
+            <v-icon :icon="mdiAlert" size="small" class="mr-1" />
             This tag is currently assigned to {{ deleteUsageCount }}
             {{ deleteUsageCount === 1 ? 'variant' : 'variants' }}. Deleting it will remove the tag
             from all variants.
@@ -121,6 +121,7 @@ import { ref, computed, watch } from 'vue'
 import { useTags, TAG_COLORS } from '../composables/useTags'
 import ColorSwatchPicker from './ColorSwatchPicker.vue'
 import type { Tag } from '../../../main/database/types'
+import { mdiAlert, mdiDelete, mdiPencil, mdiPlus } from '@mdi/js'
 
 const { loadTags, getTags, createTag, updateTag, deleteTag, getTagUsageCount } = useTags()
 

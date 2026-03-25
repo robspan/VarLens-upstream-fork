@@ -22,7 +22,7 @@
           <template #activator="{ props }">
             <v-icon
               v-bind="props"
-              :icon="isOnline ? 'mdi-wifi' : 'mdi-wifi-off'"
+              :icon="isOnline ? mdiWifi : mdiWifiOff"
               :color="isOnline ? 'success' : 'grey'"
               size="x-small"
               class="ml-1"
@@ -43,7 +43,7 @@
                 class="ml-1"
                 :loading="true"
               >
-                <v-icon size="x-small">mdi-refresh</v-icon>
+                <v-icon size="x-small" :icon="mdiRefresh" />
               </v-btn>
             </template>
           </v-tooltip>
@@ -63,7 +63,7 @@
                 class="ml-1"
                 @click="downloadUpdate"
               >
-                <v-icon size="x-small">mdi-arrow-up-circle</v-icon>
+                <v-icon size="x-small" :icon="mdiArrowUpCircle" />
               </v-btn>
             </template>
           </v-tooltip>
@@ -82,7 +82,7 @@
                 class="ml-1"
                 :loading="true"
               >
-                <v-icon size="x-small">mdi-download</v-icon>
+                <v-icon size="x-small" :icon="mdiDownload" />
               </v-btn>
             </template>
           </v-tooltip>
@@ -101,7 +101,7 @@
                 @click="installUpdate"
               >
                 <v-badge dot color="success" floating>
-                  <v-icon size="x-small">mdi-restart</v-icon>
+                  <v-icon size="x-small" :icon="mdiRestart" />
                 </v-badge>
               </v-btn>
             </template>
@@ -120,7 +120,7 @@
                 class="ml-1"
                 @click="checkForUpdate"
               >
-                <v-icon size="x-small">mdi-alert-circle</v-icon>
+                <v-icon size="x-small" :icon="mdiAlertCircle" />
               </v-btn>
             </template>
           </v-tooltip>
@@ -138,15 +138,15 @@
             aria-label="Open GitHub repository"
             @click="openGitHub"
           >
-            <v-icon>mdi-github</v-icon>
+            <v-icon :icon="mdiGithub" />
             <v-tooltip activator="parent" location="top">GitHub</v-tooltip>
           </v-btn>
           <v-btn icon size="small" variant="text" aria-label="Open documentation" @click="openDocs">
-            <v-icon>mdi-book-open-variant</v-icon>
+            <v-icon :icon="mdiBookOpenVariant" />
             <v-tooltip activator="parent" location="top">Documentation</v-tooltip>
           </v-btn>
           <v-btn icon size="small" variant="text" aria-label="View license" @click="openLicense">
-            <v-icon>mdi-license</v-icon>
+            <v-icon :icon="mdiLicense" />
             <v-tooltip activator="parent" location="top">License</v-tooltip>
           </v-btn>
 
@@ -161,11 +161,11 @@
             aria-label="View disclaimer"
             @click="openDisclaimer"
           >
-            <v-icon>{{ disclaimerAcknowledged ? 'mdi-shield-check' : 'mdi-shield-alert' }}</v-icon>
+            <v-icon :icon="disclaimerAcknowledged ? mdiShieldCheck : mdiShieldAlert" />
             <v-tooltip activator="parent" location="top">Disclaimer</v-tooltip>
           </v-btn>
           <v-btn icon size="small" variant="text" aria-label="Open FAQ" @click="openFAQ">
-            <v-icon>mdi-help-circle</v-icon>
+            <v-icon :icon="mdiHelpCircle" />
             <v-tooltip activator="parent" location="top">FAQ</v-tooltip>
           </v-btn>
 
@@ -174,26 +174,26 @@
         <v-menu v-else location="top">
           <template #activator="{ props }">
             <v-btn v-bind="props" icon size="small" variant="text" aria-label="More links">
-              <v-icon>mdi-dots-horizontal</v-icon>
+              <v-icon :icon="mdiDotsHorizontal" />
             </v-btn>
           </template>
           <v-list density="compact">
             <v-list-subheader>External Links</v-list-subheader>
-            <v-list-item prepend-icon="mdi-github" title="GitHub" @click="openGitHub" />
+            <v-list-item :prepend-icon="mdiGithub" title="GitHub" @click="openGitHub" />
             <v-list-item
-              prepend-icon="mdi-book-open-variant"
+              :prepend-icon="mdiBookOpenVariant"
               title="Documentation"
               @click="openDocs"
             />
-            <v-list-item prepend-icon="mdi-license" title="License" @click="openLicense" />
+            <v-list-item :prepend-icon="mdiLicense" title="License" @click="openLicense" />
             <v-divider class="my-1" />
             <v-list-subheader>App Info</v-list-subheader>
             <v-list-item
-              :prepend-icon="disclaimerAcknowledged ? 'mdi-shield-check' : 'mdi-shield-alert'"
+              :prepend-icon="disclaimerAcknowledged ? mdiShieldCheck : mdiShieldAlert"
               title="Disclaimer"
               @click="openDisclaimer"
             />
-            <v-list-item prepend-icon="mdi-help-circle" title="FAQ" @click="openFAQ" />
+            <v-list-item :prepend-icon="mdiHelpCircle" title="FAQ" @click="openFAQ" />
           </v-list>
         </v-menu>
 
@@ -205,7 +205,7 @@
           aria-label="Keyboard shortcuts"
           @click="$emit('open-shortcuts-help')"
         >
-          <v-icon>mdi-keyboard</v-icon>
+          <v-icon :icon="mdiKeyboard" />
           <v-tooltip activator="parent" location="top">Keyboard Shortcuts (?)</v-tooltip>
         </v-btn>
 
@@ -218,7 +218,7 @@
           @click="toggleLogViewer"
         >
           <v-badge :content="errorCount" :model-value="errorCount > 0" color="error" floating>
-            <v-icon>mdi-console</v-icon>
+            <v-icon :icon="mdiConsole" />
           </v-badge>
           <v-tooltip activator="parent" location="top">Log Viewer</v-tooltip>
         </v-btn>
@@ -235,6 +235,7 @@ import { useResponsiveLayout } from '../composables/useResponsiveLayout'
 import { useAutoUpdate } from '../composables/useAutoUpdate'
 import { useApiService } from '../composables/useApiService'
 import { APP_CONFIG } from '../../../shared/config/app.config'
+import { mdiAlertCircle, mdiArrowUpCircle, mdiBookOpenVariant, mdiConsole, mdiDotsHorizontal, mdiDownload, mdiGithub, mdiHelpCircle, mdiKeyboard, mdiLicense, mdiRefresh, mdiRestart, mdiShieldAlert, mdiShieldCheck, mdiWifi, mdiWifiOff } from '@mdi/js'
 
 defineProps<{
   disclaimerAcknowledged: boolean

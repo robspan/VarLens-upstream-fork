@@ -16,7 +16,7 @@
         @keydown.enter="$emit('update:modelValue', color)"
         @keydown.space.prevent="$emit('update:modelValue', color)"
       >
-        <v-icon v-if="modelValue === color" icon="mdi-check" size="small" color="white" />
+        <v-icon v-if="modelValue === color" :icon="mdiCheck" size="small" color="white" />
       </div>
     </div>
   </div>
@@ -24,6 +24,7 @@
 
 <script setup lang="ts">
 import { TAG_COLORS } from '../composables/useTags'
+import { mdiCheck } from '@mdi/js'
 
 defineProps<{
   modelValue: string

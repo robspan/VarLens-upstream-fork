@@ -9,7 +9,7 @@
     <!-- Annotations column (star, ACMG, comment) -->
     <div v-if="column === 'annotations'" class="d-flex align-center ga-1">
       <v-icon
-        :icon="isStarred ? 'mdi-star' : 'mdi-star-outline'"
+        :icon="isStarred ? mdiStar : mdiStarOutline"
         :color="isStarred ? 'warning' : undefined"
         size="small"
         class="cursor-pointer"
@@ -30,14 +30,14 @@
           <v-icon
             v-else
             v-bind="menuProps"
-            icon="mdi-tag-outline"
+            :icon="mdiTagOutline"
             size="small"
             class="cursor-pointer"
           />
         </template>
       </AcmgMenu>
       <v-icon
-        :icon="hasComment ? 'mdi-comment' : 'mdi-comment-outline'"
+        :icon="hasComment ? mdiComment : mdiCommentOutline"
         :color="hasComment ? 'primary' : undefined"
         size="small"
         class="cursor-pointer"
@@ -176,6 +176,7 @@ import type { CohortVariant } from '../../../../shared/types/cohort'
 import type { AcmgClassification } from '../../../../main/database/types'
 import AcmgMenu from '../AcmgMenu.vue'
 import { ACMG_COLORS, ACMG_ABBREV } from '../../composables/useAnnotations'
+import { mdiComment, mdiCommentOutline, mdiStar, mdiStarOutline, mdiTagOutline } from '@mdi/js'
 
 interface Props {
   item: CohortVariant

@@ -36,6 +36,7 @@ import { useApiService } from '../composables/useApiService'
 import { resolveUrlTemplate } from '../utils/externalLinks'
 import type { Variant } from '../../../shared/types/api'
 import type { CohortVariant } from '../../../shared/types/cohort'
+import { mdiBookOpenVariant, mdiChartBox, mdiDatabase, mdiDatabaseSearch, mdiDna, mdiHospitalBox, mdiKeyVariant, mdiMap, mdiOpenInNew, mdiTelescope, mdiTextSearch } from '@mdi/js'
 
 interface Props {
   variant: Variant | CohortVariant
@@ -51,19 +52,19 @@ const externalLinksStore = useExternalLinksStore()
  */
 function getLinkIcon(linkId: string): string {
   const iconMap: Record<string, string> = {
-    gnomad: 'mdi-dna',
-    ucsc: 'mdi-map',
-    clinvar: 'mdi-hospital-box',
-    varsome: 'mdi-chart-box',
-    franklin: 'mdi-telescope',
-    pubtator: 'mdi-book-open-variant',
-    litvar: 'mdi-text-search',
-    decipher: 'mdi-key-variant',
-    clingen: 'mdi-database-search',
-    ensembl: 'mdi-database'
+    gnomad: mdiDna,
+    ucsc: mdiMap,
+    clinvar: mdiHospitalBox,
+    varsome: mdiChartBox,
+    franklin: mdiTelescope,
+    pubtator: mdiBookOpenVariant,
+    litvar: mdiTextSearch,
+    decipher: mdiKeyVariant,
+    clingen: mdiDatabaseSearch,
+    ensembl: mdiDatabase
   }
 
-  return iconMap[linkId] ?? 'mdi-open-in-new'
+  return iconMap[linkId] ?? mdiOpenInNew
 }
 
 /**

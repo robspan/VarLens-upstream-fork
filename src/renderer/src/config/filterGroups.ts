@@ -1,3 +1,4 @@
+import { mdiAlert, mdiAlertCircle, mdiAlertOctagon, mdiArrowExpandHorizontal, mdiCallSplit, mdiCheckCircle, mdiDna, mdiEqual, mdiHelpCircle, mdiHelpCircleOutline, mdiLinkVariant, mdiMinus, mdiSwapHorizontal, mdiTrendingUp } from '@mdi/js'
 /**
  * Filter group configurations for consequence types and ClinVar classifications
  * These define logical groupings for multi-select filters with "select all" functionality
@@ -36,7 +37,7 @@ export const consequenceGroups: FilterGroupConfig = {
       id: 'truncating',
       label: 'Truncating',
       color: 'error',
-      icon: 'mdi-alert-octagon',
+      icon: mdiAlertOctagon,
       items: [
         { value: 'stop_gained', label: 'Stop Gained' },
         { value: 'frameshift_truncation', label: 'Frameshift Truncation' },
@@ -52,7 +53,7 @@ export const consequenceGroups: FilterGroupConfig = {
       id: 'missense_inframe',
       label: 'Missense / Inframe',
       color: 'warning',
-      icon: 'mdi-alert',
+      icon: mdiAlert,
       items: [
         { value: 'missense_variant', label: 'Missense' },
         { value: 'inframe_indel', label: 'Inframe Indel' },
@@ -66,14 +67,14 @@ export const consequenceGroups: FilterGroupConfig = {
       id: 'splice_region',
       label: 'Splice Region',
       color: 'orange-darken-2',
-      icon: 'mdi-call-split',
+      icon: mdiCallSplit,
       items: [{ value: 'splice_region_variant', label: 'Splice Region' }]
     },
     {
       id: 'synonymous',
       label: 'Synonymous',
       color: 'info',
-      icon: 'mdi-equal',
+      icon: mdiEqual,
       items: [
         { value: 'synonymous_variant', label: 'Synonymous' },
         { value: 'stop_retained_variant', label: 'Stop Retained' }
@@ -83,7 +84,7 @@ export const consequenceGroups: FilterGroupConfig = {
       id: 'utr',
       label: 'UTR',
       color: 'blue-grey',
-      icon: 'mdi-arrow-expand-horizontal',
+      icon: mdiArrowExpandHorizontal,
       items: [
         { value: '3_prime_UTR_exon_variant', label: "3' UTR Exon" },
         { value: '3_prime_UTR_intron_variant', label: "3' UTR Intron" },
@@ -95,7 +96,7 @@ export const consequenceGroups: FilterGroupConfig = {
       id: 'intronic',
       label: 'Intronic',
       color: 'grey',
-      icon: 'mdi-minus',
+      icon: mdiMinus,
       items: [
         { value: 'coding_transcript_intron_variant', label: 'Coding Intron' },
         { value: 'non_coding_transcript_intron_variant', label: 'Non-coding Intron' }
@@ -105,7 +106,7 @@ export const consequenceGroups: FilterGroupConfig = {
       id: 'noncoding_other',
       label: 'Non-coding Other',
       color: 'grey-darken-1',
-      icon: 'mdi-dna',
+      icon: mdiDna,
       items: [
         { value: 'non_coding_transcript_exon_variant', label: 'Non-coding Exon' },
         { value: 'upstream_gene_variant', label: 'Upstream' },
@@ -117,7 +118,7 @@ export const consequenceGroups: FilterGroupConfig = {
       id: 'complex',
       label: 'Complex',
       color: 'purple',
-      icon: 'mdi-swap-horizontal',
+      icon: mdiSwapHorizontal,
       items: [
         { value: 'complex_substitution', label: 'Complex Substitution' },
         { value: 'direct_tandem_duplication', label: 'Tandem Duplication' },
@@ -142,7 +143,7 @@ export const clinvarGroups: FilterGroupConfig = {
       id: 'pathogenic',
       label: 'Pathogenic',
       color: 'error',
-      icon: 'mdi-alert-circle',
+      icon: mdiAlertCircle,
       items: [
         { value: 'Pathogenic', label: 'Pathogenic' },
         { value: 'Likely_pathogenic', label: 'Likely Pathogenic' },
@@ -155,7 +156,7 @@ export const clinvarGroups: FilterGroupConfig = {
       id: 'vus',
       label: 'VUS',
       color: 'warning',
-      icon: 'mdi-help-circle',
+      icon: mdiHelpCircle,
       items: [
         { value: 'Uncertain_significance', label: 'VUS' },
         { value: 'Uncertain_significance|association', label: 'VUS + Association' },
@@ -178,7 +179,7 @@ export const clinvarGroups: FilterGroupConfig = {
       id: 'benign',
       label: 'Benign',
       color: 'success',
-      icon: 'mdi-check-circle',
+      icon: mdiCheckCircle,
       items: [
         { value: 'Benign', label: 'Benign' },
         { value: 'Likely_benign', label: 'Likely Benign' },
@@ -197,7 +198,7 @@ export const clinvarGroups: FilterGroupConfig = {
       id: 'risk_association',
       label: 'Risk / Association',
       color: 'orange',
-      icon: 'mdi-trending-up',
+      icon: mdiTrendingUp,
       items: [
         { value: 'risk_factor', label: 'Risk Factor' },
         { value: 'Likely_risk_allele', label: 'Likely Risk Allele' },
@@ -213,7 +214,7 @@ export const clinvarGroups: FilterGroupConfig = {
       id: 'compound',
       label: 'Compound',
       color: 'purple',
-      icon: 'mdi-link-variant',
+      icon: mdiLinkVariant,
       items: [
         { value: 'Compound:Pathogenic', label: 'Compound: Pathogenic' },
         { value: 'Compound:Likely_pathogenic', label: 'Compound: LP' },
@@ -226,7 +227,7 @@ export const clinvarGroups: FilterGroupConfig = {
       id: 'no_classification',
       label: 'No Classification',
       color: 'grey',
-      icon: 'mdi-help-circle-outline',
+      icon: mdiHelpCircleOutline,
       items: [
         { value: 'not_provided', label: 'Not Provided' },
         { value: 'no_classification_for_the_single_variant', label: 'No Classification' },

@@ -14,7 +14,7 @@
           color="error"
           @click="confirmDeleteGlobal"
         >
-          <v-icon size="small">mdi-delete</v-icon>
+          <v-icon size="small" :icon="mdiDelete" />
         </v-btn>
       </div>
       <InlineEditableText
@@ -43,7 +43,7 @@
           color="error"
           @click="confirmDeletePerCase"
         >
-          <v-icon size="small">mdi-delete</v-icon>
+          <v-icon size="small" :icon="mdiDelete" />
         </v-btn>
       </div>
       <InlineEditableText
@@ -83,6 +83,7 @@ import { useAnnotations } from '../composables/useAnnotations'
 import InlineEditableText from './InlineEditableText.vue'
 import type { Variant } from '../../../shared/types/api'
 import type { CohortVariant } from '../../../shared/types/cohort'
+import { mdiDelete } from '@mdi/js'
 
 interface Props {
   variant: Variant | CohortVariant

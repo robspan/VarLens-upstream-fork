@@ -2,11 +2,11 @@
   <v-dialog v-model="model" max-width="600" scrollable>
     <v-card>
       <v-card-title class="d-flex align-center">
-        <v-icon class="mr-2">mdi-keyboard</v-icon>
+        <v-icon class="mr-2" :icon="mdiKeyboard" />
         Keyboard Shortcuts
         <v-spacer />
         <v-btn icon size="small" variant="text" @click="model = false">
-          <v-icon>mdi-close</v-icon>
+          <v-icon :icon="mdiClose" />
         </v-btn>
       </v-card-title>
 
@@ -30,6 +30,7 @@
 </template>
 
 <script setup lang="ts">
+import { mdiClose, mdiKeyboard } from '@mdi/js'
 const model = defineModel<boolean>({ default: false })
 
 const isMac =

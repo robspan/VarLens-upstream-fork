@@ -9,6 +9,14 @@ import { ref } from 'vue'
 import { useCaseComments } from './useCaseComments'
 import { useCaseMetrics } from './useCaseMetrics'
 import { useApiService } from './useApiService'
+import {
+  mdiAccountAlert,
+  mdiAccountCheck,
+  mdiGenderFemale,
+  mdiGenderMale,
+  mdiGenderNonBinary,
+  mdiHelpCircleOutline
+} from '@mdi/js'
 import type {
   CaseMetadata,
   CohortGroup,
@@ -353,9 +361,9 @@ export function useCaseMetadata() {
 
 // Status display constants
 export const STATUS_ICONS: Record<AffectedStatus, string> = {
-  affected: 'mdi-account-alert',
-  unaffected: 'mdi-account-check',
-  unknown: 'mdi-help-circle-outline'
+  affected: mdiAccountAlert,
+  unaffected: mdiAccountCheck,
+  unknown: mdiHelpCircleOutline
 }
 
 export const STATUS_COLORS: Record<AffectedStatus, string> = {
@@ -366,10 +374,10 @@ export const STATUS_COLORS: Record<AffectedStatus, string> = {
 
 // Sex display constants
 export const SEX_ICONS: Record<CaseSex, string> = {
-  male: 'mdi-gender-male',
-  female: 'mdi-gender-female',
-  other: 'mdi-gender-non-binary',
-  unknown: 'mdi-help-circle-outline'
+  male: mdiGenderMale,
+  female: mdiGenderFemale,
+  other: mdiGenderNonBinary,
+  unknown: mdiHelpCircleOutline
 }
 
 export const SEX_COLORS: Record<CaseSex, string> = {

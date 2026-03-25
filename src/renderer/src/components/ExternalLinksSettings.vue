@@ -51,14 +51,14 @@
 
               <template #append>
                 <v-btn
-                  icon="mdi-pencil"
+                  :icon="mdiPencil"
                   size="x-small"
                   variant="text"
                   @click="startEditLink(link)"
                 />
                 <v-btn
                   v-if="!link.isBuiltIn"
-                  icon="mdi-delete"
+                  :icon="mdiDelete"
                   size="x-small"
                   variant="text"
                   @click="confirmDeleteLink(link.id)"
@@ -70,7 +70,7 @@
           <v-btn
             color="primary"
             variant="outlined"
-            prepend-icon="mdi-plus"
+            :prepend-icon="mdiPlus"
             class="mt-2"
             @click="startAddLink"
           >
@@ -161,7 +161,7 @@
       <v-divider />
 
       <v-card-actions>
-        <v-btn color="error" variant="outlined" prepend-icon="mdi-restore" @click="confirmReset">
+        <v-btn color="error" variant="outlined" :prepend-icon="mdiRestore" @click="confirmReset">
           Reset to Defaults
         </v-btn>
         <v-spacer />
@@ -204,6 +204,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { mdiDelete, mdiPencil, mdiPlus, mdiRestore } from '@mdi/js'
 import {
   useExternalLinksStore,
   type ExternalLinkConfig,

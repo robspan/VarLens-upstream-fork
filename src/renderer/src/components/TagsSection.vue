@@ -5,7 +5,7 @@
       <v-menu v-model="menuOpen" :close-on-content-click="false" location="bottom end">
         <template #activator="{ props: menuProps }">
           <v-btn v-bind="menuProps" icon size="x-small" variant="text" :loading="loading">
-            <v-icon size="small">mdi-plus</v-icon>
+            <v-icon size="small" :icon="mdiPlus" />
           </v-btn>
         </template>
         <v-card min-width="200" max-width="280">
@@ -21,11 +21,7 @@
                 @click="toggleTag(tag.id)"
               >
                 <template #prepend>
-                  <v-icon :color="tag.color" size="small" class="mr-2">
-                    {{
-                      isTagAssigned(tag.id) ? 'mdi-checkbox-marked' : 'mdi-checkbox-blank-outline'
-                    }}
-                  </v-icon>
+                  <v-icon :color="tag.color" size="small" class="mr-2" :icon="isTagAssigned(tag.id) ? mdiCheckboxMarked : mdiCheckboxBlankOutline" />
                 </template>
                 <v-list-item-title class="text-body-medium">{{ tag.name }}</v-list-item-title>
                 <template #append>
@@ -63,6 +59,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useTags } from '../composables/useTags'
 import type { Tag } from '../../../shared/types/api'
+import { mdiCheckboxBlankOutline, mdiCheckboxMarked, mdiPlus } from '@mdi/js'
 
 interface Props {
   /** Case ID for per-case tag assignments */

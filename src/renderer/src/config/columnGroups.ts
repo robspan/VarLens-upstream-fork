@@ -1,3 +1,4 @@
+import { mdiDna, mdiLink, mdiMedicalBag, mdiSpeedometer, mdiTable, mdiTagMultiple } from '@mdi/js'
 /**
  * Column group configurations for the Columns Drawer
  * Groups variant table columns by category for organized display
@@ -15,37 +16,37 @@ export const COLUMN_GROUPS: ColumnGroupConfig[] = [
   {
     id: 'core',
     label: 'Core Fields',
-    icon: 'mdi-table',
+    icon: mdiTable,
     keys: ['chr', 'pos', 'ref', 'alt', 'gt_num']
   },
   {
     id: 'annotation',
     label: 'Annotation',
-    icon: 'mdi-dna',
+    icon: mdiDna,
     keys: ['gene_symbol', 'consequence', 'func', 'transcript', 'cdna', 'aa_change']
   },
   {
     id: 'scores',
     label: 'Scores',
-    icon: 'mdi-speedometer',
+    icon: mdiSpeedometer,
     keys: ['gnomad_af', 'cadd', 'qual']
   },
   {
     id: 'clinical',
     label: 'Clinical',
-    icon: 'mdi-medical-bag',
+    icon: mdiMedicalBag,
     keys: ['clinvar', 'omim_mim_number', 'hpo_sim_score', 'moi']
   },
   {
     id: 'links',
     label: 'External Links',
-    icon: 'mdi-link',
+    icon: mdiLink,
     keys: [] // Dynamically populated from columns not in other groups
   },
   {
     id: 'metadata',
     label: 'Metadata',
-    icon: 'mdi-tag-multiple',
+    icon: mdiTagMultiple,
     keys: ['annotations'] // Tags / annotations column
   }
 ]

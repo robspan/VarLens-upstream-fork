@@ -85,13 +85,13 @@
             </div>
             <div>
               <v-btn
-                icon="mdi-pencil-outline"
+                :icon="mdiPencilOutline"
                 size="x-small"
                 variant="text"
                 @click="startEdit(comment)"
               />
               <v-btn
-                icon="mdi-delete-outline"
+                :icon="mdiDeleteOutline"
                 size="x-small"
                 variant="text"
                 color="error"
@@ -142,6 +142,7 @@ import {
   COMMENT_CATEGORY_COLORS
 } from '../composables/useCaseComments'
 import type { CaseComment, CommentCategory } from '../../../shared/types/api'
+import { mdiDeleteOutline, mdiPencilOutline } from '@mdi/js'
 
 const props = defineProps<{
   caseId: number

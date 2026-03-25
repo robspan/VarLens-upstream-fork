@@ -8,7 +8,7 @@
         variant="outlined"
         hide-details
         clearable
-        prepend-inner-icon="mdi-magnify"
+        :prepend-inner-icon="mdiMagnify"
         style="max-width: 300px"
         class="mr-2"
       />
@@ -16,7 +16,7 @@
       <v-chip size="small" variant="tonal" class="mr-2">
         {{ filteredResults.length }} genes
       </v-chip>
-      <v-btn variant="outlined" size="small" prepend-icon="mdi-download" @click="exportResults">
+      <v-btn variant="outlined" size="small" :prepend-icon="mdiDownload" @click="exportResults">
         Export
       </v-btn>
     </div>
@@ -77,14 +77,10 @@
       <template #[`item.burden_p`]="{ item }">
         <span>
           {{ formatPValue(item.logistic_burden?.p_value) }}
-          <v-icon
-            v-if="item.logistic_burden?.used_firth"
+          <v-icon v-if="item.logistic_burden?.used_firth"
             size="x-small"
             color="warning"
-            title="Firth correction applied"
-          >
-            mdi-alert-circle-outline
-          </v-icon>
+            title="Firth correction applied" :icon="mdiAlertCircleOutline" />
         </span>
       </template>
     </v-data-table>
@@ -94,6 +90,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { mdiAlertCircleOutline, mdiDownload, mdiMagnify } from '@mdi/js'
 
 interface AssociationResult {
   gene_symbol: string

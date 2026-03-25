@@ -16,7 +16,7 @@
         <v-icon size="x-small">{{ getSortIcon(headerColumn) }}</v-icon>
         <span v-if="sortIndex > 0" class="sort-priority">{{ sortIndex }}</span>
       </span>
-      <v-icon v-else size="x-small" class="ml-1 sort-icon-inactive">mdi-sort</v-icon>
+      <v-icon v-else size="x-small" class="ml-1 sort-icon-inactive" :icon="mdiSort" />
     </div>
     <v-menu v-model="menuOpen" :close-on-content-click="false" location="bottom">
       <template #activator="{ props: menuProps }">
@@ -28,9 +28,7 @@
           :color="hasFilter ? 'primary' : undefined"
           @click.stop
         >
-          <v-icon size="small">
-            {{ hasFilter ? 'mdi-filter' : 'mdi-filter-outline' }}
-          </v-icon>
+          <v-icon size="small" :icon="hasFilter ? mdiFilter : mdiFilterOutline" />
           <v-tooltip activator="parent" location="bottom">Filter this column</v-tooltip>
         </v-btn>
       </template>
@@ -89,6 +87,7 @@ import type {
 import NumericColumnFilter from './NumericColumnFilter.vue'
 import CategoricalColumnFilter from './CategoricalColumnFilter.vue'
 import TextSuggestColumnFilter from './TextSuggestColumnFilter.vue'
+import { mdiFilter, mdiFilterOutline, mdiSort } from '@mdi/js'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type VuetifyInternalColumn = any

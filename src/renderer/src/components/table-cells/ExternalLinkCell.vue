@@ -1,12 +1,13 @@
 <template>
   <span v-if="url" class="external-link" @click="handleClick">
     {{ label }}
-    <v-icon size="x-small" class="external-link__icon">mdi-open-in-new</v-icon>
+    <v-icon size="x-small" class="external-link__icon" :icon="mdiOpenInNew" />
   </span>
   <span v-else class="text-medium-emphasis">--</span>
 </template>
 
 <script setup lang="ts">
+import { mdiOpenInNew } from '@mdi/js'
 interface Props {
   url: string | null
   label?: string

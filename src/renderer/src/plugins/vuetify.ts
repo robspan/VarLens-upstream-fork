@@ -1,7 +1,6 @@
 import { createVuetify, ThemeDefinition } from 'vuetify'
 import 'vuetify/styles'
-import '@mdi/font/css/materialdesignicons.css'
-import { mdi } from 'vuetify/iconsets/mdi'
+import { aliases, mdi } from 'vuetify/iconsets/mdi-svg'
 import { h, type Component } from 'vue'
 import type { IconSet, IconProps } from 'vuetify'
 import DnaIcon from '../components/icons/DnaIcon.vue'
@@ -89,6 +88,7 @@ export default createVuetify({
   },
   icons: {
     defaultSet: 'mdi',
+    aliases,
     sets: {
       mdi,
       custom

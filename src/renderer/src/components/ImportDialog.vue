@@ -11,7 +11,7 @@
         <!-- Success display -->
         <v-alert v-if="isSuccess" type="success" class="mb-4">
           <div class="d-flex align-center">
-            <v-icon class="mr-2">mdi-check-circle</v-icon>
+            <v-icon class="mr-2" :icon="mdiCheckCircle" />
             <span>Import complete!</span>
           </div>
         </v-alert>
@@ -27,7 +27,7 @@
             class="mb-2"
           />
           <v-btn :disabled="isImporting" color="primary" variant="outlined" @click="handleBrowse">
-            <v-icon class="mr-2">mdi-folder-open</v-icon>
+            <v-icon class="mr-2" :icon="mdiFolderOpen" />
             Browse
           </v-btn>
         </div>
@@ -80,6 +80,7 @@ import type { ProgressUpdate, ImportResult } from '../../../shared/types/api'
 import { isIpcError, ErrorCode } from '../../../shared/types/errors'
 import { useApiService } from '../composables/useApiService'
 import { useImportStatusStore } from '../stores/importStatusStore'
+import { mdiCheckCircle, mdiFolderOpen } from '@mdi/js'
 
 const { api } = useApiService()
 const importStore = useImportStatusStore()

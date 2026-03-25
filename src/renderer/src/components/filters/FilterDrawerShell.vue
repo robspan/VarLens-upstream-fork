@@ -31,15 +31,13 @@
               variant="text"
               @click="allExpanded ? collapseAll() : expandAll()"
             >
-              <v-icon size="small">{{
-                allExpanded ? 'mdi-unfold-less-horizontal' : 'mdi-unfold-more-horizontal'
-              }}</v-icon>
+              <v-icon size="small" :icon="allExpanded ? mdiUnfoldLessHorizontal : mdiUnfoldMoreHorizontal" />
             </v-btn>
           </template>
           {{ allExpanded ? 'Collapse all' : 'Expand all' }}
         </v-tooltip>
         <v-btn icon size="small" @click="emit('update:open', false)">
-          <v-icon>mdi-close</v-icon>
+          <v-icon :icon="mdiClose" />
         </v-btn>
       </v-toolbar>
       <v-divider />
@@ -59,7 +57,7 @@
           :disabled="activeFilterCount === 0"
           @click="emit('clear-all')"
         >
-          <v-icon start>mdi-filter-off</v-icon>
+          <v-icon start :icon="mdiFilterOff" />
           Clear All
         </v-btn>
         <v-btn variant="text" size="small" @click="emit('update:open', false)"> Done </v-btn>
@@ -72,6 +70,7 @@
 import { computed, watch } from 'vue'
 import { useDisplay } from 'vuetify'
 import { usePanelResize } from '../../composables/usePanelResize'
+import { mdiClose, mdiFilterOff, mdiUnfoldLessHorizontal, mdiUnfoldMoreHorizontal } from '@mdi/js'
 
 const { width: viewportWidth } = useDisplay()
 const maxDrawerWidth = computed(() => Math.min(500, Math.floor(viewportWidth.value * 0.4)))

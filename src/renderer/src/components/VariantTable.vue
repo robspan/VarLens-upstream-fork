@@ -251,13 +251,13 @@
             role="status"
             aria-label="No variants match the current filters"
           >
-            <v-icon size="48" color="grey-lighten-1" class="mb-4">mdi-filter-off-outline</v-icon>
+            <v-icon size="48" color="grey-lighten-1" class="mb-4" :icon="mdiFilterOffOutline" />
             <div class="text-h6 text-medium-emphasis mb-2">No variants match your filters</div>
             <div class="text-body-2 text-medium-emphasis mb-4">
               Try adjusting your filter criteria or clearing all filters.
             </div>
             <v-btn variant="tonal" color="primary" size="small" @click="emit('clear-filters')">
-              <v-icon start size="small">mdi-filter-off</v-icon>
+              <v-icon start size="small" :icon="mdiFilterOff" />
               Clear filters
             </v-btn>
           </div>
@@ -293,6 +293,7 @@ import VariantColumnHeader from './variant-table/VariantColumnHeader.vue'
 import AnnotationDialogs from './AnnotationDialogs.vue'
 import { useVariantColumns } from './variant-table/columns'
 import { useVariantData } from './variant-table/useVariantData'
+import { mdiFilterOff, mdiFilterOffOutline } from '@mdi/js'
 import {
   PositionCell,
   AlleleCell,

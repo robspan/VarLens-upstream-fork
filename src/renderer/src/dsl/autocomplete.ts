@@ -6,6 +6,7 @@
  * suggestions. Limits to 10 suggestions max.
  */
 
+import { mdiFilterVariant } from '@mdi/js'
 import {
   FILTER_COLUMNS,
   findColumn,
@@ -218,7 +219,7 @@ export function getAutocompleteSuggestions(
         label: `@${name}`,
         description: 'Apply preset',
         category: 'preset' as SuggestionCategory,
-        icon: 'mdi-filter-variant'
+        icon: mdiFilterVariant
       }))
     }
 

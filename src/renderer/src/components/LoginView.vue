@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useAuthStore } from '../stores/authStore'
 import { useApiService } from '../composables/useApiService'
+import { mdiAccount, mdiEye, mdiEyeOff, mdiLock, mdiLockCheck, mdiLockReset } from '@mdi/js'
 
 const authStore = useAuthStore()
 const { api } = useApiService()
@@ -92,7 +93,7 @@ async function handleChangePassword(): Promise<void> {
               <v-text-field
                 v-model="username"
                 label="Username"
-                prepend-inner-icon="mdi-account"
+                :prepend-inner-icon="mdiAccount"
                 variant="outlined"
                 density="comfortable"
                 autofocus
@@ -102,8 +103,8 @@ async function handleChangePassword(): Promise<void> {
                 v-model="password"
                 :type="showPassword ? 'text' : 'password'"
                 label="Password"
-                prepend-inner-icon="mdi-lock"
-                :append-inner-icon="showPassword ? 'mdi-eye-off' : 'mdi-eye'"
+                :prepend-inner-icon="mdiLock"
+                :append-inner-icon="showPassword ? mdiEyeOff : mdiEye"
                 variant="outlined"
                 density="comfortable"
                 class="mb-4"
@@ -130,7 +131,7 @@ async function handleChangePassword(): Promise<void> {
                 v-model="newPassword"
                 type="password"
                 label="New Password"
-                prepend-inner-icon="mdi-lock-reset"
+                :prepend-inner-icon="mdiLockReset"
                 variant="outlined"
                 density="comfortable"
                 hint="Minimum 8 characters"
@@ -140,7 +141,7 @@ async function handleChangePassword(): Promise<void> {
                 v-model="confirmPassword"
                 type="password"
                 label="Confirm New Password"
-                prepend-inner-icon="mdi-lock-check"
+                :prepend-inner-icon="mdiLockCheck"
                 variant="outlined"
                 density="comfortable"
                 class="mb-4"

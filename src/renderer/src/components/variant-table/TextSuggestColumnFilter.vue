@@ -14,7 +14,7 @@
         clearable
         hide-details
         auto-select-first
-        prepend-inner-icon="mdi-magnify"
+        :prepend-inner-icon="mdiMagnify"
       />
     </v-card-text>
     <v-divider />
@@ -35,6 +35,7 @@
  */
 import { ref } from 'vue'
 import type { ColumnFilterOperator } from '../../../../shared/types/column-filters'
+import { mdiMagnify } from '@mdi/js'
 
 interface Props {
   /** Column display name shown in the card title */

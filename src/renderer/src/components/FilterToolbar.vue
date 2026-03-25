@@ -40,9 +40,7 @@
             icon
             @click="toggleStarred"
           >
-            <v-icon size="small">{{
-              filters.starredOnly ? 'mdi-star' : 'mdi-star-outline'
-            }}</v-icon>
+            <v-icon size="small" :icon="filters.starredOnly ? mdiStar : mdiStarOutline" />
           </v-btn>
         </template>
         {{
@@ -63,9 +61,7 @@
             icon
             @click="toggleCommented"
           >
-            <v-icon size="small">{{
-              filters.hasCommentOnly ? 'mdi-comment-text' : 'mdi-comment-text-outline'
-            }}</v-icon>
+            <v-icon size="small" :icon="filters.hasCommentOnly ? mdiCommentText : mdiCommentTextOutline" />
           </v-btn>
         </template>
         {{
@@ -113,7 +109,7 @@
           v-if="(filters.starredOnly || filters.hasCommentOnly) && filteredCount === 0"
           class="annotation-hint-bar"
         >
-          <v-icon size="small" class="mr-1">mdi-information-outline</v-icon>
+          <v-icon size="small" class="mr-1" :icon="mdiInformationOutline" />
           <span class="text-body-small">
             {{
               filters.annotationScope === 'all'
@@ -171,6 +167,7 @@ import type { ActiveFilter } from '../../../shared/types/filters'
 import type { FilterDrawerState } from './filterDrawerTypes'
 import { ACMG_FILTER_OPTIONS, applyPresetStateToFilters, isPresetDiverged } from '../utils/filters'
 import { useResponsiveLayout } from '../composables/useResponsiveLayout'
+import { mdiCommentText, mdiCommentTextOutline, mdiInformationOutline, mdiStar, mdiStarOutline } from '@mdi/js'
 
 interface ColumnDef {
   key: string

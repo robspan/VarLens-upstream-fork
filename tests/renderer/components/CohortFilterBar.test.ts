@@ -120,9 +120,9 @@ describe('CohortFilterBar', () => {
         global: globalConfig
       })
 
-      // Find the clear button by its mdi-filter-off icon
+      // Find the clear button by its text content
       const clearButton = wrapper.findAll('button').find((btn) => {
-        return btn.find('.mdi-filter-off').exists()
+        return btn.text().includes('Clear')
       })
       expect(clearButton).toBeDefined()
     })
@@ -174,11 +174,10 @@ describe('CohortFilterBar', () => {
         global: globalConfig
       })
 
-      // Find the clear button by its prepend icon
+      // Find the clear button by its text content
       const clearButtons = wrapper.findAll('button')
       const clearButton = clearButtons.find((btn) => {
-        const icon = btn.find('.mdi-filter-off')
-        return icon.exists()
+        return btn.text().includes('Clear')
       })
 
       expect(clearButton).toBeDefined()

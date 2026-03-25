@@ -27,7 +27,7 @@
             variant="outlined"
             hide-details
             style="max-width: 180px"
-            prepend-inner-icon="mdi-gender-male-female"
+            :prepend-inner-icon="mdiGenderMaleFemale"
             @update:model-value="handleSexChange"
           />
         </div>
@@ -95,6 +95,7 @@ import CohortCombobox from './CohortCombobox.vue'
 import HpoTermSelector from './HpoTermSelector.vue'
 import { useCaseMetadata } from '../composables/useCaseMetadata'
 import type { AffectedStatus, CaseSex, CohortGroup } from '../../../shared/types/api'
+import { mdiGenderMaleFemale } from '@mdi/js'
 
 const props = defineProps<{
   caseId: number

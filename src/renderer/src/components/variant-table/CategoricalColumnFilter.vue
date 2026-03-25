@@ -13,7 +13,7 @@
         clearable
         hide-details
         class="mb-1"
-        prepend-inner-icon="mdi-magnify"
+        :prepend-inner-icon="mdiMagnify"
       />
       <div class="text-caption text-medium-emphasis">{{ selected.length }} selected</div>
       <div class="checkbox-list">
@@ -47,6 +47,7 @@
  * Emits an 'in' operator filter with the selected values array.
  */
 import { ref, computed } from 'vue'
+import { mdiMagnify } from '@mdi/js'
 
 interface Props {
   /** Column display name shown in the card title */

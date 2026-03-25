@@ -28,7 +28,7 @@
     </div>
 
     <v-chip v-else-if="isOffline" size="x-small" variant="text" class="text-medium-emphasis">
-      <v-icon start size="small">mdi-cloud-off-outline</v-icon>
+      <v-icon start size="small" :icon="mdiCloudOffOutline" />
       Online enrichment available when connected
     </v-chip>
 
@@ -104,6 +104,7 @@ import { getScoreColor, formatScoreValue } from '../utils/scoreThresholds'
 import type { Variant } from '../../../shared/types/api'
 import type { CohortVariant } from '../../../shared/types/cohort'
 import type { VepTranscriptConsequence } from '../../../main/services/api/schemas/vep-response'
+import { mdiCloudOffOutline } from '@mdi/js'
 
 interface Props {
   variant: Variant | CohortVariant

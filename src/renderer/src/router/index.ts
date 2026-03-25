@@ -8,7 +8,13 @@ import { createRouter, createMemoryHistory } from 'vue-router'
  * - /cohort — multi-case cohort analysis
  *
  * Both routes are lazy-loaded to reduce initial bundle size.
+ * The non-default route chunk is prefetched during idle time
+ * so the first navigation is instant.
  */
+
+// Keep a reference to the lazy import so we can prefetch it
+const loadCohortView = () => import('../views/CohortView.vue')
+
 const router = createRouter({
   history: createMemoryHistory(),
   routes: [
@@ -24,9 +30,21 @@ const router = createRouter({
     {
       path: '/cohort',
       name: 'cohort',
-      component: () => import('../views/CohortView.vue')
+      component: loadCohortView
     }
   ]
 })
+
+// Prefetch CohortView chunk during idle time after initial load.
+// This eliminates the lazy-load delay on first navigation to Cohort.
+if (typeof requestIdleCallback === 'function') {
+  requestIdleCallback(() => {
+    loadCohortView()
+  })
+} else {
+  setTimeout(() => {
+    loadCohortView()
+  }, 2000)
+}
 
 export default router

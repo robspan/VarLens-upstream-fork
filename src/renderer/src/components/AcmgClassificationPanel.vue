@@ -63,9 +63,7 @@
           >
           <v-menu location="bottom" :close-on-content-click="true">
             <template #activator="{ props: menuProps }">
-              <v-icon v-bind="menuProps" size="x-small" class="ml-1 cursor-pointer" @click.stop
-                >mdi-chevron-down</v-icon
-              >
+              <v-icon v-bind="menuProps" size="x-small" class="ml-1 cursor-pointer" @click.stop :icon="mdiChevronDown" />
             </template>
             <v-list density="compact" nav>
               <v-list-item
@@ -113,6 +111,7 @@ import type { VariantAnnotationData } from '../utils/acmg/acmg-suggestions'
 import { useAcmgEvidence } from '../composables/useAcmgEvidence'
 import AcmgSummaryBar from './acmg/AcmgSummaryBar.vue'
 import AcmgEvidenceGrid from './acmg/AcmgEvidenceGrid.vue'
+import { mdiChevronDown } from '@mdi/js'
 
 const props = defineProps<{
   /** Current acmg_evidence JSON string from database */

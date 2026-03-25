@@ -25,7 +25,7 @@ const plotContainer = ref<HTMLDivElement>()
 
 async function loadPlotly(): Promise<void> {
   if (Plotly !== null) return
-  Plotly = await import('plotly.js-dist-min')
+  Plotly = await import('plotly.js-basic-dist-min')
 }
 
 function buildPlotData(): Array<Record<string, unknown>> {

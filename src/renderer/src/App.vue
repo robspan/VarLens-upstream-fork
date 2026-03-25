@@ -38,7 +38,11 @@
     </v-navigation-drawer>
 
     <v-main>
-      <router-view />
+      <router-view v-slot="{ Component }">
+        <keep-alive :max="2">
+          <component :is="Component" />
+        </keep-alive>
+      </router-view>
     </v-main>
 
     <ImportStatusBar @expand="handleShowImportProgress" @cancel="handleCancelImport" />
@@ -117,7 +121,8 @@ const {
   panelMode,
   variantTableRef,
   filterToolbarRef,
-  cohortViewRef
+  cohortViewRef,
+  dataGeneration
 } = appState
 
 // Keyboard shortcuts help dialog
@@ -174,6 +179,7 @@ const handleDeleteAllCases = async () => {
     const deleted = await api.cases.deleteAll()
     selectedCaseId.value = null
     selectedCaseName.value = ''
+    dataGeneration.value++
     await caseListRef.value?.refreshCases()
     dialogHostRef.value?.showSnackbar(
       `Deleted ${deleted} ${deleted === 1 ? 'case' : 'cases'}`,
@@ -216,6 +222,7 @@ const handleCasesLoaded = (count: number): void => {
 }
 const handleCaseDeleted = (caseId: number): void => {
   if (selectedCaseId.value === caseId) selectedCaseId.value = null
+  dataGeneration.value++
 }
 
 // Import handlers
@@ -224,11 +231,13 @@ const handleImportComplete = async (result: {
   variantCount: number
   caseName: string
 }): Promise<void> => {
+  dataGeneration.value++
   await caseListRef.value?.refreshCases()
   caseListRef.value?.selectCase(result.caseId)
 }
 
 const handleBatchImportComplete = async (): Promise<void> => {
+  dataGeneration.value++
   await caseListRef.value?.refreshCases()
 }
 

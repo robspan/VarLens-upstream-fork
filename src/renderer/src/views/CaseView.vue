@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onActivated } from 'vue'
 import type { ColumnFilterMeta } from '../../../shared/types/column-filters'
 import type { AnnotationScope } from '../../../shared/types/annotations'
 import EmptyState from '../components/EmptyState.vue'
@@ -23,10 +23,22 @@ const {
   variantTableRef,
   panelOpen,
   selectedPanelVariant,
-  showSnack
+  showSnack,
+  dataGeneration
 } = useAppState()
 
 const hasCases = computed(() => caseCount.value > 0)
+
+// KeepAlive stale data detection: refresh if data changed while view was cached
+const lastSeenGeneration = ref(dataGeneration.value)
+onActivated(() => {
+  if (dataGeneration.value !== lastSeenGeneration.value) {
+    lastSeenGeneration.value = dataGeneration.value
+    if (selectedCaseId.value) {
+      variantTableRef.value?.refresh()
+    }
+  }
+})
 const annotationScope = ref<AnnotationScope>('case')
 
 // Pipe columnMeta from FilterToolbar (single owner of filter options) to VariantTable

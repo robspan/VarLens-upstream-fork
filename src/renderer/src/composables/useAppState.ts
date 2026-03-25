@@ -47,7 +47,7 @@ export interface AppStateReturn {
   filterToolbarRef: Ref<InstanceType<typeof FilterToolbar> | null>
   cohortViewRef: Ref<InstanceType<typeof CohortViewComponent> | null>
 
-  // Data generation (incremented on import/delete/annotation changes for KeepAlive invalidation)
+  // Data generation (incremented on import/delete for KeepAlive invalidation)
   dataGeneration: Ref<number>
 
   // Snackbar
@@ -92,7 +92,7 @@ export function createAppState(): AppStateReturn {
   const filterToolbarRef = ref<InstanceType<typeof FilterToolbar> | null>(null)
   const cohortViewRef = ref<InstanceType<typeof CohortViewComponent> | null>(null)
 
-  // Data generation counter for KeepAlive stale data detection
+  // Data generation counter — incremented on import/delete for KeepAlive stale data detection
   const dataGeneration = ref(0)
 
   // Snackbar callback (set by App.vue, called by views)

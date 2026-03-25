@@ -31,12 +31,12 @@ const normalizeOrder = (order: SortItem['order']): 'asc' | 'desc' => {
 const normalizeSortBy = (items: SortItem[]): NormalizedSortItem[] =>
   items.map(({ key, order }) => ({ key, order: normalizeOrder(order) }))
 
-export interface OffsetPageResult<T> {
+export interface OffsetPageResult<T extends object> {
   data: T[]
   total_count: number
 }
 
-export interface UseOffsetPaginationOptions<T> {
+export interface UseOffsetPaginationOptions<T extends object> {
   /** Fetch a single page. sortBy is already normalized to 'asc'/'desc' (IPC-safe). */
   fetchPage: (params: {
     offset: number
@@ -49,7 +49,7 @@ export interface UseOffsetPaginationOptions<T> {
   onSortChange?: (hasSort: boolean) => void
 }
 
-export function useOffsetPagination<T>(options: UseOffsetPaginationOptions<T>) {
+export function useOffsetPagination<T extends object>(options: UseOffsetPaginationOptions<T>) {
   const settingsStore = useSettingsStore()
 
   // Table state — bind to v-data-table-server via v-model
@@ -138,7 +138,7 @@ export function useOffsetPagination<T>(options: UseOffsetPaginationOptions<T>) {
           const result = await cached
 
           // A pre-fetched result always used skipCount=true, so keep cached count
-          items.value = result.data.map((item) => markRaw(item as object) as T)
+          items.value = result.data.map((item) => markRaw(item))
           totalCount.value = cachedTotalCount ?? result.total_count
 
           prefetchNextPage()
@@ -159,7 +159,7 @@ export function useOffsetPagination<T>(options: UseOffsetPaginationOptions<T>) {
         skipCount
       })
 
-      items.value = result.data.map((item) => markRaw(item as object) as T)
+      items.value = result.data.map((item) => markRaw(item))
 
       if (skipCount) {
         // Keep the cached count; the backend may return 0 or a stale value

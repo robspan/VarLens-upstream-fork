@@ -31,11 +31,16 @@ const hasCases = computed(() => caseCount.value > 0)
 
 // KeepAlive stale data detection: refresh if data changed while view was cached
 const lastSeenGeneration = ref(dataGeneration.value)
-onActivated(() => {
+onActivated(async () => {
   if (dataGeneration.value !== lastSeenGeneration.value) {
     lastSeenGeneration.value = dataGeneration.value
     if (selectedCaseId.value != null) {
-      variantTableRef.value?.refresh()
+      try {
+        await variantTableRef.value?.refresh()
+      } catch (error) {
+        // eslint-disable-next-line no-undef
+        console.error('Failed to refresh variant table on activation:', error)
+      }
     }
   }
 })

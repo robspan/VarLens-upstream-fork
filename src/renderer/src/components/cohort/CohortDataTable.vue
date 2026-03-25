@@ -187,7 +187,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, onMounted, nextTick } from 'vue'
+import { ref, watch, computed, onMounted, onActivated, onDeactivated, nextTick } from 'vue'
 import { useTableKeyboardNav } from '../../composables/useTableKeyboardNav'
 import { onKeyStroke } from '@vueuse/core'
 import type { CohortVariant } from '../../../../shared/types/cohort'
@@ -426,11 +426,20 @@ const handleRowClick = (_event: Event, data: { item: CohortVariant }): void => {
   emit('row-click', data.item)
 }
 
+// KeepAlive: disable keyboard handlers when this view is cached but not active
+const viewActive = ref(true)
+onActivated(() => {
+  viewActive.value = true
+})
+onDeactivated(() => {
+  viewActive.value = false
+})
+
 // Keyboard navigation handlers
 onKeyStroke(
   'ArrowDown',
   (e: KeyboardEvent) => {
-    if (isInputFocused()) return
+    if (!viewActive.value || isInputFocused()) return
     e.preventDefault()
     moveDown()
   },
@@ -440,7 +449,7 @@ onKeyStroke(
 onKeyStroke(
   'ArrowUp',
   (e: KeyboardEvent) => {
-    if (isInputFocused()) return
+    if (!viewActive.value || isInputFocused()) return
     e.preventDefault()
     moveUp()
   },
@@ -450,7 +459,7 @@ onKeyStroke(
 onKeyStroke(
   'Enter',
   (e: KeyboardEvent) => {
-    if (isInputFocused()) return
+    if (!viewActive.value || isInputFocused()) return
     if (navSelectedItem.value === null) return
     e.preventDefault()
     emit('row-click', navSelectedItem.value)
@@ -461,7 +470,7 @@ onKeyStroke(
 onKeyStroke(
   'Escape',
   (e: KeyboardEvent) => {
-    if (isInputFocused()) return
+    if (!viewActive.value || isInputFocused()) return
     e.preventDefault()
     clearSelection()
     emit('deselect')
@@ -473,7 +482,7 @@ onKeyStroke(
 onKeyStroke(
   's',
   (e: KeyboardEvent) => {
-    if (isInputFocused()) return
+    if (!viewActive.value || isInputFocused()) return
     if (navSelectedItem.value === null) return
     e.preventDefault()
     emit('star-toggle', navSelectedItem.value)
@@ -484,7 +493,7 @@ onKeyStroke(
 onKeyStroke(
   'c',
   (e: KeyboardEvent) => {
-    if (isInputFocused()) return
+    if (!viewActive.value || isInputFocused()) return
     if (navSelectedItem.value === null) return
     e.preventDefault()
     emit('comment-click', navSelectedItem.value)
@@ -495,7 +504,7 @@ onKeyStroke(
 onKeyStroke(
   'a',
   (e: KeyboardEvent) => {
-    if (isInputFocused()) return
+    if (!viewActive.value || isInputFocused()) return
     if (navSelectedItem.value === null) return
     e.preventDefault()
     emit('acmg-evidence-click', navSelectedItem.value)
@@ -506,7 +515,7 @@ onKeyStroke(
 onKeyStroke(
   'e',
   (e: KeyboardEvent) => {
-    if (isInputFocused()) return
+    if (!viewActive.value || isInputFocused()) return
     if (navSelectedItem.value === null) return
     e.preventDefault()
     const key = navSelectedItem.value.variant_key

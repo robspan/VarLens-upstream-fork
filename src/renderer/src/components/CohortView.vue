@@ -65,10 +65,15 @@ const refresh = async (): Promise<void> => {
   }
 }
 
-onActivated(() => {
+onActivated(async () => {
   if (dataGeneration.value !== lastSeenGeneration.value) {
     lastSeenGeneration.value = dataGeneration.value
-    refresh()
+    try {
+      await refresh()
+    } catch (error) {
+      // eslint-disable-next-line no-undef
+      console.error('Failed to refresh cohort view on activation:', error)
+    }
   }
 })
 

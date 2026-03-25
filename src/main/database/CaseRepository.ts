@@ -119,7 +119,15 @@ export class CaseRepository extends BaseRepository {
    * in a single JOIN query — replacing the previous N+1 pattern of per-case metadata lookups.
    */
   queryCases(params: CaseSearchParams): PaginatedResult<CaseWithCohorts> {
-    const { limit, offset = 0, sort_by, sort_order = 'desc', search_term, cohort_ids } = params
+    const {
+      limit,
+      offset = 0,
+      sort_by,
+      sort_order = 'desc',
+      search_term,
+      cohort_ids,
+      hpo_ids
+    } = params
     const countNeeded = params._count_needed !== false
 
     // Build WHERE clauses and parameters
@@ -139,6 +147,15 @@ export class CaseRepository extends BaseRepository {
         `c.id IN (SELECT case_id FROM case_cohort_links WHERE cohort_id IN (${placeholders}))`
       )
       whereParams.push(...cohort_ids)
+    }
+
+    // HPO term filter
+    if (hpo_ids !== undefined && hpo_ids.length > 0) {
+      const placeholders = hpo_ids.map(() => '?').join(', ')
+      whereClauses.push(
+        `c.id IN (SELECT case_id FROM case_hpo_terms WHERE hpo_id IN (${placeholders}))`
+      )
+      whereParams.push(...hpo_ids)
     }
 
     const whereSQL = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : ''

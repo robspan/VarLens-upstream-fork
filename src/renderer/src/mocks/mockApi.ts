@@ -691,6 +691,7 @@ export const mockApi: WindowAPI = {
         created_at: Date.now()
       }) as import('../../../shared/types/api').CaseExternalId,
     deleteExternalId: async () => {},
+    distinctHpoTerms: async () => [],
     distinctPlatforms: async () => [],
     distinctExternalIdTypes: async () => []
   },

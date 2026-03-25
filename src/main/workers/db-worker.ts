@@ -160,6 +160,9 @@ export default function run(task: DbTask): unknown {
       case 'case-metadata:distinctExternalIdTypes':
         return repos.metadata.getDistinctExternalIdTypes()
 
+      case 'case-metadata:distinctHpoTerms':
+        return repos.metadata.getDistinctHpoTerms()
+
       case 'case-metadata:getFullMetadata':
         return {
           metadata: repos.metadata.getCaseMetadata(params[0] as number),

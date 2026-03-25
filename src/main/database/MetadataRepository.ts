@@ -206,6 +206,17 @@ export class MetadataRepository extends BaseRepository {
     )
   }
 
+  /** Return all distinct HPO terms assigned to any case, sorted by label. */
+  getDistinctHpoTerms(): Array<{ hpo_id: string; hpo_label: string }> {
+    return this.execAll<{ hpo_id: string; hpo_label: string }>(
+      this.kysely
+        .selectFrom('case_hpo_terms')
+        .select(['hpo_id', 'hpo_label'])
+        .groupBy('hpo_id')
+        .orderBy('hpo_label')
+    )
+  }
+
   // ============================================================
   // Case Comment Operations
   // ============================================================

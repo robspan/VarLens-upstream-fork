@@ -423,6 +423,7 @@ export interface CaseMetadataAPI {
   listExternalIds: (caseId: number) => Promise<CaseExternalId[]>
   upsertExternalId: (caseId: number, idType: string, idValue: string) => Promise<CaseExternalId>
   deleteExternalId: (caseId: number, idType: string) => Promise<void>
+  distinctHpoTerms: () => Promise<Array<{ hpo_id: string; hpo_label: string }>>
   distinctPlatforms: () => Promise<string[]>
   distinctExternalIdTypes: () => Promise<string[]>
 }

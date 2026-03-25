@@ -63,6 +63,17 @@ export class AssociationEngine {
       }
     }
 
+    // Check abort after the (potentially async) build step completes
+    if (this.aborted) {
+      return {
+        results: [],
+        primary_test: config.primary_test,
+        config,
+        warnings: ['Analysis cancelled'],
+        elapsed_ms: Date.now() - start
+      }
+    }
+
     // 2. Run tests in parallel across worker threads
     this.pool = new WorkerPool(config.max_threads > 0 ? config.max_threads : undefined)
     let rawResults: GeneAssociationResult[]

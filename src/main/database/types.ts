@@ -28,6 +28,7 @@ export interface CaseSearchParams {
   sort_order?: 'asc' | 'desc'
   search_term?: string
   cohort_ids?: number[]
+  hpo_ids?: string[]
   _count_needed?: boolean
 }
 

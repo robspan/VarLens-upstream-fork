@@ -38,6 +38,7 @@ export type DbTaskType =
   | 'case-metadata:listExternalIds'
   | 'case-metadata:distinctPlatforms'
   | 'case-metadata:distinctExternalIdTypes'
+  | 'case-metadata:distinctHpoTerms'
   | 'case-metadata:getFullMetadata'
   // Database
   | 'database:overview'

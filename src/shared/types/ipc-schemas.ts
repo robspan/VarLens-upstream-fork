@@ -146,6 +146,10 @@ export const CaseSearchParamsSchema = z.object({
     .array(z.number().int().positive())
     .nullish()
     .transform((val) => val ?? undefined),
+  hpo_ids: z
+    .array(z.string().min(1))
+    .nullish()
+    .transform((val) => val ?? undefined),
   _count_needed: z.boolean().optional()
 })
 

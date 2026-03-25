@@ -7,7 +7,7 @@
  * DRY: Both case (VariantTable) and cohort (CohortTable) views use this composable.
  */
 
-import { ref, shallowRef, watch, type Ref } from 'vue'
+import { ref, shallowRef, watch, markRaw, type Ref } from 'vue'
 import { useSettingsStore } from '../stores/settingsStore'
 import { APP_CONFIG } from '../../../shared/config'
 
@@ -138,7 +138,7 @@ export function useOffsetPagination<T>(options: UseOffsetPaginationOptions<T>) {
           const result = await cached
 
           // A pre-fetched result always used skipCount=true, so keep cached count
-          items.value = result.data
+          items.value = result.data.map((item) => markRaw(item))
           totalCount.value = cachedTotalCount ?? result.total_count
 
           prefetchNextPage()
@@ -159,7 +159,7 @@ export function useOffsetPagination<T>(options: UseOffsetPaginationOptions<T>) {
         skipCount
       })
 
-      items.value = result.data
+      items.value = result.data.map((item) => markRaw(item))
 
       if (skipCount) {
         // Keep the cached count; the backend may return 0 or a stale value

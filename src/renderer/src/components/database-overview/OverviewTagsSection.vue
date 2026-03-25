@@ -211,7 +211,6 @@ async function saveTagEdit(): Promise<void> {
     cancelTagEdit()
     emit('refresh')
   } catch (err) {
-    // eslint-disable-next-line no-undef
     console.error('Failed to update tag:', err)
   } finally {
     tagSaving.value = false
@@ -239,7 +238,6 @@ async function executeDeleteTag(): Promise<void> {
 
     emit('refresh')
   } catch (err) {
-    // eslint-disable-next-line no-undef
     console.error('Failed to delete tag:', err)
   } finally {
     tagDeleting.value = false

@@ -218,7 +218,6 @@ function exportResults(): void {
   // Download as file
   const blob = new Blob([tsv], { type: 'text/tab-separated-values' })
   const url = URL.createObjectURL(blob)
-  // eslint-disable-next-line no-undef
   const a = document.createElement('a')
   a.href = url
   a.download = `gene_burden_results_${new Date().toISOString().split('T')[0]}.tsv`

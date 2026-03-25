@@ -360,7 +360,6 @@ async function handleSavePreset(data: { name: string; description: string | null
   savingPreset.value = true
   try {
     // Deep-clone to strip Vue reactive proxies for IPC serialization
-    // eslint-disable-next-line no-undef
     const plainFilters = structuredClone(filters.value)
     const result = await savePreset({
       name: data.name,
@@ -485,7 +484,7 @@ const exportToExcel = async () => {
       filePath: result.filePath,
       action: {
         text: 'Open folder',
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, no-undef
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         callback: () => (window as any).api.shell.showItemInFolder(result.filePath)
       }
     })

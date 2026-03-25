@@ -392,7 +392,6 @@ const openExternalLink = async (url: string, event?: MouseEvent): Promise<void> 
   const target = event?.currentTarget as HTMLElement
   if (target !== null && target !== undefined) {
     target.classList.add('external-link--clicked')
-    // eslint-disable-next-line no-undef
     setTimeout(() => target.classList.remove('external-link--clicked'), 200)
   }
 

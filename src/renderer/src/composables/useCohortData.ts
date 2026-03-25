@@ -197,7 +197,6 @@ export function useCohortData(): UseCohortDataReturn {
     }
     if (params.column_filters !== undefined) {
       // Deep-clone to strip reactive proxies for IPC structured clone
-      // eslint-disable-next-line no-undef
       ipcParams.column_filters = structuredClone(params.column_filters)
     }
 

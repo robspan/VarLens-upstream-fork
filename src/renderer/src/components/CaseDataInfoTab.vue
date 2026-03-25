@@ -199,7 +199,6 @@ const regionFileItems = computed(() =>
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getApi(): any {
-  // eslint-disable-next-line no-undef
   return (window as unknown as Record<string, unknown>).api
 }
 
@@ -289,15 +288,12 @@ async function deleteExternalId(idType: string): Promise<void> {
 }
 
 // Platform combobox: only save when a menu item is selected (not on every keystroke)
-// eslint-disable-next-line no-undef
 let platformDebounce: ReturnType<typeof setTimeout> | null = null
 function onPlatformChange(): void {
   // Debounce to avoid saving on every keystroke; immediate save on item selection
   if (platformDebounce !== null) {
-    // eslint-disable-next-line no-undef
     clearTimeout(platformDebounce)
   }
-  // eslint-disable-next-line no-undef
   platformDebounce = setTimeout(() => {
     save()
     platformDebounce = null
@@ -341,7 +337,6 @@ watch(() => props.caseId, loadDataInfo, { immediate: true })
 
 onBeforeUnmount(() => {
   if (platformDebounce !== null) {
-    // eslint-disable-next-line no-undef
     clearTimeout(platformDebounce)
     platformDebounce = null
   }

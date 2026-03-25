@@ -203,7 +203,6 @@ const saveEdit = async (): Promise<void> => {
     }
     cancelEdit()
   } catch (error) {
-    // eslint-disable-next-line no-undef
     console.error('Failed to save tag:', error)
   } finally {
     isSaving.value = false
@@ -232,7 +231,6 @@ const executeDelete = async (): Promise<void> => {
       cancelEdit()
     }
   } catch (error) {
-    // eslint-disable-next-line no-undef
     console.error('Failed to delete tag:', error)
   } finally {
     isDeleting.value = false

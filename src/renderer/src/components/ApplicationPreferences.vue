@@ -71,7 +71,6 @@ const { api } = useApiService()
 
 const isOpen = ref(false)
 const cpuCount = ref(
-  // eslint-disable-next-line no-undef
   navigator.hardwareConcurrency || 4
 )
 

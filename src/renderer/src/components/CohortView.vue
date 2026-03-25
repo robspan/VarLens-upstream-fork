@@ -71,7 +71,6 @@ onActivated(async () => {
     try {
       await refresh()
     } catch (error) {
-      // eslint-disable-next-line no-undef
       console.error('Failed to refresh cohort view on activation:', error)
     }
   }

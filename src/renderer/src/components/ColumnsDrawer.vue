@@ -59,7 +59,11 @@
                 <template #item="{ element: column }">
                   <v-list-item class="px-1" :ripple="false">
                     <template #prepend>
-                      <v-icon class="column-drag-handle mr-1" size="x-small" :icon="mdiDragVertical" />
+                      <v-icon
+                        class="column-drag-handle mr-1"
+                        size="x-small"
+                        :icon="mdiDragVertical"
+                      />
                       <v-checkbox-btn
                         :model-value="visibleColumns.includes(column.key)"
                         density="compact"
@@ -98,7 +102,13 @@
 import { computed } from 'vue'
 import draggable from 'vuedraggable'
 import { groupColumns, getGroupConfig } from '../config/columnGroups'
-import { mdiClose, mdiDragVertical, mdiHelpCircleOutline, mdiRefresh, mdiTableColumn } from '@mdi/js'
+import {
+  mdiClose,
+  mdiDragVertical,
+  mdiHelpCircleOutline,
+  mdiRefresh,
+  mdiTableColumn
+} from '@mdi/js'
 
 interface Column {
   key: string

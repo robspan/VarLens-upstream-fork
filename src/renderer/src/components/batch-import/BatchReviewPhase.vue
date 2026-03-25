@@ -58,7 +58,12 @@
         :class="file.isDuplicate ? 'text-warning' : ''"
       >
         <template #prepend>
-          <v-icon v-if="file.isDuplicate" color="warning" size="small" :icon="mdiAlertCircleOutline" />
+          <v-icon
+            v-if="file.isDuplicate"
+            color="warning"
+            size="small"
+            :icon="mdiAlertCircleOutline"
+          />
           <v-icon v-else color="success" size="small" :icon="mdiNewBox" />
         </template>
         <v-list-item-title class="text-body-medium">

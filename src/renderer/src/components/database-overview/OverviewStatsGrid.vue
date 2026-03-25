@@ -109,7 +109,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { CohortSummary } from '../../../../shared/types/cohort'
-import { mdiAccountGroup, mdiChartBar, mdiDna, mdiFingerprint, mdiSetNone, mdiStar, mdiTagCheck } from '@mdi/js'
+import {
+  mdiAccountGroup,
+  mdiChartBar,
+  mdiDna,
+  mdiFingerprint,
+  mdiSetNone,
+  mdiStar,
+  mdiTagCheck
+} from '@mdi/js'
 
 const props = defineProps<{
   summary: CohortSummary

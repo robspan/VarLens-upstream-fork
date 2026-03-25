@@ -235,7 +235,24 @@ import { useResponsiveLayout } from '../composables/useResponsiveLayout'
 import { useAutoUpdate } from '../composables/useAutoUpdate'
 import { useApiService } from '../composables/useApiService'
 import { APP_CONFIG } from '../../../shared/config/app.config'
-import { mdiAlertCircle, mdiArrowUpCircle, mdiBookOpenVariant, mdiConsole, mdiDotsHorizontal, mdiDownload, mdiGithub, mdiHelpCircle, mdiKeyboard, mdiLicense, mdiRefresh, mdiRestart, mdiShieldAlert, mdiShieldCheck, mdiWifi, mdiWifiOff } from '@mdi/js'
+import {
+  mdiAlertCircle,
+  mdiArrowUpCircle,
+  mdiBookOpenVariant,
+  mdiConsole,
+  mdiDotsHorizontal,
+  mdiDownload,
+  mdiGithub,
+  mdiHelpCircle,
+  mdiKeyboard,
+  mdiLicense,
+  mdiRefresh,
+  mdiRestart,
+  mdiShieldAlert,
+  mdiShieldCheck,
+  mdiWifi,
+  mdiWifiOff
+} from '@mdi/js'
 
 defineProps<{
   disclaimerAcknowledged: boolean

@@ -60,7 +60,14 @@
 </template>
 
 <script setup lang="ts">
-import { mdiFileImport, mdiFileMultiple, mdiFolderOpen, mdiInformationOutline, mdiPlus, mdiZipBox } from '@mdi/js'
+import {
+  mdiFileImport,
+  mdiFileMultiple,
+  mdiFolderOpen,
+  mdiInformationOutline,
+  mdiPlus,
+  mdiZipBox
+} from '@mdi/js'
 defineProps<{
   caseCount?: number
 }>()

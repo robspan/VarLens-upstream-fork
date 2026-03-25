@@ -83,7 +83,15 @@ import CaseMetricsTab from './CaseMetricsTab.vue'
 import CaseDataInfoTab from './CaseDataInfoTab.vue'
 import { useCaseComments } from '../composables/useCaseComments'
 import { useCaseMetrics } from '../composables/useCaseMetrics'
-import { mdiCalendar, mdiChartBoxOutline, mdiClose, mdiCommentTextOutline, mdiDatabaseOutline, mdiDna, mdiInformationOutline } from '@mdi/js'
+import {
+  mdiCalendar,
+  mdiChartBoxOutline,
+  mdiClose,
+  mdiCommentTextOutline,
+  mdiDatabaseOutline,
+  mdiDna,
+  mdiInformationOutline
+} from '@mdi/js'
 
 const props = defineProps<{
   caseId: number

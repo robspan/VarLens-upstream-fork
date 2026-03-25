@@ -364,7 +364,21 @@ import GroupedMultiSelect from '../GroupedMultiSelect.vue'
 import { consequenceGroups, clinvarGroups } from '../../config/filterGroups'
 import { ACMG_FILTER_OPTIONS } from '../../utils/filters'
 import type { CohortFilterDrawerState } from './cohortFilterDrawerTypes'
-import { mdiAccountGroup, mdiAlertCircle, mdiBookmarkMultiple, mdiCogOutline, mdiCommentText, mdiDna, mdiEarth, mdiFlash, mdiFunction, mdiHospitalBox, mdiMagnify, mdiStar, mdiStarCircle } from '@mdi/js'
+import {
+  mdiAccountGroup,
+  mdiAlertCircle,
+  mdiBookmarkMultiple,
+  mdiCogOutline,
+  mdiCommentText,
+  mdiDna,
+  mdiEarth,
+  mdiFlash,
+  mdiFunction,
+  mdiHospitalBox,
+  mdiMagnify,
+  mdiStar,
+  mdiStarCircle
+} from '@mdi/js'
 
 defineProps<{
   open: boolean

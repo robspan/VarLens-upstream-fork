@@ -8,7 +8,14 @@
 import { ref } from 'vue'
 import type { CaseComment, CommentCategory } from '../../../shared/types/api'
 import { useApiService } from './useApiService'
-import { mdiCalendarCheck, mdiFamilyTree, mdiFlask, mdiLightbulbOutline, mdiPill, mdiStethoscope } from '@mdi/js'
+import {
+  mdiCalendarCheck,
+  mdiFamilyTree,
+  mdiFlask,
+  mdiLightbulbOutline,
+  mdiPill,
+  mdiStethoscope
+} from '@mdi/js'
 
 // Cache comments by caseId
 const commentsCache = ref<Map<number, CaseComment[]>>(new Map())

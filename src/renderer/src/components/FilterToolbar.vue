@@ -61,7 +61,10 @@
             icon
             @click="toggleCommented"
           >
-            <v-icon size="small" :icon="filters.hasCommentOnly ? mdiCommentText : mdiCommentTextOutline" />
+            <v-icon
+              size="small"
+              :icon="filters.hasCommentOnly ? mdiCommentText : mdiCommentTextOutline"
+            />
           </v-btn>
         </template>
         {{
@@ -167,7 +170,13 @@ import type { ActiveFilter } from '../../../shared/types/filters'
 import type { FilterDrawerState } from './filterDrawerTypes'
 import { ACMG_FILTER_OPTIONS, applyPresetStateToFilters, isPresetDiverged } from '../utils/filters'
 import { useResponsiveLayout } from '../composables/useResponsiveLayout'
-import { mdiCommentText, mdiCommentTextOutline, mdiInformationOutline, mdiStar, mdiStarOutline } from '@mdi/js'
+import {
+  mdiCommentText,
+  mdiCommentTextOutline,
+  mdiInformationOutline,
+  mdiStar,
+  mdiStarOutline
+} from '@mdi/js'
 
 interface ColumnDef {
   key: string

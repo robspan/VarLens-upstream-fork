@@ -161,7 +161,14 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useResponsiveLayout } from '../composables/useResponsiveLayout'
-import { mdiDotsVertical, mdiFilterCheck, mdiFilterOff, mdiFilterVariant, mdiMicrosoftExcel, mdiTableColumn } from '@mdi/js'
+import {
+  mdiDotsVertical,
+  mdiFilterCheck,
+  mdiFilterOff,
+  mdiFilterVariant,
+  mdiMicrosoftExcel,
+  mdiTableColumn
+} from '@mdi/js'
 
 interface ActiveFilter {
   id: string

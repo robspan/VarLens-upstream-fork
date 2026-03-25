@@ -1,4 +1,19 @@
-import { mdiAlert, mdiAlertCircle, mdiAlertOctagon, mdiArrowExpandHorizontal, mdiCallSplit, mdiCheckCircle, mdiDna, mdiEqual, mdiHelpCircle, mdiHelpCircleOutline, mdiLinkVariant, mdiMinus, mdiSwapHorizontal, mdiTrendingUp } from '@mdi/js'
+import {
+  mdiAlert,
+  mdiAlertCircle,
+  mdiAlertOctagon,
+  mdiArrowExpandHorizontal,
+  mdiCallSplit,
+  mdiCheckCircle,
+  mdiDna,
+  mdiEqual,
+  mdiHelpCircle,
+  mdiHelpCircleOutline,
+  mdiLinkVariant,
+  mdiMinus,
+  mdiSwapHorizontal,
+  mdiTrendingUp
+} from '@mdi/js'
 /**
  * Filter group configurations for consequence types and ClinVar classifications
  * These define logical groupings for multi-select filters with "select all" functionality

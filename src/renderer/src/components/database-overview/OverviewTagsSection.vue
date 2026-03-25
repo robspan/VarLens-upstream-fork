@@ -136,7 +136,14 @@
 import { ref, computed } from 'vue'
 import type { OverviewTag } from '../../../../shared/types/database-overview'
 import { useApiService } from '../../composables/useApiService'
-import { mdiAlert, mdiChevronDown, mdiChevronRight, mdiDelete, mdiPencil, mdiTagMultiple } from '@mdi/js'
+import {
+  mdiAlert,
+  mdiChevronDown,
+  mdiChevronRight,
+  mdiDelete,
+  mdiPencil,
+  mdiTagMultiple
+} from '@mdi/js'
 
 const props = defineProps<{
   tags: OverviewTag[]

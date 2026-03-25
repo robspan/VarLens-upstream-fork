@@ -63,7 +63,13 @@
           >
           <v-menu location="bottom" :close-on-content-click="true">
             <template #activator="{ props: menuProps }">
-              <v-icon v-bind="menuProps" size="x-small" class="ml-1 cursor-pointer" @click.stop :icon="mdiChevronDown" />
+              <v-icon
+                v-bind="menuProps"
+                size="x-small"
+                class="ml-1 cursor-pointer"
+                @click.stop
+                :icon="mdiChevronDown"
+              />
             </template>
             <v-list density="compact" nav>
               <v-list-item

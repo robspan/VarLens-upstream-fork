@@ -36,7 +36,19 @@ import { useApiService } from '../composables/useApiService'
 import { resolveUrlTemplate } from '../utils/externalLinks'
 import type { Variant } from '../../../shared/types/api'
 import type { CohortVariant } from '../../../shared/types/cohort'
-import { mdiBookOpenVariant, mdiChartBox, mdiDatabase, mdiDatabaseSearch, mdiDna, mdiHospitalBox, mdiKeyVariant, mdiMap, mdiOpenInNew, mdiTelescope, mdiTextSearch } from '@mdi/js'
+import {
+  mdiBookOpenVariant,
+  mdiChartBox,
+  mdiDatabase,
+  mdiDatabaseSearch,
+  mdiDna,
+  mdiHospitalBox,
+  mdiKeyVariant,
+  mdiMap,
+  mdiOpenInNew,
+  mdiTelescope,
+  mdiTextSearch
+} from '@mdi/js'
 
 interface Props {
   variant: Variant | CohortVariant

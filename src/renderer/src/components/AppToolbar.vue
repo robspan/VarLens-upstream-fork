@@ -156,7 +156,21 @@ import { useAppState } from '../composables/useAppState'
 import { useResponsiveLayout } from '../composables/useResponsiveLayout'
 import { useCaseMetadata } from '../composables/useCaseMetadata'
 import type { AffectedStatus, CaseSex } from '../../../shared/types/api'
-import { mdiAccount, mdiAccountGroup, mdiChartBoxOutline, mdiChevronDoubleLeft, mdiChevronDoubleRight, mdiCog, mdiDeleteSweep, mdiFilterOff, mdiInformationOutline, mdiLink, mdiTableColumn, mdiTagMultiple, mdiTune } from '@mdi/js'
+import {
+  mdiAccount,
+  mdiAccountGroup,
+  mdiChartBoxOutline,
+  mdiChevronDoubleLeft,
+  mdiChevronDoubleRight,
+  mdiCog,
+  mdiDeleteSweep,
+  mdiFilterOff,
+  mdiInformationOutline,
+  mdiLink,
+  mdiTableColumn,
+  mdiTagMultiple,
+  mdiTune
+} from '@mdi/js'
 
 const router = useRouter()
 

@@ -21,7 +21,12 @@
                 @click="toggleTag(tag.id)"
               >
                 <template #prepend>
-                  <v-icon :color="tag.color" size="small" class="mr-2" :icon="isTagAssigned(tag.id) ? mdiCheckboxMarked : mdiCheckboxBlankOutline" />
+                  <v-icon
+                    :color="tag.color"
+                    size="small"
+                    class="mr-2"
+                    :icon="isTagAssigned(tag.id) ? mdiCheckboxMarked : mdiCheckboxBlankOutline"
+                  />
                 </template>
                 <v-list-item-title class="text-body-medium">{{ tag.name }}</v-list-item-title>
                 <template #append>

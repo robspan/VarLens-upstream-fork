@@ -9,7 +9,14 @@ import {
   type UnifiedTranscriptRow
 } from '../utils/mergeTranscripts'
 import { EMPTY_VALUE_PLACEHOLDER } from '../utils/formatters'
-import { mdiCheckAll, mdiChevronDown, mdiChevronUp, mdiCloud, mdiCloudDownload, mdiDatabase } from '@mdi/js'
+import {
+  mdiCheckAll,
+  mdiChevronDown,
+  mdiChevronUp,
+  mdiCloud,
+  mdiCloudDownload,
+  mdiDatabase
+} from '@mdi/js'
 
 const props = defineProps<{
   variantId: number | null

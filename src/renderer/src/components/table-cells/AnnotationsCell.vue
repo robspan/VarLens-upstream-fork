@@ -180,7 +180,13 @@ import { computed } from 'vue'
 import type { AcmgClassification } from '../../../../main/database/types'
 import type { AnnotationScope } from '../../../../shared/types/annotations'
 import { ACMG_COLORS, ACMG_ABBREV, ACMG_CLASSIFICATIONS } from '../../composables/useAnnotations'
-import { mdiClipboardCheckOutline, mdiCommentText, mdiCommentTextOutline, mdiStar, mdiStarOutline } from '@mdi/js'
+import {
+  mdiClipboardCheckOutline,
+  mdiCommentText,
+  mdiCommentTextOutline,
+  mdiStar,
+  mdiStarOutline
+} from '@mdi/js'
 
 interface Props {
   /** Current starred state (per-case for Case Analysis, global for Cohort) */

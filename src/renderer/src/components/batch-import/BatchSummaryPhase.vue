@@ -23,8 +23,18 @@
       <v-expansion-panel v-for="(detail, i) in summary.details" :key="i">
         <v-expansion-panel-title>
           <div class="d-flex align-center gap-2">
-            <v-icon v-if="detail.status === 'success'" color="success" size="small" :icon="mdiCheckCircle" />
-            <v-icon v-else-if="detail.status === 'failed'" color="error" size="small" :icon="mdiAlertCircle" />
+            <v-icon
+              v-if="detail.status === 'success'"
+              color="success"
+              size="small"
+              :icon="mdiCheckCircle"
+            />
+            <v-icon
+              v-else-if="detail.status === 'failed'"
+              color="error"
+              size="small"
+              :icon="mdiAlertCircle"
+            />
             <v-icon v-else color="secondary" size="small" :icon="mdiSkipNext" />
             <span>{{ detail.fileName }}</span>
             <span v-if="detail.variantCount !== undefined" class="text-body-small ml-2">

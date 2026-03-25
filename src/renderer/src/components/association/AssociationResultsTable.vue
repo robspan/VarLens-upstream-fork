@@ -77,10 +77,13 @@
       <template #[`item.burden_p`]="{ item }">
         <span>
           {{ formatPValue(item.logistic_burden?.p_value) }}
-          <v-icon v-if="item.logistic_burden?.used_firth"
+          <v-icon
+            v-if="item.logistic_burden?.used_firth"
             size="x-small"
             color="warning"
-            title="Firth correction applied" :icon="mdiAlertCircleOutline" />
+            title="Firth correction applied"
+            :icon="mdiAlertCircleOutline"
+          />
         </span>
       </template>
     </v-data-table>

@@ -31,7 +31,10 @@
               variant="text"
               @click="allExpanded ? collapseAll() : expandAll()"
             >
-              <v-icon size="small" :icon="allExpanded ? mdiUnfoldLessHorizontal : mdiUnfoldMoreHorizontal" />
+              <v-icon
+                size="small"
+                :icon="allExpanded ? mdiUnfoldLessHorizontal : mdiUnfoldMoreHorizontal"
+              />
             </v-btn>
           </template>
           {{ allExpanded ? 'Collapse all' : 'Expand all' }}

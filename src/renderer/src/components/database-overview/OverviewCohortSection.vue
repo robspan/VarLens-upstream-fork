@@ -139,7 +139,15 @@
 import { ref, computed } from 'vue'
 import type { OverviewCohortGroup } from '../../../../shared/types/database-overview'
 import { useApiService } from '../../composables/useApiService'
-import { mdiAccountMultiple, mdiAlert, mdiAlertCircleOutline, mdiChevronDown, mdiChevronRight, mdiDelete, mdiPencil } from '@mdi/js'
+import {
+  mdiAccountMultiple,
+  mdiAlert,
+  mdiAlertCircleOutline,
+  mdiChevronDown,
+  mdiChevronRight,
+  mdiDelete,
+  mdiPencil
+} from '@mdi/js'
 
 const props = defineProps<{
   cohortGroups: OverviewCohortGroup[]

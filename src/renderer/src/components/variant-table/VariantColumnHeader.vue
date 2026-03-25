@@ -13,7 +13,7 @@
         <v-tooltip activator="parent" location="bottom">{{ headerColumn.title }}</v-tooltip>
       </span>
       <span v-if="isSorted(headerColumn)" class="sort-indicator ml-1">
-        <v-icon size="x-small">{{ getSortIcon(headerColumn) }}</v-icon>
+        <v-icon size="x-small" :icon="getSortIcon(headerColumn)" />
         <span v-if="sortIndex > 0" class="sort-priority">{{ sortIndex }}</span>
       </span>
       <v-icon v-else size="x-small" class="ml-1 sort-icon-inactive" :icon="mdiSort" />

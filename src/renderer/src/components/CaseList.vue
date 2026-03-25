@@ -75,9 +75,7 @@
           <!-- Multi-select checkbox when in multi-select mode -->
           <v-icon
             v-if="isMultiSelectMode"
-            :icon="
-              isMultiSelected(caseItem.id) ? mdiCheckboxMarked : mdiCheckboxBlankOutline
-            "
+            :icon="isMultiSelected(caseItem.id) ? mdiCheckboxMarked : mdiCheckboxBlankOutline"
             :color="isMultiSelected(caseItem.id) ? 'primary' : 'grey'"
             size="small"
             class="mr-2"
@@ -191,7 +189,18 @@ import { useApiService } from '../composables/useApiService'
 import CaseStatusIcons from './CaseStatusIcons.vue'
 import DeleteCaseDialog from './DeleteCaseDialog.vue'
 import AppSnackbar from './AppSnackbar.vue'
-import { mdiAccountGroup, mdiCheckboxBlankOutline, mdiCheckboxMarked, mdiDelete, mdiFilterOff, mdiFolderOpenOutline, mdiHuman, mdiMagnify, mdiPencil, mdiSelectionOff } from '@mdi/js'
+import {
+  mdiAccountGroup,
+  mdiCheckboxBlankOutline,
+  mdiCheckboxMarked,
+  mdiDelete,
+  mdiFilterOff,
+  mdiFolderOpenOutline,
+  mdiHuman,
+  mdiMagnify,
+  mdiPencil,
+  mdiSelectionOff
+} from '@mdi/js'
 
 const PAGE_SIZE = 50
 

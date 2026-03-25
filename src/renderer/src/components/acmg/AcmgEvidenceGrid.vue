@@ -32,7 +32,12 @@
               @click="$emit('codeClick', code)"
             >
               {{ code }}
-              <v-icon v-if="isCodeSuggested(code)" size="8" class="ml-1" :icon="mdiLightbulbOutline" />
+              <v-icon
+                v-if="isCodeSuggested(code)"
+                size="8"
+                class="ml-1"
+                :icon="mdiLightbulbOutline"
+              />
             </v-btn>
           </template>
           <div class="tooltip-content">

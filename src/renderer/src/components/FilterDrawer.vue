@@ -387,7 +387,22 @@ import { consequenceGroups, clinvarGroups } from '../config/filterGroups'
 import { ACMG_FILTER_OPTIONS_LONG } from '../utils/filters'
 import type { Tag } from '../../../shared/types/api'
 import type { FilterDrawerState } from './filterDrawerTypes'
-import { mdiAlertCircle, mdiBookmarkMultiple, mdiCircle, mdiCogOutline, mdiCommentText, mdiDna, mdiEarth, mdiFlash, mdiFunction, mdiHospitalBox, mdiMagnify, mdiStar, mdiStarCircle, mdiTagMultiple } from '@mdi/js'
+import {
+  mdiAlertCircle,
+  mdiBookmarkMultiple,
+  mdiCircle,
+  mdiCogOutline,
+  mdiCommentText,
+  mdiDna,
+  mdiEarth,
+  mdiFlash,
+  mdiFunction,
+  mdiHospitalBox,
+  mdiMagnify,
+  mdiStar,
+  mdiStarCircle,
+  mdiTagMultiple
+} from '@mdi/js'
 
 defineProps<{
   open: boolean

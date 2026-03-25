@@ -50,7 +50,6 @@
 </template>
 
 <script setup lang="ts">
-/* global console */
 import { ref, computed, watch } from 'vue'
 import { useHpoBundled, type HpoTerm } from '../composables/useHpoBundled'
 import { useDebounce } from '../composables/useDebounce'

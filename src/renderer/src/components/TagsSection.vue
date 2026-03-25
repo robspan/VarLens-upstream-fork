@@ -60,7 +60,6 @@
 </template>
 
 <script setup lang="ts">
-/* global console */
 import { ref, computed, watch, onMounted } from 'vue'
 import { useTags } from '../composables/useTags'
 import type { Tag } from '../../../shared/types/api'

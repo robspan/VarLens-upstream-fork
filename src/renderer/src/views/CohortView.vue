@@ -54,7 +54,6 @@ async function handleNavigateToCase(payload: {
       selectedCaseName.value = selectedCase.name
     }
   } catch (error) {
-    // eslint-disable-next-line no-undef
     console.error('Failed to fetch case name:', error)
   }
 

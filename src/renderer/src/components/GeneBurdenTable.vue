@@ -91,7 +91,6 @@ const loadGeneBurden = async (): Promise<void> => {
     const result = await (api as any).cohort.getGeneBurden()
     geneBurden.value = result
   } catch (error) {
-    // eslint-disable-next-line no-undef
     console.error('Failed to load gene burden:', error)
     geneBurden.value = []
   } finally {

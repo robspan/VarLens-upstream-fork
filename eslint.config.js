@@ -2,6 +2,7 @@ import eslint from '@eslint/js'
 import tseslint from 'typescript-eslint'
 import pluginVue from 'eslint-plugin-vue'
 import prettierRecommended from 'eslint-plugin-prettier/recommended'
+import globals from 'globals'
 
 export default [
   {
@@ -36,6 +37,22 @@ export default [
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/no-empty-object-type': ['error', { allowObjectTypes: 'always' }],
       'vue/multi-word-component-names': 'off'
+    }
+  },
+  {
+    files: ['src/renderer/**/*.{ts,tsx,vue}'],
+    languageOptions: {
+      globals: {
+        ...globals.browser
+      }
+    }
+  },
+  {
+    files: ['src/main/**/*.ts', 'src/preload/**/*.ts'],
+    languageOptions: {
+      globals: {
+        ...globals.node
+      }
     }
   },
   {

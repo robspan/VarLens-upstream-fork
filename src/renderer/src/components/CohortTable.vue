@@ -269,7 +269,6 @@ const snackbar = ref({
 
 const exportToExcel = async (): Promise<void> => {
   if (!api) {
-    // eslint-disable-next-line no-undef
     console.warn('API not available - running outside Electron')
     return
   }

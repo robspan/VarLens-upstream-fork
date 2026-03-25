@@ -214,7 +214,6 @@ async function saveCohortEdit(): Promise<void> {
     cancelCohortEdit()
     emit('refresh')
   } catch (err) {
-    // eslint-disable-next-line no-undef
     console.error('Failed to update cohort group:', err)
   } finally {
     cohortSaving.value = false
@@ -242,7 +241,6 @@ async function executeDeleteCohort(): Promise<void> {
 
     emit('refresh')
   } catch (err) {
-    // eslint-disable-next-line no-undef
     console.error('Failed to delete cohort group:', err)
   } finally {
     cohortDeleting.value = false

@@ -78,7 +78,6 @@
 </template>
 
 <script setup lang="ts">
-/* global console */
 import { ref, computed } from 'vue'
 import { useAnnotations } from '../composables/useAnnotations'
 import InlineEditableText from './InlineEditableText.vue'

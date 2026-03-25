@@ -285,7 +285,6 @@ async function handleSave(): Promise<void> {
     textInput.value = ''
     dateInput.value = ''
   } catch (error) {
-    // eslint-disable-next-line no-undef
     console.error('Failed to save metric:', error)
   } finally {
     isSaving.value = false
@@ -296,7 +295,6 @@ async function handleDelete(metricId: number): Promise<void> {
   try {
     await deleteMetric(props.caseId, metricId)
   } catch (error) {
-    // eslint-disable-next-line no-undef
     console.error('Failed to delete metric:', error)
   }
 }
@@ -327,7 +325,6 @@ async function handleCreateDefinition(): Promise<void> {
     customUnit.value = ''
     customCategory.value = 'Custom'
   } catch (error) {
-    // eslint-disable-next-line no-undef
     console.error('Failed to create metric definition:', error)
   }
 }

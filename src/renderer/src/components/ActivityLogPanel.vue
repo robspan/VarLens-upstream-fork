@@ -56,7 +56,6 @@ async function loadEntries(): Promise<void> {
   try {
     entries.value = await api!.audit.getByEntity(props.entityKey)
   } catch (error) {
-    // eslint-disable-next-line no-undef
     console.error('Failed to load audit entries:', error)
     entries.value = []
   } finally {

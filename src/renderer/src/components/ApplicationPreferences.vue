@@ -70,10 +70,7 @@ const settings = useSettingsStore()
 const { api } = useApiService()
 
 const isOpen = ref(false)
-const cpuCount = ref(
-  // eslint-disable-next-line no-undef
-  navigator.hardwareConcurrency || 4
-)
+const cpuCount = ref(navigator.hardwareConcurrency || 4)
 
 // Get CPU count from main process via typed API
 onMounted(async () => {

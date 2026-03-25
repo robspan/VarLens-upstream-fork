@@ -168,7 +168,6 @@ const hasEmptyCaseNames = computed(() => reviewFiles.value.some((f) => f.caseNam
 /**
  * Re-check duplicates when stripText changes (debounced via watch)
  */
-// eslint-disable-next-line no-undef
 let recheckTimeout: ReturnType<typeof setTimeout> | null = null
 
 // Emit refresh event when dialog closes from summary phase (handles Escape, overlay click, etc.)
@@ -184,9 +183,7 @@ watch(dialog, (newVal, oldVal) => {
 })
 
 watch(stripText, () => {
-  // eslint-disable-next-line no-undef
   if (recheckTimeout !== null) clearTimeout(recheckTimeout)
-  // eslint-disable-next-line no-undef
   recheckTimeout = setTimeout(async () => {
     if (selectedFilePaths.value.length === 0) return
     const checkResult = await api!.batchImport.checkDuplicates(
@@ -437,7 +434,6 @@ onMounted(() => {
 // Cleanup IPC listeners
 onUnmounted(() => {
   cleanupProgress?.()
-  // eslint-disable-next-line no-undef
   if (recheckTimeout !== null) clearTimeout(recheckTimeout)
 })
 

@@ -30,7 +30,6 @@
 </template>
 
 <script setup lang="ts">
-/* global navigator */
 const model = defineModel<boolean>({ default: false })
 
 const isMac =

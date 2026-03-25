@@ -159,7 +159,6 @@
 </template>
 
 <script setup lang="ts">
-/* global navigator */
 import { ref, computed, watch } from 'vue'
 import { useResponsiveLayout } from '../composables/useResponsiveLayout'
 

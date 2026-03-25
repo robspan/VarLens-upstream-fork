@@ -195,7 +195,6 @@ const handleCancel = async (): Promise<void> => {
 const showSuccessAndClose = (result: ImportResult): void => {
   isSuccess.value = true
 
-  // eslint-disable-next-line no-undef
   setTimeout(() => {
     dialog.value = false
     isSuccess.value = false

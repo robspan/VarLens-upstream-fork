@@ -180,7 +180,6 @@ async function handleCreate(): Promise<void> {
     await createComment(props.caseId, newCategory.value, newContent.value.trim())
     newContent.value = ''
   } catch (error) {
-    // eslint-disable-next-line no-undef
     console.error('Failed to create comment:', error)
   } finally {
     isCreating.value = false
@@ -205,7 +204,6 @@ async function handleUpdate(commentId: number): Promise<void> {
     editingId.value = null
     editContent.value = ''
   } catch (error) {
-    // eslint-disable-next-line no-undef
     console.error('Failed to update comment:', error)
   } finally {
     isSaving.value = false
@@ -216,7 +214,6 @@ async function handleDelete(commentId: number): Promise<void> {
   try {
     await deleteComment(props.caseId, commentId)
   } catch (error) {
-    // eslint-disable-next-line no-undef
     console.error('Failed to delete comment:', error)
   }
 }

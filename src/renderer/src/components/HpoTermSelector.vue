@@ -115,7 +115,6 @@ async function performSearch(query: string) {
       searchResults.value = []
     }
   } catch (error) {
-    // eslint-disable-next-line no-undef
     console.error('HPO search failed:', error)
     searchResults.value = []
   } finally {

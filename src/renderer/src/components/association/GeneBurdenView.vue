@@ -138,18 +138,18 @@ let cleanupProgress: (() => void) | null = null
 
 async function loadCases(): Promise<void> {
   if (typeof window === 'undefined') return
-  // eslint-disable-next-line no-undef, @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if (typeof (window as any).api === 'undefined') return
 
   try {
-    // eslint-disable-next-line no-undef, @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const caseList = await (window as any).api.cases.list()
-    // eslint-disable-next-line no-undef, @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const cohorts = await (window as any).api.caseMetadata.listCohorts()
     cohortGroups.value = cohorts
 
     // Load metadata for all cases in parallel
-    // eslint-disable-next-line no-undef, @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const api = (window as any).api
     const caseInfos = await Promise.all(
       caseList.map(async (c: { id: number; name: string }) => {
@@ -188,7 +188,7 @@ async function runAnalysis(config: any): Promise<void> {
   progressTotal.value = 0
 
   // Listen for progress
-  // eslint-disable-next-line no-undef, @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   cleanupProgress = (window as any).api.cohort.onAssociationProgress(
     (progress: { completed: number; total: number }) => {
       progressCompleted.value = progress.completed
@@ -197,7 +197,7 @@ async function runAnalysis(config: any): Promise<void> {
   )
 
   try {
-    // eslint-disable-next-line no-undef, @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (window as any).api.cohort.runAssociation(config)
     if (result !== null && typeof result === 'object' && 'error' in result) {
       throw new Error(String(result.error))
@@ -215,7 +215,7 @@ async function runAnalysis(config: any): Promise<void> {
 }
 
 function cancelAnalysis(): void {
-  // eslint-disable-next-line no-undef, @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ;(window as any).api.cohort.cancelAssociation()
 }
 

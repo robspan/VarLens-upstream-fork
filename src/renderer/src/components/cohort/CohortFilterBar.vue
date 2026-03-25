@@ -268,7 +268,7 @@ watch(
 async function handleSavePreset(data: { name: string; description: string | null }): Promise<void> {
   savingPreset.value = true
   try {
-    // Deep-clone via JSON to strip Vue reactive proxies for IPC serialization
+    // Deep-clone to strip Vue reactive proxies for IPC serialization
     const plainFilters = JSON.parse(JSON.stringify(filters.value))
     const result = await savePreset({
       name: data.name,
@@ -411,14 +411,14 @@ const searchGeneSymbols = async (query: string) => {
     return
   }
 
-  // eslint-disable-next-line no-undef, @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if (typeof window === 'undefined' || typeof (window as any).api === 'undefined') {
     return
   }
 
   loadingGeneSuggestions.value = true
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, no-undef
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (window as any).api.cohort.getVariants({
       gene_symbol: query,
       limit: 100

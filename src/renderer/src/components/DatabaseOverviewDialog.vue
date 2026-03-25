@@ -73,7 +73,6 @@ async function loadOverview(): Promise<void> {
     }
     overview.value = data
   } catch (err) {
-    // eslint-disable-next-line no-undef
     console.error('Failed to load database overview:', err)
     error.value = 'Failed to load database overview.'
   } finally {

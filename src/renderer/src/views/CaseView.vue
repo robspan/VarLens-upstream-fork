@@ -38,7 +38,6 @@ onActivated(async () => {
       try {
         await variantTableRef.value?.refresh()
       } catch (error) {
-        // eslint-disable-next-line no-undef
         console.error('Failed to refresh variant table on activation:', error)
       }
     }

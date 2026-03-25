@@ -5,7 +5,7 @@
  * Used by VariantTable for star toggle and ACMG display.
  */
 
-import { ref } from 'vue'
+import { shallowRef, triggerRef } from 'vue'
 import type {
   VariantAnnotation,
   CaseVariantAnnotation,
@@ -23,10 +23,11 @@ interface AnnotationCache {
 export const MAX_CACHE_SIZE = 5000
 
 // Cache annotations by variant key (chr:pos:ref:alt)
-const annotationCache = ref<Map<string, AnnotationCache>>(new Map())
+// shallowRef avoids deep reactive proxies on 5000+ Map entries
+const annotationCache = shallowRef<Map<string, AnnotationCache>>(new Map())
 
 // Loading states per variant key
-const loadingStates = ref<Map<string, boolean>>(new Map())
+const loadingStates = shallowRef<Map<string, boolean>>(new Map())
 
 /**
  * LRU-aware cache setter. Moves existing keys to the end (most-recently-used)
@@ -45,6 +46,13 @@ function cacheSet(key: string, value: AnnotationCache): void {
     if (oldestKey === undefined) break
     cache.delete(oldestKey)
   }
+  triggerRef(annotationCache)
+}
+
+/** Set loading state and trigger shallowRef reactivity. */
+function setLoading(key: string, value: boolean): void {
+  loadingStates.value.set(key, value)
+  triggerRef(loadingStates)
 }
 
 export function useAnnotations() {
@@ -132,14 +140,14 @@ export function useAnnotations() {
       return
     }
 
-    loadingStates.value.set(key, true)
+    setLoading(key, true)
     try {
       const result = await api.annotations.getForVariant(caseId, chr, pos, ref, alt)
       cacheSet(key, result)
     } catch (error) {
       console.error('Failed to load annotations:', error)
     } finally {
-      loadingStates.value.set(key, false)
+      setLoading(key, false)
     }
   }
 
@@ -217,14 +225,14 @@ export function useAnnotations() {
       return
     }
 
-    loadingStates.value.set(key, true)
+    setLoading(key, true)
     try {
       const global = await api.annotations.getGlobal(chr, pos, ref, alt)
       cacheSet(key, { global, perCase: null })
     } catch (error) {
       console.error('Failed to load global annotations:', error)
     } finally {
-      loadingStates.value.set(key, false)
+      setLoading(key, false)
     }
   }
 
@@ -604,6 +612,8 @@ export function useAnnotations() {
   function clearCache(): void {
     annotationCache.value.clear()
     loadingStates.value.clear()
+    triggerRef(annotationCache)
+    triggerRef(loadingStates)
   }
 
   return {
@@ -644,6 +654,8 @@ export function useAnnotations() {
 export function _resetAnnotationsForTesting(): void {
   annotationCache.value.clear()
   loadingStates.value.clear()
+  triggerRef(annotationCache)
+  triggerRef(loadingStates)
 }
 
 // ACMG classification values in display order

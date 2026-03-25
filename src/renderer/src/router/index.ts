@@ -1,6 +1,4 @@
 import { createRouter, createMemoryHistory } from 'vue-router'
-import CaseView from '../views/CaseView.vue'
-import CohortView from '../views/CohortView.vue'
 
 /**
  * Vue Router for VarLens.
@@ -8,6 +6,8 @@ import CohortView from '../views/CohortView.vue'
  * Uses memory history (no URL bar in Electron) with two main routes:
  * - /case — single case analysis (default)
  * - /cohort — multi-case cohort analysis
+ *
+ * Both routes are lazy-loaded to reduce initial bundle size.
  */
 const router = createRouter({
   history: createMemoryHistory(),
@@ -19,12 +19,12 @@ const router = createRouter({
     {
       path: '/case',
       name: 'case',
-      component: CaseView
+      component: () => import('../views/CaseView.vue')
     },
     {
       path: '/cohort',
       name: 'cohort',
-      component: CohortView
+      component: () => import('../views/CohortView.vue')
     }
   ]
 })

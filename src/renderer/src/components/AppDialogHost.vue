@@ -7,12 +7,12 @@
   <AppSnackbar ref="snackbarRef" />
   <LogViewer v-model:open="logViewerOpen" />
   <DisclaimerDialog ref="disclaimerRef" @acknowledged="handleDisclaimerAcknowledged" />
-  <FaqDialog ref="faqDialogRef" />
-  <ExternalLinksSettings ref="externalLinksSettingsRef" />
-  <ApplicationPreferences ref="applicationPreferencesRef" />
-  <TagManagementDialog ref="tagManagementDialogRef" />
-  <DatabaseOverviewDialog ref="databaseOverviewDialogRef" />
-  <DeleteAllCasesDialog ref="deleteAllCasesDialogRef" />
+  <FaqDialog v-if="faqMounted" ref="faqDialogRef" />
+  <ExternalLinksSettings v-if="externalLinksMounted" ref="externalLinksSettingsRef" />
+  <ApplicationPreferences v-if="preferencesMounted" ref="applicationPreferencesRef" />
+  <TagManagementDialog v-if="tagsMounted" ref="tagManagementDialogRef" />
+  <DatabaseOverviewDialog v-if="dbOverviewMounted" ref="databaseOverviewDialogRef" />
+  <DeleteAllCasesDialog v-if="deleteAllMounted" ref="deleteAllCasesDialogRef" />
   <CaseMetadataModal
     v-if="selectedCaseId"
     ref="caseMetadataModalRef"
@@ -24,19 +24,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, defineAsyncComponent, onMounted, nextTick } from 'vue'
 import ImportDialog from './ImportDialog.vue'
 import BatchImportDialog from './BatchImportDialog.vue'
 import AppSnackbar from './AppSnackbar.vue'
 import LogViewer from './LogViewer.vue'
 import DisclaimerDialog from './DisclaimerDialog.vue'
-import FaqDialog from './FaqDialog.vue'
-import ExternalLinksSettings from './ExternalLinksSettings.vue'
-import ApplicationPreferences from './ApplicationPreferences.vue'
-import TagManagementDialog from './TagManagementDialog.vue'
-import DatabaseOverviewDialog from './DatabaseOverviewDialog.vue'
-import DeleteAllCasesDialog from './DeleteAllCasesDialog.vue'
 import CaseMetadataModal from './CaseMetadataModal.vue'
+
+// Lazy-load rarely-used dialogs to reduce initial render cost
+const FaqDialog = defineAsyncComponent(() => import('./FaqDialog.vue'))
+const ExternalLinksSettings = defineAsyncComponent(() => import('./ExternalLinksSettings.vue'))
+const ApplicationPreferences = defineAsyncComponent(() => import('./ApplicationPreferences.vue'))
+const TagManagementDialog = defineAsyncComponent(() => import('./TagManagementDialog.vue'))
+const DatabaseOverviewDialog = defineAsyncComponent(() => import('./DatabaseOverviewDialog.vue'))
+const DeleteAllCasesDialog = defineAsyncComponent(() => import('./DeleteAllCasesDialog.vue'))
 import { useAppState } from '../composables/useAppState'
 import { useVersionGating } from '../composables/useVersionGating'
 import { logService } from '../services/LogService'
@@ -69,6 +71,14 @@ const caseMetadataModalRef = ref<InstanceType<typeof CaseMetadataModal> | null>(
 
 // Log viewer state
 const logViewerOpen = ref(false)
+
+// Lazy dialog mount flags — only mount component after first open
+const faqMounted = ref(false)
+const externalLinksMounted = ref(false)
+const preferencesMounted = ref(false)
+const tagsMounted = ref(false)
+const dbOverviewMounted = ref(false)
+const deleteAllMounted = ref(false)
 
 // Disclaimer acknowledgment state
 const disclaimerAcknowledged = ref(false)
@@ -118,12 +128,36 @@ defineExpose({
   showBatchImportDialog: (mode: 'files' | 'folder' | 'zip') =>
     batchImportDialogRef.value?.show(mode),
   showDisclaimer: () => disclaimerRef.value?.show(),
-  showFaq: () => faqDialogRef.value?.show(),
-  showExternalLinks: () => externalLinksSettingsRef.value?.show(),
-  showPreferences: () => applicationPreferencesRef.value?.show(),
-  showTagManagement: () => tagManagementDialogRef.value?.show(),
-  showDatabaseOverview: () => databaseOverviewDialogRef.value?.show(),
-  showDeleteAllCases: (count: number) => deleteAllCasesDialogRef.value?.show(count),
+  showFaq: async () => {
+    faqMounted.value = true
+    await nextTick()
+    faqDialogRef.value?.show()
+  },
+  showExternalLinks: async () => {
+    externalLinksMounted.value = true
+    await nextTick()
+    externalLinksSettingsRef.value?.show()
+  },
+  showPreferences: async () => {
+    preferencesMounted.value = true
+    await nextTick()
+    applicationPreferencesRef.value?.show()
+  },
+  showTagManagement: async () => {
+    tagsMounted.value = true
+    await nextTick()
+    tagManagementDialogRef.value?.show()
+  },
+  showDatabaseOverview: async () => {
+    dbOverviewMounted.value = true
+    await nextTick()
+    databaseOverviewDialogRef.value?.show()
+  },
+  showDeleteAllCases: async (count: number) => {
+    deleteAllMounted.value = true
+    await nextTick()
+    return deleteAllCasesDialogRef.value?.show(count)
+  },
   showCaseMetadata: () => caseMetadataModalRef.value?.show(),
   showSnackbar: (message: string, type: 'success' | 'error') =>
     snackbarRef.value?.show(message, type),

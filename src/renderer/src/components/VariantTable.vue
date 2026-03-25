@@ -665,10 +665,9 @@ defineExpose({
   vertical-align: bottom;
 }
 
-/* Clickable table rows with improved hover */
+/* Clickable table rows */
 :deep(.v-data-table tbody tr) {
   cursor: pointer;
-  transition: background-color 0.15s ease;
 }
 
 /* Zebra striping for better scanability */
@@ -680,7 +679,6 @@ defineExpose({
 :deep(.v-data-table tbody tr.variant-row--selected) {
   background-color: color-mix(in srgb, rgb(var(--v-theme-primary)) 10%, transparent) !important;
   border-left: 4px solid rgb(var(--v-theme-primary)) !important;
-  transition: background-color 0.15s ease;
 }
 
 :deep(.v-data-table tbody tr.variant-row--selected td:first-child) {
@@ -695,6 +693,11 @@ defineExpose({
 /* Selected + hover - slightly darker */
 :deep(.v-data-table tbody tr.variant-row--selected:hover) {
   background-color: color-mix(in srgb, rgb(var(--v-theme-primary)) 18%, transparent) !important;
+}
+
+/* CSS containment: each cell is layout-independent */
+:deep(.v-data-table tbody td) {
+  contain: layout style;
 }
 
 /* Column max-width with ellipsis and horizontal scroll */

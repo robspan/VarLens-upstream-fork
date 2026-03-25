@@ -174,6 +174,7 @@ export function useAnnotations() {
         case_id: caseId,
         variant_id: variantId
       } as CaseVariantAnnotation
+      triggerRef(annotationCache)
     }
 
     try {
@@ -193,6 +194,7 @@ export function useAnnotations() {
           ...current.perCase,
           starred: currentStarred ? 1 : 0
         } as CaseVariantAnnotation
+        triggerRef(annotationCache)
       }
     }
   }
@@ -266,6 +268,7 @@ export function useAnnotations() {
         ...current.global,
         starred: newStarred ? 1 : 0
       } as VariantAnnotation
+      triggerRef(annotationCache)
     }
 
     try {
@@ -286,6 +289,7 @@ export function useAnnotations() {
           starred: currentStarred ? 1 : 0
         } as VariantAnnotation
       }
+      triggerRef(annotationCache)
     }
   }
 
@@ -308,6 +312,7 @@ export function useAnnotations() {
         ...current.global,
         acmg_classification: classification
       } as VariantAnnotation
+      triggerRef(annotationCache)
     }
 
     try {
@@ -328,6 +333,7 @@ export function useAnnotations() {
           acmg_classification: previousClassification
         } as VariantAnnotation
       }
+      triggerRef(annotationCache)
     }
   }
 
@@ -362,6 +368,7 @@ export function useAnnotations() {
         ...current.global,
         global_comment: comment
       } as VariantAnnotation
+      triggerRef(annotationCache)
     }
 
     try {
@@ -382,6 +389,7 @@ export function useAnnotations() {
           global_comment: previousComment
         } as VariantAnnotation
       }
+      triggerRef(annotationCache)
     }
   }
 
@@ -408,6 +416,7 @@ export function useAnnotations() {
         case_id: caseId,
         variant_id: variantId
       } as CaseVariantAnnotation
+      triggerRef(annotationCache)
     }
 
     try {
@@ -428,6 +437,7 @@ export function useAnnotations() {
           per_case_comment: previousComment
         } as CaseVariantAnnotation
       }
+      triggerRef(annotationCache)
     }
   }
 
@@ -476,6 +486,7 @@ export function useAnnotations() {
         case_id: caseId,
         variant_id: variantId
       } as CaseVariantAnnotation
+      triggerRef(annotationCache)
     }
 
     try {
@@ -496,6 +507,7 @@ export function useAnnotations() {
           acmg_classification: previousClassification
         } as CaseVariantAnnotation
       }
+      triggerRef(annotationCache)
     }
   }
 
@@ -543,6 +555,7 @@ export function useAnnotations() {
         case_id: caseId,
         variant_id: variantId
       } as CaseVariantAnnotation
+      triggerRef(annotationCache)
     }
 
     try {
@@ -587,6 +600,7 @@ export function useAnnotations() {
         acmg_classification: classification,
         acmg_evidence: evidenceJson
       } as VariantAnnotation
+      triggerRef(annotationCache)
     }
 
     try {

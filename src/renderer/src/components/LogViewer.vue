@@ -130,7 +130,6 @@
 </template>
 
 <script setup lang="ts">
-/* global window, performance */
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useLogStore } from '../stores/logStore'

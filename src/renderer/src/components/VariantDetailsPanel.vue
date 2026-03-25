@@ -168,7 +168,6 @@
 </template>
 
 <script setup lang="ts">
-/* global window */
 import { onMounted, onUnmounted, computed, watch, defineAsyncComponent } from 'vue'
 import { usePanelResize } from '../composables/usePanelResize'
 import { useResponsiveLayout } from '../composables/useResponsiveLayout'

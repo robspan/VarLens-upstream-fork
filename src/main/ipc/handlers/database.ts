@@ -16,6 +16,8 @@ import {
   DatabaseRekeySchema,
   FilePathSchema
 } from '../../../shared/types/ipc-schemas'
+import { triggerStartupRebuildIfNeeded } from './cohort'
+import { initDbPool } from '../dbPoolManager'
 
 export function registerDatabaseHandlers({
   ipcMain,
@@ -104,6 +106,18 @@ export function registerDatabaseHandlers({
       // Try to open with password (or without if plaintext)
       try {
         manager.open(vPath, vPassword)
+        // Initialise worker pool for off-thread reads (best effort)
+        try {
+          await initDbPool(vPath, vPassword)
+        } catch {
+          mainLogger.warn('DbPool init failed — reads will use main thread', 'database')
+        }
+        // Trigger async cohort summary rebuild if needed (non-blocking)
+        try {
+          triggerStartupRebuildIfNeeded(getDb())
+        } catch {
+          // Best effort — don't block database open
+        }
         const info = manager.getCurrentInfo()
         return {
           success: true,
@@ -135,6 +149,13 @@ export function registerDatabaseHandlers({
 
       const manager = getDbManager()
       manager.createDatabase(validated.data.path, validated.data.password)
+
+      // Initialise worker pool for off-thread reads (best effort)
+      try {
+        await initDbPool(validated.data.path, validated.data.password)
+      } catch {
+        mainLogger.warn('DbPool init failed — reads will use main thread', 'database')
+      }
 
       const info = manager.getCurrentInfo()
       return {

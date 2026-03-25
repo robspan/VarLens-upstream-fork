@@ -270,6 +270,83 @@ describe('Variant Operations', () => {
     })
   })
 
+  describe('bulk insert lifecycle', () => {
+    it('beginBulkInsert/insertBatch/finishBulkInsert rebuilds FTS once', () => {
+      const caseId = createTestCase(service, 'lifecycle-case')
+
+      service.variants.beginBulkInsert()
+
+      // Verify FTS triggers are dropped by checking sqlite_master
+      const triggerCount = (
+        service.database
+          .prepare(
+            `SELECT COUNT(*) as cnt FROM sqlite_master WHERE type='trigger' AND name LIKE 'variants_fts%'`
+          )
+          .get() as { cnt: number }
+      ).cnt
+      expect(triggerCount).toBe(0)
+
+      // Insert two batches with different gene symbols
+      const batch1 = createTestVariants(5, { genePrefix: 'BATCH1_GENE', startPos: 1000 })
+      const batch2 = createTestVariants(5, { genePrefix: 'BATCH2_GENE', startPos: 2000 })
+
+      service.variants.insertBatch(batch1, caseId)
+      service.variants.insertBatch(batch2, caseId)
+
+      service.variants.finishBulkInsert(caseId, 10)
+
+      // Verify FTS triggers are recreated
+      const triggersAfter = (
+        service.database
+          .prepare(
+            `SELECT COUNT(*) as cnt FROM sqlite_master WHERE type='trigger' AND name LIKE 'variants_fts%'`
+          )
+          .get() as { cnt: number }
+      ).cnt
+      expect(triggersAfter).toBeGreaterThan(0)
+
+      // Verify FTS search works across both batches
+      const results1 = service.variants.searchVariants(caseId, 'BATCH1_GENE')
+      expect(results1.length).toBe(5)
+
+      const results2 = service.variants.searchVariants(caseId, 'BATCH2_GENE')
+      expect(results2.length).toBe(5)
+
+      // Verify variant count is correct
+      expect(service.variants.getVariantCount(caseId)).toBe(10)
+    })
+
+    it('insertVariantsBatch still works for single-batch calls (backward compat)', () => {
+      const caseId = createTestCase(service, 'compat-case')
+      const variants = [
+        {
+          chr: '1',
+          pos: 10000,
+          ref: 'A',
+          alt: 'G',
+          gene_symbol: 'COMPAT_GENE_ABC',
+          consequence: 'missense_variant',
+          gnomad_af: 0.01,
+          cadd: 25,
+          clinvar: null
+        }
+      ]
+
+      const count = service.variants.insertVariantsBatch(caseId, variants)
+
+      expect(count).toBe(1)
+
+      // FTS should work immediately after the single call
+      const results = service.variants.searchVariants(caseId, 'COMPAT_GENE')
+      expect(results.length).toBe(1)
+      expect(results[0].gene_symbol).toBe('COMPAT_GENE_ABC')
+
+      // Case variant count should be updated
+      const updatedCase = service.cases.getCase(caseId)
+      expect(updatedCase.variant_count).toBe(1)
+    })
+  })
+
   describe('getVariantCount', () => {
     it('returns 0 for case with no variants', () => {
       const caseId = createTestCase(service, 'empty-case')
@@ -1366,6 +1443,156 @@ describe('Variant Operations', () => {
         expect(v.gnomad_af === null || v.gnomad_af <= 0.05).toBe(true)
         expect(v.clinvar).toBe('pathogenic')
       }
+    })
+  })
+
+  describe('getFilterOptions', () => {
+    it('returns correct structure with consequences, funcs, clinvars, ranges, and columnMeta', () => {
+      const caseId = createTestCase(service, 'filter-opts')
+      const variants = [
+        {
+          chr: '1',
+          pos: 1000,
+          ref: 'A',
+          alt: 'G',
+          gene_symbol: 'BRCA1',
+          consequence: 'missense_variant',
+          gnomad_af: 0.001,
+          cadd: 25.5,
+          clinvar: 'pathogenic',
+          func: 'exonic',
+          qual: 100,
+          hpo_sim_score: 0.8,
+          gt_num: '0/1',
+          transcript: 'NM_001',
+          cdna: 'c.100A>G',
+          aa_change: 'p.Thr34Ala',
+          moi: 'AD'
+        },
+        {
+          chr: '2',
+          pos: 2000,
+          ref: 'C',
+          alt: 'T',
+          gene_symbol: 'TP53',
+          consequence: 'stop_gained',
+          gnomad_af: 0.05,
+          cadd: 35.0,
+          clinvar: 'likely_pathogenic',
+          func: 'splicing',
+          qual: 200,
+          hpo_sim_score: 0.6,
+          gt_num: '1/1',
+          transcript: 'NM_002',
+          cdna: 'c.200C>T',
+          aa_change: 'p.Arg67Ter',
+          moi: 'AR'
+        },
+        {
+          chr: '1',
+          pos: 3000,
+          ref: 'G',
+          alt: 'A',
+          gene_symbol: 'BRCA1',
+          consequence: 'missense_variant',
+          gnomad_af: null,
+          cadd: null,
+          clinvar: null,
+          func: 'exonic',
+          qual: null,
+          hpo_sim_score: null,
+          gt_num: '0/1',
+          transcript: 'NM_001',
+          cdna: 'c.300G>A',
+          aa_change: 'p.Gly100Asp',
+          moi: 'AD'
+        }
+      ]
+      service.variants.insertVariantsBatch(caseId, variants)
+
+      const opts = service.variants.getFilterOptions(caseId)
+
+      // Top-level arrays
+      expect(opts.consequences.sort()).toEqual(['missense_variant', 'stop_gained'])
+      expect(opts.funcs.sort()).toEqual(['exonic', 'splicing'])
+      expect(opts.clinvars.sort()).toEqual(['likely_pathogenic', 'pathogenic'])
+
+      // Numeric ranges
+      expect(opts.minCadd).toBe(25.5)
+      expect(opts.maxCadd).toBe(35.0)
+      expect(opts.minGnomadAf).toBe(0.001)
+      expect(opts.maxGnomadAf).toBe(0.05)
+
+      // columnMeta array should have entries for all SORTABLE_COLUMNS (16 columns)
+      expect(opts.columnMeta).toHaveLength(16)
+
+      // Check a specific numeric column
+      const caddMeta = opts.columnMeta.find((m) => m.key === 'cadd')
+      expect(caddMeta).toBeDefined()
+      expect(caddMeta!.dataType).toBe('numeric')
+      expect(caddMeta!.distinctCount).toBe(2)
+      expect(caddMeta!.min).toBe(25.5)
+      expect(caddMeta!.max).toBe(35.0)
+      expect(caddMeta!.distinctValues).toBeDefined()
+      expect(caddMeta!.distinctValues!.sort()).toEqual(['25.5', '35.0'].sort())
+
+      // Check a text column
+      const geneMeta = opts.columnMeta.find((m) => m.key === 'gene_symbol')
+      expect(geneMeta).toBeDefined()
+      expect(geneMeta!.dataType).toBe('text')
+      expect(geneMeta!.distinctCount).toBe(2)
+      expect(geneMeta!.distinctValues).toBeDefined()
+      expect(geneMeta!.distinctValues!.sort()).toEqual(['BRCA1', 'TP53'])
+
+      // Column with all-null values should have distinctCount 0 and no distinctValues
+      // (hpo_sim_score has 2 non-null values, so check a different pattern)
+      const hpoMeta = opts.columnMeta.find((m) => m.key === 'hpo_sim_score')
+      expect(hpoMeta).toBeDefined()
+      expect(hpoMeta!.dataType).toBe('numeric')
+      expect(hpoMeta!.distinctCount).toBe(2)
+    })
+
+    it('returns empty arrays for case with no variants', () => {
+      const caseId = createTestCase(service, 'empty-filter-opts')
+
+      const opts = service.variants.getFilterOptions(caseId)
+
+      expect(opts.consequences).toEqual([])
+      expect(opts.funcs).toEqual([])
+      expect(opts.clinvars).toEqual([])
+      expect(opts.minCadd).toBeNull()
+      expect(opts.maxCadd).toBeNull()
+      expect(opts.minGnomadAf).toBeNull()
+      expect(opts.maxGnomadAf).toBeNull()
+      expect(opts.columnMeta).toHaveLength(16)
+      expect(opts.columnMeta.every((m) => m.distinctCount === 0)).toBe(true)
+    })
+
+    it('does not populate distinctValues when cardinality exceeds threshold', () => {
+      const caseId = createTestCase(service, 'high-card')
+      // Create 60 variants with unique gene symbols (exceeds DISTINCT_THRESHOLD of 50)
+      const variants: Omit<Variant, 'id' | 'case_id'>[] = []
+      for (let i = 0; i < 60; i++) {
+        variants.push({
+          chr: '1',
+          pos: 1000 + i * 100,
+          ref: 'A',
+          alt: 'G',
+          gene_symbol: `GENE_${String(i).padStart(3, '0')}`,
+          consequence: 'missense_variant',
+          gnomad_af: 0.01,
+          cadd: 20,
+          clinvar: null
+        })
+      }
+      service.variants.insertVariantsBatch(caseId, variants)
+
+      const opts = service.variants.getFilterOptions(caseId)
+
+      const geneMeta = opts.columnMeta.find((m) => m.key === 'gene_symbol')
+      expect(geneMeta).toBeDefined()
+      expect(geneMeta!.distinctCount).toBe(60)
+      expect(geneMeta!.distinctValues).toBeUndefined()
     })
   })
 

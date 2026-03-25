@@ -139,6 +139,7 @@
     "markdown-it": "^14.1.0",
     "nanoid": "^5.1.7",
     "pinia": "^3.0.4",
+    "piscina": "^5.1.4",
     "plotly.js-dist-min": "^3.4.0",
     "stream-json": "^1.9.1",
     "vue-router": "^5.0.4",

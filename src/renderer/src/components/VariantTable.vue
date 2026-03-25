@@ -275,7 +275,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, toRef, watch, onMounted, nextTick } from 'vue'
+import { ref, computed, toRef, watch, onMounted, onActivated, onDeactivated, nextTick } from 'vue'
 import type { Variant, VariantFilter } from '../../../shared/types/api'
 import type { AnnotationScope } from '../../../shared/types/annotations'
 import type { ColumnFilterMeta } from '../../../shared/types/column-filters'
@@ -464,11 +464,20 @@ const handleRowClick = (_event: unknown, { item }: { item: Variant }): void => {
   emit('row-click', item)
 }
 
+// KeepAlive: disable keyboard handlers when this view is cached but not active
+const viewActive = ref(true)
+onActivated(() => {
+  viewActive.value = true
+})
+onDeactivated(() => {
+  viewActive.value = false
+})
+
 // Keyboard navigation handlers
 onKeyStroke(
   'ArrowDown',
   (e: KeyboardEvent) => {
-    if (isInputFocused()) return
+    if (!viewActive.value || isInputFocused()) return
     e.preventDefault()
     moveDown()
   },
@@ -478,7 +487,7 @@ onKeyStroke(
 onKeyStroke(
   'ArrowUp',
   (e: KeyboardEvent) => {
-    if (isInputFocused()) return
+    if (!viewActive.value || isInputFocused()) return
     e.preventDefault()
     moveUp()
   },
@@ -488,7 +497,7 @@ onKeyStroke(
 onKeyStroke(
   'Enter',
   (e: KeyboardEvent) => {
-    if (isInputFocused()) return
+    if (!viewActive.value || isInputFocused()) return
     if (selectedItem.value === null) return
     e.preventDefault()
     emit('row-click', selectedItem.value)
@@ -499,7 +508,7 @@ onKeyStroke(
 onKeyStroke(
   'Escape',
   (e: KeyboardEvent) => {
-    if (isInputFocused()) return
+    if (!viewActive.value || isInputFocused()) return
     e.preventDefault()
     clearSelection()
     selectedVariantId.value = null
@@ -512,7 +521,7 @@ onKeyStroke(
 onKeyStroke(
   's',
   (e: KeyboardEvent) => {
-    if (isInputFocused()) return
+    if (!viewActive.value || isInputFocused()) return
     if (selectedItem.value === null) return
     e.preventDefault()
     annotationDialogsRef.value?.handleStarToggle(selectedItem.value)
@@ -523,7 +532,7 @@ onKeyStroke(
 onKeyStroke(
   'c',
   (e: KeyboardEvent) => {
-    if (isInputFocused()) return
+    if (!viewActive.value || isInputFocused()) return
     if (selectedItem.value === null) return
     e.preventDefault()
     annotationDialogsRef.value?.openCommentDialog(selectedItem.value)
@@ -534,7 +543,7 @@ onKeyStroke(
 onKeyStroke(
   'a',
   (e: KeyboardEvent) => {
-    if (isInputFocused()) return
+    if (!viewActive.value || isInputFocused()) return
     if (selectedItem.value === null) return
     e.preventDefault()
     annotationDialogsRef.value?.openAcmgEvidenceDialog(selectedItem.value)
@@ -665,10 +674,9 @@ defineExpose({
   vertical-align: bottom;
 }
 
-/* Clickable table rows with improved hover */
+/* Clickable table rows */
 :deep(.v-data-table tbody tr) {
   cursor: pointer;
-  transition: background-color 0.15s ease;
 }
 
 /* Zebra striping for better scanability */
@@ -680,7 +688,6 @@ defineExpose({
 :deep(.v-data-table tbody tr.variant-row--selected) {
   background-color: color-mix(in srgb, rgb(var(--v-theme-primary)) 10%, transparent) !important;
   border-left: 4px solid rgb(var(--v-theme-primary)) !important;
-  transition: background-color 0.15s ease;
 }
 
 :deep(.v-data-table tbody tr.variant-row--selected td:first-child) {
@@ -695,6 +702,11 @@ defineExpose({
 /* Selected + hover - slightly darker */
 :deep(.v-data-table tbody tr.variant-row--selected:hover) {
   background-color: color-mix(in srgb, rgb(var(--v-theme-primary)) 18%, transparent) !important;
+}
+
+/* CSS containment: each cell is layout-independent */
+:deep(.v-data-table tbody td) {
+  contain: layout style;
 }
 
 /* Column max-width with ellipsis and horizontal scroll */

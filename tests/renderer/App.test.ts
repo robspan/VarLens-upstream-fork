@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createVuetify } from 'vuetify'
 import { createPinia } from 'pinia'
+import { createRouter, createMemoryHistory } from 'vue-router'
 import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
 import App from '../../src/renderer/src/App.vue'
@@ -141,20 +142,33 @@ Object.defineProperty(global, 'navigator', {
 
 const vuetify = createVuetify({ components, directives })
 
+const router = createRouter({
+  history: createMemoryHistory(),
+  routes: [
+    { path: '/', redirect: '/case' },
+    { path: '/case', name: 'case', component: { template: '<div>Case</div>' } },
+    { path: '/cohort', name: 'cohort', component: { template: '<div>Cohort</div>' } }
+  ]
+})
+
 describe('App.vue', () => {
-  it('renders VarLens title', () => {
+  it('renders VarLens title', async () => {
+    router.push('/')
+    await router.isReady()
     const wrapper = mount(App, {
       global: {
-        plugins: [vuetify, createPinia()]
+        plugins: [vuetify, createPinia(), router]
       }
     })
     expect(wrapper.text()).toContain('VarLens')
   })
 
-  it('uses Vuetify v-app component', () => {
+  it('uses Vuetify v-app component', async () => {
+    router.push('/')
+    await router.isReady()
     const wrapper = mount(App, {
       global: {
-        plugins: [vuetify, createPinia()]
+        plugins: [vuetify, createPinia(), router]
       }
     })
     expect(wrapper.find('.v-application').exists()).toBe(true)

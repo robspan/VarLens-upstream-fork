@@ -47,6 +47,9 @@ export interface AppStateReturn {
   filterToolbarRef: Ref<InstanceType<typeof FilterToolbar> | null>
   cohortViewRef: Ref<InstanceType<typeof CohortViewComponent> | null>
 
+  // Data generation (incremented on import/delete for KeepAlive invalidation)
+  dataGeneration: Ref<number>
+
   // Snackbar
   setSnackbarHandler: (
     fn: (message: string, type: string, options?: Record<string, unknown>) => void
@@ -88,6 +91,9 @@ export function createAppState(): AppStateReturn {
   const variantTableRef = ref<InstanceType<typeof VariantTable> | null>(null)
   const filterToolbarRef = ref<InstanceType<typeof FilterToolbar> | null>(null)
   const cohortViewRef = ref<InstanceType<typeof CohortViewComponent> | null>(null)
+
+  // Data generation counter — incremented on import/delete for KeepAlive stale data detection
+  const dataGeneration = ref(0)
 
   // Snackbar callback (set by App.vue, called by views)
   let showSnackbar:
@@ -137,6 +143,9 @@ export function createAppState(): AppStateReturn {
     variantTableRef,
     filterToolbarRef,
     cohortViewRef,
+
+    // Data generation
+    dataGeneration,
 
     // Snackbar
     setSnackbarHandler,

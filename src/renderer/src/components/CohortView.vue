@@ -22,15 +22,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, provide } from 'vue'
+import { ref, provide, onActivated } from 'vue'
 import CohortTable from './CohortTable.vue'
 import GeneBurdenView from './association/GeneBurdenView.vue'
 import { FiltersKey, createFilters } from '../composables/useFilters'
+import { useAppState } from '../composables/useAppState'
 import type { CohortVariant } from '../../../shared/types/cohort'
 
 // Create and provide filter state for child components (CohortTable, CohortFilterBar)
 const filtersInstance = createFilters()
 provide(FiltersKey, filtersInstance)
+
+// KeepAlive stale data detection: refresh if data changed while view was cached
+const { dataGeneration } = useAppState()
+const lastSeenGeneration = ref(dataGeneration.value)
 
 defineEmits<{
   'navigate-to-case': [
@@ -59,6 +64,18 @@ const refresh = async (): Promise<void> => {
     await burdenViewRef.value?.refresh()
   }
 }
+
+onActivated(async () => {
+  if (dataGeneration.value !== lastSeenGeneration.value) {
+    lastSeenGeneration.value = dataGeneration.value
+    try {
+      await refresh()
+    } catch (error) {
+      // eslint-disable-next-line no-undef
+      console.error('Failed to refresh cohort view on activation:', error)
+    }
+  }
+})
 
 defineExpose({ refresh })
 </script>

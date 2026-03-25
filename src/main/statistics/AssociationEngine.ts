@@ -2,27 +2,38 @@ import type {
   AssociationConfig,
   AssociationResults,
   GeneAssociationResult,
+  GeneContingencyData,
   GeneAssociationResultWithFDR
 } from './types'
 import { AssociationDataBuilder } from '../database/AssociationDataBuilder'
 import { benjaminiHochberg } from './fdr'
 import { WorkerPool } from './WorkerPool'
 import type Database from 'better-sqlite3-multiple-ciphers'
+import type { DbPool } from '../database/DbPool'
 
 /**
  * Main orchestrator for association analysis.
  * Distributes gene-level statistical tests across worker threads
  * using WorkerPool for parallel computation.
+ *
+ * When a DbPool is provided, the data-building step (heavy SQL + JS grouping)
+ * runs off the main Electron thread via the Piscina worker pool.
  */
 export class AssociationEngine {
   private db: Database.Database
   private onProgress?: (completed: number, total: number) => void
   private pool: WorkerPool | null = null
+  private dbPool: DbPool | null
   private aborted = false
 
-  constructor(db: Database.Database, onProgress?: (completed: number, total: number) => void) {
+  constructor(
+    db: Database.Database,
+    onProgress?: (completed: number, total: number) => void,
+    dbPool?: DbPool | null
+  ) {
     this.db = db
     this.onProgress = onProgress
+    this.dbPool = dbPool ?? null
   }
 
   async run(config: AssociationConfig): Promise<AssociationResults> {
@@ -30,14 +41,17 @@ export class AssociationEngine {
     const warnings: string[] = []
     this.aborted = false
 
-    // 1. Build per-gene contingency data
-    const builder = new AssociationDataBuilder(this.db)
-    const genes = builder.build(
-      config.groupA_ids,
-      config.groupB_ids,
-      config.filters,
-      config.covariates
-    )
+    // 1. Build per-gene contingency data (off main thread when pool available)
+    let genes: GeneContingencyData[]
+    if (this.dbPool) {
+      genes = await this.dbPool.run<GeneContingencyData[]>({
+        type: 'association:build',
+        params: [config.groupA_ids, config.groupB_ids, config.filters, config.covariates]
+      })
+    } else {
+      const builder = new AssociationDataBuilder(this.db)
+      genes = builder.build(config.groupA_ids, config.groupB_ids, config.filters, config.covariates)
+    }
 
     if (genes.length === 0) {
       return {
@@ -45,6 +59,17 @@ export class AssociationEngine {
         primary_test: config.primary_test,
         config,
         warnings: ['No genes with qualifying variants'],
+        elapsed_ms: Date.now() - start
+      }
+    }
+
+    // Check abort after the (potentially async) build step completes
+    if (this.aborted) {
+      return {
+        results: [],
+        primary_test: config.primary_test,
+        config,
+        warnings: ['Analysis cancelled'],
         elapsed_ms: Date.now() - start
       }
     }

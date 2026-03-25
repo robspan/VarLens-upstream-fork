@@ -312,6 +312,8 @@ const api = {
     deleteExternalId: (caseId: number, idType: string) =>
       ipcRenderer.invoke('case-metadata:deleteExternalId', caseId, idType),
 
+    distinctHpoTerms: (): Promise<Array<{ hpo_id: string; hpo_label: string }>> =>
+      ipcRenderer.invoke('case-metadata:distinctHpoTerms'),
     distinctPlatforms: () => ipcRenderer.invoke('case-metadata:distinctPlatforms'),
     distinctExternalIdTypes: () => ipcRenderer.invoke('case-metadata:distinctExternalIdTypes')
   },

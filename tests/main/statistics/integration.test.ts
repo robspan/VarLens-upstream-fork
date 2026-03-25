@@ -142,6 +142,124 @@ describe('Association analysis integration', () => {
   })
 })
 
+describe('AssociationEngine with DbPool (off-thread build)', () => {
+  let db: Database.Database
+
+  beforeEach(() => {
+    db = new Database(':memory:')
+    initializeSchema(db)
+    runMigrations(db)
+
+    const now = Date.now()
+    for (let i = 1; i <= 10; i++) {
+      db.prepare(
+        "INSERT INTO cases (id, name, file_path, file_size, variant_count, created_at) VALUES (?, ?, '/test', 100, 0, ?)"
+      ).run(i, `case${i}`, now)
+      db.prepare(
+        'INSERT INTO case_metadata (case_id, affected_status, sex, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(i, i <= 5 ? 'affected' : 'unaffected', 'male', '', now, now)
+    }
+    for (const caseId of [1, 2, 3]) {
+      db.prepare(
+        "INSERT INTO variants (case_id, chr, pos, ref, alt, gene_symbol, consequence, gnomad_af, cadd, gt_num) VALUES (?, 'chr17', 41244000, 'A', 'G', 'BRCA1', 'missense_variant', 0.001, 25.0, '1')"
+      ).run(caseId)
+    }
+  })
+
+  it('uses dbPool.run for association:build when pool is provided', async () => {
+    // Build expected result using direct builder (for mock return)
+    const builder = new AssociationDataBuilder(db)
+    const expectedGenes = builder.build([1, 2, 3, 4, 5], [6, 7, 8, 9, 10], {}, [])
+
+    // Mock DbPool
+    const mockPoolRun = vi.fn().mockResolvedValue(expectedGenes)
+    const mockDbPool = {
+      run: mockPoolRun
+    } as unknown as import('../../../src/main/database/DbPool').DbPool
+
+    // Mock WorkerPool (statistical tests)
+    const mockResults: GeneAssociationResult[] = expectedGenes.map((g) => ({
+      gene_symbol: g.gene_symbol,
+      n_variants: 1,
+      groupA_carriers: g.groupA_carrier_count,
+      groupB_carriers: g.groupB_carrier_count,
+      groupA_total: g.groupA_carrier_count + g.groupA_non_carrier_count,
+      groupB_total: g.groupB_carrier_count + g.groupB_non_carrier_count,
+      fisher: { p_value: 0.05, odds_ratio: null, ci_lower: null, ci_upper: null },
+      logistic_burden: {
+        p_value: 0.1,
+        beta: null,
+        se: null,
+        ci_lower: null,
+        ci_upper: null,
+        used_firth: false
+      }
+    }))
+
+    const mockWorkerRun = vi.fn().mockResolvedValue(mockResults)
+    vi.resetModules()
+    vi.doMock('../../../src/main/statistics/WorkerPool', () => {
+      function WorkerPool() {
+        return { run: mockWorkerRun, abort: vi.fn() }
+      }
+      return { WorkerPool }
+    })
+
+    const { AssociationEngine } = await import('../../../src/main/statistics/AssociationEngine')
+
+    const engine = new AssociationEngine(db, undefined, mockDbPool)
+    const results = await engine.run({
+      groupA_ids: [1, 2, 3, 4, 5],
+      groupB_ids: [6, 7, 8, 9, 10],
+      primary_test: 'fisher',
+      weight_scheme: 'uniform',
+      covariates: [],
+      filters: {},
+      max_threads: 2
+    })
+
+    // Verify DbPool was called with association:build task
+    expect(mockPoolRun).toHaveBeenCalledOnce()
+    expect(mockPoolRun).toHaveBeenCalledWith({
+      type: 'association:build',
+      params: [[1, 2, 3, 4, 5], [6, 7, 8, 9, 10], {}, []]
+    })
+
+    // Verify results came through
+    expect(results.results.length).toBeGreaterThan(0)
+  })
+
+  it('falls back to main-thread builder when dbPool is null', async () => {
+    const mockWorkerRun = vi.fn().mockResolvedValue([])
+    vi.resetModules()
+    vi.doMock('../../../src/main/statistics/WorkerPool', () => {
+      function WorkerPool() {
+        return { run: mockWorkerRun, abort: vi.fn() }
+      }
+      return { WorkerPool }
+    })
+
+    const { AssociationEngine } = await import('../../../src/main/statistics/AssociationEngine')
+
+    // No dbPool — should use AssociationDataBuilder directly
+    const engine = new AssociationEngine(db, undefined, null)
+    const results = await engine.run({
+      groupA_ids: [1, 2, 3, 4, 5],
+      groupB_ids: [6, 7, 8, 9, 10],
+      primary_test: 'fisher',
+      weight_scheme: 'uniform',
+      covariates: [],
+      filters: {},
+      max_threads: 2
+    })
+
+    // Genes exist (BRCA1 for cases 1-3) so builder runs on main thread,
+    // then WorkerPool mock returns [] — engine returns empty results after FDR
+    expect(results.results).toEqual([])
+    expect(mockWorkerRun).toHaveBeenCalledOnce()
+  })
+})
+
 describe('AssociationEngine parallel execution', () => {
   let db: Database.Database
 

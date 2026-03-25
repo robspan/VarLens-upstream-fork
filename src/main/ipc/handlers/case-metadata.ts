@@ -553,6 +553,18 @@ export function registerCaseMetadataHandlers({
     }
   )
 
+  ipcMain.handle('case-metadata:distinctHpoTerms', async () => {
+    return wrapHandler(async () => {
+      const pool = getDbPool?.()
+      if (pool) {
+        return await pool.run({ type: 'case-metadata:distinctHpoTerms', params: [] })
+      }
+
+      const db = getDb()
+      return db.metadata.getDistinctHpoTerms()
+    })
+  })
+
   ipcMain.handle('case-metadata:distinctPlatforms', async () => {
     return wrapHandler(async () => {
       const pool = getDbPool?.()

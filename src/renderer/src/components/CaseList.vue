@@ -25,6 +25,21 @@
       closable-chips
       class="mb-1"
     />
+    <v-autocomplete
+      v-model="selectedHpoIds"
+      :items="availableHpoTerms"
+      item-title="label"
+      item-value="hpo_id"
+      prepend-inner-icon="mdi-human"
+      label="HPO"
+      density="compact"
+      hide-details
+      clearable
+      multiple
+      chips
+      closable-chips
+      auto-select-first
+    />
   </div>
 
   <v-infinite-scroll :key="scrollKey" :empty-text="emptyText" @load="onLoad">
@@ -191,6 +206,7 @@ const cases = shallowRef<CaseWithCohorts[]>([])
 const loading = ref(false)
 const searchTerm = ref('')
 const selectedCohortIds = ref<number[]>([])
+const selectedHpoIds = ref<string[]>([])
 const selected = ref<number[]>([])
 const contextMenuCase = ref<CaseWithCohorts | null>(null)
 const contextMenu = useContextMenu()
@@ -214,8 +230,27 @@ const { loadCohortGroups, cohortGroupsCache } = useCaseMetadata()
 const dialogRef = ref<InstanceType<typeof DeleteCaseDialog> | null>(null)
 const snackbarRef = ref<InstanceType<typeof AppSnackbar> | null>(null)
 
+// Available HPO terms for filter autocomplete
+const availableHpoTerms = ref<Array<{ hpo_id: string; label: string }>>([])
+
+// Load distinct HPO terms assigned across all cases
+async function loadHpoTerms(): Promise<void> {
+  if (!api) return
+  try {
+    const terms = await api.caseMetadata.distinctHpoTerms()
+    availableHpoTerms.value = terms.map((t) => ({
+      hpo_id: t.hpo_id,
+      label: `${t.hpo_label} (${t.hpo_id})`
+    }))
+  } catch {
+    availableHpoTerms.value = []
+  }
+}
+
 // Whether any filter is active (for empty-state messaging)
-const hasActiveFilters = computed(() => !!searchTerm.value || selectedCohortIds.value.length > 0)
+const hasActiveFilters = computed(
+  () => !!searchTerm.value || selectedCohortIds.value.length > 0 || selectedHpoIds.value.length > 0
+)
 
 // Empty text for infinite scroll
 const emptyText = computed(() => {
@@ -242,6 +277,7 @@ const onLoad = async ({
       offset: currentOffset.value,
       search_term: searchTerm.value || undefined,
       cohort_ids: selectedCohortIds.value.length > 0 ? [...selectedCohortIds.value] : undefined,
+      hpo_ids: selectedHpoIds.value.length > 0 ? [...selectedHpoIds.value] : undefined,
       sort_by: 'created_at',
       sort_order: 'desc',
       _count_needed: currentOffset.value === 0
@@ -274,6 +310,7 @@ const { debouncedFn: debouncedReset } = useDebounce(resetList, 300)
 
 watch(searchTerm, debouncedReset)
 watch(selectedCohortIds, resetList, { deep: true })
+watch(selectedHpoIds, resetList, { deep: true })
 
 // Format date as relative time ("2 days ago") with full date on hover
 const formatDate = (timestamp: number): string => {
@@ -430,7 +467,7 @@ const handleDeleteSelected = async (): Promise<void> => {
 
 // Expose methods for parent to call after import/delete/db-switch
 const refreshCases = async (): Promise<void> => {
-  await loadCohortGroups()
+  await Promise.all([loadCohortGroups(), loadHpoTerms()])
   resetList()
 }
 
@@ -440,8 +477,9 @@ const selectCase = (caseId: number): void => {
 
 defineExpose({ refreshCases, selectCase })
 
-// Load cohort groups on mount (single query, needed for filter dropdown)
+// Load filter dropdown data on mount
 loadCohortGroups()
+loadHpoTerms()
 </script>
 
 <style scoped>

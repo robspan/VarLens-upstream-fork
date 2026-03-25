@@ -240,30 +240,29 @@ function applyActivePresets(): void {
 }
 
 // Auto-deactivate presets when user manually changes filter values
-watch(
-  [filters, selectedImpactPresets],
-  () => {
-    if (applyingPresets || activePresetIds.value.size === 0) return
-    const idsToDeactivate: number[] = []
-    for (const id of activePresetIds.value) {
-      const preset = allPresets.value.find((p) => p.id === id)
-      if (
-        preset !== undefined &&
-        isPresetDiverged({
-          filters: filters.value,
-          presetFilterJson: preset.filterJson,
-          consequencesValue: selectedImpactPresets.value
-        })
-      ) {
-        idsToDeactivate.push(id)
-      }
-    }
-    for (const id of idsToDeactivate) {
-      togglePreset(id)
-    }
-  },
-  { deep: true }
+const presetDivergenceKey = computed(() =>
+  JSON.stringify([filters.value, selectedImpactPresets.value])
 )
+watch(presetDivergenceKey, () => {
+  if (applyingPresets || activePresetIds.value.size === 0) return
+  const idsToDeactivate: number[] = []
+  for (const id of activePresetIds.value) {
+    const preset = allPresets.value.find((p) => p.id === id)
+    if (
+      preset !== undefined &&
+      isPresetDiverged({
+        filters: filters.value,
+        presetFilterJson: preset.filterJson,
+        consequencesValue: selectedImpactPresets.value
+      })
+    ) {
+      idsToDeactivate.push(id)
+    }
+  }
+  for (const id of idsToDeactivate) {
+    togglePreset(id)
+  }
+})
 
 async function handleSavePreset(data: { name: string; description: string | null }): Promise<void> {
   savingPreset.value = true
@@ -444,7 +443,8 @@ const searchGeneSymbols = async (query: string) => {
 const { debouncedFn: emitFilterChange } = useDebounce(() => emit('filter-change'), 300)
 
 // Watch filter state changes
-watch(filters, () => emitFilterChange(), { deep: true })
+const cohortFilterKey = computed(() => JSON.stringify(filters.value))
+watch(cohortFilterKey, () => emitFilterChange())
 watch(selectedImpactPresets, () => emitFilterChange())
 watch([selectedCohortFreqPreset, selectedAfPreset, selectedCaddPreset], () => emitFilterChange())
 

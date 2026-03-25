@@ -255,19 +255,22 @@ function highlightSearch(text: string): string {
   return escaped.replace(regex, '<mark class="bg-yellow">$1</mark>')
 }
 
-// Handle scroll
+// Handle scroll — RAF-batched to avoid firing hundreds of times per second
+let scrollTicking = false
 function handleScroll(event: Event): void {
-  const target = event.target as HTMLElement
-  if (target === null) {
-    return
-  }
-
-  const { scrollTop, scrollHeight, clientHeight } = target
-  const isNearBottom = scrollHeight - scrollTop - clientHeight < 50
-
-  if (!isNearBottom) {
-    isAutoScroll.value = false
-  }
+  if (scrollTicking) return
+  scrollTicking = true
+  requestAnimationFrame(() => {
+    const target = event.target as HTMLElement
+    if (target !== null) {
+      const { scrollTop, scrollHeight, clientHeight } = target
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 50
+      if (!isNearBottom) {
+        isAutoScroll.value = false
+      }
+    }
+    scrollTicking = false
+  })
 }
 
 // Scroll to latest

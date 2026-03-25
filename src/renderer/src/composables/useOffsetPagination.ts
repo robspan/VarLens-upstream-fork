@@ -7,7 +7,7 @@
  * DRY: Both case (VariantTable) and cohort (CohortTable) views use this composable.
  */
 
-import { ref, shallowRef, watch, type Ref } from 'vue'
+import { ref, shallowRef, watch, computed, type Ref } from 'vue'
 import { useSettingsStore } from '../stores/settingsStore'
 import { APP_CONFIG } from '../../../shared/config'
 
@@ -200,21 +200,19 @@ export function useOffsetPagination<T>(options: UseOffsetPaginationOptions<T>) {
   }
 
   // Watch sort changes — reset page and clear pre-fetch cache.
-  // The page reset triggers Vuetify to re-emit @update:options → loadPage.
-  watch(
-    sortBy,
-    () => {
-      const serialized = normalizeSortBy(sortBy.value)
-        .map((s) => `${s.key}:${s.order}`)
-        .join(',')
-      if (serialized === prevSortSerialized) return
-      prevSortSerialized = serialized
-      prefetchCache.clear()
-      page.value = 1
-      options.onSortChange?.(sortBy.value.length > 0)
-    },
-    { deep: true }
+  // Computed key avoids deep traversal of sortBy array objects.
+  const sortKey = computed(() =>
+    normalizeSortBy(sortBy.value)
+      .map((s) => `${s.key}:${s.order}`)
+      .join(',')
   )
+  watch(sortKey, (serialized) => {
+    if (serialized === prevSortSerialized) return
+    prevSortSerialized = serialized
+    prefetchCache.clear()
+    page.value = 1
+    options.onSortChange?.(sortBy.value.length > 0)
+  })
 
   const resetSort = (): void => {
     sortBy.value = []

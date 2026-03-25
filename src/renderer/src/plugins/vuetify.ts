@@ -96,10 +96,12 @@ export default createVuetify({
   },
   defaults: {
     global: {
-      density: 'compact'
+      density: 'compact',
+      ripple: false
     },
     VBtn: {
-      density: 'compact'
+      density: 'compact',
+      ripple: false
     },
     VTextField: {
       density: 'compact',
@@ -107,11 +109,13 @@ export default createVuetify({
     },
     VSelect: {
       density: 'compact',
-      variant: 'outlined'
+      variant: 'outlined',
+      transition: 'fade-transition'
     },
     VAutocomplete: {
       density: 'compact',
-      variant: 'outlined'
+      variant: 'outlined',
+      transition: 'fade-transition'
     },
     VDataTable: {
       density: 'compact'
@@ -119,8 +123,25 @@ export default createVuetify({
     VCard: {
       elevation: 2
     },
+    VDialog: {
+      eager: false
+    },
+    VMenu: {
+      transition: 'fade-transition',
+      openDelay: 0,
+      closeDelay: 0
+    },
     VTooltip: {
+      openDelay: 400,
+      closeDelay: 0,
+      transition: 'fade-transition',
       contentClass: 'bg-secondary'
+    },
+    VNavigationDrawer: {
+      disableResizeWatcher: true
+    },
+    VSnackbar: {
+      transition: 'fade-transition'
     }
   }
 })

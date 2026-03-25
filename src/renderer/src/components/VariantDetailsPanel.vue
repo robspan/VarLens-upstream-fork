@@ -169,19 +169,21 @@
 
 <script setup lang="ts">
 /* global window */
-import { onMounted, onUnmounted, computed, watch } from 'vue'
+import { onMounted, onUnmounted, computed, watch, defineAsyncComponent } from 'vue'
 import { usePanelResize } from '../composables/usePanelResize'
 import { useResponsiveLayout } from '../composables/useResponsiveLayout'
 import { useAnnotations } from '../composables/useAnnotations'
 import { useVepEnrichment } from '../composables/useVepEnrichment'
 import VariantIdentitySection from './VariantIdentitySection.vue'
 import AnnotationScoresSection from './AnnotationScoresSection.vue'
-import ExternalLinksSection from './ExternalLinksSection.vue'
-import CommentsSection from './CommentsSection.vue'
-import TagsSection from './TagsSection.vue'
 import TranscriptSection from './TranscriptSection.vue'
-import AcmgClassificationPanel from './AcmgClassificationPanel.vue'
-import ActivityLogPanel from './ActivityLogPanel.vue'
+
+// Lazy-load non-critical panel sections to speed up initial open
+const ExternalLinksSection = defineAsyncComponent(() => import('./ExternalLinksSection.vue'))
+const CommentsSection = defineAsyncComponent(() => import('./CommentsSection.vue'))
+const TagsSection = defineAsyncComponent(() => import('./TagsSection.vue'))
+const AcmgClassificationPanel = defineAsyncComponent(() => import('./AcmgClassificationPanel.vue'))
+const ActivityLogPanel = defineAsyncComponent(() => import('./ActivityLogPanel.vue'))
 import type { Variant } from '../../../shared/types/api'
 import type { CohortVariant } from '../../../shared/types/cohort'
 import type { AcmgClassification } from '../../../main/database/types'

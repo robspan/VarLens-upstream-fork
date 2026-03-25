@@ -39,6 +39,7 @@ function createWindow(): void {
     width: APP_CONFIG.WINDOW_WIDTH,
     height: APP_CONFIG.WINDOW_HEIGHT,
     show: false,
+    backgroundColor: '#faf8f6',
     title: 'Varlens',
     autoHideMenuBar: true,
     icon: getAppIcon(),
@@ -46,7 +47,8 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      v8CacheOptions: 'bypassHeatCheck'
     }
   })
 
@@ -129,9 +131,11 @@ if (gotTheLock !== true) {
     // Register IPC handlers
     registerIpcHandlers()
 
-    // Initialize auto-updater and schedule periodic checks
-    initAutoUpdater()
-    scheduleUpdateChecks()
+    // Initialize auto-updater and schedule periodic checks (deferred to avoid competing with startup)
+    setImmediate(() => {
+      initAutoUpdater()
+      scheduleUpdateChecks()
+    })
 
     // Default open or close DevTools by F12 in development
     // and ignore CommandOrControl + R in production.

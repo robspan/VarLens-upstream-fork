@@ -33,11 +33,32 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import {
+  mdiAccountOffOutline,
+  mdiAlertCircleOutline,
+  mdiFlaskOutline,
+  mdiSchoolOutline,
+  mdiShieldCheckOutline
+} from '@mdi/js'
 import disclaimerConfig from '../config/disclaimerConfig.json'
 import { useVersionGating } from '../composables/useVersionGating'
 
-const config = disclaimerConfig
+const iconMap: Record<string, string> = {
+  'mdi-flask-outline': mdiFlaskOutline,
+  'mdi-shield-check-outline': mdiShieldCheckOutline,
+  'mdi-account-off-outline': mdiAccountOffOutline,
+  'mdi-alert-circle-outline': mdiAlertCircleOutline,
+  'mdi-school-outline': mdiSchoolOutline
+}
+
+const config = computed(() => ({
+  ...disclaimerConfig,
+  limitations: disclaimerConfig.limitations.map((l) => ({
+    ...l,
+    icon: iconMap[l.icon] || l.icon
+  }))
+}))
 const isOpen = ref(false)
 
 const { needsAcknowledgment, recordAcknowledgment } = useVersionGating()

@@ -4,10 +4,8 @@
       class="text-title-small mb-2 d-flex align-center cursor-pointer"
       @click="expanded = !expanded"
     >
-      <v-icon size="small" class="mr-1">
-        {{ expanded ? 'mdi-chevron-down' : 'mdi-chevron-right' }}
-      </v-icon>
-      <v-icon size="small" class="mr-1">mdi-tag-multiple</v-icon>
+      <v-icon size="small" class="mr-1" :icon="expanded ? mdiChevronDown : mdiChevronRight" />
+      <v-icon size="small" class="mr-1" :icon="mdiTagMultiple" />
       Tags ({{ tags.length }})
     </div>
 
@@ -26,14 +24,14 @@
                 {{ tag.usage_count }} {{ tag.usage_count === 1 ? 'use' : 'uses' }}
               </v-chip>
               <v-btn
-                icon="mdi-pencil"
+                :icon="mdiPencil"
                 size="x-small"
                 variant="text"
                 class="ml-1"
                 @click.stop="startEditTag(tag)"
               />
               <v-btn
-                icon="mdi-delete"
+                :icon="mdiDelete"
                 size="x-small"
                 variant="text"
                 color="error"
@@ -110,7 +108,7 @@
           >?
         </p>
         <p v-if="tagToDelete && tagToDelete.usage_count > 0" class="text-warning mt-2">
-          <v-icon icon="mdi-alert" size="small" class="mr-1" />
+          <v-icon :icon="mdiAlert" size="small" class="mr-1" />
           This tag is assigned to {{ tagToDelete.usage_count }}
           {{ tagToDelete.usage_count === 1 ? 'variant' : 'variants' }}. Deleting it will remove all
           assignments.
@@ -138,6 +136,14 @@
 import { ref, computed } from 'vue'
 import type { OverviewTag } from '../../../../shared/types/database-overview'
 import { useApiService } from '../../composables/useApiService'
+import {
+  mdiAlert,
+  mdiChevronDown,
+  mdiChevronRight,
+  mdiDelete,
+  mdiPencil,
+  mdiTagMultiple
+} from '@mdi/js'
 
 const props = defineProps<{
   tags: OverviewTag[]

@@ -15,7 +15,7 @@
         <template v-if="variant.aa_change"> {{ ' ' }}{{ variant.aa_change }} </template>
       </span>
       <v-btn v-if="variant.cdna" icon size="x-small" variant="text" class="ml-2" @click="copyHgvs">
-        <v-icon size="small">{{ hgvsCopied ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
+        <v-icon size="small" :icon="hgvsCopied ? mdiCheck : mdiContentCopy" />
       </v-btn>
     </div>
 
@@ -33,7 +33,7 @@
             class="ml-2"
             @click="copyVariant"
           >
-            <v-icon size="small">{{ variantCopied ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
+            <v-icon size="small" :icon="variantCopied ? mdiCheck : mdiContentCopy" />
           </v-btn>
         </template>
         Copy chr:pos:ref:alt
@@ -46,7 +46,7 @@
       <template v-if="rsId">
         <span class="ml-1 variant-data-mono">{{ rsId }}</span>
         <v-btn icon size="x-small" variant="text" class="ml-2" @click="copyRsId">
-          <v-icon size="small">{{ rsIdCopied ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
+          <v-icon size="small" :icon="rsIdCopied ? mdiCheck : mdiContentCopy" />
         </v-btn>
       </template>
       <span v-else class="ml-1 text-grey">N/A</span>
@@ -60,6 +60,7 @@ import { useClipboard } from '../composables/useClipboard'
 import type { Variant } from '../../../shared/types/api'
 import type { CohortVariant } from '../../../shared/types/cohort'
 import type { VepColocatedVariant } from '../../../main/services/api/schemas/vep-response'
+import { mdiCheck, mdiContentCopy } from '@mdi/js'
 
 interface Props {
   variant: Variant | CohortVariant

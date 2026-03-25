@@ -2,10 +2,10 @@
   <v-dialog v-model="isOpen" max-width="800" scrollable>
     <v-card>
       <v-card-title class="d-flex align-center">
-        <v-icon class="mr-2">mdi-chart-box-outline</v-icon>
+        <v-icon class="mr-2" :icon="mdiChartBoxOutline" />
         Database Overview
         <v-spacer />
-        <v-btn icon="mdi-close" variant="text" size="small" @click="isOpen = false" />
+        <v-btn :icon="mdiClose" variant="text" size="small" @click="isOpen = false" />
       </v-card-title>
       <v-divider />
       <v-card-text>
@@ -23,7 +23,7 @@
 
         <!-- Error / empty fallback -->
         <div v-else-if="error" class="text-error text-body-medium py-4">
-          <v-icon size="small" class="mr-1">mdi-alert-circle</v-icon>
+          <v-icon size="small" class="mr-1" :icon="mdiAlertCircle" />
           {{ error }}
         </div>
       </v-card-text>
@@ -39,6 +39,7 @@ import OverviewStatsGrid from './database-overview/OverviewStatsGrid.vue'
 import OverviewCohortSection from './database-overview/OverviewCohortSection.vue'
 import OverviewTagsSection from './database-overview/OverviewTagsSection.vue'
 import OverviewPhenotypesSection from './database-overview/OverviewPhenotypesSection.vue'
+import { mdiAlertCircle, mdiChartBoxOutline, mdiClose } from '@mdi/js'
 
 const { api } = useApiService()
 

@@ -1,13 +1,13 @@
 <template>
   <!-- At a Glance: 4 tonal stat cards -->
   <div class="text-title-small mb-2">
-    <v-icon size="small" class="mr-1">mdi-chart-bar</v-icon>
+    <v-icon size="small" class="mr-1" :icon="mdiChartBar" />
     At a Glance
   </div>
   <v-row density="compact" class="mb-2">
     <v-col cols="3">
       <v-card variant="tonal" class="text-center pa-3">
-        <v-icon size="24" class="mb-1">mdi-account-group</v-icon>
+        <v-icon size="24" class="mb-1" :icon="mdiAccountGroup" />
         <div class="text-title-large">
           {{ summary.total_cases.toLocaleString() }}
         </div>
@@ -16,7 +16,7 @@
     </v-col>
     <v-col cols="3">
       <v-card variant="tonal" class="text-center pa-3">
-        <v-icon size="24" class="mb-1">mdi-dna</v-icon>
+        <v-icon size="24" class="mb-1" :icon="mdiDna" />
         <div class="text-title-large">
           {{ summary.total_variants.toLocaleString() }}
         </div>
@@ -25,7 +25,7 @@
     </v-col>
     <v-col cols="3">
       <v-card variant="tonal" class="text-center pa-3">
-        <v-icon size="24" class="mb-1">mdi-fingerprint</v-icon>
+        <v-icon size="24" class="mb-1" :icon="mdiFingerprint" />
         <div class="text-title-large">
           {{ summary.unique_variants.toLocaleString() }}
         </div>
@@ -34,7 +34,7 @@
     </v-col>
     <v-col cols="3">
       <v-card variant="tonal" class="text-center pa-3">
-        <v-icon size="24" class="mb-1">mdi-set-none</v-icon>
+        <v-icon size="24" class="mb-1" :icon="mdiSetNone" />
         <div class="text-title-large">
           {{ summary.genes_with_variants.toLocaleString() }}
         </div>
@@ -50,7 +50,7 @@
         variant="tonal"
         class="text-center pa-3 d-flex flex-column align-center justify-center flex-grow-1"
       >
-        <v-icon size="24" class="mb-1">mdi-star</v-icon>
+        <v-icon size="24" class="mb-1" :icon="mdiStar" />
         <div class="text-title-large">
           {{ (summary.starred_variants ?? 0).toLocaleString() }}
         </div>
@@ -59,7 +59,7 @@
     </v-col>
     <v-col cols="6" class="d-flex">
       <v-card variant="tonal" class="text-center pa-3 flex-grow-1">
-        <v-icon size="24" class="mb-1">mdi-tag-check</v-icon>
+        <v-icon size="24" class="mb-1" :icon="mdiTagCheck" />
         <div class="text-title-large">
           {{ totalAcmgClassified.toLocaleString() }}
         </div>
@@ -109,6 +109,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { CohortSummary } from '../../../../shared/types/cohort'
+import {
+  mdiAccountGroup,
+  mdiChartBar,
+  mdiDna,
+  mdiFingerprint,
+  mdiSetNone,
+  mdiStar,
+  mdiTagCheck
+} from '@mdi/js'
 
 const props = defineProps<{
   summary: CohortSummary

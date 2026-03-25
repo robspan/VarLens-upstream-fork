@@ -6,7 +6,7 @@
       variant="outlined"
       density="compact"
       :placeholder="placeholder"
-      prepend-inner-icon="mdi-magnify"
+      :prepend-inner-icon="mdiMagnify"
       hide-details
       clearable
       :error="hasErrors"
@@ -88,6 +88,7 @@
 import { ref, computed, watch } from 'vue'
 import type { VTextField } from 'vuetify/components'
 import type { Suggestion } from '../dsl/autocomplete'
+import { mdiMagnify } from '@mdi/js'
 
 interface Props {
   rawInput: string

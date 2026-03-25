@@ -2,15 +2,15 @@
   <div>
     <div class="d-flex gap-2 mb-4">
       <v-chip color="success" variant="flat">
-        <v-icon start>mdi-check-circle</v-icon>
+        <v-icon start :icon="mdiCheckCircle" />
         Succeeded: {{ summary.succeeded }}
       </v-chip>
       <v-chip v-if="summary.failed > 0" color="error" variant="flat">
-        <v-icon start>mdi-alert-circle</v-icon>
+        <v-icon start :icon="mdiAlertCircle" />
         Failed: {{ summary.failed }}
       </v-chip>
       <v-chip v-if="summary.skipped > 0" color="secondary" variant="flat">
-        <v-icon start>mdi-skip-next</v-icon>
+        <v-icon start :icon="mdiSkipNext" />
         Skipped: {{ summary.skipped }}
       </v-chip>
     </div>
@@ -23,13 +23,19 @@
       <v-expansion-panel v-for="(detail, i) in summary.details" :key="i">
         <v-expansion-panel-title>
           <div class="d-flex align-center gap-2">
-            <v-icon v-if="detail.status === 'success'" color="success" size="small">
-              mdi-check-circle
-            </v-icon>
-            <v-icon v-else-if="detail.status === 'failed'" color="error" size="small">
-              mdi-alert-circle
-            </v-icon>
-            <v-icon v-else color="secondary" size="small"> mdi-skip-next </v-icon>
+            <v-icon
+              v-if="detail.status === 'success'"
+              color="success"
+              size="small"
+              :icon="mdiCheckCircle"
+            />
+            <v-icon
+              v-else-if="detail.status === 'failed'"
+              color="error"
+              size="small"
+              :icon="mdiAlertCircle"
+            />
+            <v-icon v-else color="secondary" size="small" :icon="mdiSkipNext" />
             <span>{{ detail.fileName }}</span>
             <span v-if="detail.variantCount !== undefined" class="text-body-small ml-2">
               ({{ detail.variantCount.toLocaleString() }} variants)
@@ -53,6 +59,7 @@
 
 <script setup lang="ts">
 import type { BatchResult } from '../../../../shared/types/api'
+import { mdiAlertCircle, mdiCheckCircle, mdiSkipNext } from '@mdi/js'
 
 defineProps<{
   summary: BatchResult

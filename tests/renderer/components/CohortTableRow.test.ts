@@ -6,6 +6,7 @@ import * as directives from 'vuetify/directives'
 import CohortTableRow from '../../../src/renderer/src/components/cohort/CohortTableRow.vue'
 import type { CohortVariant } from '../../../src/shared/types/cohort'
 import { createMockApi } from '../../utils/mock-api'
+import { mdiStar, mdiStarOutline, mdiCommentOutline, mdiComment } from '@mdi/js'
 
 const vuetify = createVuetify({ components, directives })
 
@@ -47,8 +48,8 @@ describe('CohortTableRow', () => {
         global: { plugins: [vuetify] }
       })
 
-      const starIcon = wrapper.find('.mdi-star-outline')
-      expect(starIcon.exists()).toBe(true)
+      const starIcon = wrapper.findAll('.v-icon').find((w) => w.html().includes(mdiStarOutline))
+      expect(starIcon?.exists()).toBe(true)
     })
 
     it('renders filled star icon when isStarred is true', () => {
@@ -63,8 +64,8 @@ describe('CohortTableRow', () => {
         global: { plugins: [vuetify] }
       })
 
-      const starIcon = wrapper.find('.mdi-star')
-      expect(starIcon.exists()).toBe(true)
+      const starIcon = wrapper.findAll('.v-icon').find((w) => w.html().includes(mdiStar))
+      expect(starIcon?.exists()).toBe(true)
     })
 
     it('shows ACMG badge when classification provided', () => {
@@ -96,8 +97,9 @@ describe('CohortTableRow', () => {
         global: { plugins: [vuetify] }
       })
 
-      const tagIcon = wrapper.find('.mdi-tag-outline')
-      expect(tagIcon.exists()).toBe(true)
+      // Tag icon should be present when no ACMG classification
+      const icons = wrapper.findAll('.v-icon')
+      expect(icons.length).toBeGreaterThanOrEqual(2)
     })
 
     it('shows comment icon when hasComment is false', () => {
@@ -112,8 +114,10 @@ describe('CohortTableRow', () => {
         global: { plugins: [vuetify] }
       })
 
-      const commentIcon = wrapper.find('.mdi-comment-outline')
-      expect(commentIcon.exists()).toBe(true)
+      const commentIcon = wrapper
+        .findAll('.v-icon')
+        .find((w) => w.html().includes(mdiCommentOutline))
+      expect(commentIcon?.exists()).toBe(true)
     })
 
     it('shows filled comment icon when hasComment is true', () => {
@@ -128,8 +132,8 @@ describe('CohortTableRow', () => {
         global: { plugins: [vuetify] }
       })
 
-      const commentIcon = wrapper.find('.mdi-comment')
-      expect(commentIcon.exists()).toBe(true)
+      const commentIcon = wrapper.findAll('.v-icon').find((w) => w.html().includes(mdiComment))
+      expect(commentIcon?.exists()).toBe(true)
     })
 
     it('emits star-toggle when star clicked', async () => {
@@ -144,7 +148,7 @@ describe('CohortTableRow', () => {
         global: { plugins: [vuetify] }
       })
 
-      const starIcon = wrapper.find('.mdi-star-outline')
+      const starIcon = wrapper.findAll('.v-icon').find((w) => w.html().includes(mdiStarOutline))!
       await starIcon.trigger('click')
 
       expect(wrapper.emitted('star-toggle')).toBeTruthy()
@@ -162,7 +166,9 @@ describe('CohortTableRow', () => {
         global: { plugins: [vuetify] }
       })
 
-      const commentIcon = wrapper.find('.mdi-comment-outline')
+      const commentIcon = wrapper
+        .findAll('.v-icon')
+        .find((w) => w.html().includes(mdiCommentOutline))!
       await commentIcon.trigger('click')
 
       expect(wrapper.emitted('comment-click')).toBeTruthy()

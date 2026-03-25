@@ -74,7 +74,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, provide } from 'vue'
+import { ref, watch, onMounted, onUnmounted, provide, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import AppToolbar from './components/AppToolbar.vue'
 import AppSidebar from './components/AppSidebar.vue'
@@ -247,7 +247,10 @@ watch(activeTab, async (newTab) => {
   selectedPanelVariant.value = null
   if (newTab === 'cohort') {
     sidebarOpen.value = false
-    router.push('/cohort')
+    await router.push('/cohort')
+    // Wait for the CohortView to mount before refreshing —
+    // the ref isn't available until after the next render cycle
+    await nextTick()
     await cohortViewRef.value?.refresh()
   } else {
     router.push('/case')

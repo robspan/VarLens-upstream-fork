@@ -36,7 +36,7 @@
             inline
             class="mr-1"
           />
-          <v-icon size="small">{{ menuOpen ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
+          <v-icon size="small" :icon="menuOpen ? mdiChevronUp : mdiChevronDown" />
         </template>
       </v-text-field>
     </template>
@@ -88,7 +88,7 @@
             </v-list-item-title>
             <template #append>
               <v-btn
-                :icon="expandedGroups.includes(group.id) ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+                :icon="expandedGroups.includes(group.id) ? mdiChevronUp : mdiChevronDown"
                 size="x-small"
                 variant="text"
                 @click.stop="toggleGroupExpanded(group.id)"
@@ -132,6 +132,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import type { FilterGroupConfig, FilterGroup } from '../config/filterGroups'
+import { mdiChevronDown, mdiChevronUp, mdiDotsHorizontal, mdiFilterVariant } from '@mdi/js'
 import {
   getGroupValues,
   isGroupFullySelected as checkGroupFullySelected,
@@ -153,7 +154,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   label: 'Select',
   placeholder: 'Click to select...',
-  icon: 'mdi-filter-variant',
+  icon: mdiFilterVariant,
   availableValues: () => []
 })
 
@@ -186,7 +187,7 @@ const effectiveGroups = computed<FilterGroup[]>(() => {
       id: '_other',
       label: 'Other',
       color: 'grey',
-      icon: 'mdi-dots-horizontal',
+      icon: mdiDotsHorizontal,
       items: otherItems.value
     })
   }

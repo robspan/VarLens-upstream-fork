@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createVuetify } from 'vuetify'
 import { VExpansionPanels, VExpansionPanel } from 'vuetify/components'
+import { mdiEarth } from '@mdi/js'
 import FilterPanelTitle from '../../../../src/renderer/src/components/filters/FilterPanelTitle.vue'
 
 const vuetify = createVuetify()
@@ -23,7 +24,7 @@ function mountTitle(props: Record<string, unknown>) {
         `,
         setup() {
           return {
-            titleProps: { icon: 'mdi-earth', label: 'Frequency', active: false, ...props }
+            titleProps: { icon: mdiEarth, label: 'Frequency', active: false, ...props }
           }
         }
       }

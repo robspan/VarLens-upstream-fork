@@ -11,7 +11,7 @@
     >
       <div class="d-flex align-center justify-space-between">
         <span>{{ error.message || 'Failed to load cohort data' }}</span>
-        <v-btn variant="tonal" size="small" prepend-icon="mdi-refresh" @click="handleRetry">
+        <v-btn variant="tonal" size="small" :prepend-icon="mdiRefresh" @click="handleRetry">
           Retry
         </v-btn>
       </div>
@@ -22,7 +22,7 @@
       v-if="summaryStale"
       density="compact"
       color="info"
-      icon="mdi-database-sync"
+      :icon="mdiDatabaseSync"
       class="mb-2"
     >
       Rebuilding cohort index...
@@ -123,6 +123,7 @@ import { useCohortColumns } from './cohort/useCohortColumns'
 import type { CohortVariant } from '../../../shared/types/cohort'
 import type { CohortQueryParams } from '../composables/useCohortData'
 import type { ColumnFiltersParam } from '../../../shared/types/column-filters'
+import { mdiDatabaseSync, mdiRefresh } from '@mdi/js'
 
 // Emit for navigation and row click
 const emit = defineEmits<{

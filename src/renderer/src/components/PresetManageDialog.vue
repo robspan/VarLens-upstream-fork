@@ -9,7 +9,7 @@
         <span class="text-h6">Manage Presets</span>
         <v-spacer />
         <v-btn icon size="small" variant="text" @click="emit('update:modelValue', false)">
-          <v-icon>mdi-close</v-icon>
+          <v-icon :icon="mdiClose" />
         </v-btn>
       </v-card-title>
       <v-divider />
@@ -20,8 +20,8 @@
           :class="{ 'bg-grey-lighten-4': !preset.isVisible }"
         >
           <template #prepend>
-            <v-icon v-if="preset.isBuiltIn" size="small" class="mr-2">mdi-lock</v-icon>
-            <v-icon v-else size="small" class="mr-2">mdi-account</v-icon>
+            <v-icon v-if="preset.isBuiltIn" size="small" class="mr-2" :icon="mdiLock" />
+            <v-icon v-else size="small" class="mr-2" :icon="mdiAccount" />
           </template>
 
           <v-list-item-title :class="{ 'text-medium-emphasis': !preset.isVisible }">
@@ -39,9 +39,7 @@
               variant="text"
               @click="emit('toggle-visibility', preset.id, !preset.isVisible)"
             >
-              <v-icon size="small">
-                {{ preset.isVisible ? 'mdi-eye' : 'mdi-eye-off' }}
-              </v-icon>
+              <v-icon size="small" :icon="preset.isVisible ? mdiEye : mdiEyeOff" />
               <v-tooltip activator="parent" location="bottom">
                 {{ preset.isVisible ? 'Hide from toolbar' : 'Show in toolbar' }}
               </v-tooltip>
@@ -56,7 +54,7 @@
               color="error"
               @click="confirmDelete(preset)"
             >
-              <v-icon size="small">mdi-delete</v-icon>
+              <v-icon size="small" :icon="mdiDelete" />
               <v-tooltip activator="parent" location="bottom">Delete preset</v-tooltip>
             </v-btn>
           </template>
@@ -82,6 +80,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { FilterPreset } from '../../../shared/types/filter-presets'
+import { mdiAccount, mdiClose, mdiDelete, mdiEye, mdiEyeOff, mdiLock } from '@mdi/js'
 
 defineProps<{
   modelValue: boolean

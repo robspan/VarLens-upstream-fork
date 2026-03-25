@@ -168,7 +168,7 @@
               </td>
               <td style="width: 40px">
                 <v-btn
-                  icon="mdi-delete-outline"
+                  :icon="mdiDeleteOutline"
                   size="x-small"
                   variant="text"
                   color="error"
@@ -188,6 +188,7 @@ import { ref, computed, watch } from 'vue'
 import { useCaseMetrics } from '../composables/useCaseMetrics'
 import type { MetricDefinition, CaseMetricWithDefinition } from '../../../shared/types/api'
 import { EMPTY_VALUE_PLACEHOLDER } from '../utils/formatters'
+import { mdiDeleteOutline } from '@mdi/js'
 
 const props = defineProps<{
   caseId: number

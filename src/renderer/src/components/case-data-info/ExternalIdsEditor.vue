@@ -1,6 +1,6 @@
 <template>
   <div class="text-subtitle-2 text-medium-emphasis mb-2">
-    <v-icon size="small" class="mr-1">mdi-identifier</v-icon>
+    <v-icon size="small" class="mr-1" :icon="mdiIdentifier" />
     External IDs
   </div>
   <v-table v-if="externalIds.length > 0" density="compact" class="mb-2">
@@ -14,7 +14,7 @@
         </td>
         <td style="width: 40px">
           <v-btn
-            icon="mdi-delete-outline"
+            :icon="mdiDeleteOutline"
             size="x-small"
             variant="text"
             color="error"
@@ -58,6 +58,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { mdiDeleteOutline, mdiIdentifier } from '@mdi/js'
 
 interface ExternalId {
   id_type: string

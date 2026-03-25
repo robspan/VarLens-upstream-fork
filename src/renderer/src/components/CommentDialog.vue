@@ -6,7 +6,7 @@
   >
     <v-card>
       <v-card-title>
-        <v-icon class="mr-2">mdi-comment-text-outline</v-icon>
+        <v-icon class="mr-2" :icon="mdiCommentTextOutline" />
         Variant Comments
       </v-card-title>
 
@@ -64,6 +64,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { mdiCommentTextOutline } from '@mdi/js'
 
 interface Props {
   modelValue: boolean

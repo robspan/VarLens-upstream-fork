@@ -15,14 +15,14 @@
         />
       </v-tabs-window-item>
       <v-tabs-window-item value="burden" class="fill-height" style="overflow-y: auto">
-        <GeneBurdenView ref="burdenViewRef" />
+        <GeneBurdenView v-if="burdenMounted" ref="burdenViewRef" />
       </v-tabs-window-item>
     </v-tabs-window>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, provide, onActivated } from 'vue'
+import { ref, provide, onActivated, watch } from 'vue'
 import CohortTable from './CohortTable.vue'
 import GeneBurdenView from './association/GeneBurdenView.vue'
 import { FiltersKey, createFilters } from '../composables/useFilters'
@@ -36,6 +36,11 @@ provide(FiltersKey, filtersInstance)
 // KeepAlive stale data detection: refresh if data changed while view was cached
 const { dataGeneration } = useAppState()
 const lastSeenGeneration = ref(dataGeneration.value)
+
+// Defer GeneBurdenView mount until the burden tab is first activated.
+// Prevents N+1 IPC calls (getFullMetadata per case) from firing when
+// the user only visits the Variants tab.
+const burdenMounted = ref(false)
 
 defineEmits<{
   'navigate-to-case': [
@@ -56,6 +61,13 @@ defineEmits<{
 const activeTab = ref('variants')
 const cohortTableRef = ref<InstanceType<typeof CohortTable> | null>(null)
 const burdenViewRef = ref<InstanceType<typeof GeneBurdenView> | null>(null)
+
+// Mount GeneBurdenView on first tab switch (stays mounted for KeepAlive)
+watch(activeTab, (tab) => {
+  if (tab === 'burden' && !burdenMounted.value) {
+    burdenMounted.value = true
+  }
+})
 
 const refresh = async (): Promise<void> => {
   if (activeTab.value === 'variants') {

@@ -9,7 +9,7 @@
           width="2"
           class="mr-2"
         />
-        <v-icon v-else-if="databaseStore.isEncrypted" icon="mdi-lock" size="small" class="mr-2" />
+        <v-icon v-else-if="databaseStore.isEncrypted" :icon="mdiLock" size="small" class="mr-2" />
         <span class="text-body-medium">{{ databaseStore.currentName || 'No database' }}</span>
         <v-tooltip activator="parent" location="bottom">
           {{ databaseStore.currentPath || 'No database' }}
@@ -27,7 +27,7 @@
           @click="handleOpenRecent(db.path)"
         >
           <template #prepend>
-            <v-icon icon="mdi-database" />
+            <v-icon :icon="mdiDatabase" />
           </template>
           <v-list-item-title>{{ db.name }}</v-list-item-title>
           <v-list-item-subtitle class="text-truncate">{{ db.path }}</v-list-item-subtitle>
@@ -44,14 +44,14 @@
       <!-- Actions -->
       <v-list-item @click="handleOpen">
         <template #prepend>
-          <v-icon icon="mdi-folder-open" />
+          <v-icon :icon="mdiFolderOpen" />
         </template>
         <v-list-item-title>Open...</v-list-item-title>
       </v-list-item>
 
       <v-list-item @click="handleCreate">
         <template #prepend>
-          <v-icon icon="mdi-database-plus" />
+          <v-icon :icon="mdiDatabasePlus" />
         </template>
         <v-list-item-title>New...</v-list-item-title>
       </v-list-item>
@@ -61,7 +61,7 @@
         <v-divider />
         <v-list-item @click="handleChangePassword">
           <template #prepend>
-            <v-icon icon="mdi-lock-reset" />
+            <v-icon :icon="mdiLockReset" />
           </template>
           <v-list-item-title>Change Password...</v-list-item-title>
         </v-list-item>
@@ -81,6 +81,7 @@ import { useDatabaseStore } from '../stores/databaseStore'
 import PasswordDialog from './PasswordDialog.vue'
 import CreateDatabaseDialog from './CreateDatabaseDialog.vue'
 import ChangePasswordDialog from './ChangePasswordDialog.vue'
+import { mdiDatabase, mdiDatabasePlus, mdiFolderOpen, mdiLock, mdiLockReset } from '@mdi/js'
 
 const databaseStore = useDatabaseStore()
 

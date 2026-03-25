@@ -7,7 +7,7 @@
           v-model="newPassword"
           label="New Password"
           :type="showNewPassword ? 'text' : 'password'"
-          :append-inner-icon="showNewPassword ? 'mdi-eye-off' : 'mdi-eye'"
+          :append-inner-icon="showNewPassword ? mdiEyeOff : mdiEye"
           @click:append-inner="showNewPassword = !showNewPassword"
         />
 
@@ -15,7 +15,7 @@
           v-model="confirmPassword"
           label="Confirm New Password"
           :type="showConfirmPassword ? 'text' : 'password'"
-          :append-inner-icon="showConfirmPassword ? 'mdi-eye-off' : 'mdi-eye'"
+          :append-inner-icon="showConfirmPassword ? mdiEyeOff : mdiEye"
           :error-messages="passwordError"
           @click:append-inner="showConfirmPassword = !showConfirmPassword"
         />
@@ -32,6 +32,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useDatabaseStore } from '../stores/databaseStore'
+import { mdiEye, mdiEyeOff } from '@mdi/js'
 
 const databaseStore = useDatabaseStore()
 

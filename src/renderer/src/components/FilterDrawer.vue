@@ -17,7 +17,7 @@
       <!-- Search (ALWAYS first) -->
       <v-expansion-panel value="search">
         <FilterPanelTitle
-          icon="mdi-magnify"
+          :icon="mdiMagnify"
           label="Search"
           :active="isFilterGroupActive('search')"
           :value-summary="searchSummary"
@@ -42,7 +42,7 @@
             hide-details
             clearable
             placeholder="Gene, chr:pos, c./p. HGVS..."
-            prepend-inner-icon="mdi-magnify"
+            :prepend-inner-icon="mdiMagnify"
           />
         </v-expansion-panel-text>
       </v-expansion-panel>
@@ -53,7 +53,7 @@
         class="preset-drawer-section px-3 pt-2 pb-1"
       >
         <div class="d-flex align-center mb-1">
-          <v-icon size="x-small" class="mr-1 text-medium-emphasis">mdi-bookmark-multiple</v-icon>
+          <v-icon size="x-small" class="mr-1 text-medium-emphasis" :icon="mdiBookmarkMultiple" />
           <span class="text-overline text-medium-emphasis">Presets</span>
           <v-spacer />
           <v-btn
@@ -67,7 +67,7 @@
             Save
           </v-btn>
           <v-btn size="x-small" variant="text" density="compact" @click="onPresetManage?.()">
-            <v-icon size="x-small">mdi-cog-outline</v-icon>
+            <v-icon size="x-small" :icon="mdiCogOutline" />
           </v-btn>
         </div>
         <div class="d-flex ga-1 flex-wrap pb-1">
@@ -92,7 +92,7 @@
       <!-- Gene -->
       <v-expansion-panel value="gene">
         <FilterPanelTitle
-          icon="mdi-dna"
+          :icon="mdiDna"
           label="Gene"
           :active="isFilterGroupActive('gene')"
           :value-summary="geneSummary"
@@ -107,7 +107,7 @@
             hide-details
             clearable
             placeholder="Search gene symbol (e.g. BRCA1)"
-            prepend-inner-icon="mdi-magnify"
+            :prepend-inner-icon="mdiMagnify"
             @update:search="searchGeneSymbols"
             @click:clear="handleGeneClear"
           />
@@ -117,7 +117,7 @@
       <!-- Impact -->
       <v-expansion-panel value="impact">
         <FilterPanelTitle
-          icon="mdi-flash"
+          :icon="mdiFlash"
           label="Impact"
           :active="isFilterGroupActive('impact')"
           :value-summary="impactSummary"
@@ -154,7 +154,7 @@
       <!-- Consequence (Function) -->
       <v-expansion-panel value="function">
         <FilterPanelTitle
-          icon="mdi-function"
+          :icon="mdiFunction"
           label="Consequence"
           :active="isFilterGroupActive('function')"
           :value-summary="funcSummary"
@@ -166,7 +166,7 @@
             :available-values="filterOptions.funcs"
             label="Consequence"
             placeholder="Select..."
-            icon="mdi-function"
+            :icon="mdiFunction"
           />
         </v-expansion-panel-text>
       </v-expansion-panel>
@@ -174,7 +174,7 @@
       <!-- ClinVar -->
       <v-expansion-panel value="clinvar">
         <FilterPanelTitle
-          icon="mdi-hospital-box"
+          :icon="mdiHospitalBox"
           label="ClinVar"
           :active="isFilterGroupActive('clinvar')"
           :value-summary="clinvarSummary"
@@ -186,7 +186,7 @@
             :available-values="filterOptions.clinvars"
             label="ClinVar"
             placeholder="Select..."
-            icon="mdi-hospital-box"
+            :icon="mdiHospitalBox"
           />
         </v-expansion-panel-text>
       </v-expansion-panel>
@@ -200,7 +200,7 @@
       <!-- Frequency -->
       <v-expansion-panel value="frequency">
         <FilterPanelTitle
-          icon="mdi-earth"
+          :icon="mdiEarth"
           label="Frequency"
           :active="isFilterGroupActive('frequency')"
           :value-summary="frequencySummary"
@@ -237,7 +237,7 @@
       <!-- CADD -->
       <v-expansion-panel value="cadd">
         <FilterPanelTitle
-          icon="mdi-alert-circle"
+          :icon="mdiAlertCircle"
           label="CADD"
           :active="isFilterGroupActive('cadd')"
           :value-summary="caddSummary"
@@ -281,7 +281,7 @@
       <!-- Tags -->
       <v-expansion-panel value="tags">
         <FilterPanelTitle
-          icon="mdi-tag-multiple"
+          :icon="mdiTagMultiple"
           label="Tags"
           :active="isFilterGroupActive('tags')"
           :value-summary="tagsSummary"
@@ -314,7 +314,7 @@
             <template #item="{ item, props: itemProps }">
               <v-list-item v-bind="itemProps" :title="undefined">
                 <template #prepend>
-                  <v-icon :color="(item as unknown as Tag).color" size="small">mdi-circle</v-icon>
+                  <v-icon :color="(item as unknown as Tag).color" size="small" :icon="mdiCircle" />
                 </template>
                 <v-list-item-title>{{ (item as unknown as Tag).name }}</v-list-item-title>
               </v-list-item>
@@ -326,7 +326,7 @@
       <!-- Annotations -->
       <v-expansion-panel value="annotations">
         <FilterPanelTitle
-          icon="mdi-star-circle"
+          :icon="mdiStarCircle"
           label="Annotations"
           :active="isFilterGroupActive('annotations')"
           :value-summary="annotationsSummary"
@@ -340,7 +340,7 @@
               rounded="pill"
               @click="filters.starredOnly = !filters.starredOnly"
             >
-              <v-icon size="small" start>mdi-star</v-icon>
+              <v-icon size="small" start :icon="mdiStar" />
               Starred
             </v-btn>
             <v-btn
@@ -350,7 +350,7 @@
               rounded="pill"
               @click="filters.hasCommentOnly = !filters.hasCommentOnly"
             >
-              <v-icon size="small" start>mdi-comment-text</v-icon>
+              <v-icon size="small" start :icon="mdiCommentText" />
               Commented
             </v-btn>
           </div>
@@ -387,6 +387,22 @@ import { consequenceGroups, clinvarGroups } from '../config/filterGroups'
 import { ACMG_FILTER_OPTIONS_LONG } from '../utils/filters'
 import type { Tag } from '../../../shared/types/api'
 import type { FilterDrawerState } from './filterDrawerTypes'
+import {
+  mdiAlertCircle,
+  mdiBookmarkMultiple,
+  mdiCircle,
+  mdiCogOutline,
+  mdiCommentText,
+  mdiDna,
+  mdiEarth,
+  mdiFlash,
+  mdiFunction,
+  mdiHospitalBox,
+  mdiMagnify,
+  mdiStar,
+  mdiStarCircle,
+  mdiTagMultiple
+} from '@mdi/js'
 
 defineProps<{
   open: boolean

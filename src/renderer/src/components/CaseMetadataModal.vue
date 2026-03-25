@@ -3,29 +3,29 @@
     <v-card>
       <v-card-title class="d-flex align-center justify-space-between">
         <span>{{ caseName }}</span>
-        <v-btn icon="mdi-close" variant="text" size="small" @click="open = false" />
+        <v-btn :icon="mdiClose" variant="text" size="small" @click="open = false" />
       </v-card-title>
 
       <v-divider />
 
       <div class="d-flex ga-4 px-4 py-2 text-body-medium text-medium-emphasis bg-grey-lighten-4">
         <span>
-          <v-icon size="x-small" class="mr-1">mdi-dna</v-icon>
+          <v-icon size="x-small" class="mr-1" :icon="mdiDna" />
           {{ variantCount.toLocaleString() }} variants
         </span>
         <span>
-          <v-icon size="x-small" class="mr-1">mdi-calendar</v-icon>
+          <v-icon size="x-small" class="mr-1" :icon="mdiCalendar" />
           Imported {{ formatDate(createdAt) }}
         </span>
       </div>
 
       <v-tabs v-model="activeTab" bg-color="secondary" density="compact">
         <v-tab value="overview">
-          <v-icon start size="small">mdi-information-outline</v-icon>
+          <v-icon start size="small" :icon="mdiInformationOutline" />
           Overview
         </v-tab>
         <v-tab value="comments">
-          <v-icon start size="small">mdi-comment-text-outline</v-icon>
+          <v-icon start size="small" :icon="mdiCommentTextOutline" />
           Comments
           <v-badge
             v-if="commentCount > 0"
@@ -36,7 +36,7 @@
           />
         </v-tab>
         <v-tab value="metrics">
-          <v-icon start size="small">mdi-chart-box-outline</v-icon>
+          <v-icon start size="small" :icon="mdiChartBoxOutline" />
           Metrics
           <v-badge
             v-if="metricCount > 0"
@@ -47,7 +47,7 @@
           />
         </v-tab>
         <v-tab value="data">
-          <v-icon start size="small">mdi-database-outline</v-icon>
+          <v-icon start size="small" :icon="mdiDatabaseOutline" />
           Data Info
         </v-tab>
       </v-tabs>
@@ -83,6 +83,15 @@ import CaseMetricsTab from './CaseMetricsTab.vue'
 import CaseDataInfoTab from './CaseDataInfoTab.vue'
 import { useCaseComments } from '../composables/useCaseComments'
 import { useCaseMetrics } from '../composables/useCaseMetrics'
+import {
+  mdiCalendar,
+  mdiChartBoxOutline,
+  mdiClose,
+  mdiCommentTextOutline,
+  mdiDatabaseOutline,
+  mdiDna,
+  mdiInformationOutline
+} from '@mdi/js'
 
 const props = defineProps<{
   caseId: number

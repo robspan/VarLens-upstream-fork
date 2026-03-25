@@ -5,7 +5,7 @@
   <div v-else>
     <!-- Import Information (read-only) -->
     <div class="text-subtitle-2 text-medium-emphasis mb-2">
-      <v-icon size="small" class="mr-1">mdi-file-import-outline</v-icon>
+      <v-icon size="small" class="mr-1" :icon="mdiFileImportOutline" />
       Import Information
     </div>
     <v-row dense class="mb-4">
@@ -33,7 +33,7 @@
 
     <!-- Platform -->
     <div class="text-subtitle-2 text-medium-emphasis mb-2">
-      <v-icon size="small" class="mr-1">mdi-chip</v-icon>
+      <v-icon size="small" class="mr-1" :icon="mdiChip" />
       Sequencing Platform
     </div>
     <v-row dense class="mb-4">
@@ -86,7 +86,7 @@
 
     <!-- Notes -->
     <div class="text-subtitle-2 text-medium-emphasis mb-2">
-      <v-icon size="small" class="mr-1">mdi-note-text-outline</v-icon>
+      <v-icon size="small" class="mr-1" :icon="mdiNoteTextOutline" />
       Data Notes
     </div>
     <v-textarea
@@ -121,6 +121,7 @@ import ExternalIdsEditor from './case-data-info/ExternalIdsEditor.vue'
 import GeneListEditorDialog from './case-data-info/GeneListEditorDialog.vue'
 import PrefilteringSection from './case-data-info/PrefilteringSection.vue'
 import RegionFileImportDialog from './case-data-info/RegionFileImportDialog.vue'
+import { mdiChip, mdiFileImportOutline, mdiNoteTextOutline } from '@mdi/js'
 
 const props = defineProps<{
   caseId: number

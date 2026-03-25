@@ -8,6 +8,14 @@
 import { ref } from 'vue'
 import type { CaseComment, CommentCategory } from '../../../shared/types/api'
 import { useApiService } from './useApiService'
+import {
+  mdiCalendarCheck,
+  mdiFamilyTree,
+  mdiFlask,
+  mdiLightbulbOutline,
+  mdiPill,
+  mdiStethoscope
+} from '@mdi/js'
 
 // Cache comments by caseId
 const commentsCache = ref<Map<number, CaseComment[]>>(new Map())
@@ -23,12 +31,12 @@ export const COMMENT_CATEGORIES: CommentCategory[] = [
 ]
 
 export const COMMENT_CATEGORY_ICONS: Record<CommentCategory, string> = {
-  'Clinical Note': 'mdi-stethoscope',
-  'Lab Result': 'mdi-flask',
-  Interpretation: 'mdi-lightbulb-outline',
-  'Follow-up': 'mdi-calendar-check',
-  'Family History': 'mdi-family-tree',
-  Treatment: 'mdi-pill'
+  'Clinical Note': mdiStethoscope,
+  'Lab Result': mdiFlask,
+  Interpretation: mdiLightbulbOutline,
+  'Follow-up': mdiCalendarCheck,
+  'Family History': mdiFamilyTree,
+  Treatment: mdiPill
 }
 
 export const COMMENT_CATEGORY_COLORS: Record<CommentCategory, string> = {

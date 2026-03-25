@@ -16,7 +16,7 @@
       <v-toolbar color="transparent" density="compact" flat>
         <v-toolbar-title class="text-body-large"> Variant Details </v-toolbar-title>
         <v-btn icon size="small" @click="emit('update:open', false)">
-          <v-icon>mdi-close</v-icon>
+          <v-icon :icon="mdiClose" />
         </v-btn>
       </v-toolbar>
 
@@ -100,7 +100,7 @@
                 class="cursor-pointer text-medium-emphasis"
                 @click="handleQuickClassify(null)"
               >
-                <v-icon size="x-small">mdi-close</v-icon>
+                <v-icon size="x-small" :icon="mdiClose" />
               </v-chip>
             </div>
 
@@ -108,7 +108,7 @@
             <v-expansion-panels variant="accordion" class="mb-1">
               <v-expansion-panel>
                 <v-expansion-panel-title class="text-body-2 pa-2">
-                  <v-icon size="small" class="mr-1">mdi-clipboard-check-outline</v-icon>
+                  <v-icon size="small" class="mr-1" :icon="mdiClipboardCheckOutline" />
                   Evidence editor
                   <span v-if="currentAcmgEvidence" class="text-caption text-medium-emphasis ml-1">
                     (has evidence)
@@ -146,7 +146,7 @@
           <v-expansion-panels variant="accordion" class="mb-4">
             <v-expansion-panel>
               <v-expansion-panel-title class="text-body-2">
-                <v-icon size="small" class="mr-1">mdi-history</v-icon>
+                <v-icon size="small" class="mr-1" :icon="mdiHistory" />
                 Activity Log
               </v-expansion-panel-title>
               <v-expansion-panel-text>
@@ -187,6 +187,7 @@ import type { Variant } from '../../../shared/types/api'
 import type { CohortVariant } from '../../../shared/types/cohort'
 import type { AcmgClassification } from '../../../main/database/types'
 import { ACMG_COLORS, ACMG_ABBREV, ACMG_CLASSIFICATIONS } from '../composables/useAnnotations'
+import { mdiClipboardCheckOutline, mdiClose, mdiHistory } from '@mdi/js'
 
 interface Props {
   open: boolean

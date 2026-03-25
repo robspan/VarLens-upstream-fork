@@ -14,7 +14,7 @@
         :aria-label="`Filter preset: ${preset.name}`"
         @click="emit('toggle', preset.id)"
       >
-        <v-icon v-if="!preset.isBuiltIn" start size="x-small">mdi-account</v-icon>
+        <v-icon v-if="!preset.isBuiltIn" start size="x-small" :icon="mdiAccount" />
         {{ preset.name }}
         <v-tooltip activator="parent" location="bottom">
           {{ preset.description || 'No description' }}
@@ -31,13 +31,13 @@
         color="primary"
         @click="emit('save')"
       >
-        <v-icon start size="x-small">mdi-content-save-outline</v-icon>
+        <v-icon start size="x-small" :icon="mdiContentSaveOutline" />
         Save
       </v-btn>
 
       <!-- Manage presets -->
       <v-btn size="x-small" variant="text" @click="emit('manage')">
-        <v-icon size="x-small">mdi-cog-outline</v-icon>
+        <v-icon size="x-small" :icon="mdiCogOutline" />
         <v-tooltip activator="parent" location="bottom">Manage presets</v-tooltip>
       </v-btn>
     </div>
@@ -46,6 +46,7 @@
 
 <script setup lang="ts">
 import type { FilterPreset } from '../../../shared/types/filter-presets'
+import { mdiAccount, mdiCogOutline, mdiContentSaveOutline } from '@mdi/js'
 
 defineProps<{
   visiblePresets: FilterPreset[]

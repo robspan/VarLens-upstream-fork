@@ -7,7 +7,7 @@
           v-model="password"
           label="Password"
           :type="showPassword ? 'text' : 'password'"
-          :append-inner-icon="showPassword ? 'mdi-eye-off' : 'mdi-eye'"
+          :append-inner-icon="showPassword ? mdiEyeOff : mdiEye"
           :error-messages="errorMessage"
           autofocus
           @click:append-inner="showPassword = !showPassword"
@@ -25,6 +25,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { mdiEye, mdiEyeOff } from '@mdi/js'
 
 // Component state
 const dialogOpen = ref(false)

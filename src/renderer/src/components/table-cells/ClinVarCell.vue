@@ -5,7 +5,7 @@
         <v-chip :color="chipColor" size="small" label>
           {{ displayValue }}
         </v-chip>
-        <v-icon size="x-small" class="external-link__icon">mdi-open-in-new</v-icon>
+        <v-icon size="x-small" class="external-link__icon" :icon="mdiOpenInNew" />
       </span>
     </template>
     {{ significance }}
@@ -24,6 +24,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { getClinVarColor } from '../../composables/useTableColors'
+import { mdiOpenInNew } from '@mdi/js'
 
 interface ClinVarCellProps {
   significance: string | null

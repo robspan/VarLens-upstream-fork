@@ -10,7 +10,7 @@
         <span>Import BED Region File</span>
         <v-spacer />
         <v-btn
-          icon="mdi-close"
+          :icon="mdiClose"
           variant="text"
           size="small"
           @click="$emit('update:modelValue', false)"
@@ -36,7 +36,7 @@
         <v-btn
           variant="outlined"
           color="primary"
-          prepend-icon="mdi-file-upload-outline"
+          :prepend-icon="mdiFileUploadOutline"
           :loading="importingRegion"
           @click="selectBedFile"
         >
@@ -66,6 +66,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useApiService } from '../../composables/useApiService'
+import { mdiClose, mdiFileUploadOutline } from '@mdi/js'
 
 interface RegionFileItem {
   id: number

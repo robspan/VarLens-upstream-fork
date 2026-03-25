@@ -4,10 +4,8 @@
       class="text-title-small mb-2 d-flex align-center cursor-pointer"
       @click="expanded = !expanded"
     >
-      <v-icon size="small" class="mr-1">
-        {{ expanded ? 'mdi-chevron-down' : 'mdi-chevron-right' }}
-      </v-icon>
-      <v-icon size="small" class="mr-1">mdi-human</v-icon>
+      <v-icon size="small" class="mr-1" :icon="expanded ? mdiChevronDown : mdiChevronRight" />
+      <v-icon size="small" class="mr-1" :icon="mdiHuman" />
       Top Phenotypes ({{ phenotypes.length }})
     </div>
 
@@ -37,6 +35,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { OverviewPhenotype } from '../../../../shared/types/database-overview'
+import { mdiChevronDown, mdiChevronRight, mdiHuman } from '@mdi/js'
 
 defineProps<{
   phenotypes: OverviewPhenotype[]

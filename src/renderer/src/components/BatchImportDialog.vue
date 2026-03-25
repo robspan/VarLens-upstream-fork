@@ -10,7 +10,7 @@
         <v-spacer />
         <v-btn
           v-if="phase !== 'importing'"
-          icon="mdi-close"
+          :icon="mdiClose"
           size="small"
           variant="text"
           @click="phase === 'summary' ? handleCancel() : closeDialog()"
@@ -94,6 +94,7 @@ import BatchReviewPhase from './batch-import/BatchReviewPhase.vue'
 import BatchProgressPhase from './batch-import/BatchProgressPhase.vue'
 import BatchSummaryPhase from './batch-import/BatchSummaryPhase.vue'
 import BatchZipPasswordPhase from './batch-import/BatchZipPasswordPhase.vue'
+import { mdiClose } from '@mdi/js'
 
 type Phase = 'idle' | 'review' | 'importing' | 'summary' | 'zip-password'
 

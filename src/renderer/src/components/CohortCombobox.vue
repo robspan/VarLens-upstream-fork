@@ -23,7 +23,7 @@
     <template #item="{ item, props }">
       <v-list-item v-bind="props">
         <template #prepend>
-          <v-icon :color="getCohortColor(item.name)" size="small">mdi-tag</v-icon>
+          <v-icon :color="getCohortColor(item.name)" size="small" :icon="mdiTag" />
         </template>
       </v-list-item>
     </template>
@@ -40,6 +40,7 @@
 <script setup lang="ts">
 import { getCohortColor } from '../composables/useCaseMetadata'
 import type { CohortGroup } from '../../../shared/types/api'
+import { mdiTag } from '@mdi/js'
 
 defineProps<{
   modelValue: CohortGroup[]

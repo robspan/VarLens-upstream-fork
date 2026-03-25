@@ -24,7 +24,7 @@
       </div>
       <v-tooltip location="bottom">
         <template #activator="{ props: tooltipProps }">
-          <v-icon v-bind="tooltipProps" size="x-small">mdi-information-outline</v-icon>
+          <v-icon v-bind="tooltipProps" size="x-small" :icon="mdiInformationOutline" />
         </template>
         <div class="text-caption">
           Pathogenic: +{{ classificationResult.pathogenicPoints }}<br />
@@ -34,14 +34,14 @@
       </v-tooltip>
     </div>
     <div v-if="isOverride" class="text-caption mt-1">
-      <v-icon size="x-small" color="warning">mdi-alert</v-icon>
+      <v-icon size="x-small" color="warning" :icon="mdiAlert" />
       Override — calculated: {{ classificationResult.classification ?? 'none' }}
     </div>
   </v-alert>
 
   <!-- Empty state hint -->
   <div v-else class="empty-state-hint text-caption text-medium-emphasis mb-2 pa-2">
-    <v-icon size="x-small" class="mr-1">mdi-information-outline</v-icon>
+    <v-icon size="x-small" class="mr-1" :icon="mdiInformationOutline" />
     Select evidence codes below to classify this variant
   </div>
 
@@ -53,7 +53,7 @@
       size="x-small"
       density="compact"
       color="amber-darken-2"
-      prepend-icon="mdi-lightbulb-on"
+      :prepend-icon="mdiLightbulbOn"
       @click="$emit('autoSuggest')"
     >
       Auto-suggest
@@ -66,7 +66,7 @@
           size="x-small"
           density="compact"
           color="grey-darken-1"
-          prepend-icon="mdi-pencil"
+          :prepend-icon="mdiPencil"
         >
           Override
         </v-btn>
@@ -79,7 +79,7 @@
           @click="$emit('override', cls)"
         >
           <template #prepend>
-            <v-icon :color="ACMG_COLORS[cls]" size="small">mdi-circle</v-icon>
+            <v-icon :color="ACMG_COLORS[cls]" size="small" :icon="mdiCircle" />
           </template>
           <v-list-item-title class="text-caption">{{ cls }}</v-list-item-title>
         </v-list-item>
@@ -97,6 +97,7 @@
 <script setup lang="ts">
 import type { AcmgClassification } from '../../../../main/database/types'
 import { ACMG_COLORS, ACMG_CLASSIFICATIONS } from '../../composables/useAnnotations'
+import { mdiAlert, mdiCircle, mdiInformationOutline, mdiLightbulbOn, mdiPencil } from '@mdi/js'
 
 interface ClassificationResult {
   classification: AcmgClassification | null

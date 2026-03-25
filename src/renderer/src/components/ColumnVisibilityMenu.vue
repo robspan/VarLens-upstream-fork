@@ -1,7 +1,7 @@
 <template>
   <v-menu :close-on-content-click="false" max-width="350">
     <template #activator="{ props }">
-      <v-btn v-bind="props" size="small" variant="tonal" prepend-icon="mdi-table-column">
+      <v-btn v-bind="props" size="small" variant="tonal" :prepend-icon="mdiTableColumn">
         Columns
         <v-tooltip activator="parent" location="bottom">Show/hide and reorder columns</v-tooltip>
       </v-btn>
@@ -24,7 +24,7 @@
             <template #item="{ element: column }">
               <v-list-item class="px-2">
                 <template #prepend>
-                  <v-icon class="drag-handle mr-2" size="small">mdi-drag-vertical</v-icon>
+                  <v-icon class="drag-handle mr-2" size="small" :icon="mdiDragVertical" />
                   <v-checkbox-btn
                     :model-value="visibleColumns.includes(column.key)"
                     hide-details
@@ -39,7 +39,7 @@
       </v-card-text>
       <v-divider />
       <v-card-actions class="pa-2">
-        <v-btn variant="text" size="small" prepend-icon="mdi-refresh" @click="emit('reset')">
+        <v-btn variant="text" size="small" :prepend-icon="mdiRefresh" @click="emit('reset')">
           Reset to Defaults
         </v-btn>
       </v-card-actions>
@@ -49,6 +49,7 @@
 
 <script setup lang="ts">
 import draggable from 'vuedraggable'
+import { mdiDragVertical, mdiRefresh, mdiTableColumn } from '@mdi/js'
 
 interface Column {
   key: string

@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useAuthStore } from '../stores/authStore'
 import { useApiService } from '../composables/useApiService'
+import { mdiAccountOff, mdiLockReset, mdiPlus } from '@mdi/js'
 
 const authStore = useAuthStore()
 const { api } = useApiService()
@@ -105,7 +106,7 @@ onMounted(loadUsers)
     <v-card-title class="d-flex align-center">
       <span>User Management</span>
       <v-spacer />
-      <v-btn color="primary" prepend-icon="mdi-plus" @click="showCreateDialog = true">
+      <v-btn color="primary" :prepend-icon="mdiPlus" @click="showCreateDialog = true">
         Add User
       </v-btn>
     </v-card-title>
@@ -159,7 +160,7 @@ onMounted(loadUsers)
             <td>
               <v-btn
                 v-if="user.username !== authStore.currentUser?.username && user.is_active"
-                icon="mdi-lock-reset"
+                :icon="mdiLockReset"
                 size="small"
                 variant="text"
                 title="Reset Password"
@@ -167,7 +168,7 @@ onMounted(loadUsers)
               />
               <v-btn
                 v-if="user.username !== authStore.currentUser?.username && user.is_active"
-                icon="mdi-account-off"
+                :icon="mdiAccountOff"
                 size="small"
                 variant="text"
                 color="error"

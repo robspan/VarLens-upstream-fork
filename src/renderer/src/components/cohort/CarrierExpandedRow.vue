@@ -25,7 +25,7 @@
               <v-btn
                 size="small"
                 variant="text"
-                prepend-icon="mdi-open-in-app"
+                :prepend-icon="mdiOpenInApp"
                 @click="emit('navigate-to-case', carrier.case_id)"
               >
                 View in Case
@@ -40,6 +40,7 @@
 
 <script setup lang="ts">
 import type { CohortCarrier } from '../../../../shared/types/cohort'
+import { mdiOpenInApp } from '@mdi/js'
 
 interface Props {
   carriers: CohortCarrier[]

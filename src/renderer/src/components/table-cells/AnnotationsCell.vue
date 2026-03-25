@@ -9,7 +9,7 @@
           :class="{ 'has-global': displayGlobalStarred }"
         >
           <v-icon
-            :icon="displayStarred ? 'mdi-star' : 'mdi-star-outline'"
+            :icon="displayStarred ? mdiStar : mdiStarOutline"
             :color="displayStarred ? 'amber' : 'grey-lighten-1'"
             size="small"
             class="cursor-pointer"
@@ -32,7 +32,7 @@
     </v-tooltip>
     <v-icon
       v-else
-      :icon="displayStarred ? 'mdi-star' : 'mdi-star-outline'"
+      :icon="displayStarred ? mdiStar : mdiStarOutline"
       :color="displayStarred ? 'amber' : 'grey-lighten-1'"
       size="small"
       class="cursor-pointer"
@@ -60,7 +60,7 @@
               </v-chip>
               <v-icon
                 v-else
-                icon="mdi-clipboard-check-outline"
+                :icon="mdiClipboardCheckOutline"
                 size="small"
                 color="grey-lighten-1"
                 class="cursor-pointer"
@@ -93,7 +93,7 @@
           <v-icon
             v-else
             v-bind="menuProps"
-            icon="mdi-clipboard-check-outline"
+            :icon="mdiClipboardCheckOutline"
             size="small"
             color="grey-lighten-1"
             class="cursor-pointer"
@@ -119,7 +119,7 @@
         <v-list density="compact" class="pa-0">
           <v-list-item class="px-1" @click="emit('acmg-evidence-click')">
             <template #prepend>
-              <v-icon size="small" class="mr-1">mdi-clipboard-check-outline</v-icon>
+              <v-icon size="small" class="mr-1" :icon="mdiClipboardCheckOutline" />
             </template>
             <v-list-item-title class="text-caption font-weight-medium">
               Evidence editor...
@@ -143,7 +143,7 @@
           :class="{ 'has-global': displayHasGlobalComment }"
         >
           <v-icon
-            :icon="hasAnyComment ? 'mdi-comment-text' : 'mdi-comment-text-outline'"
+            :icon="hasAnyComment ? mdiCommentText : mdiCommentTextOutline"
             :color="hasAnyComment ? 'primary' : 'grey-lighten-1'"
             size="small"
             class="cursor-pointer"
@@ -166,7 +166,7 @@
     </v-tooltip>
     <v-icon
       v-else
-      :icon="displayHasComment ? 'mdi-comment-text' : 'mdi-comment-text-outline'"
+      :icon="displayHasComment ? mdiCommentText : mdiCommentTextOutline"
       :color="displayHasComment ? 'primary' : 'grey-lighten-1'"
       size="small"
       class="cursor-pointer"
@@ -180,6 +180,13 @@ import { computed } from 'vue'
 import type { AcmgClassification } from '../../../../main/database/types'
 import type { AnnotationScope } from '../../../../shared/types/annotations'
 import { ACMG_COLORS, ACMG_ABBREV, ACMG_CLASSIFICATIONS } from '../../composables/useAnnotations'
+import {
+  mdiClipboardCheckOutline,
+  mdiCommentText,
+  mdiCommentTextOutline,
+  mdiStar,
+  mdiStarOutline
+} from '@mdi/js'
 
 interface Props {
   /** Current starred state (per-case for Case Analysis, global for Cohort) */

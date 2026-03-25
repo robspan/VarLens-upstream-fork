@@ -1,6 +1,6 @@
 <template>
   <div class="text-subtitle-2 text-medium-emphasis mb-2">
-    <v-icon size="small" class="mr-1">mdi-filter-outline</v-icon>
+    <v-icon size="small" class="mr-1" :icon="mdiFilterOutline" />
     Pre-filtering Applied
   </div>
   <v-row dense class="mb-4">
@@ -46,7 +46,7 @@
           @update:model-value="onGeneListChange($event)"
         />
         <v-btn
-          icon="mdi-playlist-edit"
+          :icon="mdiPlaylistEdit"
           size="x-small"
           variant="text"
           color="primary"
@@ -72,7 +72,7 @@
           @update:model-value="onRegionFileChange($event)"
         />
         <v-btn
-          icon="mdi-file-upload-outline"
+          :icon="mdiFileUploadOutline"
           size="x-small"
           variant="text"
           color="primary"
@@ -84,6 +84,7 @@
 </template>
 
 <script setup lang="ts">
+import { mdiFileUploadOutline, mdiFilterOutline, mdiPlaylistEdit } from '@mdi/js'
 interface SelectItem {
   text: string
   value: number

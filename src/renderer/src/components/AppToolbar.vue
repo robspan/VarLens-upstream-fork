@@ -1,7 +1,7 @@
 <template>
   <v-app-bar color="primary" density="compact" flat>
     <v-btn
-      :icon="sidebarOpen ? 'mdi-chevron-double-left' : 'mdi-chevron-double-right'"
+      :icon="sidebarOpen ? mdiChevronDoubleLeft : mdiChevronDoubleRight"
       variant="text"
       size="small"
       :aria-label="sidebarOpen ? 'Close sidebar' : 'Open sidebar'"
@@ -38,18 +38,18 @@
           {{ selectedCaseName }}
         </span>
         <v-btn icon size="x-small" variant="text" class="ml-1" @click="$emit('show-case-metadata')">
-          <v-icon size="small">mdi-information-outline</v-icon>
+          <v-icon size="small" :icon="mdiInformationOutline" />
           <v-tooltip activator="parent" location="bottom">Case details</v-tooltip>
         </v-btn>
       </template>
       <template v-else-if="activeTab === 'cohort'">
-        <v-icon size="small" class="mr-1">mdi-account-group</v-icon>
+        <v-icon size="small" class="mr-1" :icon="mdiAccountGroup" />
         <span class="text-body-medium font-weight-medium">
           Cohort ({{ caseCount }} {{ caseCount === 1 ? 'case' : 'cases' }})
         </span>
       </template>
       <template v-else>
-        <v-icon size="small" class="mr-1">mdi-account</v-icon>
+        <v-icon size="small" class="mr-1" :icon="mdiAccount" />
         <span
           class="text-body-medium text-medium-emphasis select-case-hint"
           role="button"
@@ -76,11 +76,11 @@
       class="mode-toggle mr-2"
     >
       <v-btn value="case" size="small">
-        <v-icon :start="showModeToggleLabels" size="small">mdi-account</v-icon>
+        <v-icon :start="showModeToggleLabels" size="small" :icon="mdiAccount" />
         <span v-if="showModeToggleLabels">Case</span>
       </v-btn>
       <v-btn value="cohort" size="small">
-        <v-icon :start="showModeToggleLabels" size="small">mdi-account-group</v-icon>
+        <v-icon :start="showModeToggleLabels" size="small" :icon="mdiAccountGroup" />
         <span v-if="showModeToggleLabels">Cohort</span>
       </v-btn>
     </v-btn-toggle>
@@ -92,42 +92,42 @@
     <v-menu>
       <template #activator="{ props }">
         <v-btn icon size="small" v-bind="props">
-          <v-icon>mdi-cog</v-icon>
+          <v-icon :icon="mdiCog" />
           <v-tooltip activator="parent" location="bottom">Settings</v-tooltip>
         </v-btn>
       </template>
       <v-list density="compact">
         <v-list-item
-          prepend-icon="mdi-chart-box-outline"
+          :prepend-icon="mdiChartBoxOutline"
           title="Database Overview"
           @click="$emit('show-database-overview')"
         />
         <v-divider class="my-1" />
         <v-list-item
-          prepend-icon="mdi-link"
+          :prepend-icon="mdiLink"
           title="External Links"
           @click="$emit('show-external-links')"
         />
         <v-list-item
-          prepend-icon="mdi-tag-multiple"
+          :prepend-icon="mdiTagMultiple"
           title="Custom Tags"
           @click="$emit('show-tag-management')"
         />
         <v-list-item
-          prepend-icon="mdi-tune"
+          :prepend-icon="mdiTune"
           title="Application Preferences"
           @click="$emit('show-preferences')"
         />
         <v-divider class="my-1" />
         <v-list-subheader>Reset Preferences</v-list-subheader>
         <v-list-item
-          prepend-icon="mdi-table-column"
+          :prepend-icon="mdiTableColumn"
           title="Reset Columns"
           subtitle="Restore default column visibility and order"
           @click="$emit('reset-columns')"
         />
         <v-list-item
-          prepend-icon="mdi-filter-off"
+          :prepend-icon="mdiFilterOff"
           title="Reset Filters"
           subtitle="Restore default filter group arrangement"
           @click="$emit('reset-filters')"
@@ -136,7 +136,7 @@
         <v-list-subheader class="danger-zone-subheader">Danger Zone</v-list-subheader>
         <v-list-item @click="$emit('delete-all-cases')">
           <template #prepend>
-            <v-icon color="error">mdi-delete-sweep</v-icon>
+            <v-icon color="error" :icon="mdiDeleteSweep" />
           </template>
           <v-list-item-title>Delete All Cases</v-list-item-title>
           <v-list-item-subtitle>Remove all cases from database</v-list-item-subtitle>
@@ -156,6 +156,21 @@ import { useAppState } from '../composables/useAppState'
 import { useResponsiveLayout } from '../composables/useResponsiveLayout'
 import { useCaseMetadata } from '../composables/useCaseMetadata'
 import type { AffectedStatus, CaseSex } from '../../../shared/types/api'
+import {
+  mdiAccount,
+  mdiAccountGroup,
+  mdiChartBoxOutline,
+  mdiChevronDoubleLeft,
+  mdiChevronDoubleRight,
+  mdiCog,
+  mdiDeleteSweep,
+  mdiFilterOff,
+  mdiInformationOutline,
+  mdiLink,
+  mdiTableColumn,
+  mdiTagMultiple,
+  mdiTune
+} from '@mdi/js'
 
 const router = useRouter()
 

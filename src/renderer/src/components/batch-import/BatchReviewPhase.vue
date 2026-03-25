@@ -9,7 +9,7 @@
       clearable
       hide-details
       class="mb-3"
-      prepend-inner-icon="mdi-text-search-variant"
+      :prepend-inner-icon="mdiTextSearchVariant"
       @update:model-value="$emit('update:stripText', $event)"
     />
 
@@ -58,10 +58,13 @@
         :class="file.isDuplicate ? 'text-warning' : ''"
       >
         <template #prepend>
-          <v-icon v-if="file.isDuplicate" color="warning" size="small">
-            mdi-alert-circle-outline
-          </v-icon>
-          <v-icon v-else color="success" size="small"> mdi-new-box </v-icon>
+          <v-icon
+            v-if="file.isDuplicate"
+            color="warning"
+            size="small"
+            :icon="mdiAlertCircleOutline"
+          />
+          <v-icon v-else color="success" size="small" :icon="mdiNewBox" />
         </template>
         <v-list-item-title class="text-body-medium">
           {{ file.caseName }}
@@ -81,6 +84,7 @@
 
 <script setup lang="ts">
 import type { DuplicateChoice } from '../../../../shared/types/api'
+import { mdiAlertCircleOutline, mdiNewBox, mdiTextSearchVariant } from '@mdi/js'
 
 defineProps<{
   reviewFiles: Array<{ caseName: string; fileName: string; isDuplicate: boolean }>

@@ -15,7 +15,7 @@
         <!-- Show different content based on whether cases exist -->
         <template v-if="hasCases">
           <p class="text-body-medium text-grey">
-            <v-icon size="small" class="mr-1">mdi-arrow-left</v-icon>
+            <v-icon size="small" class="mr-1" :icon="mdiArrowLeft" />
             Select a case from the sidebar to view variants
           </p>
         </template>
@@ -23,12 +23,12 @@
           <p class="text-body-medium text-grey mb-4">
             Get started by importing your first variant file
           </p>
-          <v-btn color="primary" size="large" prepend-icon="mdi-upload" @click="$emit('import')">
+          <v-btn color="primary" size="large" :prepend-icon="mdiUpload" @click="$emit('import')">
             Import Variants
           </v-btn>
           <p class="text-body-small text-grey mt-4">Supports .json and .json.gz files</p>
           <div class="mt-4">
-            <v-icon size="small" class="mr-1">mdi-tray-arrow-down</v-icon>
+            <v-icon size="small" class="mr-1" :icon="mdiTrayArrowDown" />
             <span class="text-body-small text-grey">or drag and drop files here</span>
           </div>
         </template>
@@ -38,6 +38,7 @@
 </template>
 
 <script setup lang="ts">
+import { mdiArrowLeft, mdiTrayArrowDown, mdiUpload } from '@mdi/js'
 defineProps<{
   hasCases?: boolean
 }>()

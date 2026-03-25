@@ -39,9 +39,7 @@
             icon
             @click="filters.starredOnly = !filters.starredOnly"
           >
-            <v-icon size="small">{{
-              filters.starredOnly ? 'mdi-star' : 'mdi-star-outline'
-            }}</v-icon>
+            <v-icon size="small" :icon="filters.starredOnly ? mdiStar : mdiStarOutline" />
           </v-btn>
         </template>
         {{
@@ -62,9 +60,10 @@
             icon
             @click="filters.hasCommentOnly = !filters.hasCommentOnly"
           >
-            <v-icon size="small">{{
-              filters.hasCommentOnly ? 'mdi-comment-text' : 'mdi-comment-text-outline'
-            }}</v-icon>
+            <v-icon
+              size="small"
+              :icon="filters.hasCommentOnly ? mdiCommentText : mdiCommentTextOutline"
+            />
           </v-btn>
         </template>
         {{
@@ -146,6 +145,7 @@ import PresetManageDialog from '../PresetManageDialog.vue'
 import type { ActiveFilter } from '../../../../shared/types/filters'
 import type { CohortVariant } from '../../../../shared/types/cohort'
 import type { CohortFilterDrawerState } from './cohortFilterDrawerTypes'
+import { mdiCommentText, mdiCommentTextOutline, mdiStar, mdiStarOutline } from '@mdi/js'
 import {
   ACMG_FILTER_OPTIONS,
   applyPresetStateToFilters,

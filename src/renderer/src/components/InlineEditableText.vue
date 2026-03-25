@@ -5,7 +5,7 @@
       <span :class="{ 'text-grey': !modelValue }">
         {{ modelValue || placeholder }}
       </span>
-      <v-icon size="x-small" class="edit-icon ml-1">mdi-pencil</v-icon>
+      <v-icon size="x-small" class="edit-icon ml-1" :icon="mdiPencil" />
     </div>
 
     <!-- Edit mode -->
@@ -27,6 +27,7 @@
 
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
+import { mdiPencil } from '@mdi/js'
 
 interface Props {
   modelValue: string | null

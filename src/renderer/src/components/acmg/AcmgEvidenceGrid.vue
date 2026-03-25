@@ -32,9 +32,12 @@
               @click="$emit('codeClick', code)"
             >
               {{ code }}
-              <v-icon v-if="isCodeSuggested(code)" size="8" class="ml-1"
-                >mdi-lightbulb-outline</v-icon
-              >
+              <v-icon
+                v-if="isCodeSuggested(code)"
+                size="8"
+                class="ml-1"
+                :icon="mdiLightbulbOutline"
+              />
             </v-btn>
           </template>
           <div class="tooltip-content">
@@ -68,6 +71,7 @@ import {
   DEPRECATED_CODES
 } from '../../utils/acmg/types'
 import { getDefaultStrength as getDefaultCodeStrength } from '../../utils/acmg/types'
+import { mdiLightbulbOutline } from '@mdi/js'
 
 interface CodeGroup {
   label: string

@@ -10,7 +10,7 @@
         <span>{{ editingGeneList ? 'Edit Gene List' : 'Create Gene List' }}</span>
         <v-spacer />
         <v-btn
-          icon="mdi-close"
+          :icon="mdiClose"
           variant="text"
           size="small"
           @click="$emit('update:modelValue', false)"
@@ -69,6 +69,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useApiService } from '../../composables/useApiService'
+import { mdiClose } from '@mdi/js'
 
 interface GeneListItem {
   id: number

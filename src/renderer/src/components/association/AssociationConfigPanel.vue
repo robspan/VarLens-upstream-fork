@@ -7,7 +7,7 @@
         v-if="hasResults"
         variant="text"
         size="small"
-        :icon="collapsed ? 'mdi-chevron-down' : 'mdi-chevron-up'"
+        :icon="collapsed ? mdiChevronDown : mdiChevronUp"
         @click="collapsed = !collapsed"
       />
     </v-card-title>
@@ -126,7 +126,7 @@
                   v-model:model-value="selectedConsequences"
                   :config="consequenceGroupConfig"
                   label="Consequences"
-                  icon="mdi-filter-variant"
+                  :icon="mdiFilterVariant"
                 />
               </v-col>
             </v-row>
@@ -145,7 +145,7 @@
                   auto-grow
                 >
                   <template #prepend-inner>
-                    <v-icon size="small" class="mr-1">mdi-dna</v-icon>
+                    <v-icon size="small" class="mr-1" :icon="mdiDna" />
                   </template>
                   <template #append-inner>
                     <v-chip v-if="parsedGeneList.length > 0" size="x-small" color="primary">
@@ -220,7 +220,7 @@
         variant="elevated"
         :disabled="!canRun"
         :loading="running"
-        prepend-icon="mdi-play"
+        :prepend-icon="mdiPlay"
         @click="handleRun"
       >
         Run Analysis
@@ -234,6 +234,7 @@ import { ref, computed, watch } from 'vue'
 import GroupBuilder from './GroupBuilder.vue'
 import GroupedMultiSelect from '../GroupedMultiSelect.vue'
 import { consequenceGroups, getGroupValues } from '../../config/filterGroups'
+import { mdiChevronDown, mdiChevronUp, mdiDna, mdiFilterVariant, mdiPlay } from '@mdi/js'
 
 interface CaseInfo {
   id: number

@@ -635,15 +635,7 @@ export function registerCaseMetadataHandlers({
       }
 
       const db = getDb()
-      return {
-        metadata: db.metadata.getCaseMetadata(validated.data),
-        cohorts: db.metadata.getCaseCohorts(validated.data),
-        hpoTerms: db.metadata.getCaseHpoTerms(validated.data),
-        comments: db.metadata.listCaseComments(validated.data),
-        metrics: db.metadata.listCaseMetrics(validated.data),
-        dataInfo: db.metadata.getCaseDataInfo(validated.data),
-        externalIds: db.metadata.listCaseExternalIds(validated.data)
-      }
+      return db.metadata.getFullCaseMetadata(validated.data)
     })
   })
 }

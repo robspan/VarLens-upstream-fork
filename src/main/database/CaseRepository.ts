@@ -72,6 +72,16 @@ export class CaseRepository extends BaseRepository {
     return result
   }
 
+  /** Returns set of case names that already exist in the database. */
+  getExistingCaseNames(names: string[]): Set<string> {
+    if (names.length === 0) return new Set()
+    const placeholders = names.map(() => '?').join(',')
+    const rows = this.db
+      .prepare(`SELECT name FROM cases WHERE name IN (${placeholders})`)
+      .all(...names) as Array<{ name: string }>
+    return new Set(rows.map((r) => r.name))
+  }
+
   getAllCases(): Case[] {
     return this.execAll<Case>(
       this.kysely.selectFrom('cases').selectAll().orderBy('created_at', 'desc')

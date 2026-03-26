@@ -1,6 +1,5 @@
 import { basename } from 'path'
 import type { DatabaseService } from '../database/DatabaseService'
-import { NotFoundError } from '../database/errors'
 
 export interface DuplicateCheckItem {
   filePath: string
@@ -41,26 +40,22 @@ export function checkDuplicates(
   filePaths: string[],
   stripText?: string
 ): { files: DuplicateCheckItem[]; duplicateCount: number } {
-  const files: DuplicateCheckItem[] = []
-  let duplicateCount = 0
-
-  for (const filePath of filePaths) {
+  // Extract all case names first
+  const fileInfos = filePaths.map((filePath) => {
     const fileName = extractFileName(filePath)
     const caseName = extractCaseName(fileName, stripText)
+    return { filePath, fileName, caseName }
+  })
 
-    let isDuplicate = false
-    try {
-      db.cases.getCaseByName(caseName)
-      isDuplicate = true
-      duplicateCount++
-    } catch (error) {
-      if (!(error instanceof NotFoundError)) {
-        throw error
-      }
-    }
+  // Single batched query instead of N individual lookups
+  const existingNames = db.cases.getExistingCaseNames(fileInfos.map((f) => f.caseName))
 
-    files.push({ filePath, fileName, caseName, isDuplicate })
-  }
+  let duplicateCount = 0
+  const files: DuplicateCheckItem[] = fileInfos.map(({ filePath, fileName, caseName }) => {
+    const isDuplicate = existingNames.has(caseName)
+    if (isDuplicate) duplicateCount++
+    return { filePath, fileName, caseName, isDuplicate }
+  })
 
   return { files, duplicateCount }
 }

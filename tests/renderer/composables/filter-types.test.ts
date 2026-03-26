@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { ref, isReactive } from 'vue'
 import {
   buildFilterFromState,
   type FilterState
@@ -107,5 +108,68 @@ describe('buildFilterFromState', () => {
     expect(result.has_comment).toBe(true)
     expect(result.acmg_classifications).toEqual(['Pathogenic'])
     expect(result.annotation_scope).toBe('all')
+  })
+
+  describe('IPC safety — output arrays are plain (not reactive proxies)', () => {
+    it('funcs output is a new plain array, not a reference to input', () => {
+      const state = ref<FilterState>({
+        ...defaultState,
+        funcs: ['exonic', 'intronic']
+      })
+      const result = buildFilterFromState(state.value, [])
+      expect(result.funcs).toEqual(['exonic', 'intronic'])
+      expect(result.funcs).not.toBe(state.value.funcs)
+      expect(isReactive(result.funcs)).toBe(false)
+    })
+
+    it('clinvars output is a new plain array', () => {
+      const state = ref<FilterState>({
+        ...defaultState,
+        clinvars: ['pathogenic']
+      })
+      const result = buildFilterFromState(state.value, [])
+      expect(result.clinvars).not.toBe(state.value.clinvars)
+      expect(isReactive(result.clinvars)).toBe(false)
+    })
+
+    it('tag_ids output is a new plain array', () => {
+      const state = ref<FilterState>({
+        ...defaultState,
+        tagIds: [1, 2, 3]
+      })
+      const result = buildFilterFromState(state.value, [])
+      expect(result.tag_ids).not.toBe(state.value.tagIds)
+      expect(isReactive(result.tag_ids)).toBe(false)
+    })
+
+    it('acmg_classifications output is a new plain array', () => {
+      const state = ref<FilterState>({
+        ...defaultState,
+        acmgClassifications: ['Pathogenic', 'Likely pathogenic']
+      })
+      const result = buildFilterFromState(state.value, [])
+      expect(result.acmg_classifications).not.toBe(state.value.acmgClassifications)
+      expect(isReactive(result.acmg_classifications)).toBe(false)
+    })
+
+    it('entire output can be JSON-serialized (simulates IPC)', () => {
+      const state = ref<FilterState>({
+        searchQuery: 'test',
+        geneSymbol: 'BRCA1',
+        consequences: ['missense_variant'],
+        funcs: ['exonic'],
+        clinvars: ['pathogenic'],
+        maxGnomadAf: 0.01,
+        minCadd: 15,
+        tagIds: [1, 2],
+        starredOnly: true,
+        hasCommentOnly: true,
+        acmgClassifications: ['Pathogenic'],
+        annotationScope: 'all'
+      })
+      const result = buildFilterFromState(state.value, ['HIGH'])
+      // Must not throw — proves no Proxy objects in the output
+      expect(() => JSON.parse(JSON.stringify(result))).not.toThrow()
+    })
   })
 })

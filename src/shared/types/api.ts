@@ -84,6 +84,18 @@ import type { FilterPreset, FilterPresetCreate, FilterPresetUpdate } from './fil
 import type { LogMessage } from './log'
 import type { TranscriptAnnotation, TranscriptInsertRow } from './transcript'
 import type { DatabaseOverview } from './database-overview'
+import type {
+  GeneValidationResult,
+  GeneAutocompleteResult,
+  GeneRefInfo,
+  AssemblyInfo
+} from '../../main/database/GeneReferenceDb'
+import type {
+  PanelRow,
+  PanelWithCount,
+  PanelGeneRow,
+  ActivePanelRow
+} from '../../main/database/PanelRepository'
 
 // Re-export for convenience
 export type {
@@ -121,7 +133,15 @@ export type {
   CaseExternalId,
   GeneList,
   GeneListWithCount,
-  RegionFile
+  RegionFile,
+  PanelRow,
+  PanelWithCount,
+  PanelGeneRow,
+  ActivePanelRow,
+  GeneValidationResult,
+  GeneAutocompleteResult,
+  GeneRefInfo,
+  AssemblyInfo
 }
 
 export interface CasesAPI {
@@ -510,6 +530,46 @@ export interface RegionFilesAPI {
   importBed: (fileId: number, filePath: string) => Promise<RegionFile>
 }
 
+export interface PanelsAPI {
+  list: () => Promise<PanelWithCount[]>
+  get: (id: number) => Promise<(PanelRow & { genes: PanelGeneRow[] }) | null>
+  create: (params: {
+    name: string
+    description?: string | null
+    version?: string | null
+    source?: string
+    sourceId?: string | null
+    sourceMetadata?: Record<string, unknown> | null
+  }) => Promise<PanelRow>
+  update: (params: {
+    id: number
+    name?: string
+    description?: string | null
+    version?: string | null
+  }) => Promise<PanelRow>
+  delete: (id: number) => Promise<{ success: boolean }>
+  duplicate: (id: number, newName: string) => Promise<PanelRow>
+  setGenes: (
+    panelId: number,
+    genes: Array<{ hgncId: string; symbol: string }>
+  ) => Promise<{ success: boolean }>
+  getGenes: (panelId: number) => Promise<PanelGeneRow[]>
+  activate: (
+    caseId: number,
+    panelId: number,
+    paddingBp?: number
+  ) => Promise<{ success: boolean }>
+  deactivate: (caseId: number, panelId: number) => Promise<{ success: boolean }>
+  activeForCase: (caseId: number) => Promise<ActivePanelRow[]>
+  validateSymbols: (symbols: string[]) => Promise<GeneValidationResult[]>
+  autocomplete: (query: string, limit?: number) => Promise<GeneAutocompleteResult[]>
+}
+
+export interface GeneRefAPI {
+  info: () => Promise<GeneRefInfo>
+  assemblies: () => Promise<AssemblyInfo[]>
+}
+
 export interface WindowAPI {
   cases: CasesAPI
   variants: VariantsAPI
@@ -537,6 +597,8 @@ export interface WindowAPI {
   audit: AuditLogAPI
   auth: AuthAPI
   presets: PresetsAPI
+  panels: PanelsAPI
+  geneRef: GeneRefAPI
 }
 
 export interface PresetsAPI {

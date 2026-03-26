@@ -275,9 +275,9 @@ async function main(): Promise<void> {
       const aliases = row[aliasSymbolIdx]?.trim()
       if (aliases && aliases !== '') {
         for (const alias of aliases.split('|')) {
-          const trimmed = alias.trim()
+          const trimmed = alias.trim().replace(/^"|"$/g, '')
           if (trimmed) {
-            insertAlias.run(trimmed, hgncId, 'alias')
+            insertAlias.run(trimmed, hgncId, 'alias_symbol')
             aliasCount++
           }
         }
@@ -287,9 +287,9 @@ async function main(): Promise<void> {
       const prevSymbols = row[prevSymbolIdx]?.trim()
       if (prevSymbols && prevSymbols !== '') {
         for (const prev of prevSymbols.split('|')) {
-          const trimmed = prev.trim()
+          const trimmed = prev.trim().replace(/^"|"$/g, '')
           if (trimmed) {
-            insertAlias.run(trimmed, hgncId, 'previous')
+            insertAlias.run(trimmed, hgncId, 'prev_symbol')
             aliasCount++
           }
         }

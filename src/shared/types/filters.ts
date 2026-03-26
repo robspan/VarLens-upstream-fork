@@ -70,4 +70,6 @@ export interface FilterIpcParams {
   starred_only?: boolean
   has_comment?: boolean
   acmg_classifications?: string[]
+  active_panel_ids?: number[]
+  panel_padding_bp?: number
 }

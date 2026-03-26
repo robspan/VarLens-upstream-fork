@@ -260,6 +260,18 @@ export class VariantRepository extends BaseRepository {
       )
     )
 
+    // Panel genomic interval filter (OR chain of chr + pos range conditions)
+    if (filter.panel_intervals && filter.panel_intervals.length > 0) {
+      const intervals = filter.panel_intervals
+      query = query.where(({ or, and, eb }) =>
+        or(
+          intervals.map((iv) =>
+            and([eb('chr', '=', iv.chr), eb('pos', '>=', iv.start), eb('pos', '<=', iv.end)])
+          )
+        )
+      )
+    }
+
     // Starred filter (scope-dependent)
     query = query.$if(filter.starred_only === true, (qb) => {
       if (filter.annotation_scope === 'all') {

@@ -147,6 +147,12 @@ export interface VariantFilter {
   column_filters?: ColumnFiltersParam
   /** Annotation scope for star/ACMG filters: 'case' = per-case only, 'all' = per-case OR global */
   annotation_scope?: 'case' | 'all'
+  /** Pre-computed genomic intervals from active gene panels */
+  panel_intervals?: Array<{ chr: string; start: number; end: number }>
+  /** Active panel IDs (IPC-only, resolved to panel_intervals before query) */
+  active_panel_ids?: number[]
+  /** Panel padding in base pairs (IPC-only, used during interval computation) */
+  panel_padding_bp?: number
 }
 
 /**

@@ -10,6 +10,7 @@ import {
   SortItemSchema
 } from '../../../shared/types/ipc-schemas'
 import { mainLogger } from '../../services/MainLogger'
+import { getGeneReferenceDb } from '../../database/geneReferenceLoader'
 
 /**
  * Variants IPC handlers
@@ -93,6 +94,46 @@ export function registerVariantHandlers({ ipcMain, getDb, getDbPool }: HandlerDe
         const fullFilter: VariantFilter = {
           case_id: validatedCaseId.data,
           ...validatedFilters.data
+        }
+
+        // Compute panel intervals if active panels specified
+        if (fullFilter.active_panel_ids && fullFilter.active_panel_ids.length > 0) {
+          const dbRef = getDb()
+          const caseData = dbRef.cases.getCase(fullFilter.case_id)
+          const genomeBuild = caseData?.genome_build ?? 'GRCh38'
+          const paddingBp = fullFilter.panel_padding_bp ?? 5000
+
+          // Detect chromosome prefix from existing variants
+          const sampleVariant = dbRef.variants.getVariants(
+            { case_id: fullFilter.case_id },
+            1,
+            0,
+            undefined,
+            true
+          )
+          const chrPrefix = sampleVariant.data[0]?.chr?.startsWith('chr') ?? false
+
+          try {
+            const geneRefDb = getGeneReferenceDb()
+            const intervals = dbRef.panels.computeIntervals(
+              fullFilter.active_panel_ids,
+              genomeBuild,
+              paddingBp,
+              geneRefDb,
+              chrPrefix
+            )
+            fullFilter.panel_intervals = intervals
+          } catch (error) {
+            mainLogger.warn(
+              `Failed to compute panel intervals: ${error instanceof Error ? error.message : String(error)}`,
+              'variants'
+            )
+            // Continue without panel filtering rather than failing the query
+          }
+
+          // Clean up IPC-only fields that shouldn't reach the repository
+          delete fullFilter.active_panel_ids
+          delete fullFilter.panel_padding_bp
         }
 
         const pool = getDbPool?.()

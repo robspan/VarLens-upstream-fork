@@ -217,7 +217,20 @@ export const VariantFilterPartialSchema = z.object({
     .transform((val) => val ?? undefined),
 
   // Annotation scope for star/ACMG filters
-  annotation_scope: z.enum(['case', 'all']).optional()
+  annotation_scope: z.enum(['case', 'all']).optional(),
+
+  // Panel-based genomic interval filtering
+  active_panel_ids: z
+    .array(z.number().int().positive())
+    .nullish()
+    .transform((val) => val ?? undefined),
+  panel_padding_bp: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(1000000)
+    .nullish()
+    .transform((val) => val ?? undefined)
 })
 
 /**

@@ -118,22 +118,17 @@
         <FilterPanelTitle
           :icon="mdiPlaylistEdit"
           label="Gene Panels"
-          :active="false"
-          value-summary=""
+          :active="filters.activePanelIds.length > 0"
+          :value-summary="panelsSummary"
         />
         <v-expansion-panel-text>
-          <div class="text-body-2 text-medium-emphasis mb-2">
-            Manage gene panels for region-based variant filtering.
-          </div>
-          <v-btn
-            variant="outlined"
-            density="compact"
-            block
-            color="primary"
-            @click="panelManagerOpen = true"
-          >
-            Manage Panels
-          </v-btn>
+          <PanelFilterSection
+            :active-panel-ids="filters.activePanelIds"
+            :panel-padding-bp="filters.panelPaddingBp"
+            @update:active-panel-ids="filters.activePanelIds = $event"
+            @update:panel-padding-bp="filters.panelPaddingBp = $event"
+            @open-manager="panelManagerOpen = true"
+          />
         </v-expansion-panel-text>
       </v-expansion-panel>
 
@@ -388,6 +383,7 @@ import FilterPanelTitle from '../filters/FilterPanelTitle.vue'
 import DslSearchBar from '../DslSearchBar.vue'
 import GroupedMultiSelect from '../GroupedMultiSelect.vue'
 import PanelManagerDialog from '../panels/PanelManagerDialog.vue'
+import PanelFilterSection from '../panels/PanelFilterSection.vue'
 import { consequenceGroups, clinvarGroups } from '../../config/filterGroups'
 import { ACMG_FILTER_OPTIONS } from '../../utils/filters'
 import type { CohortFilterDrawerState } from './cohortFilterDrawerTypes'
@@ -530,6 +526,10 @@ const caddSummary = computed(() => {
   }
   return ''
 })
+
+const panelsSummary = computed(() =>
+  filters.value.activePanelIds.length > 0 ? `${filters.value.activePanelIds.length} panel(s)` : ''
+)
 
 const acmgFilterOptions = ACMG_FILTER_OPTIONS
 

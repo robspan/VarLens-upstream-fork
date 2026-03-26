@@ -156,7 +156,10 @@ async function dismissDisclaimer(page: Page): Promise<void> {
 
 /** Ensure the case DemoCase is selected and table is visible */
 async function ensureCaseSelected(page: Page): Promise<void> {
-  const tableVisible = await page.locator('.v-data-table-server').isVisible().catch(() => false)
+  const tableVisible = await page
+    .locator('.v-data-table-server')
+    .isVisible()
+    .catch(() => false)
   if (!tableVisible) {
     await page.evaluate(() => {
       const items = document.querySelectorAll('.v-list-item')
@@ -222,7 +225,7 @@ test.describe('Documentation Screenshots', () => {
 
   test('02 - import menu', async () => {
     // Open the import menu (+ button in sidebar toolbar)
-    const plusBtn = window.locator('.v-toolbar .v-btn:has(.mdi-plus)')
+    const plusBtn = window.locator('.v-toolbar .v-btn:has(.v-icon)').first()
     if ((await plusBtn.count()) > 0) {
       await plusBtn.click()
       await window.waitForTimeout(800)
@@ -370,8 +373,7 @@ test.describe('Documentation Screenshots', () => {
       // 2. Quick filters: star btn + comment btn + ACMG chip-group
       const toolbar = document.querySelector('.filter-toolbar')
       if (toolbar) {
-        const starBtn = toolbar.querySelector('.v-btn .mdi-star-outline, .v-btn .mdi-star')
-          ?.closest('.v-btn')
+        const starBtn = toolbar.querySelector('.v-btn .v-icon')?.closest('.v-btn')
         const chipGroup = toolbar.querySelector('.v-chip-group')
         if (starBtn && chipGroup) {
           highlightGroup([starBtn, chipGroup], 'Quick filters (star, comments, ACMG)', blue)
@@ -414,7 +416,9 @@ test.describe('Documentation Screenshots', () => {
 
     // Open sidebar if not already open
     await window.evaluate(() => {
-      const sidebar = document.querySelector('.v-navigation-drawer:not(.v-navigation-drawer--temporary)')
+      const sidebar = document.querySelector(
+        '.v-navigation-drawer:not(.v-navigation-drawer--temporary)'
+      )
       if (sidebar && !sidebar.classList.contains('v-navigation-drawer--active')) {
         const toggle = document.querySelector('.sidebar-toggle-btn') as HTMLElement
         if (toggle) toggle.click()
@@ -531,10 +535,12 @@ test.describe('Documentation Screenshots', () => {
         const items: { el: Element; num: number; label: string; clr: string }[] = []
 
         const sidebarToggle = appBar.querySelector('.sidebar-toggle-btn')
-        if (sidebarToggle) items.push({ el: sidebarToggle, num: 1, label: 'Sidebar toggle', clr: '#555' })
+        if (sidebarToggle)
+          items.push({ el: sidebarToggle, num: 1, label: 'Sidebar toggle', clr: '#555' })
 
         const contextIndicator = appBar.querySelector('.context-indicator')
-        if (contextIndicator) items.push({ el: contextIndicator, num: 2, label: 'Case indicator', clr: red })
+        if (contextIndicator)
+          items.push({ el: contextIndicator, num: 2, label: 'Case indicator', clr: red })
 
         const modeToggle = appBar.querySelector('.mode-toggle')
         if (modeToggle) items.push({ el: modeToggle, num: 3, label: 'Case / Cohort', clr: purple })
@@ -543,8 +549,9 @@ test.describe('Documentation Screenshots', () => {
         const dbBtn = appBar.querySelector('.v-btn.text-none')
         if (dbBtn) items.push({ el: dbBtn, num: 4, label: 'Database', clr: orange })
 
-        const gearIcon = appBar.querySelector('.mdi-cog-outline')
-        const gearBtn = gearIcon?.closest('.v-btn')
+        // Settings button is the last icon button in the app bar
+        const appBarBtns = Array.from(appBar.querySelectorAll('.v-btn'))
+        const gearBtn = appBarBtns[appBarBtns.length - 1]
         if (gearBtn) items.push({ el: gearBtn, num: 5, label: 'Settings', clr: green })
 
         // Place circles at the top-center of each element (inside the dark title bar)
@@ -624,41 +631,6 @@ test.describe('Documentation Screenshots', () => {
         teal: '#16a085'
       }
 
-      function iconLabel(
-        iconSelector: string,
-        label: string,
-        clr: string
-      ): void {
-        const icon = document.querySelector(`.v-footer ${iconSelector}`)
-        const btn = icon?.closest('.v-btn') || icon
-        if (!btn) return
-        const rect = btn.getBoundingClientRect()
-        // Box around the icon
-        const box = document.createElement('div')
-        box.className = 'screenshot-highlight'
-        box.style.cssText = `
-          position: fixed;
-          top: ${rect.top - 3}px; left: ${rect.left - 3}px;
-          width: ${rect.width + 6}px; height: ${rect.height + 6}px;
-          border: 2px solid ${clr}; border-radius: 4px;
-          pointer-events: none; z-index: 99999;
-        `
-        // Label above
-        const lbl = document.createElement('div')
-        lbl.style.cssText = `
-          position: absolute;
-          top: -20px; left: 50%; transform: translateX(-50%);
-          background: ${clr}; color: white;
-          padding: 1px 6px; border-radius: 3px;
-          font-size: 10px; font-weight: 700;
-          white-space: nowrap;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-        `
-        lbl.textContent = label
-        box.appendChild(lbl)
-        document.body.appendChild(box)
-      }
-
       // Version button (first button in footer)
       const versionBtn = document.querySelector('.v-footer .v-btn')
       if (versionBtn) {
@@ -687,23 +659,44 @@ test.describe('Documentation Screenshots', () => {
         document.body.appendChild(box)
       }
 
-      // Network status icon
-      iconLabel('.mdi-wifi, .mdi-wifi-off', 'Network status', colors.blue)
-
-      // GitHub
-      iconLabel('.mdi-github', 'GitHub', colors.green)
-
-      // License
-      iconLabel('.mdi-license', 'License', colors.purple)
-
-      // Disclaimer shield
-      iconLabel('.mdi-shield-check, .mdi-shield-alert', 'Disclaimer', colors.orange)
-
-      // FAQ help
-      iconLabel('.mdi-help-circle', 'FAQ', colors.teal)
-
-      // Console / log viewer
-      iconLabel('.mdi-console', 'Log viewer', colors.red)
+      // Label footer icon buttons by position (after the version button)
+      const footerBtns = Array.from(document.querySelectorAll('.v-footer .v-btn'))
+      const iconBtns = footerBtns.filter((b) => b.querySelector('.v-icon'))
+      const labels: [string, string][] = [
+        ['Network status', colors.blue],
+        ['GitHub', colors.green],
+        ['License', colors.purple],
+        ['Disclaimer', colors.orange],
+        ['FAQ', colors.teal],
+        ['Log viewer', colors.red]
+      ]
+      iconBtns.forEach((btn, i) => {
+        if (i < labels.length) {
+          const rect = btn.getBoundingClientRect()
+          const box = document.createElement('div')
+          box.className = 'screenshot-highlight'
+          box.style.cssText = `
+            position: fixed;
+            top: ${rect.top - 3}px; left: ${rect.left - 3}px;
+            width: ${rect.width + 6}px; height: ${rect.height + 6}px;
+            border: 2px solid ${labels[i][1]}; border-radius: 4px;
+            pointer-events: none; z-index: 99999;
+          `
+          const lbl = document.createElement('div')
+          lbl.style.cssText = `
+            position: absolute;
+            top: -20px; left: 50%; transform: translateX(-50%);
+            background: ${labels[i][1]}; color: white;
+            padding: 1px 6px; border-radius: 3px;
+            font-size: 10px; font-weight: 700;
+            white-space: nowrap;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+          `
+          lbl.textContent = labels[i][0]
+          box.appendChild(lbl)
+          document.body.appendChild(box)
+        }
+      })
     })
     await window.waitForTimeout(300)
 
@@ -721,7 +714,12 @@ test.describe('Documentation Screenshots', () => {
       await window.screenshot({
         path: filePath,
         type: 'png',
-        clip: { x: footerRect.x, y: footerRect.y, width: footerRect.width, height: footerRect.height }
+        clip: {
+          x: footerRect.x,
+          y: footerRect.y,
+          width: footerRect.width,
+          height: footerRect.height
+        }
       })
     } else {
       await saveScreenshot(window, 'status-bar')
@@ -744,14 +742,15 @@ test.describe('Documentation Screenshots', () => {
     if (drawerOpen) {
       // Add highlight inside the drawer itself (appending to body doesn't work
       // because the drawer's z-index/stacking context covers it)
-      await window.evaluate(({ clr }) => {
-        const drawers = document.querySelectorAll('.v-navigation-drawer')
-        for (const drawer of drawers) {
-          if (drawer.textContent?.includes('All Filters')) {
-            // Add an inner border highlight
-            const highlight = document.createElement('div')
-            highlight.className = 'screenshot-highlight'
-            highlight.style.cssText = `
+      await window.evaluate(
+        ({ clr }) => {
+          const drawers = document.querySelectorAll('.v-navigation-drawer')
+          for (const drawer of drawers) {
+            if (drawer.textContent?.includes('All Filters')) {
+              // Add an inner border highlight
+              const highlight = document.createElement('div')
+              highlight.className = 'screenshot-highlight'
+              highlight.style.cssText = `
               position: absolute;
               top: 0;
               left: 0;
@@ -762,9 +761,9 @@ test.describe('Documentation Screenshots', () => {
               pointer-events: none;
               z-index: 99999;
             `
-            // Add label inside the drawer at the top-left
-            const labelEl = document.createElement('div')
-            labelEl.style.cssText = `
+              // Add label inside the drawer at the top-left
+              const labelEl = document.createElement('div')
+              labelEl.style.cssText = `
               position: absolute;
               top: 4px;
               left: 4px;
@@ -778,14 +777,16 @@ test.describe('Documentation Screenshots', () => {
               box-shadow: 0 2px 4px rgba(0,0,0,0.3);
               z-index: 100000;
             `
-            labelEl.textContent = 'Filter drawer (click Filters button)'
-            highlight.appendChild(labelEl)
-            ;(drawer as HTMLElement).style.position = 'relative'
-            drawer.appendChild(highlight)
-            break
+              labelEl.textContent = 'Filter drawer (click Filters button)'
+              highlight.appendChild(labelEl)
+              ;(drawer as HTMLElement).style.position = 'relative'
+              drawer.appendChild(highlight)
+              break
+            }
           }
-        }
-      }, { clr: '#e74c3c' })
+        },
+        { clr: '#e74c3c' }
+      )
     }
 
     await window.waitForTimeout(300)
@@ -872,11 +873,7 @@ test.describe('Documentation Screenshots', () => {
     await window.waitForTimeout(500)
 
     // Open case metadata by clicking the info icon next to case name in the header
-    const infoBtn = window
-      .locator(
-        '.v-app-bar .v-btn:has(.mdi-information), button:has(.mdi-information-outline)'
-      )
-      .first()
+    const infoBtn = window.locator('.v-app-bar .context-indicator .v-btn:has(.v-icon)').first()
     if ((await infoBtn.count()) > 0) {
       await infoBtn.click()
       await window.waitForTimeout(1000)
@@ -918,13 +915,14 @@ test.describe('Documentation Screenshots', () => {
 
     // Open the variant details panel by clicking a row
     await ensureCaseSelected(window)
-    await window.waitForTimeout(1000)
+    await window.waitForTimeout(2000)
 
-    // Wait for table rows to be fully loaded and visible, then click
-    // Use tbody tr to avoid matching header rows, and scroll into view first
+    // Wait for table rows to be fully loaded and clickable
     const firstBodyRow = window.locator('.v-data-table tbody .v-data-table__tr').first()
+    await firstBodyRow.waitFor({ state: 'visible', timeout: 15000 })
     await firstBodyRow.scrollIntoViewIfNeeded()
-    await firstBodyRow.click({ timeout: 15000 })
+    await window.waitForTimeout(500)
+    await firstBodyRow.click({ force: true, timeout: 15000 })
     await window.waitForTimeout(2000)
 
     // Step 1: Scroll to ACMG section in the variant details drawer (not the filter drawer)
@@ -1001,9 +999,7 @@ test.describe('Documentation Screenshots', () => {
     })
     await window.waitForTimeout(300)
 
-    const lpChip = window
-      .locator('.acmg-section .v-chip')
-      .filter({ hasText: /^LP$/ })
+    const lpChip = window.locator('.acmg-section .v-chip').filter({ hasText: /^LP$/ })
     if ((await lpChip.count()) > 0) {
       await lpChip.first().click({ force: true })
       await window.waitForTimeout(1000)
@@ -1029,27 +1025,28 @@ test.describe('Documentation Screenshots', () => {
     await window.waitForTimeout(500)
 
     // Step 6: Add a visible highlight on the ACMG section
-    await window.evaluate(({ clr }: { clr: string }) => {
-      const drawers = document.querySelectorAll('.v-navigation-drawer')
-      for (const drawer of drawers) {
-        if (!drawer.textContent?.includes('Variant Details')) continue
-        const acmgSection = drawer.querySelector('.acmg-section') as HTMLElement
-        if (!acmgSection) continue
+    await window.evaluate(
+      ({ clr }: { clr: string }) => {
+        const drawers = document.querySelectorAll('.v-navigation-drawer')
+        for (const drawer of drawers) {
+          if (!drawer.textContent?.includes('Variant Details')) continue
+          const acmgSection = drawer.querySelector('.acmg-section') as HTMLElement
+          if (!acmgSection) continue
 
-        // Apply a bold outline directly on the ACMG section element
-        acmgSection.style.outline = `3px solid ${clr}`
-        acmgSection.style.outlineOffset = '4px'
-        acmgSection.style.borderRadius = '8px'
+          // Apply a bold outline directly on the ACMG section element
+          acmgSection.style.outline = `3px solid ${clr}`
+          acmgSection.style.outlineOffset = '4px'
+          acmgSection.style.borderRadius = '8px'
 
-        // Add a floating label badge
-        const scrollContainer = drawer.querySelector('.v-navigation-drawer__content')
-        if (!scrollContainer) break
-        ;(scrollContainer as HTMLElement).style.position = 'relative'
-        const rect = acmgSection.getBoundingClientRect()
-        const containerRect = scrollContainer.getBoundingClientRect()
-        const labelEl = document.createElement('div')
-        labelEl.className = 'screenshot-highlight'
-        labelEl.style.cssText = `
+          // Add a floating label badge
+          const scrollContainer = drawer.querySelector('.v-navigation-drawer__content')
+          if (!scrollContainer) break
+          ;(scrollContainer as HTMLElement).style.position = 'relative'
+          const rect = acmgSection.getBoundingClientRect()
+          const containerRect = scrollContainer.getBoundingClientRect()
+          const labelEl = document.createElement('div')
+          labelEl.className = 'screenshot-highlight'
+          labelEl.style.cssText = `
           position: absolute;
           top: ${rect.top - containerRect.top + scrollContainer.scrollTop - 24}px;
           left: ${rect.left - containerRect.left + 8}px;
@@ -1063,11 +1060,13 @@ test.describe('Documentation Screenshots', () => {
           z-index: 100000;
           pointer-events: none;
         `
-        labelEl.textContent = 'ACMG classification + evidence editor'
-        scrollContainer.appendChild(labelEl)
-        break
-      }
-    }, { clr: '#e74c3c' })
+          labelEl.textContent = 'ACMG classification + evidence editor'
+          scrollContainer.appendChild(labelEl)
+          break
+        }
+      },
+      { clr: '#e74c3c' }
+    )
 
     await window.waitForTimeout(300)
     await saveScreenshot(window, 'acmg-classification')
@@ -1087,10 +1086,13 @@ test.describe('Documentation Screenshots', () => {
     await window.evaluate(() => {
       const firstRow = document.querySelector('.v-data-table__tr')
       if (!firstRow) return
-      // Find comment icon (mdi-comment-text-outline)
-      const commentIcon = firstRow.querySelector('.mdi-comment-text-outline')
+      // Find comment icon button (icon button in the row)
+      const iconBtns = firstRow.querySelectorAll('.v-btn .v-icon')
+      // The comment icon is typically the last icon button in the row
+      const commentIcon = iconBtns.length > 0 ? iconBtns[iconBtns.length - 1] : null
       if (commentIcon) {
-        ;(commentIcon as HTMLElement).click()
+        const btn = commentIcon.closest('.v-btn') || commentIcon
+        ;(btn as HTMLElement).click()
       }
     })
     await window.waitForTimeout(1000)
@@ -1297,8 +1299,7 @@ test.describe('Documentation Screenshots', () => {
       // 2. Quick filters: star, comment, ACMG chips
       const toolbar = document.querySelector('.filter-toolbar')
       if (toolbar) {
-        const starBtn = toolbar.querySelector('.v-btn .mdi-star-outline, .v-btn .mdi-star')
-          ?.closest('.v-btn')
+        const starBtn = toolbar.querySelector('.v-btn .v-icon')?.closest('.v-btn')
         const chipGroup = toolbar.querySelector('.v-chip-group')
         if (starBtn && chipGroup) {
           highlightGroup([starBtn, chipGroup], 'Quick filters (star, comments, ACMG)', blue)
@@ -1380,7 +1381,7 @@ test.describe('Documentation Screenshots', () => {
       // Highlight Save button
       const btns = presetBar.querySelectorAll('.v-btn')
       for (const btn of btns) {
-        if (btn.textContent?.includes('Save') || btn.querySelector('.mdi-content-save-outline')) {
+        if (btn.textContent?.includes('Save')) {
           const rect = btn.getBoundingClientRect()
           const div = document.createElement('div')
           div.className = 'screenshot-highlight'
@@ -1409,9 +1410,9 @@ test.describe('Documentation Screenshots', () => {
         }
       }
 
-      // Highlight Manage (gear) button
-      const gearIcon = presetBar.querySelector('.mdi-cog-outline')
-      const gearBtn = gearIcon?.closest('.v-btn')
+      // Highlight Manage (gear) button — last button in preset bar
+      const presetBtns = Array.from(presetBar.querySelectorAll('.v-btn'))
+      const gearBtn = presetBtns[presetBtns.length - 1]
       if (gearBtn) {
         const rect = gearBtn.getBoundingClientRect()
         const div = document.createElement('div')
@@ -1450,7 +1451,12 @@ test.describe('Documentation Screenshots', () => {
       const bottom = presetBar
         ? presetBar.getBoundingClientRect().bottom + 30
         : containerRect.bottom + 30
-      return { x: containerRect.x, y: containerRect.y - 25, width: containerRect.width, height: bottom - containerRect.y + 25 }
+      return {
+        x: containerRect.x,
+        y: containerRect.y - 25,
+        width: containerRect.width,
+        height: bottom - containerRect.y + 25
+      }
     })
 
     if (toolbarRect) {
@@ -1458,7 +1464,12 @@ test.describe('Documentation Screenshots', () => {
       await window.screenshot({
         path: filePath,
         type: 'png',
-        clip: { x: toolbarRect.x, y: toolbarRect.y, width: toolbarRect.width, height: toolbarRect.height }
+        clip: {
+          x: toolbarRect.x,
+          y: toolbarRect.y,
+          width: toolbarRect.width,
+          height: toolbarRect.height
+        }
       })
     } else {
       await saveScreenshot(window, 'filter-preset-bar')
@@ -1523,18 +1534,19 @@ test.describe('Documentation Screenshots', () => {
     await window.waitForTimeout(500)
 
     // Add highlights inside the filter drawer
-    await window.evaluate(({ colors }: { colors: Record<string, string> }) => {
-      const drawers = document.querySelectorAll('.v-navigation-drawer')
-      for (const drawer of drawers) {
-        if (!drawer.textContent?.includes('All Filters')) continue
+    await window.evaluate(
+      ({ colors }: { colors: Record<string, string> }) => {
+        const drawers = document.querySelectorAll('.v-navigation-drawer')
+        for (const drawer of drawers) {
+          if (!drawer.textContent?.includes('All Filters')) continue
 
-        // Highlight section headers
-        const headers = drawer.querySelectorAll('.filter-section-header')
-        headers.forEach((header) => {
-          const rect = header.getBoundingClientRect()
-          const div = document.createElement('div')
-          div.className = 'screenshot-highlight'
-          div.style.cssText = `
+          // Highlight section headers
+          const headers = drawer.querySelectorAll('.filter-section-header')
+          headers.forEach((header) => {
+            const rect = header.getBoundingClientRect()
+            const div = document.createElement('div')
+            div.className = 'screenshot-highlight'
+            div.style.cssText = `
             position: fixed;
             top: ${rect.top - 2}px; left: ${rect.left - 2}px;
             width: ${rect.width + 4}px; height: ${rect.height + 4}px;
@@ -1543,15 +1555,15 @@ test.describe('Documentation Screenshots', () => {
             pointer-events: none;
             z-index: 99999;
           `
-          document.body.appendChild(div)
-        })
+            document.body.appendChild(div)
+          })
 
-        // Add a label for the first section header
-        if (headers.length > 0) {
-          const firstRect = headers[0].getBoundingClientRect()
-          const lbl = document.createElement('div')
-          lbl.className = 'screenshot-highlight'
-          lbl.style.cssText = `
+          // Add a label for the first section header
+          if (headers.length > 0) {
+            const firstRect = headers[0].getBoundingClientRect()
+            const lbl = document.createElement('div')
+            lbl.className = 'screenshot-highlight'
+            lbl.style.cssText = `
             position: fixed;
             top: ${firstRect.top - 20}px; left: ${firstRect.left + 4}px;
             background: ${colors.blue}; color: white;
@@ -1561,18 +1573,18 @@ test.describe('Documentation Screenshots', () => {
             box-shadow: 0 1px 3px rgba(0,0,0,0.3);
             z-index: 99999;
           `
-          lbl.textContent = 'Section headers'
-          document.body.appendChild(lbl)
-        }
+            lbl.textContent = 'Section headers'
+            document.body.appendChild(lbl)
+          }
 
-        // Highlight value preview on the Frequency panel (should show "≤ 1.00%")
-        const summaries = drawer.querySelectorAll('.filter-value-summary')
-        for (const summary of summaries) {
-          if (summary.textContent?.includes('%') || summary.textContent?.includes('≤')) {
-            const rect = summary.getBoundingClientRect()
-            const div = document.createElement('div')
-            div.className = 'screenshot-highlight'
-            div.style.cssText = `
+          // Highlight value preview on the Frequency panel (should show "≤ 1.00%")
+          const summaries = drawer.querySelectorAll('.filter-value-summary')
+          for (const summary of summaries) {
+            if (summary.textContent?.includes('%') || summary.textContent?.includes('≤')) {
+              const rect = summary.getBoundingClientRect()
+              const div = document.createElement('div')
+              div.className = 'screenshot-highlight'
+              div.style.cssText = `
               position: fixed;
               top: ${rect.top - 3}px; left: ${rect.left - 3}px;
               width: ${rect.width + 6}px; height: ${rect.height + 6}px;
@@ -1581,8 +1593,8 @@ test.describe('Documentation Screenshots', () => {
               pointer-events: none;
               z-index: 99999;
             `
-            const lbl = document.createElement('div')
-            lbl.style.cssText = `
+              const lbl = document.createElement('div')
+              lbl.style.cssText = `
               position: absolute; top: -18px; right: 4px;
               background: ${colors.green}; color: white;
               padding: 2px 8px; border-radius: 3px;
@@ -1590,21 +1602,21 @@ test.describe('Documentation Screenshots', () => {
               white-space: nowrap;
               box-shadow: 0 1px 3px rgba(0,0,0,0.3);
             `
-            lbl.textContent = 'Collapsed value preview'
-            div.appendChild(lbl)
-            document.body.appendChild(div)
-            break
+              lbl.textContent = 'Collapsed value preview'
+              div.appendChild(lbl)
+              document.body.appendChild(div)
+              break
+            }
           }
-        }
 
-        // Highlight the "Active" chip on the frequency panel
-        const activeChips = drawer.querySelectorAll('.v-chip')
-        for (const chip of activeChips) {
-          if (chip.textContent?.trim() === 'Active') {
-            const rect = chip.getBoundingClientRect()
-            const div = document.createElement('div')
-            div.className = 'screenshot-highlight'
-            div.style.cssText = `
+          // Highlight the "Active" chip on the frequency panel
+          const activeChips = drawer.querySelectorAll('.v-chip')
+          for (const chip of activeChips) {
+            if (chip.textContent?.trim() === 'Active') {
+              const rect = chip.getBoundingClientRect()
+              const div = document.createElement('div')
+              div.className = 'screenshot-highlight'
+              div.style.cssText = `
               position: fixed;
               top: ${rect.top - 3}px; left: ${rect.left - 3}px;
               width: ${rect.width + 6}px; height: ${rect.height + 6}px;
@@ -1613,8 +1625,8 @@ test.describe('Documentation Screenshots', () => {
               pointer-events: none;
               z-index: 99999;
             `
-            const lbl = document.createElement('div')
-            lbl.style.cssText = `
+              const lbl = document.createElement('div')
+              lbl.style.cssText = `
               position: absolute; top: -18px; left: 4px;
               background: ${colors.red}; color: white;
               padding: 2px 8px; border-radius: 3px;
@@ -1622,16 +1634,18 @@ test.describe('Documentation Screenshots', () => {
               white-space: nowrap;
               box-shadow: 0 1px 3px rgba(0,0,0,0.3);
             `
-            lbl.textContent = 'Active indicator'
-            div.appendChild(lbl)
-            document.body.appendChild(div)
-            break
+              lbl.textContent = 'Active indicator'
+              div.appendChild(lbl)
+              document.body.appendChild(div)
+              break
+            }
           }
-        }
 
-        break
-      }
-    }, { colors: { red: '#e74c3c', blue: '#3498db', green: '#27ae60' } })
+          break
+        }
+      },
+      { colors: { red: '#e74c3c', blue: '#3498db', green: '#27ae60' } }
+    )
     await window.waitForTimeout(300)
 
     await saveScreenshot(window, 'filter-drawer-sections')
@@ -1672,7 +1686,7 @@ test.describe('Documentation Screenshots', () => {
       if (!presetBar) return
       const btns = presetBar.querySelectorAll('.v-btn')
       for (const btn of btns) {
-        if (btn.textContent?.includes('Save') || btn.querySelector('.mdi-content-save-outline')) {
+        if (btn.textContent?.includes('Save')) {
           ;(btn as HTMLElement).click()
           break
         }
@@ -1720,8 +1734,9 @@ test.describe('Documentation Screenshots', () => {
     await window.evaluate(() => {
       const presetBar = document.querySelector('.preset-bar')
       if (!presetBar) return
-      const gearIcon = presetBar.querySelector('.mdi-cog-outline')
-      const gearBtn = gearIcon?.closest('.v-btn')
+      // Gear/manage button is the last button in the preset bar
+      const presetBtns = Array.from(presetBar.querySelectorAll('.v-btn'))
+      const gearBtn = presetBtns[presetBtns.length - 1]
       if (gearBtn) (gearBtn as HTMLElement).click()
     })
     await window.waitForTimeout(1000)
@@ -1730,19 +1745,20 @@ test.describe('Documentation Screenshots', () => {
     const dialogCard = window.locator('.v-overlay--active .v-card')
     if ((await dialogCard.count()) > 0) {
       // Add highlights for built-in vs user preset indicators
-      await window.evaluate(({ colors }: { colors: Record<string, string> }) => {
-        const card = document.querySelector('.v-overlay--active .v-card')
-        if (!card) return
+      await window.evaluate(
+        ({ colors }: { colors: Record<string, string> }) => {
+          const card = document.querySelector('.v-overlay--active .v-card')
+          if (!card) return
 
-        // Highlight lock icon (built-in preset)
-        const lockIcon = card.querySelector('.mdi-lock')
-        if (lockIcon) {
-          const listItem = lockIcon.closest('.v-list-item')
-          if (listItem) {
-            const rect = listItem.getBoundingClientRect()
-            const div = document.createElement('div')
-            div.className = 'screenshot-highlight'
-            div.style.cssText = `
+          // Highlight built-in preset (first list item with an icon)
+          const lockIcon = card.querySelector('.v-list-item .v-icon')
+          if (lockIcon) {
+            const listItem = lockIcon.closest('.v-list-item')
+            if (listItem) {
+              const rect = listItem.getBoundingClientRect()
+              const div = document.createElement('div')
+              div.className = 'screenshot-highlight'
+              div.style.cssText = `
               position: fixed;
               top: ${rect.top - 2}px; left: ${rect.left - 2}px;
               width: ${rect.width + 4}px; height: ${rect.height + 4}px;
@@ -1751,8 +1767,8 @@ test.describe('Documentation Screenshots', () => {
               pointer-events: none;
               z-index: 100001;
             `
-            const lbl = document.createElement('div')
-            lbl.style.cssText = `
+              const lbl = document.createElement('div')
+              lbl.style.cssText = `
               position: absolute; top: -18px; left: 8px;
               background: ${colors.blue}; color: white;
               padding: 2px 8px; border-radius: 3px;
@@ -1760,17 +1776,17 @@ test.describe('Documentation Screenshots', () => {
               white-space: nowrap;
               box-shadow: 0 1px 3px rgba(0,0,0,0.3);
             `
-            lbl.textContent = 'Built-in preset (locked)'
-            div.appendChild(lbl)
-            document.body.appendChild(div)
+              lbl.textContent = 'Built-in preset (locked)'
+              div.appendChild(lbl)
+              document.body.appendChild(div)
+            }
           }
-        }
 
-        // Highlight the dialog overall
-        const cardRect = card.getBoundingClientRect()
-        const div = document.createElement('div')
-        div.className = 'screenshot-highlight'
-        div.style.cssText = `
+          // Highlight the dialog overall
+          const cardRect = card.getBoundingClientRect()
+          const div = document.createElement('div')
+          div.className = 'screenshot-highlight'
+          div.style.cssText = `
           position: fixed;
           top: ${cardRect.top - 4}px; left: ${cardRect.left - 4}px;
           width: ${cardRect.width + 8}px; height: ${cardRect.height + 8}px;
@@ -1779,8 +1795,8 @@ test.describe('Documentation Screenshots', () => {
           pointer-events: none;
           z-index: 100000;
         `
-        const lbl = document.createElement('div')
-        lbl.style.cssText = `
+          const lbl = document.createElement('div')
+          lbl.style.cssText = `
           position: absolute; top: -24px; left: 8px;
           background: ${colors.red}; color: white;
           padding: 3px 10px; border-radius: 4px;
@@ -1788,10 +1804,12 @@ test.describe('Documentation Screenshots', () => {
           white-space: nowrap;
           box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         `
-        lbl.textContent = 'Manage filter presets'
-        div.appendChild(lbl)
-        document.body.appendChild(div)
-      }, { colors: { red: '#e74c3c', blue: '#3498db' } })
+          lbl.textContent = 'Manage filter presets'
+          div.appendChild(lbl)
+          document.body.appendChild(div)
+        },
+        { colors: { red: '#e74c3c', blue: '#3498db' } }
+      )
       await window.waitForTimeout(300)
     }
 
@@ -1821,14 +1839,15 @@ test.describe('Documentation Screenshots', () => {
     }
 
     // Highlight the autocomplete dropdown
-    await window.evaluate(({ colors }: { colors: Record<string, string> }) => {
-      // Search bar highlight
-      const searchBar = document.querySelector('.dsl-search-bar')
-      if (searchBar) {
-        const rect = searchBar.getBoundingClientRect()
-        const div = document.createElement('div')
-        div.className = 'screenshot-highlight'
-        div.style.cssText = `
+    await window.evaluate(
+      ({ colors }: { colors: Record<string, string> }) => {
+        // Search bar highlight
+        const searchBar = document.querySelector('.dsl-search-bar')
+        if (searchBar) {
+          const rect = searchBar.getBoundingClientRect()
+          const div = document.createElement('div')
+          div.className = 'screenshot-highlight'
+          div.style.cssText = `
           position: fixed;
           top: ${rect.top - 3}px; left: ${rect.left - 3}px;
           width: ${rect.width + 6}px; height: ${rect.height + 6}px;
@@ -1837,8 +1856,8 @@ test.describe('Documentation Screenshots', () => {
           pointer-events: none;
           z-index: 99999;
         `
-        const lbl = document.createElement('div')
-        lbl.style.cssText = `
+          const lbl = document.createElement('div')
+          lbl.style.cssText = `
           position: absolute; top: -20px; left: 8px;
           background: ${colors.red}; color: white;
           padding: 2px 8px; border-radius: 3px;
@@ -1846,18 +1865,18 @@ test.describe('Documentation Screenshots', () => {
           white-space: nowrap;
           box-shadow: 0 1px 3px rgba(0,0,0,0.3);
         `
-        lbl.textContent = 'DSL mode (primary border)'
-        div.appendChild(lbl)
-        document.body.appendChild(div)
-      }
+          lbl.textContent = 'DSL mode (primary border)'
+          div.appendChild(lbl)
+          document.body.appendChild(div)
+        }
 
-      // Autocomplete dropdown highlight
-      const suggestionList = document.querySelector('.dsl-suggestion-list')
-      if (suggestionList) {
-        const rect = suggestionList.getBoundingClientRect()
-        const div = document.createElement('div')
-        div.className = 'screenshot-highlight'
-        div.style.cssText = `
+        // Autocomplete dropdown highlight
+        const suggestionList = document.querySelector('.dsl-suggestion-list')
+        if (suggestionList) {
+          const rect = suggestionList.getBoundingClientRect()
+          const div = document.createElement('div')
+          div.className = 'screenshot-highlight'
+          div.style.cssText = `
           position: fixed;
           top: ${rect.top - 3}px; left: ${rect.left - 3}px;
           width: ${rect.width + 6}px; height: ${rect.height + 6}px;
@@ -1866,8 +1885,8 @@ test.describe('Documentation Screenshots', () => {
           pointer-events: none;
           z-index: 100001;
         `
-        const lbl = document.createElement('div')
-        lbl.style.cssText = `
+          const lbl = document.createElement('div')
+          lbl.style.cssText = `
           position: absolute; bottom: -20px; left: 8px;
           background: ${colors.blue}; color: white;
           padding: 2px 8px; border-radius: 3px;
@@ -1875,11 +1894,13 @@ test.describe('Documentation Screenshots', () => {
           white-space: nowrap;
           box-shadow: 0 1px 3px rgba(0,0,0,0.3);
         `
-        lbl.textContent = 'Context-aware operator suggestions'
-        div.appendChild(lbl)
-        document.body.appendChild(div)
-      }
-    }, { colors: { red: '#e74c3c', blue: '#3498db' } })
+          lbl.textContent = 'Context-aware operator suggestions'
+          div.appendChild(lbl)
+          document.body.appendChild(div)
+        }
+      },
+      { colors: { red: '#e74c3c', blue: '#3498db' } }
+    )
     await window.waitForTimeout(300)
 
     await saveScreenshot(window, 'filter-dsl-autocomplete')
@@ -1903,7 +1924,7 @@ test.describe('Documentation Screenshots', () => {
       const headers = document.querySelectorAll('th')
       for (const header of headers) {
         if (header.textContent?.includes('CADD')) {
-          const filterIcon = header.querySelector('.mdi-filter, .mdi-filter-outline, .v-btn')
+          const filterIcon = header.querySelector('.v-btn')
           if (filterIcon) {
             const btn = filterIcon.closest('.v-btn') || filterIcon
             ;(btn as HTMLElement).click()
@@ -1915,13 +1936,14 @@ test.describe('Documentation Screenshots', () => {
     await window.waitForTimeout(1000)
 
     // Highlight the filter popup
-    await window.evaluate(({ clr }: { clr: string }) => {
-      const popup = document.querySelector('.filter-popup')
-      if (!popup) return
-      const rect = popup.getBoundingClientRect()
-      const div = document.createElement('div')
-      div.className = 'screenshot-highlight'
-      div.style.cssText = `
+    await window.evaluate(
+      ({ clr }: { clr: string }) => {
+        const popup = document.querySelector('.filter-popup')
+        if (!popup) return
+        const rect = popup.getBoundingClientRect()
+        const div = document.createElement('div')
+        div.className = 'screenshot-highlight'
+        div.style.cssText = `
         position: fixed;
         top: ${rect.top - 4}px; left: ${rect.left - 4}px;
         width: ${rect.width + 8}px; height: ${rect.height + 8}px;
@@ -1930,8 +1952,8 @@ test.describe('Documentation Screenshots', () => {
         pointer-events: none;
         z-index: 100001;
       `
-      const lbl = document.createElement('div')
-      lbl.style.cssText = `
+        const lbl = document.createElement('div')
+        lbl.style.cssText = `
         position: absolute; top: -24px; left: 8px;
         background: ${clr}; color: white;
         padding: 3px 10px; border-radius: 4px;
@@ -1939,10 +1961,12 @@ test.describe('Documentation Screenshots', () => {
         white-space: nowrap;
         box-shadow: 0 2px 4px rgba(0,0,0,0.3);
       `
-      lbl.textContent = 'Numeric column filter (CADD)'
-      div.appendChild(lbl)
-      document.body.appendChild(div)
-    }, { clr: '#e74c3c' })
+        lbl.textContent = 'Numeric column filter (CADD)'
+        div.appendChild(lbl)
+        document.body.appendChild(div)
+      },
+      { clr: '#e74c3c' }
+    )
     await window.waitForTimeout(300)
 
     await saveScreenshot(window, 'filter-column-numeric')
@@ -1962,7 +1986,7 @@ test.describe('Documentation Screenshots', () => {
       const headers = document.querySelectorAll('th')
       for (const header of headers) {
         if (header.textContent?.includes('Consequence') || header.textContent?.includes('Conseq')) {
-          const filterIcon = header.querySelector('.mdi-filter, .mdi-filter-outline, .v-btn')
+          const filterIcon = header.querySelector('.v-btn')
           if (filterIcon) {
             const btn = filterIcon.closest('.v-btn') || filterIcon
             ;(btn as HTMLElement).click()
@@ -1974,13 +1998,14 @@ test.describe('Documentation Screenshots', () => {
     await window.waitForTimeout(1000)
 
     // Highlight the categorical filter popup
-    await window.evaluate(({ clr }: { clr: string }) => {
-      const popup = document.querySelector('.filter-popup')
-      if (!popup) return
-      const rect = popup.getBoundingClientRect()
-      const div = document.createElement('div')
-      div.className = 'screenshot-highlight'
-      div.style.cssText = `
+    await window.evaluate(
+      ({ clr }: { clr: string }) => {
+        const popup = document.querySelector('.filter-popup')
+        if (!popup) return
+        const rect = popup.getBoundingClientRect()
+        const div = document.createElement('div')
+        div.className = 'screenshot-highlight'
+        div.style.cssText = `
         position: fixed;
         top: ${rect.top - 4}px; left: ${rect.left - 4}px;
         width: ${rect.width + 8}px; height: ${rect.height + 8}px;
@@ -1989,8 +2014,8 @@ test.describe('Documentation Screenshots', () => {
         pointer-events: none;
         z-index: 100001;
       `
-      const lbl = document.createElement('div')
-      lbl.style.cssText = `
+        const lbl = document.createElement('div')
+        lbl.style.cssText = `
         position: absolute; top: -24px; left: 8px;
         background: ${clr}; color: white;
         padding: 3px 10px; border-radius: 4px;
@@ -1998,10 +2023,12 @@ test.describe('Documentation Screenshots', () => {
         white-space: nowrap;
         box-shadow: 0 2px 4px rgba(0,0,0,0.3);
       `
-      lbl.textContent = 'Categorical column filter (Consequence)'
-      div.appendChild(lbl)
-      document.body.appendChild(div)
-    }, { clr: '#3498db' })
+        lbl.textContent = 'Categorical column filter (Consequence)'
+        div.appendChild(lbl)
+        document.body.appendChild(div)
+      },
+      { clr: '#3498db' }
+    )
     await window.waitForTimeout(300)
 
     await saveScreenshot(window, 'filter-column-categorical')
@@ -2065,16 +2092,21 @@ test.describe('Documentation Screenshots', () => {
 
     // Check if there's a no-results / empty state visible
     // Highlight whatever empty state is shown
-    await window.evaluate(({ clr }: { clr: string }) => {
-      // Look for empty state indicators
-      const noData = document.querySelector('.v-data-table__empty-wrapper, .v-data-table__td--no-data')
-      const emptyState = document.querySelector('.text-center:has(.mdi-filter-off), .v-container:has(.mdi-filter-off)')
-      const target = emptyState || noData
-      if (target) {
-        const rect = target.getBoundingClientRect()
-        const div = document.createElement('div')
-        div.className = 'screenshot-highlight'
-        div.style.cssText = `
+    await window.evaluate(
+      ({ clr }: { clr: string }) => {
+        // Look for empty state indicators
+        const noData = document.querySelector(
+          '.v-data-table__empty-wrapper, .v-data-table__td--no-data'
+        )
+        const emptyState = document.querySelector(
+          '.text-center:has(.v-icon), .v-container:has(.v-icon)'
+        )
+        const target = emptyState || noData
+        if (target) {
+          const rect = target.getBoundingClientRect()
+          const div = document.createElement('div')
+          div.className = 'screenshot-highlight'
+          div.style.cssText = `
           position: fixed;
           top: ${rect.top - 4}px; left: ${rect.left - 4}px;
           width: ${rect.width + 8}px; height: ${rect.height + 8}px;
@@ -2083,8 +2115,8 @@ test.describe('Documentation Screenshots', () => {
           pointer-events: none;
           z-index: 99999;
         `
-        const lbl = document.createElement('div')
-        lbl.style.cssText = `
+          const lbl = document.createElement('div')
+          lbl.style.cssText = `
           position: absolute; top: -24px; left: 8px;
           background: ${clr}; color: white;
           padding: 3px 10px; border-radius: 4px;
@@ -2092,11 +2124,13 @@ test.describe('Documentation Screenshots', () => {
           white-space: nowrap;
           box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         `
-        lbl.textContent = 'Empty state — no matching variants'
-        div.appendChild(lbl)
-        document.body.appendChild(div)
-      }
-    }, { clr: '#e74c3c' })
+          lbl.textContent = 'Empty state — no matching variants'
+          div.appendChild(lbl)
+          document.body.appendChild(div)
+        }
+      },
+      { clr: '#e74c3c' }
+    )
     await window.waitForTimeout(300)
 
     await saveScreenshot(window, 'filter-empty-state')

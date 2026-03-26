@@ -67,8 +67,8 @@
                 v-bind="menuProps"
                 size="x-small"
                 class="ml-1 cursor-pointer"
-                @click.stop
                 :icon="mdiChevronDown"
+                @click.stop
               />
             </template>
             <v-list density="compact" nav>

@@ -35,6 +35,7 @@ export interface AutocompleteResult {
   name: string
   locusGroup: string
   matchType: 'symbol' | 'alias'
+  matchedAlias?: string
 }
 
 /** Approved gene ready for saving to a panel */
@@ -115,8 +116,7 @@ export function useGeneValidation(): UseGeneValidationReturn {
 
     validating.value = true
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const results: ValidationResult[] = await (api as any).panels.validateSymbols(symbols)
+      const results: ValidationResult[] = await api.panels.validateSymbols(symbols)
       validationResults.value = results
       return results
     } catch (e) {
@@ -143,8 +143,7 @@ export function useGeneValidation(): UseGeneValidationReturn {
 
     loadingSuggestions.value = true
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      suggestions.value = await (api as any).panels.autocomplete(query, limit)
+      suggestions.value = await api.panels.autocomplete(query, limit)
     } catch (e) {
       console.error('Failed to autocomplete gene:', e)
       suggestions.value = []

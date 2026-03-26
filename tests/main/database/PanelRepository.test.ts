@@ -75,7 +75,7 @@ describe('PanelRepository', () => {
     it('creates a panel with all fields', () => {
       const panel = repo.createPanel({
         name: 'PanelApp Panel',
-        source: 'panelapp',
+        source: 'panelapp_uk',
         description: 'A test panel',
         version: '4.2',
         sourceId: '396',
@@ -206,7 +206,7 @@ describe('PanelRepository', () => {
     it('creates a copy with genes', () => {
       const original = repo.createPanel({
         name: 'Original',
-        source: 'panelapp',
+        source: 'panelapp_uk',
         description: 'Desc',
         version: '1.0'
       })

@@ -16,11 +16,11 @@ const mockPanels: PanelListItem[] = [
     name: 'Epilepsy Panel',
     description: 'Epilepsy genes',
     version: '4.0',
-    source: 'panelapp',
+    source: 'panelapp_uk',
     source_id: '123',
     gene_count: 42,
-    created_at: '2025-01-01T00:00:00Z',
-    updated_at: '2025-01-01T00:00:00Z'
+    created_at: 1735689600000,
+    updated_at: 1735689600000
   },
   {
     id: 2,
@@ -30,8 +30,8 @@ const mockPanels: PanelListItem[] = [
     source: 'manual',
     source_id: null,
     gene_count: 5,
-    created_at: '2025-02-01T00:00:00Z',
-    updated_at: '2025-02-01T00:00:00Z'
+    created_at: 1738368000000,
+    updated_at: 1738368000000
   }
 ]
 
@@ -209,19 +209,24 @@ describe('usePanelManager', () => {
   })
 
   it('gets genes for a panel', async () => {
-    const genes = [
-      { hgncId: 'HGNC:1100', symbol: 'BRCA1' },
-      { hgncId: 'HGNC:1101', symbol: 'BRCA2' }
+    // Mock returns PanelGeneRow[] (database format with hgnc_id)
+    const apiGenes = [
+      { id: 1, panel_id: 1, hgnc_id: 'HGNC:1100', symbol: 'BRCA1' },
+      { id: 2, panel_id: 1, hgnc_id: 'HGNC:1101', symbol: 'BRCA2' }
     ]
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(window.api as any).panels.getGenes.mockResolvedValue(genes)
+    ;(window.api as any).panels.getGenes.mockResolvedValue(apiGenes)
 
     const [result, appInstance] = withSetup(() => usePanelManager())
     app = appInstance
 
     const fetched = await result.getGenes(1)
 
-    expect(fetched).toEqual(genes)
+    // Composable maps to PanelGene format (hgncId)
+    expect(fetched).toEqual([
+      { hgncId: 'HGNC:1100', symbol: 'BRCA1' },
+      { hgncId: 'HGNC:1101', symbol: 'BRCA2' }
+    ])
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((window.api as any).panels.getGenes).toHaveBeenCalledWith(1)
   })

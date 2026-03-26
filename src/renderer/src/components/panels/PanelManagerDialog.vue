@@ -169,11 +169,11 @@ function sourceColor(source: string): string {
   return colors[source] ?? 'grey'
 }
 
-function formatDate(dateStr: string): string {
+function formatDate(dateStr: string | number): string {
   try {
     return new Date(dateStr).toLocaleDateString()
   } catch {
-    return dateStr
+    return String(dateStr)
   }
 }
 

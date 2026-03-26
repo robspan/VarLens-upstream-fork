@@ -533,8 +533,8 @@ export const PanelCreateSchema = z.object({
 export const PanelUpdateSchema = z.object({
   id: z.number().int().positive(),
   name: z.string().min(1).max(200).optional(),
-  description: nullishString(),
-  version: nullishString()
+  description: z.string().nullable().optional(),
+  version: z.string().nullable().optional()
 })
 
 /**

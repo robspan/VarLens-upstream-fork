@@ -65,7 +65,7 @@ const items = computed<DisplayItem[]>(() =>
   suggestions.value.map((s) => ({
     ...s,
     displayText: s.matchType === 'alias' ? `${s.symbol} (alias match)` : `${s.symbol} - ${s.name}`,
-    matchedAlias: s.matchType === 'alias' ? s.symbol : undefined
+    matchedAlias: s.matchType === 'alias' ? s.matchedAlias : undefined
   }))
 )
 

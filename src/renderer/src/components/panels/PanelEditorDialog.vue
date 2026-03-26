@@ -229,6 +229,7 @@ import { ref, watch } from 'vue'
 import GeneAutocomplete from './GeneAutocomplete.vue'
 import { useGeneValidation } from '../../composables/useGeneValidation'
 import { usePanelManager } from '../../composables/usePanelManager'
+import { useApiService } from '../../composables/useApiService'
 import type { ValidationResult } from '../../composables/useGeneValidation'
 import { mdiClose, mdiCheckCircle, mdiAlertCircle, mdiCloseCircle } from '@mdi/js'
 
@@ -259,6 +260,7 @@ const {
 } = useGeneValidation()
 
 const { createPanel, updatePanel, setGenes, getGenes } = usePanelManager()
+const { api } = useApiService()
 
 const panelName = ref('')
 const panelVersion = ref('')
@@ -276,7 +278,19 @@ watch(
     if (!visible) return
 
     if (props.editPanelId != null) {
-      // Edit mode: load existing panel genes
+      // Edit mode: load existing panel metadata and genes
+      if (api) {
+        try {
+          const panel = await api.panels.get(props.editPanelId)
+          if (panel) {
+            panelName.value = panel.name ?? ''
+            panelVersion.value = panel.version ?? ''
+            panelDescription.value = panel.description ?? ''
+          }
+        } catch (e) {
+          console.error('Failed to load panel metadata:', e)
+        }
+      }
       const genes = await getGenes(props.editPanelId)
       if (genes.length > 0) {
         const symbols = genes.map((g) => g.symbol)
@@ -324,13 +338,19 @@ async function validateAndAddPasted(): Promise<void> {
     return
   }
 
+  const previousResults = validationResults.value.slice()
   const results = await validateSymbols(newSymbols)
-  // Append to existing (validateSymbols replaces, so we need to merge)
-  // Actually validateSymbols sets validationResults directly, so we need
-  // to prepend existing results
-  const existingResults = validationResults.value.filter((r) => !newSymbols.includes(r.input))
-  // validationResults was already set by validateSymbols, append previous
-  validationResults.value = [...existingResults, ...results]
+  const combined = [...previousResults, ...results]
+  const seenKeys = new Set<string>()
+  const mergedResults: ValidationResult[] = []
+  for (const r of combined) {
+    const key = r.hgncId ?? r.symbol ?? r.input
+    if (key == null || !seenKeys.has(key)) {
+      if (key != null) seenKeys.add(key)
+      mergedResults.push(r)
+    }
+  }
+  validationResults.value = mergedResults
 
   pasteDialogOpen.value = false
   pasteText.value = ''

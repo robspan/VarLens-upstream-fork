@@ -203,7 +203,8 @@ export class GeneReferenceDb {
     const sanitized = query.replace(/[^a-zA-Z0-9-]/g, '').trim()
     if (!sanitized) return []
 
-    const ftsQuery = sanitized + '*'
+    const escaped = sanitized.replace(/"/g, '""')
+    const ftsQuery = `"${escaped}"*`
     const seen = new Map<string, GeneAutocompleteResult>()
 
     // Symbol matches first (higher priority)

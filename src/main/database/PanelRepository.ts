@@ -94,16 +94,17 @@ export class PanelRepository extends BaseRepository {
   updatePanel(
     id: number,
     updates: { name?: string; description?: string | null; version?: string | null }
-  ): PanelRow {
+  ): PanelRow | null {
     const now = Date.now()
     const updateObj: Record<string, string | number | null> = { updated_at: now }
     if (updates.name !== undefined) updateObj.name = updates.name
     if (updates.description !== undefined) updateObj.description = updates.description
     if (updates.version !== undefined) updateObj.version = updates.version
 
-    return this.execFirst<PanelRow>(
+    const updated = this.execFirst<PanelRow>(
       this.kysely.updateTable('panels').set(updateObj).where('id', '=', id).returningAll()
-    ) as PanelRow
+    )
+    return updated ?? null
   }
 
   deletePanel(id: number): void {

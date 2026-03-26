@@ -22,8 +22,8 @@ export interface PanelListItem {
   source: string
   source_id: string | null
   gene_count: number
-  created_at: string
-  updated_at: string
+  created_at: number
+  updated_at: number
 }
 
 /** Input for creating a new panel */
@@ -84,8 +84,7 @@ export function usePanelManager(): UsePanelManagerReturn {
     loading.value = true
     error.value = null
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      panels.value = await (api as any).panels.list()
+      panels.value = await api.panels.list()
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       error.value = message
@@ -104,8 +103,7 @@ export function usePanelManager(): UsePanelManagerReturn {
 
     error.value = null
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await (api as any).panels.create({
+      const result = await api.panels.create({
         name: input.name,
         description: input.description ?? null,
         version: input.version ?? null,
@@ -134,8 +132,7 @@ export function usePanelManager(): UsePanelManagerReturn {
 
     error.value = null
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (api as any).panels.update({ id, ...updates })
+      await api.panels.update({ id, ...updates })
       await loadPanels()
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
@@ -152,8 +149,7 @@ export function usePanelManager(): UsePanelManagerReturn {
 
     error.value = null
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (api as any).panels.delete(id)
+      await api.panels.delete(id)
       await loadPanels()
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
@@ -171,8 +167,7 @@ export function usePanelManager(): UsePanelManagerReturn {
 
     error.value = null
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await (api as any).panels.duplicate(id, newName)
+      const result = await api.panels.duplicate(id, newName)
       await loadPanels()
       return result?.id ?? result
     } catch (e) {
@@ -191,8 +186,7 @@ export function usePanelManager(): UsePanelManagerReturn {
 
     error.value = null
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (api as any).panels.setGenes(panelId, genes)
+      await api.panels.setGenes(panelId, genes)
       await loadPanels()
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
@@ -208,8 +202,8 @@ export function usePanelManager(): UsePanelManagerReturn {
     if (!api) return []
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return await (api as any).panels.getGenes(panelId)
+      const rows = await api.panels.getGenes(panelId)
+      return rows.map((r) => ({ hgncId: r.hgnc_id, symbol: r.symbol }))
     } catch (e) {
       console.error('Failed to get panel genes:', e)
       return []

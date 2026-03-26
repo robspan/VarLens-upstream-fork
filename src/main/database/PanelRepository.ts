@@ -1,6 +1,13 @@
 import { BaseRepository } from './BaseRepository'
+import type { GeneReferenceDb } from './GeneReferenceDb'
 
 // ── Types ────────────────────────────────────────────────────
+
+export interface GenomicInterval {
+  chr: string // chromosome name matching variant data format
+  start: number // 1-based, with padding applied
+  end: number // 1-based, with padding applied
+}
 
 export interface CreatePanelInput {
   name: string
@@ -192,4 +199,77 @@ export class PanelRepository extends BaseRepository {
       .all(caseId) as ActivePanelRow[]
     return rows
   }
+
+  /**
+   * Compute merged genomic intervals for gene panel filtering.
+   *
+   * 1. Collects distinct HGNC IDs from the given panel IDs
+   * 2. Looks up coordinates from the gene reference database
+   * 3. Applies padding, optional chr prefix, sorts and merges overlapping intervals
+   */
+  computeIntervals(
+    panelIds: number[],
+    assembly: string,
+    paddingBp: number,
+    geneRefDb: GeneReferenceDb,
+    chrPrefix: boolean = false
+  ): GenomicInterval[] {
+    if (panelIds.length === 0) return []
+
+    // Get all distinct hgnc_ids from panel_genes for the given panel IDs
+    const placeholders = panelIds.map(() => '?').join(', ')
+    const rows = this.db
+      .prepare(`SELECT DISTINCT hgnc_id FROM panel_genes WHERE panel_id IN (${placeholders})`)
+      .all(...panelIds) as Array<{ hgnc_id: string }>
+
+    const hgncIds = rows.map((r) => r.hgnc_id)
+    if (hgncIds.length === 0) return []
+
+    // Look up coordinates from gene reference DB
+    const coordsMap = geneRefDb.getCoordinatesForGenes(hgncIds, assembly)
+
+    // Build intervals with padding and optional chr prefix
+    const intervals: GenomicInterval[] = []
+    for (const coords of coordsMap.values()) {
+      const chr = chrPrefix
+        ? coords.chromosome.startsWith('chr')
+          ? coords.chromosome
+          : `chr${coords.chromosome}`
+        : coords.chromosome
+      intervals.push({
+        chr,
+        start: Math.max(0, coords.start_pos - paddingBp),
+        end: coords.end_pos + paddingBp
+      })
+    }
+
+    return mergeOverlappingIntervals(intervals)
+  }
+}
+
+// ── Helpers ──────────────────────────────────────────────────
+
+/**
+ * Sort intervals by chromosome (natural sort) then start position,
+ * and merge overlapping or adjacent intervals on the same chromosome.
+ */
+export function mergeOverlappingIntervals(intervals: GenomicInterval[]): GenomicInterval[] {
+  if (intervals.length === 0) return []
+
+  const sorted = [...intervals].sort((a, b) => {
+    if (a.chr !== b.chr) return a.chr.localeCompare(b.chr, undefined, { numeric: true })
+    return a.start - b.start
+  })
+
+  const merged: GenomicInterval[] = [{ ...sorted[0] }]
+  for (let i = 1; i < sorted.length; i++) {
+    const last = merged[merged.length - 1]
+    const curr = sorted[i]
+    if (curr.chr === last.chr && curr.start <= last.end + 1) {
+      last.end = Math.max(last.end, curr.end)
+    } else {
+      merged.push({ ...curr })
+    }
+  }
+  return merged
 }

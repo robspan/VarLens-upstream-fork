@@ -24,7 +24,14 @@
 
       <!-- Scrollable content area -->
       <div class="flex-grow-1 overflow-y-auto pa-3">
-        <template v-if="variant">
+        <!-- Skeleton loader while variant details are loading -->
+        <v-skeleton-loader
+          v-if="variant && isLoading"
+          type="card-heading, list-item-three-line@4"
+          class="variant-details-skeleton"
+        />
+
+        <template v-else-if="variant">
           <!-- Section 1: Variant Identity -->
           <VariantIdentitySection
             :variant="variant"

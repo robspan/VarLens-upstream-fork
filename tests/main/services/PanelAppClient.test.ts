@@ -133,15 +133,13 @@ describe('PanelAppClient', () => {
       fetchSpy.mockImplementation(async (url) => {
         const urlStr = typeof url === 'string' ? url : (url as Request).url
         if (urlStr.includes('genomicsengland')) {
-          return new Response(
-            JSON.stringify(makePanelListResponse([makeRawPanel({ id: 1 })])),
-            { status: 200 }
-          )
+          return new Response(JSON.stringify(makePanelListResponse([makeRawPanel({ id: 1 })])), {
+            status: 200
+          })
         }
-        return new Response(
-          JSON.stringify(makePanelListResponse([makeRawPanel({ id: 99 })])),
-          { status: 200 }
-        )
+        return new Response(JSON.stringify(makePanelListResponse([makeRawPanel({ id: 99 })])), {
+          status: 200
+        })
       })
 
       const results = await client.searchPanels('test', 'both')
@@ -182,9 +180,7 @@ describe('PanelAppClient', () => {
 
   describe('getPanel', () => {
     it('fetches full panel with genes', async () => {
-      fetchSpy.mockResolvedValueOnce(
-        new Response(JSON.stringify(makeFullPanel()), { status: 200 })
-      )
+      fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify(makeFullPanel()), { status: 200 }))
 
       const panel = await client.getPanel(1, 'uk')
 

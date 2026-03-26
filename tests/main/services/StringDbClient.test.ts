@@ -114,9 +114,7 @@ describe('StringDbClient', () => {
   })
 
   it('sends correct POST parameters', async () => {
-    fetchSpy.mockResolvedValueOnce(
-      new Response(JSON.stringify([]), { status: 200 })
-    )
+    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
 
     await client.getInteractionPartners(['SCN1A', 'SCN2A'], {
       requiredScore: 700,

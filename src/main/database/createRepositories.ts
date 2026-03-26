@@ -20,6 +20,7 @@ import { GeneListRepository } from './GeneListRepository'
 import { AuthService } from '../services/auth'
 import { CohortSummaryService } from './CohortSummaryService'
 import { FilterPresetRepository } from './FilterPresetRepository'
+import { PanelRepository } from './PanelRepository'
 import { CohortService } from './cohort'
 
 export function createRepositories(db: DatabaseType) {
@@ -37,6 +38,7 @@ export function createRepositories(db: DatabaseType) {
   const auth = new AuthService(db)
   const cohortSummary = new CohortSummaryService(db)
   const filterPresets = new FilterPresetRepository(db, kysely)
+  const panels = new PanelRepository(db, kysely)
   const cohort = new CohortService(db)
 
   return {
@@ -53,6 +55,7 @@ export function createRepositories(db: DatabaseType) {
     auth,
     cohortSummary,
     filterPresets,
+    panels,
     cohort
   }
 }

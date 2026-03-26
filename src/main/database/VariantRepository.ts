@@ -540,16 +540,23 @@ export class VariantRepository extends BaseRepository {
     filter: VariantFilter,
     limit: number,
     offset: number = 0,
-    sortBy?: SortItem[]
+    sortBy?: SortItem[],
+    skipCount?: boolean
   ): PaginatedResult<Variant> {
-    // Count query — apply same filters but select count
-    const dataQuery = this.buildVariantQuery(filter)
-    const compiled = dataQuery.compile()
-    const countSql = compiled.sql.replace(/^select \* from/i, 'select count(*) as count from')
-    const countResult = this.db.prepare(countSql).get(...compiled.parameters) as { count: number }
-    const total_count = countResult.count
+    let total_count = 0
+
+    if (skipCount !== true) {
+      // Build count query using Kysely — avoids brittle string replacement
+      const countQuery = this.buildVariantQuery(filter)
+      const compiled = countQuery.compile()
+      // Wrap the filtered query in a COUNT to handle complex WHERE clauses
+      const countSql = `SELECT count(*) as count FROM (${compiled.sql})`
+      const countResult = this.db.prepare(countSql).get(...compiled.parameters) as { count: number }
+      total_count = countResult.count
+    }
 
     // Data query with sort + pagination
+    const dataQuery = this.buildVariantQuery(filter)
     const sortedQuery = this.applySort(dataQuery, sortBy).limit(limit).offset(offset)
     const data = this.execAll<Variant>(sortedQuery)
 

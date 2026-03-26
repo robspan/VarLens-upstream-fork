@@ -14,6 +14,20 @@ import { mainLogger } from '../../services/MainLogger'
 import type { RebuildWorkerResponse } from '../../workers/rebuild-summary-worker'
 import type { DatabaseService } from '../../database/DatabaseService'
 
+function convertBigInts<T>(obj: T): T {
+  if (obj === null || obj === undefined) return obj
+  if (typeof obj === 'bigint') return Number(obj) as unknown as T
+  if (Array.isArray(obj)) return obj.map(convertBigInts) as unknown as T
+  if (typeof obj === 'object') {
+    const result: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = typeof value === 'bigint' ? Number(value) : value
+    }
+    return result as T
+  }
+  return obj
+}
+
 function safeEmit(channel: string, data: unknown): void {
   const win = BrowserWindow.getAllWindows()[0]
   if (win === undefined || win.isDestroyed()) return
@@ -111,12 +125,9 @@ export function registerCohortHandlers({ ipcMain, getDb, getDbPool }: HandlerDep
         const cohortService = new CohortService(db.database)
         summary = cohortService.getCohortSummary()
       }
-      // Ensure data is serializable (convert any BigInt to Number)
-      return JSON.parse(
-        JSON.stringify(summary, (_key, value) =>
-          typeof value === 'bigint' ? Number(value) : value
-        )
-      )
+      // Convert BigInt values to Number for IPC serialization (avoids
+      // double serialization via JSON.parse(JSON.stringify(...)))
+      return convertBigInts(summary)
     })
   })
 

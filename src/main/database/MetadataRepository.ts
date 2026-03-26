@@ -487,4 +487,21 @@ export class MetadataRepository extends BaseRepository {
     )
     return rows.map((r) => r.id_type)
   }
+
+  /**
+   * Fetch all metadata for a case in a single method call.
+   * Consolidates 7 individual queries to avoid N+1 overhead
+   * when called from the IPC handler or worker thread.
+   */
+  getFullCaseMetadata(caseId: number) {
+    return {
+      metadata: this.getCaseMetadata(caseId),
+      cohorts: this.getCaseCohorts(caseId),
+      hpoTerms: this.getCaseHpoTerms(caseId),
+      comments: this.listCaseComments(caseId),
+      metrics: this.listCaseMetrics(caseId),
+      dataInfo: this.getCaseDataInfo(caseId),
+      externalIds: this.listCaseExternalIds(caseId)
+    }
+  }
 }

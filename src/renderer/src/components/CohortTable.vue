@@ -420,13 +420,20 @@ const handleLoadCarriers = async (variant: CohortVariant) => {
   await loadCarriers(variant)
 }
 
-// Watch variants and load annotations
-watch(variants, async (newVariants) => {
-  if (newVariants.length > 0) {
-    await loadGlobalAnnotationsBatch(
-      newVariants.map((v) => ({ chr: v.chr, pos: v.pos, ref: v.ref, alt: v.alt }))
-    )
-  }
+// Watch variants and load annotations (debounced to prevent overlapping
+// IPC calls during rapid page changes)
+const { debouncedFn: debouncedLoadAnnotations } = useDebounce(
+  async (newVariants: CohortVariant[]) => {
+    if (newVariants.length > 0) {
+      await loadGlobalAnnotationsBatch(
+        newVariants.map((v) => ({ chr: v.chr, pos: v.pos, ref: v.ref, alt: v.alt }))
+      )
+    }
+  },
+  150
+)
+watch(variants, (newVariants) => {
+  debouncedLoadAnnotations(newVariants)
 })
 
 // Auto-refresh when summary rebuild completes

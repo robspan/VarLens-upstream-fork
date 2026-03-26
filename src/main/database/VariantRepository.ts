@@ -263,26 +263,28 @@ export class VariantRepository extends BaseRepository {
     // Starred filter (scope-dependent)
     query = query.$if(filter.starred_only === true, (qb) => {
       if (filter.annotation_scope === 'all') {
-        return qb.where(({ or, exists, selectFrom, eb }) =>
-          or([
-            eb(
-              'id',
-              'in',
-              selectFrom('case_variant_annotations')
-                .select('variant_id')
-                .where('case_id', '=', filter.case_id)
-                .where('starred', '=', 1)
-            ),
-            exists(
-              selectFrom('variant_annotations as va')
-                .select(sql`1`.as('one'))
-                .whereRef('va.chr', '=', 'variants.chr')
-                .whereRef('va.pos', '=', 'variants.pos')
-                .whereRef('va.ref', '=', 'variants.ref')
-                .whereRef('va.alt', '=', 'variants.alt')
-                .where('va.starred', '=', 1)
-            )
-          ])
+        return qb.where(({ selectFrom, eb }) =>
+          eb(
+            'id',
+            'in',
+            selectFrom('case_variant_annotations')
+              .select('variant_id')
+              .where('case_id', '=', filter.case_id)
+              .where('starred', '=', 1)
+              .union(
+                selectFrom('variants as v2')
+                  .select('v2.id as variant_id')
+                  .innerJoin('variant_annotations as va', (join) =>
+                    join
+                      .onRef('va.chr', '=', 'v2.chr')
+                      .onRef('va.pos', '=', 'v2.pos')
+                      .onRef('va.ref', '=', 'v2.ref')
+                      .onRef('va.alt', '=', 'v2.alt')
+                  )
+                  .where('va.starred', '=', 1)
+                  .where('v2.case_id', '=', filter.case_id)
+              )
+          )
         )
       }
       return qb.where(
@@ -299,28 +301,30 @@ export class VariantRepository extends BaseRepository {
     // Comment filter (scope-dependent)
     query = query.$if(filter.has_comment === true, (qb) => {
       if (filter.annotation_scope === 'all') {
-        return qb.where(({ or, exists, selectFrom, eb }) =>
-          or([
-            eb(
-              'id',
-              'in',
-              selectFrom('case_variant_annotations')
-                .select('variant_id')
-                .where('case_id', '=', filter.case_id)
-                .where('per_case_comment', 'is not', null)
-                .where('per_case_comment', '!=', '')
-            ),
-            exists(
-              selectFrom('variant_annotations as va')
-                .select(sql`1`.as('one'))
-                .whereRef('va.chr', '=', 'variants.chr')
-                .whereRef('va.pos', '=', 'variants.pos')
-                .whereRef('va.ref', '=', 'variants.ref')
-                .whereRef('va.alt', '=', 'variants.alt')
-                .where('va.global_comment', 'is not', null)
-                .where('va.global_comment', '!=', '')
-            )
-          ])
+        return qb.where(({ selectFrom, eb }) =>
+          eb(
+            'id',
+            'in',
+            selectFrom('case_variant_annotations')
+              .select('variant_id')
+              .where('case_id', '=', filter.case_id)
+              .where('per_case_comment', 'is not', null)
+              .where('per_case_comment', '!=', '')
+              .union(
+                selectFrom('variants as v2')
+                  .select('v2.id as variant_id')
+                  .innerJoin('variant_annotations as va', (join) =>
+                    join
+                      .onRef('va.chr', '=', 'v2.chr')
+                      .onRef('va.pos', '=', 'v2.pos')
+                      .onRef('va.ref', '=', 'v2.ref')
+                      .onRef('va.alt', '=', 'v2.alt')
+                  )
+                  .where('va.global_comment', 'is not', null)
+                  .where('va.global_comment', '!=', '')
+                  .where('v2.case_id', '=', filter.case_id)
+              )
+          )
         )
       }
       return qb.where(
@@ -338,26 +342,28 @@ export class VariantRepository extends BaseRepository {
     // ACMG classification filter (scope-dependent)
     query = query.$if((filter.acmg_classifications?.length ?? 0) > 0, (qb) => {
       if (filter.annotation_scope === 'all') {
-        return qb.where(({ or, exists, selectFrom, eb }) =>
-          or([
-            eb(
-              'id',
-              'in',
-              selectFrom('case_variant_annotations')
-                .select('variant_id')
-                .where('case_id', '=', filter.case_id)
-                .where('acmg_classification', 'in', filter.acmg_classifications!)
-            ),
-            exists(
-              selectFrom('variant_annotations as va')
-                .select(sql`1`.as('one'))
-                .whereRef('va.chr', '=', 'variants.chr')
-                .whereRef('va.pos', '=', 'variants.pos')
-                .whereRef('va.ref', '=', 'variants.ref')
-                .whereRef('va.alt', '=', 'variants.alt')
-                .where('va.acmg_classification', 'in', filter.acmg_classifications!)
-            )
-          ])
+        return qb.where(({ selectFrom, eb }) =>
+          eb(
+            'id',
+            'in',
+            selectFrom('case_variant_annotations')
+              .select('variant_id')
+              .where('case_id', '=', filter.case_id)
+              .where('acmg_classification', 'in', filter.acmg_classifications!)
+              .union(
+                selectFrom('variants as v2')
+                  .select('v2.id as variant_id')
+                  .innerJoin('variant_annotations as va', (join) =>
+                    join
+                      .onRef('va.chr', '=', 'v2.chr')
+                      .onRef('va.pos', '=', 'v2.pos')
+                      .onRef('va.ref', '=', 'v2.ref')
+                      .onRef('va.alt', '=', 'v2.alt')
+                  )
+                  .where('va.acmg_classification', 'in', filter.acmg_classifications!)
+                  .where('v2.case_id', '=', filter.case_id)
+              )
+          )
         )
       }
       return qb.where(
@@ -534,16 +540,23 @@ export class VariantRepository extends BaseRepository {
     filter: VariantFilter,
     limit: number,
     offset: number = 0,
-    sortBy?: SortItem[]
+    sortBy?: SortItem[],
+    skipCount?: boolean
   ): PaginatedResult<Variant> {
-    // Count query — apply same filters but select count
-    const dataQuery = this.buildVariantQuery(filter)
-    const compiled = dataQuery.compile()
-    const countSql = compiled.sql.replace(/^select \* from/i, 'select count(*) as count from')
-    const countResult = this.db.prepare(countSql).get(...compiled.parameters) as { count: number }
-    const total_count = countResult.count
+    let total_count = 0
+
+    if (skipCount !== true) {
+      // Build count query using Kysely — avoids brittle string replacement
+      const countQuery = this.buildVariantQuery(filter)
+      const compiled = countQuery.compile()
+      // Wrap the filtered query in a COUNT to handle complex WHERE clauses
+      const countSql = `SELECT count(*) as count FROM (${compiled.sql})`
+      const countResult = this.db.prepare(countSql).get(...compiled.parameters) as { count: number }
+      total_count = countResult.count
+    }
 
     // Data query with sort + pagination
+    const dataQuery = this.buildVariantQuery(filter)
     const sortedQuery = this.applySort(dataQuery, sortBy).limit(limit).offset(offset)
     const data = this.execAll<Variant>(sortedQuery)
 

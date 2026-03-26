@@ -164,15 +164,7 @@ export default function run(task: DbTask): unknown {
         return repos.metadata.getDistinctHpoTerms()
 
       case 'case-metadata:getFullMetadata':
-        return {
-          metadata: repos.metadata.getCaseMetadata(params[0] as number),
-          cohorts: repos.metadata.getCaseCohorts(params[0] as number),
-          hpoTerms: repos.metadata.getCaseHpoTerms(params[0] as number),
-          comments: repos.metadata.listCaseComments(params[0] as number),
-          metrics: repos.metadata.listCaseMetrics(params[0] as number),
-          dataInfo: repos.metadata.getCaseDataInfo(params[0] as number),
-          externalIds: repos.metadata.listCaseExternalIds(params[0] as number)
-        }
+        return repos.metadata.getFullCaseMetadata(params[0] as number)
 
       // ── Association analysis ─────────────────────────────
       case 'association:build': {

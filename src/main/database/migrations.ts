@@ -30,6 +30,7 @@ import { BUILT_IN_PRESETS } from './built-in-presets'
  * - 11: v0.21.0 remove non-clinical predefined metrics (genetics, QC, variant stats)
  * - 15: Filter presets table with built-in preset seeding
  * - 16: Rework built-in presets to clinical combo presets
+ * - 17: Performance indexes for tag/star/ACMG filter queries
  *
  * @param db - better-sqlite3-multiple-ciphers Database instance
  */
@@ -1132,5 +1133,31 @@ export function runMigrations(db: Database.Database): void {
     }
 
     db.exec('PRAGMA user_version = 16')
+  }
+
+  // ── v17: Performance indexes for annotation filter queries ──────────
+  if (currentVersion < 17) {
+    db.exec(`
+      -- Composite index for tag filtering: (case_id, tag_id) for WHERE clause,
+      -- variant_id last makes the index covering for SELECT variant_id
+      CREATE INDEX IF NOT EXISTS idx_variant_tags_case_tag
+        ON variant_tags(case_id, tag_id, variant_id);
+
+      -- Partial index for starred filter (only rows where starred=1)
+      CREATE INDEX IF NOT EXISTS idx_cva_case_starred
+        ON case_variant_annotations(case_id, variant_id)
+        WHERE starred = 1;
+
+      -- Index for ACMG classification filter queries
+      CREATE INDEX IF NOT EXISTS idx_cva_case_acmg
+        ON case_variant_annotations(case_id, acmg_classification);
+
+      -- Composite index for global annotation coordinate lookups
+      -- (covers EXISTS subqueries in star/comment/ACMG scope='all' filters)
+      CREATE INDEX IF NOT EXISTS idx_va_coords_starred
+        ON variant_annotations(chr, pos, ref, alt, starred);
+
+      PRAGMA user_version = 17;
+    `)
   }
 }

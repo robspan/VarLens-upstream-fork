@@ -80,6 +80,7 @@ export class DatabaseService {
       this.db.pragma('temp_store = MEMORY')
       this.db.pragma(`mmap_size = ${DATABASE_CONFIG.MMAP_SIZE_BYTES}`)
       this.db.pragma(`analysis_limit = ${DATABASE_CONFIG.ANALYSIS_LIMIT}`)
+      this.db.pragma('journal_size_limit = 6144000') // 6 MB — prevents WAL bloat
 
       // Initialize database schema (tables, indexes, FTS5)
       initializeSchema(this.db)

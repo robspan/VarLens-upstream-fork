@@ -47,6 +47,12 @@ export interface UseOffsetPaginationOptions<T> {
   }) => Promise<OffsetPageResult<T>>
   /** Called when sort state changes (e.g. to update "has sort" indicator) */
   onSortChange?: (hasSort: boolean) => void
+  /**
+   * Serialized filter key. When provided, it is included in prefetch cache keys
+   * so that cached results from a previous filter set are never served after a
+   * filter change. The cache is also cleared automatically when this value changes.
+   */
+  filterKey?: Ref<string>
 }
 
 export function useOffsetPagination<T>(options: UseOffsetPaginationOptions<T>) {
@@ -78,7 +84,8 @@ export function useOffsetPagination<T>(options: UseOffsetPaginationOptions<T>) {
 
   function buildPrefetchKey(offset: number): string {
     const sortKey = JSON.stringify(normalizeSortBy(sortBy.value))
-    return `${offset}:${itemsPerPage.value}:${sortKey}`
+    const fKey = options.filterKey?.value ?? ''
+    return `${offset}:${itemsPerPage.value}:${sortKey}:${fKey}`
   }
 
   /** Fire-and-forget: pre-fetch the next page and store in cache. */
@@ -118,6 +125,14 @@ export function useOffsetPagination<T>(options: UseOffsetPaginationOptions<T>) {
     settingsStore.itemsPerPage = v
     prefetchCache.clear()
   })
+
+  // Clear prefetch cache when filter key changes so stale pre-fetched results
+  // are never served after a filter change.
+  if (options.filterKey) {
+    watch(options.filterKey, () => {
+      prefetchCache.clear()
+    })
+  }
 
   /**
    * Load the current page. Use as @update:options handler.
@@ -219,6 +234,7 @@ export function useOffsetPagination<T>(options: UseOffsetPaginationOptions<T>) {
   }
 
   const resetState = (): void => {
+    loading.value = true // show loading immediately to prevent "no data" flash
     items.value = []
     totalCount.value = 0
     error.value = null

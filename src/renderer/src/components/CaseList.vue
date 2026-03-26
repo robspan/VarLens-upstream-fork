@@ -60,6 +60,12 @@
       </v-list-item>
     </template>
 
+    <v-skeleton-loader
+      v-if="loading && cases.length === 0"
+      type="list-item-two-line@8"
+      class="case-list-skeleton"
+    />
+
     <v-list v-model:selected="selected" density="compact" select-strategy="single-leaf">
       <!-- Case items -->
       <v-list-item

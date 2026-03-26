@@ -42,9 +42,7 @@ describe('PanelRepository', () => {
 
     it('creates case_active_panels table', () => {
       const tables = db
-        .prepare(
-          "SELECT name FROM sqlite_master WHERE type='table' AND name='case_active_panels'"
-        )
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='case_active_panels'")
         .all()
       expect(tables).toHaveLength(1)
     })

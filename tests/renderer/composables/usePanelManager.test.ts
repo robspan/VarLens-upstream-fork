@@ -71,7 +71,7 @@ describe('usePanelManager', () => {
 
   it('sets loading state during loadPanels', async () => {
     let resolveList: (value: PanelListItem[]) => void
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(window.api as any).panels.list.mockImplementation(
       () =>
         new Promise<PanelListItem[]>((resolve) => {
@@ -173,7 +173,10 @@ describe('usePanelManager', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(window.api as any).panels.duplicate.mockResolvedValue({ id: 3 })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(window.api as any).panels.list.mockResolvedValue([...mockPanels, { ...mockPanels[0], id: 3, name: 'Copy' }])
+    ;(window.api as any).panels.list.mockResolvedValue([
+      ...mockPanels,
+      { ...mockPanels[0], id: 3, name: 'Copy' }
+    ])
 
     const [result, appInstance] = withSetup(() => usePanelManager())
     app = appInstance

@@ -151,7 +151,7 @@ async function main(): Promise<void> {
     const endIdx = colIndex(parsed.headers, 'Gene end (bp)')
     const strandIdx = colIndex(parsed.headers, 'Strand')
 
-    const coords: typeof coordsByAssembly[string] = []
+    const coords: (typeof coordsByAssembly)[string] = []
     for (const row of parsed.rows) {
       let hgncId = row[hIdx]?.trim()
       const chr = row[chrIdx]?.trim()
@@ -235,7 +235,13 @@ async function main(): Promise<void> {
   const insertAssembly = db.prepare(
     'INSERT INTO assemblies (id, display_name, aliases, source_version, built_at) VALUES (?, ?, ?, ?, ?)'
   )
-  insertAssembly.run('GRCh38', 'GRCh38 / hg38', JSON.stringify(['hg38']), 'Ensembl current', builtAt)
+  insertAssembly.run(
+    'GRCh38',
+    'GRCh38 / hg38',
+    JSON.stringify(['hg38']),
+    'Ensembl current',
+    builtAt
+  )
   insertAssembly.run('GRCh37', 'GRCh37 / hg19', JSON.stringify(['hg19']), 'Ensembl GRCh37', builtAt)
 
   // 7. Insert genes (in transaction)
@@ -326,7 +332,9 @@ async function main(): Promise<void> {
     }
   })
   insertCoordsTx()
-  console.log(`  Inserted ${coordCount} coordinate entries (skipped ${coordSkipped} with unknown HGNC IDs)`)
+  console.log(
+    `  Inserted ${coordCount} coordinate entries (skipped ${coordSkipped} with unknown HGNC IDs)`
+  )
 
   // 9. Create FTS5 indexes
   console.log('Creating FTS5 indexes...')

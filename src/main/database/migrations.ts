@@ -1213,9 +1213,7 @@ export function runMigrations(db: Database.Database): void {
     `)
 
     // Add genome_build column to cases
-    const caseCols = db
-      .prepare("PRAGMA table_info('cases')")
-      .all() as Array<{ name: string }>
+    const caseCols = db.prepare("PRAGMA table_info('cases')").all() as Array<{ name: string }>
     if (!caseCols.some((c) => c.name === 'genome_build')) {
       db.exec("ALTER TABLE cases ADD COLUMN genome_build TEXT DEFAULT 'GRCh38'")
     }

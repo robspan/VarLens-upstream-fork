@@ -157,7 +157,7 @@ describe('useGeneValidation', () => {
 
     it('sets validating flag during validation', async () => {
       let resolveValidation: (value: ValidationResult[]) => void
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(window.api as any).panels.validateSymbols.mockImplementation(
         () =>
           new Promise<ValidationResult[]>((resolve) => {
@@ -171,7 +171,9 @@ describe('useGeneValidation', () => {
       const promise = result.validateSymbols(['BRCA1'])
       expect(result.validating.value).toBe(true)
 
-      resolveValidation!([{ input: 'BRCA1', status: 'approved', symbol: 'BRCA1', hgncId: 'HGNC:1100' }])
+      resolveValidation!([
+        { input: 'BRCA1', status: 'approved', symbol: 'BRCA1', hgncId: 'HGNC:1100' }
+      ])
       await promise
 
       expect(result.validating.value).toBe(false)
@@ -211,8 +213,20 @@ describe('useGeneValidation', () => {
   describe('autocomplete', () => {
     it('fetches autocomplete results', async () => {
       const mockSuggestions: AutocompleteResult[] = [
-        { symbol: 'BRCA1', hgncId: 'HGNC:1100', name: 'BRCA1 DNA repair', locusGroup: 'protein-coding gene', matchType: 'symbol' },
-        { symbol: 'BRCA2', hgncId: 'HGNC:1101', name: 'BRCA2 DNA repair', locusGroup: 'protein-coding gene', matchType: 'symbol' }
+        {
+          symbol: 'BRCA1',
+          hgncId: 'HGNC:1100',
+          name: 'BRCA1 DNA repair',
+          locusGroup: 'protein-coding gene',
+          matchType: 'symbol'
+        },
+        {
+          symbol: 'BRCA2',
+          hgncId: 'HGNC:1101',
+          name: 'BRCA2 DNA repair',
+          locusGroup: 'protein-coding gene',
+          matchType: 'symbol'
+        }
       ]
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(window.api as any).panels.autocomplete.mockResolvedValue(mockSuggestions)
@@ -257,7 +271,13 @@ describe('useGeneValidation', () => {
 
       // Set some suggestions first
       result.suggestions.value = [
-        { symbol: 'BRCA1', hgncId: 'HGNC:1100', name: 'test', locusGroup: 'test', matchType: 'symbol' }
+        {
+          symbol: 'BRCA1',
+          hgncId: 'HGNC:1100',
+          name: 'test',
+          locusGroup: 'test',
+          matchType: 'symbol'
+        }
       ]
 
       await result.autocomplete('')

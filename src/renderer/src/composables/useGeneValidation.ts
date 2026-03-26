@@ -183,10 +183,7 @@ export function useGeneValidation(): UseGeneValidationReturn {
   /**
    * Resolve an ambiguous result by selecting one of the candidates.
    */
-  const resolveAmbiguous = (
-    index: number,
-    chosen: { symbol: string; hgncId: string }
-  ): void => {
+  const resolveAmbiguous = (index: number, chosen: { symbol: string; hgncId: string }): void => {
     const result = validationResults.value[index]
     if (!result || result.status !== 'ambiguous') return
 

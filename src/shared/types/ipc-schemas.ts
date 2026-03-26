@@ -529,9 +529,7 @@ export const PanelUpdateSchema = z.object({
  */
 export const PanelGenesSchema = z.object({
   panelId: z.number().int().positive(),
-  genes: z
-    .array(z.object({ hgncId: z.string().min(1), symbol: z.string().min(1) }))
-    .max(50000)
+  genes: z.array(z.object({ hgncId: z.string().min(1), symbol: z.string().min(1) })).max(50000)
 })
 
 /**

@@ -554,11 +554,7 @@ export interface PanelsAPI {
     genes: Array<{ hgncId: string; symbol: string }>
   ) => Promise<{ success: boolean }>
   getGenes: (panelId: number) => Promise<PanelGeneRow[]>
-  activate: (
-    caseId: number,
-    panelId: number,
-    paddingBp?: number
-  ) => Promise<{ success: boolean }>
+  activate: (caseId: number, panelId: number, paddingBp?: number) => Promise<{ success: boolean }>
   deactivate: (caseId: number, panelId: number) => Promise<{ success: boolean }>
   activeForCase: (caseId: number) => Promise<ActivePanelRow[]>
   validateSymbols: (symbols: string[]) => Promise<GeneValidationResult[]>

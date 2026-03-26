@@ -208,10 +208,7 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
     return wrapHandler(async () => {
       const validated = AutocompleteSchema.safeParse(params)
       if (!validated.success) {
-        mainLogger.error(
-          `Invalid panels:autocomplete params: ${validated.error.message}`,
-          'panels'
-        )
+        mainLogger.error(`Invalid panels:autocomplete params: ${validated.error.message}`, 'panels')
         throw new Error('Invalid autocomplete parameters')
       }
 

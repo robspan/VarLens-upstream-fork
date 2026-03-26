@@ -1138,9 +1138,10 @@ export function runMigrations(db: Database.Database): void {
   // ── v17: Performance indexes for annotation filter queries ──────────
   if (currentVersion < 17) {
     db.exec(`
-      -- Composite index for tag filtering (covers case_id + tag_id lookups)
+      -- Composite index for tag filtering: (case_id, tag_id) for WHERE clause,
+      -- variant_id last makes the index covering for SELECT variant_id
       CREATE INDEX IF NOT EXISTS idx_variant_tags_case_tag
-        ON variant_tags(case_id, variant_id, tag_id);
+        ON variant_tags(case_id, tag_id, variant_id);
 
       -- Partial index for starred filter (only rows where starred=1)
       CREATE INDEX IF NOT EXISTS idx_cva_case_starred

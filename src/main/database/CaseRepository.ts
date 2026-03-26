@@ -75,11 +75,24 @@ export class CaseRepository extends BaseRepository {
   /** Returns set of case names that already exist in the database. */
   getExistingCaseNames(names: string[]): Set<string> {
     if (names.length === 0) return new Set()
-    const placeholders = names.map(() => '?').join(',')
-    const rows = this.db
-      .prepare(`SELECT name FROM cases WHERE name IN (${placeholders})`)
-      .all(...names) as Array<{ name: string }>
-    return new Set(rows.map((r) => r.name))
+
+    // SQLite has a maximum number of bound parameters (commonly 999), so we
+    // chunk the input to avoid "too many SQL variables" errors on large batches.
+    const MAX_SQLITE_VARIABLES = 999
+    const existingNames = new Set<string>()
+
+    for (let i = 0; i < names.length; i += MAX_SQLITE_VARIABLES) {
+      const batch = names.slice(i, i + MAX_SQLITE_VARIABLES)
+      const placeholders = batch.map(() => '?').join(',')
+      const rows = this.db
+        .prepare(`SELECT name FROM cases WHERE name IN (${placeholders})`)
+        .all(...batch) as Array<{ name: string }>
+      for (const row of rows) {
+        existingNames.add(row.name)
+      }
+    }
+
+    return existingNames
   }
 
   getAllCases(): Case[] {

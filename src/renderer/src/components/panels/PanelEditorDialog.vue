@@ -128,7 +128,7 @@
               <td>{{ result.name ?? '-' }}</td>
 
               <!-- Locus -->
-              <td>-</td>
+              <td>{{ result.locusGroup ?? '-' }}</td>
 
               <!-- Action -->
               <td>

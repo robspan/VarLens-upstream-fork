@@ -240,7 +240,7 @@ export class PanelRepository extends BaseRepository {
         : coords.chromosome
       intervals.push({
         chr,
-        start: Math.max(0, coords.start_pos - paddingBp),
+        start: Math.max(1, coords.start_pos - paddingBp),
         end: coords.end_pos + paddingBp
       })
     }

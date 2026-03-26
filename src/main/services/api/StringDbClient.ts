@@ -108,7 +108,7 @@ export class StringDbClient {
 
     // Build form data
     const formData = new URLSearchParams()
-    formData.set('identifiers', genes.join('%0d'))
+    formData.set('identifiers', genes.join('\n'))
     formData.set('species', String(SPECIES_HUMAN))
     formData.set('required_score', String(options.requiredScore))
     formData.set('network_type', options.networkType)

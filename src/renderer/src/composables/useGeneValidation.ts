@@ -21,6 +21,7 @@ export interface ValidationResult {
   symbol?: string
   hgncId?: string
   name?: string
+  locusGroup?: string
   /** For alias results: the current approved symbol */
   currentSymbol?: string
   aliasType?: string

@@ -82,15 +82,15 @@ describe('PanelRepository.computeIntervals', () => {
     expect(withPad[0].end - noPad[0].end).toBe(5000)
   })
 
-  it('clamps start to 0 when padding exceeds gene start', () => {
-    // Use a gene near chromosome start — if gene starts at e.g. 100, padding of 5000 should clamp to 0
-    // We'll test the math by checking start >= 0 for all genes with large padding
+  it('clamps start to 1 when padding exceeds gene start (1-based coordinates)', () => {
+    // Use a gene near chromosome start — if gene starts at e.g. 100, padding of 5000 should clamp to 1
+    // Genomic coordinates are 1-based, so the minimum valid position is 1
     const panel = repo.createPanel({ name: 'BigPad', source: 'manual' })
     repo.setGenes(panel.id, [{ hgncId: 'HGNC:1100', symbol: 'BRCA1' }])
 
     const intervals = repo.computeIntervals([panel.id], 'GRCh38', 999999999, geneRefDb)
     expect(intervals).toHaveLength(1)
-    expect(intervals[0].start).toBe(0)
+    expect(intervals[0].start).toBe(1)
   })
 
   // ── chrPrefix ──────────────────────────────────────────────

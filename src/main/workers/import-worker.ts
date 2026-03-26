@@ -147,7 +147,9 @@ port.on('message', async (msg: MainMessage) => {
 
           // Create case record
           const fileSize = statSync(file.filePath).size
-          // Default to GRCh38 for JSON-based imports; VCF imports will detect from headers
+          // Default to GRCh38 for JSON-based imports. Raw VCF headers are not available
+          // in the current JSON/TSV parsing pipeline. When native VCF import is added,
+          // use GenomeBuildDetector.detectGenomeBuildFromVcfHeaders() on the ## header lines.
           const genomeBuild = 'GRCh38'
           const caseResult = stmts.insertCase.run(
             file.caseName,

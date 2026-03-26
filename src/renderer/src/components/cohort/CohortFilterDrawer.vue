@@ -113,6 +113,30 @@
         </v-expansion-panel-text>
       </v-expansion-panel>
 
+      <!-- Gene Panels -->
+      <v-expansion-panel value="panels">
+        <FilterPanelTitle
+          :icon="mdiPlaylistEdit"
+          label="Gene Panels"
+          :active="false"
+          value-summary=""
+        />
+        <v-expansion-panel-text>
+          <div class="text-body-2 text-medium-emphasis mb-2">
+            Manage gene panels for region-based variant filtering.
+          </div>
+          <v-btn
+            variant="outlined"
+            density="compact"
+            block
+            color="primary"
+            @click="panelManagerOpen = true"
+          >
+            Manage Panels
+          </v-btn>
+        </v-expansion-panel-text>
+      </v-expansion-panel>
+
       <!-- Impact -->
       <v-expansion-panel value="impact">
         <FilterPanelTitle
@@ -352,6 +376,8 @@
         </v-expansion-panel-text>
       </v-expansion-panel>
     </v-expansion-panels>
+
+    <PanelManagerDialog v-model="panelManagerOpen" />
   </FilterDrawerShell>
 </template>
 
@@ -361,6 +387,7 @@ import FilterDrawerShell from '../filters/FilterDrawerShell.vue'
 import FilterPanelTitle from '../filters/FilterPanelTitle.vue'
 import DslSearchBar from '../DslSearchBar.vue'
 import GroupedMultiSelect from '../GroupedMultiSelect.vue'
+import PanelManagerDialog from '../panels/PanelManagerDialog.vue'
 import { consequenceGroups, clinvarGroups } from '../../config/filterGroups'
 import { ACMG_FILTER_OPTIONS } from '../../utils/filters'
 import type { CohortFilterDrawerState } from './cohortFilterDrawerTypes'
@@ -376,6 +403,7 @@ import {
   mdiFunction,
   mdiHospitalBox,
   mdiMagnify,
+  mdiPlaylistEdit,
   mdiStar,
   mdiStarCircle
 } from '@mdi/js'
@@ -392,6 +420,7 @@ const emit = defineEmits<{
 const allPanelValues = [
   'search',
   'gene',
+  'panels',
   'impact',
   'function',
   'clinvar',
@@ -401,6 +430,9 @@ const allPanelValues = [
   'cadd'
 ]
 const expandedPanels = ref<string[]>(['search', 'impact', 'frequency'])
+
+// Gene panel manager dialog state
+const panelManagerOpen = ref(false)
 
 // Inject shared filter state from CohortFilterBar
 const state = inject<CohortFilterDrawerState>('cohortFilterDrawerState')

@@ -214,24 +214,24 @@ describe('useVariantData', () => {
   describe('IPC safety', () => {
     it('passes plain objects (not Vue proxies) to api.variants.query', async () => {
       let capturedFilters: unknown = null
-      window.api.variants.query = vi.fn().mockImplementation(
-        (_caseId: unknown, filters: unknown) => {
+      window.api.variants.query = vi
+        .fn()
+        .mockImplementation((_caseId: unknown, filters: unknown) => {
           capturedFilters = filters
           return Promise.resolve({ data: [], total_count: 0 })
-        }
-      )
+        })
 
       const { result } = setup(1, { gene_symbol: 'BRCA1' })
       await flushPromises()
 
       vi.clearAllMocks()
       capturedFilters = null
-      window.api.variants.query = vi.fn().mockImplementation(
-        (_caseId: unknown, filters: unknown) => {
+      window.api.variants.query = vi
+        .fn()
+        .mockImplementation((_caseId: unknown, filters: unknown) => {
           capturedFilters = filters
           return Promise.resolve({ data: [], total_count: 0 })
-        }
-      )
+        })
 
       await result.loadVariants()
       await flushPromises()
@@ -247,26 +247,21 @@ describe('useVariantData', () => {
     })
 
     it('filters arriving at mock are serializable without circular references', async () => {
-      let capturedFilters: unknown = null
-      window.api.variants.query = vi.fn().mockImplementation(
-        (_caseId: unknown, filters: unknown) => {
-          capturedFilters = filters
-          return Promise.resolve({ data: [], total_count: 0 })
-        }
-      )
+      // Initial setup triggers caseId watcher — use a throwaway mock
+      window.api.variants.query = vi.fn().mockResolvedValue({ data: [], total_count: 0 })
 
       // Reactive filter object
       const { result } = setup(1, { gene_symbol: 'BRCA1', min_qual: 20 })
       await flushPromises()
 
       vi.clearAllMocks()
-      capturedFilters = null
-      window.api.variants.query = vi.fn().mockImplementation(
-        (_caseId: unknown, filters: unknown) => {
+      let capturedFilters: unknown = null
+      window.api.variants.query = vi
+        .fn()
+        .mockImplementation((_caseId: unknown, filters: unknown) => {
           capturedFilters = filters
           return Promise.resolve({ data: [], total_count: 0 })
-        }
-      )
+        })
 
       await result.loadVariants()
       await flushPromises()
@@ -333,9 +328,7 @@ describe('useVariantData', () => {
       await result.loadVariants()
       await flushPromises()
 
-      expect(onCountsUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({ filtered: 7 })
-      )
+      expect(onCountsUpdate).toHaveBeenCalledWith(expect.objectContaining({ filtered: 7 }))
     })
   })
 

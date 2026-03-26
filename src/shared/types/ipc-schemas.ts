@@ -591,6 +591,38 @@ export const PanelDuplicateSchema = z.object({
 export const PanelIdSchema = z.number().int().positive()
 
 // ============================================================
+// PanelApp / StringDB Import Schemas
+// ============================================================
+
+/**
+ * Schema for searching PanelApp panels
+ */
+export const PanelAppSearchSchema = z.object({
+  keyword: z.string().min(1).max(200),
+  region: z.enum(['uk', 'aus', 'both']).default('both')
+})
+
+/**
+ * Schema for importing a panel from PanelApp
+ */
+export const PanelAppImportSchema = z.object({
+  panelId: z.number().int().positive(),
+  region: z.enum(['uk', 'aus']),
+  confidenceThreshold: z.enum(['green', 'green_amber', 'all']).default('green'),
+  name: z.string().min(1).max(200).optional()
+})
+
+/**
+ * Schema for generating a panel from StringDB interactions
+ */
+export const StringDbGenerateSchema = z.object({
+  seedGenes: z.array(z.string().min(1)).min(1).max(500),
+  requiredScore: z.number().int().min(0).max(1000).default(400),
+  networkType: z.enum(['physical', 'functional']).default('physical'),
+  name: z.string().min(1).max(200).optional()
+})
+
+// ============================================================
 // Association Schemas
 // ============================================================
 

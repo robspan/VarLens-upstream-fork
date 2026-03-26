@@ -10,10 +10,21 @@ import {
   AutocompleteSchema,
   PanelDuplicateSchema,
   PanelIdSchema,
-  CaseIdSchema
+  CaseIdSchema,
+  PanelAppSearchSchema,
+  PanelAppImportSchema,
+  StringDbGenerateSchema
 } from '../../../shared/types/ipc-schemas'
 import { mainLogger } from '../../services/MainLogger'
 import { getGeneReferenceDb } from '../../database/geneReferenceLoader'
+import { PanelAppClient } from '../../services/api/PanelAppClient'
+import { StringDbClient } from '../../services/api/StringDbClient'
+
+/** Confidence levels considered "green" (high confidence) */
+const GREEN_LEVELS = new Set(['3', '4', 'green'])
+
+/** Confidence levels considered "green + amber" (medium-high confidence) */
+const GREEN_AMBER_LEVELS = new Set(['2', '3', '4', 'green', 'amber'])
 
 /**
  * Panel and gene reference IPC handlers
@@ -214,6 +225,190 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
 
       const geneRef = getGeneReferenceDb()
       return geneRef.autocomplete(validated.data.query, validated.data.limit)
+    })
+  })
+
+  // ============================================================
+  // PanelApp / StringDB Integration
+  // ============================================================
+
+  ipcMain.handle('panels:search-panelapp', async (_event, params: unknown) => {
+    return wrapHandler(async () => {
+      const validated = PanelAppSearchSchema.safeParse(params)
+      if (!validated.success) {
+        mainLogger.error(
+          `Invalid panels:search-panelapp params: ${validated.error.message}`,
+          'panels'
+        )
+        throw new Error('Invalid PanelApp search parameters')
+      }
+
+      const client = new PanelAppClient()
+      return client.searchPanels(validated.data.keyword, validated.data.region)
+    })
+  })
+
+  ipcMain.handle('panels:import-panelapp', async (_event, params: unknown) => {
+    return wrapHandler(async () => {
+      const validated = PanelAppImportSchema.safeParse(params)
+      if (!validated.success) {
+        mainLogger.error(
+          `Invalid panels:import-panelapp params: ${validated.error.message}`,
+          'panels'
+        )
+        throw new Error('Invalid PanelApp import parameters')
+      }
+
+      const { panelId, region, confidenceThreshold, name } = validated.data
+
+      // 1. Fetch full panel from PanelApp
+      const client = new PanelAppClient()
+      const panel = await client.getPanel(panelId, region)
+
+      // 2. Filter genes by confidence level
+      const confidenceSet =
+        confidenceThreshold === 'green'
+          ? GREEN_LEVELS
+          : confidenceThreshold === 'green_amber'
+            ? GREEN_AMBER_LEVELS
+            : null // 'all' = no filter
+
+      const filteredGenes = confidenceSet
+        ? panel.genes.filter((g) => confidenceSet.has(g.confidence_level))
+        : panel.genes
+
+      // 3. Validate gene symbols against gene reference DB
+      const geneRef = getGeneReferenceDb()
+      const symbols = filteredGenes.map((g) => g.gene_data.gene_symbol)
+      const validationResults = geneRef.validateSymbols(symbols)
+
+      // Build genes array with resolved symbols and HGNC IDs
+      const resolvedGenes: Array<{ hgncId: string; symbol: string }> = []
+      for (const result of validationResults) {
+        if (
+          result.status === 'approved' &&
+          result.hgncId !== undefined &&
+          result.symbol !== undefined
+        ) {
+          resolvedGenes.push({ hgncId: result.hgncId, symbol: result.symbol })
+        } else if (
+          result.status === 'alias' &&
+          result.hgncId !== undefined &&
+          result.currentSymbol !== undefined
+        ) {
+          // Use the current approved symbol for aliases
+          resolvedGenes.push({ hgncId: result.hgncId, symbol: result.currentSymbol })
+        }
+        // Skip 'ambiguous' and 'unknown' genes
+      }
+
+      // 4. Create panel in DB
+      const db = getDb()
+      const source = region === 'uk' ? 'panelapp_uk' : 'panelapp_aus'
+      const createdPanel = db.panels.createPanel({
+        name: name ?? `${panel.name} (PanelApp ${region.toUpperCase()})`,
+        description: `Imported from PanelApp ${region.toUpperCase()} v${panel.version}`,
+        version: panel.version,
+        source,
+        sourceId: String(panelId),
+        sourceMetadata: {
+          confidence_threshold: confidenceThreshold,
+          total_genes: panel.genes.length,
+          filtered_genes: filteredGenes.length,
+          resolved_genes: resolvedGenes.length,
+          panel_version: panel.version
+        }
+      })
+
+      // 5. Set genes
+      if (resolvedGenes.length > 0) {
+        db.panels.setGenes(createdPanel.id, resolvedGenes)
+      }
+
+      // Return panel with gene count
+      const genes = db.panels.getGenes(createdPanel.id)
+      return { ...createdPanel, genes }
+    })
+  })
+
+  ipcMain.handle('panels:generate-stringdb', async (_event, params: unknown) => {
+    return wrapHandler(async () => {
+      const validated = StringDbGenerateSchema.safeParse(params)
+      if (!validated.success) {
+        mainLogger.error(
+          `Invalid panels:generate-stringdb params: ${validated.error.message}`,
+          'panels'
+        )
+        throw new Error('Invalid StringDB generation parameters')
+      }
+
+      const { seedGenes, requiredScore, networkType, name } = validated.data
+
+      // 1. Query StringDB for interaction partners
+      const client = new StringDbClient()
+      const partners = await client.getInteractionPartners(seedGenes, {
+        requiredScore,
+        networkType
+      })
+
+      // 2. Validate all genes (seed + partners) against gene reference DB
+      const geneRef = getGeneReferenceDb()
+      const allSymbols = [...seedGenes, ...partners.map((p) => p.symbol)]
+      const validationResults = geneRef.validateSymbols(allSymbols)
+
+      // Build resolved genes
+      const resolvedGenes: Array<{ hgncId: string; symbol: string }> = []
+      const seenHgnc = new Set<string>()
+
+      for (const result of validationResults) {
+        let hgncId: string | undefined
+        let symbol: string | undefined
+
+        if (
+          result.status === 'approved' &&
+          result.hgncId !== undefined &&
+          result.symbol !== undefined
+        ) {
+          hgncId = result.hgncId
+          symbol = result.symbol
+        } else if (
+          result.status === 'alias' &&
+          result.hgncId !== undefined &&
+          result.currentSymbol !== undefined
+        ) {
+          hgncId = result.hgncId
+          symbol = result.currentSymbol
+        }
+
+        if (hgncId !== undefined && symbol !== undefined && !seenHgnc.has(hgncId)) {
+          seenHgnc.add(hgncId)
+          resolvedGenes.push({ hgncId, symbol })
+        }
+      }
+
+      // 3. Create panel
+      const db = getDb()
+      const createdPanel = db.panels.createPanel({
+        name:
+          name ??
+          `StringDB Network (${seedGenes.slice(0, 3).join(', ')}${seedGenes.length > 3 ? '...' : ''})`,
+        description: `Generated from StringDB ${networkType} network (score >= ${requiredScore})`,
+        source: 'stringdb',
+        sourceMetadata: {
+          seed_genes: seedGenes,
+          score_threshold: requiredScore,
+          network_type: networkType,
+          partners_found: partners.length
+        }
+      })
+
+      // 4. Set genes
+      if (resolvedGenes.length > 0) {
+        db.panels.setGenes(createdPanel.id, resolvedGenes)
+      }
+
+      const genes = db.panels.getGenes(createdPanel.id)
+      return { ...createdPanel, genes }
     })
   })
 }

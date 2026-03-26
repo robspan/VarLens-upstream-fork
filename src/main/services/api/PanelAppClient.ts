@@ -151,7 +151,10 @@ export class PanelAppClient {
     return results.map((r) => this.mapSearchResult(r, region))
   }
 
-  private mapSearchResult(raw: Record<string, unknown>, region: 'uk' | 'aus'): PanelAppSearchResult {
+  private mapSearchResult(
+    raw: Record<string, unknown>,
+    region: 'uk' | 'aus'
+  ): PanelAppSearchResult {
     const stats = (raw.stats as Record<string, unknown>) ?? {}
     const types = Array.isArray(raw.types)
       ? (raw.types as Array<{ name: string; slug: string }>)

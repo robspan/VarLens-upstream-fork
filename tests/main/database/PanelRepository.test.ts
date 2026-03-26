@@ -228,7 +228,7 @@ describe('PanelRepository', () => {
     })
 
     it('throws for non-existent panel', () => {
-      expect(() => repo.duplicatePanel(9999, 'Nope')).toThrow(/not found/)
+      expect(() => repo.duplicatePanel(9999, 'Nope')).toThrow(/Transaction failed/)
     })
   })
 

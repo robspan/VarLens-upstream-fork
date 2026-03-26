@@ -57,9 +57,7 @@ export class PanelRepository extends BaseRepository {
           version: input.version ?? null,
           source: input.source,
           source_id: input.sourceId ?? null,
-          source_metadata: input.sourceMetadata
-            ? JSON.stringify(input.sourceMetadata)
-            : null,
+          source_metadata: input.sourceMetadata ? JSON.stringify(input.sourceMetadata) : null,
           created_at: now,
           updated_at: now
         })
@@ -81,9 +79,8 @@ export class PanelRepository extends BaseRepository {
 
   getPanel(id: number): PanelRow | null {
     return (
-      this.execFirst<PanelRow>(
-        this.kysely.selectFrom('panels').selectAll().where('id', '=', id)
-      ) ?? null
+      this.execFirst<PanelRow>(this.kysely.selectFrom('panels').selectAll().where('id', '=', id)) ??
+      null
     )
   }
 
@@ -116,10 +113,7 @@ export class PanelRepository extends BaseRepository {
         insertStmt.run(panelId, gene.hgncId, gene.symbol)
       }
       this.execRun(
-        this.kysely
-          .updateTable('panels')
-          .set({ updated_at: Date.now() })
-          .where('id', '=', panelId)
+        this.kysely.updateTable('panels').set({ updated_at: Date.now() }).where('id', '=', panelId)
       )
     })
   }
@@ -145,7 +139,8 @@ export class PanelRepository extends BaseRepository {
         version: original.version,
         source: original.source,
         sourceId: original.source_id,
-        sourceMetadata: original.source_metadata ? JSON.parse(original.source_metadata) : null
+        sourceMetadata:
+          original.source_metadata != null ? JSON.parse(original.source_metadata) : null
       })
 
       const genes = this.getGenes(id)

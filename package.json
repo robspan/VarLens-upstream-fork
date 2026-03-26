@@ -76,6 +76,9 @@
     "productName": "Varlens",
     "icon": "build/icon.png",
     "npmRebuild": false,
+    "extraResources": [
+      { "from": "resources/gene_reference.db", "to": "gene_reference.db" }
+    ],
     "asarUnpack": [
       "node_modules/better-sqlite3-multiple-ciphers/**/*"
     ],

@@ -28,6 +28,7 @@ import type { GeneListRepository } from './GeneListRepository'
 import type { AuthService } from '../services/auth'
 import type { CohortSummaryService } from './CohortSummaryService'
 import type { FilterPresetRepository } from './FilterPresetRepository'
+import type { PanelRepository } from './PanelRepository'
 
 /**
  * DatabaseService class
@@ -151,6 +152,10 @@ export class DatabaseService {
 
   get filterPresets(): FilterPresetRepository {
     return this._repos.filterPresets
+  }
+
+  get panels(): PanelRepository {
+    return this._repos.panels
   }
 
   get user(): { id: number; username: string; role: string } | null {

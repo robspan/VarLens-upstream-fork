@@ -509,7 +509,7 @@ export const PanelCreateSchema = z.object({
     .default('manual'),
   sourceId: nullishString(),
   sourceMetadata: z
-    .record(z.unknown())
+    .record(z.string(), z.unknown())
     .nullish()
     .transform((val) => val ?? undefined)
 })

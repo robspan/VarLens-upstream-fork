@@ -79,7 +79,7 @@ async function fetchText(url: string, label: string, retries = 3): Promise<strin
       return text
     } catch (err) {
       if (attempt === retries) {
-        throw new Error(`Failed to download ${label} after ${retries} attempts: ${err}`)
+        throw new Error(`Failed to download ${label} after ${retries} attempts`, { cause: err })
       }
       console.log(`  Retry ${attempt}/${retries} for ${label}: ${err}`)
       await new Promise((r) => setTimeout(r, 3000 * attempt))

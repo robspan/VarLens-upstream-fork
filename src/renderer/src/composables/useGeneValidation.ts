@@ -163,7 +163,7 @@ export function useGeneValidation(): UseGeneValidationReturn {
    */
   const acceptAlias = (index: number): void => {
     const result = validationResults.value[index]
-    if (!result || result.status !== 'alias') return
+    if (result === undefined || result.status !== 'alias') return
 
     validationResults.value[index] = {
       ...result,
@@ -185,7 +185,7 @@ export function useGeneValidation(): UseGeneValidationReturn {
    */
   const resolveAmbiguous = (index: number, chosen: { symbol: string; hgncId: string }): void => {
     const result = validationResults.value[index]
-    if (!result || result.status !== 'ambiguous') return
+    if (result === undefined || result.status !== 'ambiguous') return
 
     validationResults.value[index] = {
       ...result,
@@ -229,7 +229,10 @@ export function useGeneValidation(): UseGeneValidationReturn {
    */
   const approvedGenes = computed<ApprovedGene[]>(() =>
     validationResults.value
-      .filter((r) => r.status === 'approved' && r.hgncId && r.symbol)
+      .filter(
+        (r): r is ValidationResult & { hgncId: string; symbol: string } =>
+          r.status === 'approved' && r.hgncId !== undefined && r.symbol !== undefined
+      )
       .map((r) => ({ hgncId: r.hgncId!, symbol: r.symbol! }))
   )
 

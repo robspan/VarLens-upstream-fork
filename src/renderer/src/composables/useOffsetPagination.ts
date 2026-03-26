@@ -234,6 +234,7 @@ export function useOffsetPagination<T>(options: UseOffsetPaginationOptions<T>) {
   }
 
   const resetState = (): void => {
+    loading.value = true // show loading immediately to prevent "no data" flash
     items.value = []
     totalCount.value = 0
     error.value = null

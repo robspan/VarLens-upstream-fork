@@ -145,6 +145,13 @@ export type MockApi = {
     activeForCase: ReturnType<typeof vi.fn>
     validateSymbols: ReturnType<typeof vi.fn>
     autocomplete: ReturnType<typeof vi.fn>
+    exportBed: ReturnType<typeof vi.fn>
+  }
+  geneRef: {
+    info: ReturnType<typeof vi.fn>
+    assemblies: ReturnType<typeof vi.fn>
+    checkUpdates: ReturnType<typeof vi.fn>
+    update: ReturnType<typeof vi.fn>
   }
   logs: {
     onMessage: ReturnType<typeof vi.fn>
@@ -313,7 +320,23 @@ export function createMockApi(): MockApi {
       deactivate: vi.fn().mockResolvedValue(undefined),
       activeForCase: vi.fn().mockResolvedValue([]),
       validateSymbols: vi.fn().mockResolvedValue([]),
-      autocomplete: vi.fn().mockResolvedValue([])
+      autocomplete: vi.fn().mockResolvedValue([]),
+      exportBed: vi.fn().mockResolvedValue({ success: true })
+    },
+
+    geneRef: {
+      info: vi.fn().mockResolvedValue({
+        geneCount: 44983,
+        aliasCount: 100000,
+        coordinateCount: 80000,
+        assemblies: ['GRCh37', 'GRCh38'],
+        builtAt: Math.floor(Date.now() / 1000)
+      }),
+      assemblies: vi.fn().mockResolvedValue([]),
+      checkUpdates: vi
+        .fn()
+        .mockResolvedValue({ currentBuiltAt: 0, daysSinceBuilt: 0, needsUpdate: false }),
+      update: vi.fn().mockResolvedValue({ success: true, message: 'Updated' })
     },
 
     logs: {

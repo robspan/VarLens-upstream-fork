@@ -478,12 +478,16 @@ const api = {
       requiredScore: number
       networkType: 'physical' | 'functional'
       name?: string
-    }) => ipcRenderer.invoke('panels:generate-stringdb', params)
+    }) => ipcRenderer.invoke('panels:generate-stringdb', params),
+    exportBed: (panelId: number, assembly: string, paddingBp: number) =>
+      ipcRenderer.invoke('panels:export-bed', { panelId, assembly, paddingBp })
   },
 
   geneRef: {
     info: () => ipcRenderer.invoke('gene-ref:info'),
-    assemblies: () => ipcRenderer.invoke('gene-ref:assemblies')
+    assemblies: () => ipcRenderer.invoke('gene-ref:assemblies'),
+    checkUpdates: () => ipcRenderer.invoke('gene-ref:check-updates'),
+    update: () => ipcRenderer.invoke('gene-ref:update')
   },
 
   updater: {

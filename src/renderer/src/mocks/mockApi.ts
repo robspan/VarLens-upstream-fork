@@ -889,7 +889,8 @@ export const mockApi: WindowAPI = {
       source_metadata: null,
       created_at: Date.now(),
       updated_at: Date.now()
-    })
+    }),
+    exportBed: async () => ({ success: true, path: '/tmp/mock.bed' })
   },
 
   geneRef: {
@@ -900,7 +901,13 @@ export const mockApi: WindowAPI = {
       assemblies: [],
       builtAt: 0
     }),
-    assemblies: async () => []
+    assemblies: async () => [],
+    checkUpdates: async () => ({
+      currentBuiltAt: 0,
+      daysSinceBuilt: 0,
+      needsUpdate: false
+    }),
+    update: async () => ({ success: true, message: 'Updated' })
   },
 
   audit: {

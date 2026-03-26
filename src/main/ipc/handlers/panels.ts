@@ -13,12 +13,15 @@ import {
   CaseIdSchema,
   PanelAppSearchSchema,
   PanelAppImportSchema,
-  StringDbGenerateSchema
+  StringDbGenerateSchema,
+  PanelExportBedSchema
 } from '../../../shared/types/ipc-schemas'
 import { mainLogger } from '../../services/MainLogger'
 import { getGeneReferenceDb } from '../../database/geneReferenceLoader'
 import { PanelAppClient } from '../../services/api/PanelAppClient'
 import { StringDbClient } from '../../services/api/StringDbClient'
+import { dialog } from 'electron'
+import { writeFile } from 'fs/promises'
 
 /** Confidence levels considered "green" (high confidence) */
 const GREEN_LEVELS = new Set(['3', '4', 'green'])
@@ -409,6 +412,85 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
 
       const genes = db.panels.getGenes(createdPanel.id)
       return { ...createdPanel, genes }
+    })
+  })
+
+  // ============================================================
+  // BED File Export
+  // ============================================================
+
+  ipcMain.handle('panels:export-bed', async (_event, params: unknown) => {
+    return wrapHandler(async () => {
+      const validated = PanelExportBedSchema.safeParse(params)
+      if (!validated.success) {
+        mainLogger.error(`Invalid panels:export-bed params: ${validated.error.message}`, 'panels')
+        throw new Error('Invalid BED export parameters')
+      }
+
+      const { panelId, assembly, paddingBp } = validated.data
+
+      // 1. Get panel genes
+      const db = getDb()
+      const panel = db.panels.getPanel(panelId)
+      if (!panel) throw new Error(`Panel ${panelId} not found`)
+
+      const genes = db.panels.getGenes(panelId)
+      if (genes.length === 0) {
+        throw new Error('Panel has no genes to export')
+      }
+
+      // 2. Get coordinates from gene reference DB
+      const geneRef = getGeneReferenceDb()
+      const hgncIds = genes.map((g) => g.hgnc_id)
+      const coordsMap = geneRef.getCoordinatesForGenes(hgncIds, assembly)
+
+      if (coordsMap.size === 0) {
+        throw new Error(`No coordinates found for assembly ${assembly}`)
+      }
+
+      // 3. Build BED lines (0-based half-open format)
+      const bedLines: string[] = []
+
+      // Add BED track header
+      bedLines.push(`track name="${panel.name}" description="Gene panel: ${panel.name}"`)
+
+      for (const gene of genes) {
+        const coords = coordsMap.get(gene.hgnc_id)
+        if (!coords) continue
+
+        // BED is 0-based half-open: start = gene_start - 1 - padding (min 0), end = gene_end + padding
+        const chr = coords.chromosome.startsWith('chr')
+          ? coords.chromosome
+          : `chr${coords.chromosome}`
+        const bedStart = Math.max(0, coords.start_pos - 1 - paddingBp)
+        const bedEnd = coords.end_pos + paddingBp
+
+        bedLines.push(`${chr}\t${bedStart}\t${bedEnd}\t${gene.symbol}`)
+      }
+
+      // 4. Show save dialog
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        title: 'Export BED File',
+        defaultPath: `${panel.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_${assembly}.bed`,
+        filters: [
+          { name: 'BED files', extensions: ['bed'] },
+          { name: 'All files', extensions: ['*'] }
+        ]
+      })
+
+      if (canceled || !filePath) {
+        return { success: false, path: undefined }
+      }
+
+      // 5. Write BED file
+      await writeFile(filePath, bedLines.join('\n') + '\n', 'utf-8')
+
+      mainLogger.info(
+        `Exported BED file for panel "${panel.name}" (${coordsMap.size} genes) to ${filePath}`,
+        'panels'
+      )
+
+      return { success: true, path: filePath }
     })
   })
 }

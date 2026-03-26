@@ -52,7 +52,7 @@
               <th>Source</th>
               <th>Genes</th>
               <th>Created</th>
-              <th style="width: 140px">Actions</th>
+              <th style="width: 180px">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -97,6 +97,12 @@
                   <v-btn
                     size="x-small"
                     variant="text"
+                    :icon="mdiExport"
+                    @click="exportBed(panel)"
+                  />
+                  <v-btn
+                    size="x-small"
+                    variant="text"
                     color="error"
                     :icon="mdiDelete"
                     @click="confirmDelete(panel)"
@@ -107,6 +113,27 @@
           </tbody>
         </v-table>
       </v-card-text>
+
+      <!-- Gene Reference DB info footer -->
+      <div
+        v-if="geneRefInfo"
+        class="d-flex align-center justify-space-between pa-3 bg-grey-lighten-4"
+      >
+        <span class="text-caption text-medium-emphasis">
+          Gene Reference: {{ geneRefInfo.geneCount.toLocaleString() }} genes &middot;
+          {{ geneRefInfo.assemblies.join('/') }} &middot; Built
+          {{ formatDate(geneRefInfo.builtAt * 1000) }}
+        </span>
+        <v-btn
+          size="x-small"
+          variant="text"
+          color="primary"
+          :loading="geneRefUpdating"
+          @click="updateGeneRef"
+        >
+          Update
+        </v-btn>
+      </div>
     </v-card>
 
     <!-- Panel editor sub-dialog -->
@@ -134,6 +161,40 @@
 
     <!-- StringDB generate sub-dialog -->
     <StringDbGenerateDialog v-model="stringDbGenerateOpen" @generated="onExternalImport" />
+
+    <!-- BED Export options sub-dialog -->
+    <v-dialog v-model="exportAssemblyDialogOpen" max-width="400">
+      <v-card>
+        <v-card-title>Export BED File</v-card-title>
+        <v-card-text>
+          <p class="text-body-2 mb-4">
+            Export <strong>{{ exportingPanel?.name }}</strong> as a BED file.
+          </p>
+          <v-select
+            v-model="exportAssembly"
+            :items="['GRCh37', 'GRCh38']"
+            label="Assembly"
+            variant="outlined"
+            density="compact"
+            class="mb-3"
+          />
+          <v-text-field
+            v-model.number="exportPadding"
+            label="Padding (bp)"
+            type="number"
+            variant="outlined"
+            density="compact"
+            :min="0"
+            hint="Base pairs to add around each gene region"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="exportAssemblyDialogOpen = false">Cancel</v-btn>
+          <v-btn color="primary" variant="flat" @click="doExportBed">Export</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-dialog>
 </template>
 
@@ -144,7 +205,8 @@ import PanelAppImportDialog from './PanelAppImportDialog.vue'
 import StringDbGenerateDialog from './StringDbGenerateDialog.vue'
 import { usePanelManager } from '../../composables/usePanelManager'
 import type { PanelListItem } from '../../composables/usePanelManager'
-import { mdiClose, mdiContentCopy, mdiDelete, mdiMagnify, mdiPencil } from '@mdi/js'
+import { mdiClose, mdiContentCopy, mdiDelete, mdiExport, mdiMagnify, mdiPencil } from '@mdi/js'
+import type { GeneRefInfo } from '../../../../shared/types/api'
 
 const props = defineProps<{
   modelValue: boolean
@@ -164,13 +226,24 @@ const deleteDialogOpen = ref(false)
 const deletingPanel = ref<PanelListItem | null>(null)
 const panelAppImportOpen = ref(false)
 const stringDbGenerateOpen = ref(false)
+const geneRefInfo = ref<GeneRefInfo | null>(null)
+const geneRefUpdating = ref(false)
+const exportAssemblyDialogOpen = ref(false)
+const exportingPanel = ref<PanelListItem | null>(null)
+const exportAssembly = ref('GRCh38')
+const exportPadding = ref(0)
 
-// Load panels when dialog opens
+// Load panels and gene ref info when dialog opens
 watch(
   () => props.modelValue,
-  (visible) => {
+  async (visible) => {
     if (visible) {
       loadPanels()
+      try {
+        geneRefInfo.value = await window.api.geneRef.info()
+      } catch {
+        // silently ignore - info bar won't show
+      }
     }
   }
 )
@@ -241,6 +314,42 @@ function onPanelSaved(): void {
 function onExternalImport(): void {
   loadPanels()
   emit('panelsChanged')
+}
+
+async function updateGeneRef(): Promise<void> {
+  geneRefUpdating.value = true
+  try {
+    const result = await window.api.geneRef.update()
+    if (result.success) {
+      geneRefInfo.value = await window.api.geneRef.info()
+    }
+  } catch {
+    // ignore
+  } finally {
+    geneRefUpdating.value = false
+  }
+}
+
+function exportBed(panel: PanelListItem): void {
+  exportingPanel.value = panel
+  exportAssembly.value = 'GRCh38'
+  exportPadding.value = 0
+  exportAssemblyDialogOpen.value = true
+}
+
+async function doExportBed(): Promise<void> {
+  if (!exportingPanel.value) return
+  try {
+    await window.api.panels.exportBed(
+      exportingPanel.value.id,
+      exportAssembly.value,
+      exportPadding.value
+    )
+  } catch {
+    // ignore
+  }
+  exportAssemblyDialogOpen.value = false
+  exportingPanel.value = null
 }
 
 function close(): void {

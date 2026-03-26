@@ -577,11 +577,29 @@ export interface PanelsAPI {
     networkType: 'physical' | 'functional'
     name?: string
   }) => Promise<PanelRow>
+  exportBed: (
+    panelId: number,
+    assembly: string,
+    paddingBp: number
+  ) => Promise<{ success: boolean; path?: string }>
+}
+
+export interface GeneRefCheckUpdatesResult {
+  currentBuiltAt: number
+  daysSinceBuilt: number
+  needsUpdate: boolean
+}
+
+export interface GeneRefUpdateResult {
+  success: boolean
+  message: string
 }
 
 export interface GeneRefAPI {
   info: () => Promise<GeneRefInfo>
   assemblies: () => Promise<AssemblyInfo[]>
+  checkUpdates: () => Promise<GeneRefCheckUpdatesResult>
+  update: () => Promise<GeneRefUpdateResult>
 }
 
 export interface WindowAPI {

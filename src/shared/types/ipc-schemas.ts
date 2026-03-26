@@ -622,6 +622,15 @@ export const StringDbGenerateSchema = z.object({
   name: z.string().min(1).max(200).optional()
 })
 
+/**
+ * Schema for exporting a panel as a BED file
+ */
+export const PanelExportBedSchema = z.object({
+  panelId: z.number().int().positive(),
+  assembly: z.string().min(1),
+  paddingBp: z.number().int().nonnegative().default(0)
+})
+
 // ============================================================
 // Association Schemas
 // ============================================================

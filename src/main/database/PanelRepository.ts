@@ -1,5 +1,6 @@
 import { BaseRepository } from './BaseRepository'
 import type { GeneReferenceDb } from './GeneReferenceDb'
+import { sqlPlaceholders } from './sql-utils'
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -218,7 +219,7 @@ export class PanelRepository extends BaseRepository {
     if (panelIds.length === 0) return []
 
     // Get all distinct hgnc_ids from panel_genes for the given panel IDs
-    const placeholders = panelIds.map(() => '?').join(', ')
+    const placeholders = sqlPlaceholders(panelIds.length)
     const rows = this.db
       .prepare(`SELECT DISTINCT hgnc_id FROM panel_genes WHERE panel_id IN (${placeholders})`)
       .all(...panelIds) as Array<{ hgnc_id: string }>

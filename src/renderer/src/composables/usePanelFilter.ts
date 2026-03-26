@@ -46,8 +46,7 @@ export function usePanelFilter(caseIdRef: Ref<number> | ComputedRef<number>): Us
     if (!api) return
     loading.value = true
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const panels = await (api as any).panels.list()
+      const panels = await api.panels.list()
       availablePanels.value = panels.map(
         (p: { id: number; name: string; gene_count: number; source: string }) => ({
           id: p.id,

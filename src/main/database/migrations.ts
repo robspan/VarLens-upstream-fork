@@ -1216,6 +1216,7 @@ export function runMigrations(db: Database.Database): void {
     const caseCols = db.prepare("PRAGMA table_info('cases')").all() as Array<{ name: string }>
     if (!caseCols.some((c) => c.name === 'genome_build')) {
       db.exec("ALTER TABLE cases ADD COLUMN genome_build TEXT DEFAULT 'GRCh38'")
+      db.exec("UPDATE cases SET genome_build = 'GRCh38' WHERE genome_build IS NULL")
     }
 
     db.exec('PRAGMA user_version = 19')

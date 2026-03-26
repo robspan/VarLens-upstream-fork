@@ -126,6 +126,7 @@
           <PanelFilterSection
             :active-panel-ids="filters.activePanelIds"
             :panel-padding-bp="filters.panelPaddingBp"
+            :refresh-key="panelRefreshKey"
             @update:active-panel-ids="filters.activePanelIds = $event"
             @update:panel-padding-bp="filters.panelPaddingBp = $event"
             @open-manager="panelManagerOpen = true"
@@ -393,7 +394,7 @@
       </v-expansion-panel>
     </v-expansion-panels>
 
-    <PanelManagerDialog v-model="panelManagerOpen" />
+    <PanelManagerDialog v-model="panelManagerOpen" @panels-changed="onPanelsChanged" />
   </FilterDrawerShell>
 </template>
 
@@ -453,6 +454,11 @@ const expandedPanels = ref<string[]>(['search', 'impact', 'frequency'])
 
 // Gene panel manager dialog state
 const panelManagerOpen = ref(false)
+const panelRefreshKey = ref(0)
+
+function onPanelsChanged(): void {
+  panelRefreshKey.value++
+}
 
 // Inject shared filter state from FilterToolbar
 const state = inject<FilterDrawerState>('filterDrawerState')

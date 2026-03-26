@@ -391,6 +391,12 @@ async function save(): Promise<void> {
 }
 
 function close(): void {
+  pasteDialogOpen.value = false
+  pasteText.value = ''
+  panelName.value = ''
+  panelVersion.value = ''
+  panelDescription.value = ''
+  validationResults.value = []
   emit('update:modelValue', false)
 }
 </script>

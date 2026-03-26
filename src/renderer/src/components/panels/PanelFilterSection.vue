@@ -88,6 +88,7 @@ import { usePanelFilter, type PanelOption } from '../../composables/usePanelFilt
 const props = defineProps<{
   activePanelIds: number[]
   panelPaddingBp: number
+  refreshKey?: number
 }>()
 
 const emit = defineEmits<{
@@ -98,7 +99,15 @@ const emit = defineEmits<{
 
 // Load available panels (panels are global, not per-case)
 const dummyCaseId = ref(0)
-const { availablePanels, loading: panelLoading } = usePanelFilter(dummyCaseId)
+const { availablePanels, loading: panelLoading, loadAvailablePanels } = usePanelFilter(dummyCaseId)
+
+// Reload panels when parent signals a change (e.g. after CRUD in PanelManagerDialog)
+watch(
+  () => props.refreshKey,
+  () => {
+    loadAvailablePanels()
+  }
+)
 
 // Selected panel for the dropdown (transient, cleared after adding)
 const selectedPanelToAdd = ref<number | null>(null)

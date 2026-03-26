@@ -96,6 +96,7 @@ import type {
   PanelGeneRow,
   ActivePanelRow
 } from '../../main/database/PanelRepository'
+import type { PanelAppSearchResult } from '../../main/services/api/PanelAppClient'
 
 // Re-export for convenience
 export type {
@@ -141,7 +142,8 @@ export type {
   GeneValidationResult,
   GeneAutocompleteResult,
   GeneRefInfo,
-  AssemblyInfo
+  AssemblyInfo,
+  PanelAppSearchResult
 }
 
 export interface CasesAPI {
@@ -559,6 +561,22 @@ export interface PanelsAPI {
   activeForCase: (caseId: number) => Promise<ActivePanelRow[]>
   validateSymbols: (symbols: string[]) => Promise<GeneValidationResult[]>
   autocomplete: (query: string, limit?: number) => Promise<GeneAutocompleteResult[]>
+  searchPanelApp: (
+    keyword: string,
+    region: 'uk' | 'aus' | 'both'
+  ) => Promise<PanelAppSearchResult[]>
+  importPanelApp: (params: {
+    panelId: number
+    region: 'uk' | 'aus'
+    confidenceThreshold: 'green' | 'green_amber' | 'all'
+    name?: string
+  }) => Promise<PanelRow>
+  generateStringDb: (params: {
+    seedGenes: string[]
+    requiredScore: number
+    networkType: 'physical' | 'functional'
+    name?: string
+  }) => Promise<PanelRow>
 }
 
 export interface GeneRefAPI {

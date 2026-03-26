@@ -464,7 +464,21 @@ const api = {
     validateSymbols: (symbols: string[]) =>
       ipcRenderer.invoke('panels:validate-symbols', { symbols }),
     autocomplete: (query: string, limit?: number) =>
-      ipcRenderer.invoke('panels:autocomplete', { query, limit })
+      ipcRenderer.invoke('panels:autocomplete', { query, limit }),
+    searchPanelApp: (keyword: string, region: 'uk' | 'aus' | 'both') =>
+      ipcRenderer.invoke('panels:search-panelapp', { keyword, region }),
+    importPanelApp: (params: {
+      panelId: number
+      region: 'uk' | 'aus'
+      confidenceThreshold: 'green' | 'green_amber' | 'all'
+      name?: string
+    }) => ipcRenderer.invoke('panels:import-panelapp', params),
+    generateStringDb: (params: {
+      seedGenes: string[]
+      requiredScore: number
+      networkType: 'physical' | 'functional'
+      name?: string
+    }) => ipcRenderer.invoke('panels:generate-stringdb', params)
   },
 
   geneRef: {

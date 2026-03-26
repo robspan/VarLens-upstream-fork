@@ -866,7 +866,30 @@ export const mockApi: WindowAPI = {
     deactivate: async () => ({ success: true }),
     activeForCase: async () => [],
     validateSymbols: async () => [],
-    autocomplete: async () => []
+    autocomplete: async () => [],
+    searchPanelApp: async () => [],
+    importPanelApp: async () => ({
+      id: 1,
+      name: 'Imported Panel',
+      description: null,
+      version: null,
+      source: 'panelapp_uk',
+      source_id: null,
+      source_metadata: null,
+      created_at: Date.now(),
+      updated_at: Date.now()
+    }),
+    generateStringDb: async () => ({
+      id: 1,
+      name: 'Generated Panel',
+      description: null,
+      version: null,
+      source: 'stringdb',
+      source_id: null,
+      source_metadata: null,
+      created_at: Date.now(),
+      updated_at: Date.now()
+    })
   },
 
   geneRef: {

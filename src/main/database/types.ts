@@ -55,6 +55,8 @@ export interface Case {
   variant_count: number
   /** Unix timestamp in milliseconds */
   created_at: number
+  /** Genome build (GRCh37 or GRCh38), defaults to GRCh38 */
+  genome_build: string
 }
 
 /**

@@ -147,11 +147,14 @@ port.on('message', async (msg: MainMessage) => {
 
           // Create case record
           const fileSize = statSync(file.filePath).size
+          // Default to GRCh38 for JSON-based imports; VCF imports will detect from headers
+          const genomeBuild = 'GRCh38'
           const caseResult = stmts.insertCase.run(
             file.caseName,
             file.filePath,
             fileSize,
-            Date.now()
+            Date.now(),
+            genomeBuild
           )
           const caseId = Number(caseResult.lastInsertRowid)
 
@@ -413,8 +416,8 @@ function prepareStatements(db: DatabaseType) {
   `)
 
   const insertCaseStmt = db.prepare(`
-    INSERT INTO cases (name, file_path, file_size, variant_count, created_at)
-    VALUES (?, ?, ?, 0, ?)
+    INSERT INTO cases (name, file_path, file_size, variant_count, created_at, genome_build)
+    VALUES (?, ?, ?, 0, ?, ?)
   `)
 
   const deleteCaseStmt = db.prepare('DELETE FROM cases WHERE id = ?')

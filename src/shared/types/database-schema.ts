@@ -14,6 +14,7 @@ export interface CasesTable {
   file_size: number
   variant_count: number
   created_at: number
+  genome_build: string
 }
 
 // ── Variants ───────────────────────────────────────────────

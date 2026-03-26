@@ -31,7 +31,7 @@ import { computed } from 'vue'
 import { STATUS_ICONS, STATUS_COLORS, SEX_ICONS, SEX_COLORS } from '../composables/useCaseMetadata'
 import type { AffectedStatus, CaseSex } from '../../../shared/types/api'
 
-const TOOLBAR_COLOR_MAP: Record<string, string> = {
+const TOOLBAR_COLOR_MAP: Partial<Record<string, string>> = {
   'grey-darken-1': 'white',
   blue: 'light-blue-lighten-3',
   pink: 'pink-lighten-3',

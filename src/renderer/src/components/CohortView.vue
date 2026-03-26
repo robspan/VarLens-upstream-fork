@@ -5,7 +5,13 @@
       <v-tab value="burden">Gene Burden</v-tab>
     </v-tabs>
 
-    <v-tabs-window v-model="activeTab" class="flex-grow-1" style="min-height: 0; overflow: hidden">
+    <v-tabs-window
+      v-model="activeTab"
+      class="flex-grow-1 cohort-tabs-window"
+      style="min-height: 0; overflow: hidden"
+      transition="none"
+      reverse-transition="none"
+    >
       <v-tabs-window-item value="variants" class="fill-height">
         <CohortTable
           ref="cohortTableRef"
@@ -107,5 +113,16 @@ defineExpose({ refresh })
 
 .cohort-tabs :deep(.v-tab:not(.v-tab--selected)) {
   opacity: 0.6;
+}
+
+/* Prevent dual-display glitch during tab switch (Vuetify bug #19682) */
+.cohort-tabs-window :deep(.v-window__container) {
+  display: block !important;
+  height: auto !important;
+  transition: none !important;
+}
+
+.cohort-tabs-window :deep(.v-window-item:not(.v-window-item--active)) {
+  display: none !important;
 }
 </style>

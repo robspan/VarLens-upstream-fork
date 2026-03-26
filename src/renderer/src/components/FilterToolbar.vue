@@ -152,7 +152,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, provide, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, provide, nextTick, toRaw } from 'vue'
 import { useFilterState } from '../composables/useFilterState'
 import { useColumnPreferences } from '../composables/useColumnPreferences'
 import { useFilterPresetStore } from '../composables/useFilterPresetStore'
@@ -341,26 +341,25 @@ function applyActivePresets(): void {
 }
 
 // Auto-deactivate presets when user manually changes filter values
-watch(
-  filters,
-  () => {
-    if (applyingPresets || activePresetIds.value.size === 0) return
-    const idsToDeactivate: number[] = []
-    for (const id of activePresetIds.value) {
-      const preset = allPresets.value.find((p) => p.id === id)
-      if (
-        preset !== undefined &&
-        isPresetDiverged({ filters: filters.value, presetFilterJson: preset.filterJson })
-      ) {
-        idsToDeactivate.push(id)
-      }
+// Serialized key avoids deep reactive traversal — only fires when
+// actual filter values change, not on every nested property access
+const presetDivergenceKey = computed(() => JSON.stringify(toRaw(filters.value)))
+watch(presetDivergenceKey, () => {
+  if (applyingPresets || activePresetIds.value.size === 0) return
+  const idsToDeactivate: number[] = []
+  for (const id of activePresetIds.value) {
+    const preset = allPresets.value.find((p) => p.id === id)
+    if (
+      preset !== undefined &&
+      isPresetDiverged({ filters: filters.value, presetFilterJson: preset.filterJson })
+    ) {
+      idsToDeactivate.push(id)
     }
-    for (const id of idsToDeactivate) {
-      togglePreset(id)
-    }
-  },
-  { deep: true }
-)
+  }
+  for (const id of idsToDeactivate) {
+    togglePreset(id)
+  }
+})
 
 async function handleSavePreset(data: { name: string; description: string | null }): Promise<void> {
   savingPreset.value = true

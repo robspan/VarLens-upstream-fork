@@ -94,10 +94,12 @@ export function useVariantData(options: UseVariantDataOptions) {
 
   // Row props for zebra striping and selection highlighting
   const getRowProps = ({ item, index }: { item: Variant; index: number }) => {
-    const classes: string[] = []
-    if (index % 2 === 1) classes.push('variant-row--striped')
-    if (item.id === selectedVariantId.value) classes.push('variant-row--selected')
-    return { class: classes.join(' ') }
+    let className = ''
+    if (index % 2 === 1) className = 'variant-row--striped'
+    if (item.id === selectedVariantId.value) {
+      className = className ? className + ' variant-row--selected' : 'variant-row--selected'
+    }
+    return { class: className }
   }
 
   // Update counts when variants load

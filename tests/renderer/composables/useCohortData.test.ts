@@ -5,7 +5,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { withSetup } from '../../utils/test-helpers'
+import { reactive, isReactive } from 'vue'
+import { withSetup, flushPromises } from '../../utils/test-helpers'
 import { createMockApi } from '../../utils/mock-api'
 import { useCohortData } from '@renderer/composables/useCohortData'
 import type { CohortVariant, CohortSummary } from '../../../../../src/shared/types/cohort'
@@ -261,5 +262,53 @@ describe('useCohortData', () => {
     expect(result.totalCount.value).toBe(0)
 
     consoleWarnSpy.mockRestore()
+  })
+})
+
+describe('IPC safety — buildIpcParams strips reactive proxies', () => {
+  let app: { unmount: () => void }
+
+  beforeEach(() => {
+    window.api = createMockApi()
+  })
+
+  afterEach(() => {
+    if (app) app.unmount()
+  })
+
+  it('passes plain arrays to cohort.getVariants (no reactive proxies)', async () => {
+    let capturedParams: unknown = null
+    window.api.cohort.getVariants = vi.fn().mockImplementation((params: unknown) => {
+      capturedParams = params
+      return Promise.resolve({ data: [], total_count: 0 })
+    })
+
+    const [result, appInstance] = withSetup(() => useCohortData())
+    app = appInstance
+
+    await result.fetchVariants({
+      offset: 0,
+      limit: 10,
+      sort_order: 'asc',
+      consequences: reactive(['missense_variant', 'nonsense']),
+      funcs: reactive(['exonic']),
+      clinvars: reactive(['pathogenic']),
+      acmg_classifications: reactive(['Pathogenic']),
+      column_filters: reactive({ chr: { operator: '=', value: 'chr1' } })
+    })
+    await flushPromises()
+
+    expect(capturedParams).not.toBeNull()
+    const p = capturedParams as Record<string, unknown>
+
+    // All array/object fields must be plain
+    if (p.consequences) expect(isReactive(p.consequences)).toBe(false)
+    if (p.funcs) expect(isReactive(p.funcs)).toBe(false)
+    if (p.clinvars) expect(isReactive(p.clinvars)).toBe(false)
+    if (p.acmg_classifications) expect(isReactive(p.acmg_classifications)).toBe(false)
+    if (p.column_filters) expect(isReactive(p.column_filters)).toBe(false)
+
+    // Must serialize cleanly
+    expect(() => JSON.parse(JSON.stringify(capturedParams))).not.toThrow()
   })
 })

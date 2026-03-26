@@ -83,8 +83,8 @@
           <!-- Status + sex icons when not in multi-select mode -->
           <CaseStatusIcons
             v-else
-            :status="toAffectedStatus(caseItem.affected_status)"
-            :sex="toCaseSex(caseItem.sex)"
+            :status="caseStatus(caseItem)"
+            :sex="caseSex(caseItem)"
             class="mr-2"
           />
         </template>
@@ -233,8 +233,18 @@ const isMultiSelectMode = computed(() => multiSelected.value.size > 0)
 const multiSelectedCount = computed(() => multiSelected.value.size)
 const isMultiSelected = (id: number): boolean => multiSelected.value.has(id)
 
-// Load cohort groups for filter dropdown
-const { loadCohortGroups, cohortGroupsCache } = useCaseMetadata()
+// Load cohort groups for filter dropdown + reactive metadata for sidebar icons
+const { loadCohortGroups, cohortGroupsCache, metadataCache } = useCaseMetadata()
+
+// Reactive status/sex that prefer metadata cache over stale query data
+function caseStatus(caseItem: CaseWithCohorts): AffectedStatus {
+  const cached = metadataCache.value.get(caseItem.id)
+  return toAffectedStatus(cached?.metadata?.affected_status ?? caseItem.affected_status)
+}
+function caseSex(caseItem: CaseWithCohorts): CaseSex {
+  const cached = metadataCache.value.get(caseItem.id)
+  return toCaseSex(cached?.metadata?.sex ?? caseItem.sex)
+}
 
 // Component refs
 const dialogRef = ref<InstanceType<typeof DeleteCaseDialog> | null>(null)

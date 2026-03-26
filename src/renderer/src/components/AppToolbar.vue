@@ -26,6 +26,7 @@
           :status="selectedStatusLabel"
           :sex="selectedSexLabel"
           tooltip-location="bottom"
+          on-toolbar
           class="mr-1"
         />
         <span

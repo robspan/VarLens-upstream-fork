@@ -355,7 +355,8 @@ export function useCaseMetadata() {
     clearCache,
     invalidateCase,
     // Expose cache refs for direct access (reactive)
-    cohortGroupsCache
+    cohortGroupsCache,
+    metadataCache
   }
 }
 
@@ -369,7 +370,7 @@ export const STATUS_ICONS: Record<AffectedStatus, string> = {
 export const STATUS_COLORS: Record<AffectedStatus, string> = {
   affected: 'error',
   unaffected: 'success',
-  unknown: 'grey'
+  unknown: 'grey-darken-1'
 }
 
 // Sex display constants
@@ -384,7 +385,7 @@ export const SEX_COLORS: Record<CaseSex, string> = {
   male: 'blue',
   female: 'pink',
   other: 'purple',
-  unknown: 'grey'
+  unknown: 'grey-darken-1'
 }
 
 // Cohort color function (deterministic hash-based)

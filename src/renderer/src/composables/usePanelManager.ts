@@ -1,0 +1,231 @@
+/**
+ * Composable for managing gene panels (CRUD operations)
+ *
+ * Provides reactive panel list with create, update, delete, duplicate,
+ * and gene management operations via IPC.
+ */
+
+import { ref } from 'vue'
+import type { Ref } from 'vue'
+import { useApiService } from './useApiService'
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+/** Summary item returned from panels:list */
+export interface PanelListItem {
+  id: number
+  name: string
+  description: string | null
+  version: string | null
+  source: string
+  source_id: string | null
+  gene_count: number
+  created_at: string
+  updated_at: string
+}
+
+/** Input for creating a new panel */
+export interface CreatePanelInput {
+  name: string
+  description?: string | null
+  version?: string | null
+  source: string
+  sourceId?: string | null
+  sourceMetadata?: Record<string, unknown> | null
+}
+
+/** Gene entry for panel gene management */
+export interface PanelGene {
+  hgncId: string
+  symbol: string
+}
+
+/** Return type for usePanelManager composable */
+export interface UsePanelManagerReturn {
+  panels: Ref<PanelListItem[]>
+  loading: Ref<boolean>
+  error: Ref<string | null>
+  loadPanels: () => Promise<void>
+  createPanel: (input: CreatePanelInput) => Promise<number | undefined>
+  updatePanel: (
+    id: number,
+    updates: { name?: string; description?: string | null; version?: string | null }
+  ) => Promise<void>
+  deletePanel: (id: number) => Promise<void>
+  duplicatePanel: (id: number, newName: string) => Promise<number | undefined>
+  setGenes: (panelId: number, genes: PanelGene[]) => Promise<void>
+  getGenes: (panelId: number) => Promise<PanelGene[]>
+}
+
+// ---------------------------------------------------------------------------
+// Composable
+// ---------------------------------------------------------------------------
+
+/**
+ * Composable for gene panel CRUD operations
+ *
+ * @returns Reactive panel list and management methods
+ */
+export function usePanelManager(): UsePanelManagerReturn {
+  const { api } = useApiService()
+
+  const panels = ref<PanelListItem[]>([])
+  const loading = ref(false)
+  const error = ref<string | null>(null)
+
+  /**
+   * Fetch all panels from the database
+   */
+  const loadPanels = async (): Promise<void> => {
+    if (!api) return
+
+    loading.value = true
+    error.value = null
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      panels.value = await (api as any).panels.list()
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      error.value = message
+      console.error('Failed to load panels:', e)
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /**
+   * Create a new panel and reload the list
+   * @returns The new panel ID, or undefined on error
+   */
+  const createPanel = async (input: CreatePanelInput): Promise<number | undefined> => {
+    if (!api) return undefined
+
+    error.value = null
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await (api as any).panels.create({
+        name: input.name,
+        description: input.description ?? null,
+        version: input.version ?? null,
+        source: input.source,
+        sourceId: input.sourceId ?? null,
+        sourceMetadata: input.sourceMetadata ?? null
+      })
+      await loadPanels()
+      return result?.id ?? result
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      error.value = message
+      console.error('Failed to create panel:', e)
+      return undefined
+    }
+  }
+
+  /**
+   * Update a panel and reload the list
+   */
+  const updatePanel = async (
+    id: number,
+    updates: { name?: string; description?: string | null; version?: string | null }
+  ): Promise<void> => {
+    if (!api) return
+
+    error.value = null
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (api as any).panels.update({ id, ...updates })
+      await loadPanels()
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      error.value = message
+      console.error('Failed to update panel:', e)
+    }
+  }
+
+  /**
+   * Delete a panel and reload the list
+   */
+  const deletePanel = async (id: number): Promise<void> => {
+    if (!api) return
+
+    error.value = null
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (api as any).panels.delete(id)
+      await loadPanels()
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      error.value = message
+      console.error('Failed to delete panel:', e)
+    }
+  }
+
+  /**
+   * Duplicate a panel and reload the list
+   * @returns The new panel ID, or undefined on error
+   */
+  const duplicatePanel = async (id: number, newName: string): Promise<number | undefined> => {
+    if (!api) return undefined
+
+    error.value = null
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await (api as any).panels.duplicate(id, newName)
+      await loadPanels()
+      return result?.id ?? result
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      error.value = message
+      console.error('Failed to duplicate panel:', e)
+      return undefined
+    }
+  }
+
+  /**
+   * Set the genes for a panel and reload the list
+   */
+  const setGenes = async (panelId: number, genes: PanelGene[]): Promise<void> => {
+    if (!api) return
+
+    error.value = null
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (api as any).panels.setGenes(panelId, genes)
+      await loadPanels()
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      error.value = message
+      console.error('Failed to set panel genes:', e)
+    }
+  }
+
+  /**
+   * Get the genes for a panel
+   */
+  const getGenes = async (panelId: number): Promise<PanelGene[]> => {
+    if (!api) return []
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return await (api as any).panels.getGenes(panelId)
+    } catch (e) {
+      console.error('Failed to get panel genes:', e)
+      return []
+    }
+  }
+
+  return {
+    panels,
+    loading,
+    error,
+    loadPanels,
+    createPanel,
+    updatePanel,
+    deletePanel,
+    duplicatePanel,
+    setGenes,
+    getGenes
+  }
+}

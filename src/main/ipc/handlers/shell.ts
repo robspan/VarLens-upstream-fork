@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { shell } from 'electron'
 import type { HandlerDependencies } from '../types'
 import { mainLogger } from '../../services/MainLogger'
+import { wrapHandler } from '../errorHandler'
 
 /**
  * Shell IPC handlers
@@ -51,22 +52,23 @@ function isDomainAllowed(hostname: string): boolean {
 }
 
 export function registerShellHandlers({ ipcMain }: HandlerDependencies): void {
-  ipcMain.handle('shell:updateUserDomains', async (_event, domains: unknown): Promise<void> => {
-    // ANTI-07: Runtime validation at IPC boundary
-    const validated = UserDomainsSchema.safeParse(domains)
-    if (!validated.success) {
-      mainLogger.error(
-        `Invalid shell:updateUserDomains params: ${validated.error.message}`,
-        'shell'
-      )
-      throw new Error('Invalid parameters')
-    }
-    userDomains = validated.data
+  ipcMain.handle('shell:updateUserDomains', async (_event, domains: unknown) => {
+    return wrapHandler(async () => {
+      // ANTI-07: Runtime validation at IPC boundary
+      const validated = UserDomainsSchema.safeParse(domains)
+      if (!validated.success) {
+        mainLogger.error(
+          `Invalid shell:updateUserDomains params: ${validated.error.message}`,
+          'shell'
+        )
+        throw new Error('Invalid parameters')
+      }
+      userDomains = validated.data
+    })
   })
 
-  ipcMain.handle(
-    'shell:openExternal',
-    async (_event, url: unknown): Promise<{ success: boolean; error?: string }> => {
+  ipcMain.handle('shell:openExternal', async (_event, url: unknown) => {
+    return wrapHandler(async () => {
       // ANTI-07: Runtime validation at IPC boundary
       const validated = UrlSchema.safeParse(url)
       if (!validated.success) {
@@ -92,22 +94,27 @@ export function registerShellHandlers({ ipcMain }: HandlerDependencies): void {
       } catch {
         return { success: false, error: 'Invalid URL' }
       }
-    }
-  )
+    })
+  })
 
   /**
    * Show file in system file manager
    * Used for export feedback ("Open folder" action)
    */
   ipcMain.handle('shell:showItemInFolder', async (_event, filePath: unknown) => {
-    // ANTI-07: Runtime validation at IPC boundary
-    const validated = FilePathSchema.safeParse(filePath)
-    if (!validated.success) {
-      mainLogger.error(`Invalid shell:showItemInFolder params: ${validated.error.message}`, 'shell')
-      throw new Error('Invalid parameters')
-    }
+    return wrapHandler(async () => {
+      // ANTI-07: Runtime validation at IPC boundary
+      const validated = FilePathSchema.safeParse(filePath)
+      if (!validated.success) {
+        mainLogger.error(
+          `Invalid shell:showItemInFolder params: ${validated.error.message}`,
+          'shell'
+        )
+        throw new Error('Invalid parameters')
+      }
 
-    shell.showItemInFolder(validated.data)
-    return { success: true }
+      shell.showItemInFolder(validated.data)
+      return { success: true }
+    })
   })
 }

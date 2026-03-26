@@ -238,7 +238,7 @@ const {
       ...buildCohortQueryParams()
     }
 
-    const plainParams = JSON.parse(JSON.stringify(buildIpcParams(params)))
+    const plainParams = buildIpcParams(params)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (api as any).cohort.getVariants(plainParams)
 
@@ -276,19 +276,17 @@ const exportToExcel = async (): Promise<void> => {
 
   exporting.value = true
   try {
-    const exportParams = {
+    const plainParams = {
       search_term: searchTerm.value || undefined,
       gene_symbol: filters.value.geneSymbol || undefined,
       consequences:
-        selectedImpactPresets.value.length > 0 ? selectedImpactPresets.value : undefined,
-      funcs: filters.value.funcs.length > 0 ? filters.value.funcs : undefined,
-      clinvars: filters.value.clinvars.length > 0 ? filters.value.clinvars : undefined,
+        selectedImpactPresets.value.length > 0 ? [...selectedImpactPresets.value] : undefined,
+      funcs: filters.value.funcs.length > 0 ? [...filters.value.funcs] : undefined,
+      clinvars: filters.value.clinvars.length > 0 ? [...filters.value.clinvars] : undefined,
       gnomad_af_max: filters.value.maxGnomadAf ?? undefined,
       cadd_min: filters.value.minCadd ?? undefined,
       cohort_frequency_min: filters.value.minCohortFrequency ?? undefined
     }
-
-    const plainParams = JSON.parse(JSON.stringify(exportParams))
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (api as any).export.cohort(plainParams)
 

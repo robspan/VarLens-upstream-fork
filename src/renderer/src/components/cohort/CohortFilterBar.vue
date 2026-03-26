@@ -151,6 +151,7 @@ import {
   applyPresetStateToFilters,
   isPresetDiverged
 } from '../../utils/filters'
+import { cloneForIpc } from '../../utils/cloneForIpc'
 
 interface Props {
   totalCount: number | null
@@ -267,9 +268,7 @@ watch(presetDivergenceKey, () => {
 async function handleSavePreset(data: { name: string; description: string | null }): Promise<void> {
   savingPreset.value = true
   try {
-    // Deep-clone to strip Vue reactive proxies for IPC serialization
-    // (structuredClone throws on Proxy objects — use JSON round-trip instead)
-    const plainFilters = JSON.parse(JSON.stringify(filters.value))
+    const plainFilters = cloneForIpc(filters.value)
     const result = await savePreset({
       name: data.name,
       description: data.description,

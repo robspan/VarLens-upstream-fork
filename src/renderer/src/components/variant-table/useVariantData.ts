@@ -6,6 +6,7 @@ import { useAnnotations } from '../../composables/useAnnotations'
 import { useColumnFilters } from '../../composables/useColumnFilters'
 import { useDebounce } from '../../composables/useDebounce'
 import { useApiService } from '../../composables/useApiService'
+import { cloneForIpc } from '../../utils/cloneForIpc'
 
 interface UseVariantDataOptions {
   caseId: Ref<number>
@@ -56,23 +57,20 @@ export function useVariantData(options: UseVariantDataOptions) {
       }
 
       // Deep-clone to strip Vue reactive proxies for IPC serialization
-      // (structuredClone throws on Proxy objects — use JSON round-trip instead)
       const colFilters = getColumnFiltersParam()
       const rawFilters = filters.value
-      const plainFilters = JSON.parse(
-        JSON.stringify({
-          ...rawFilters,
-          ...(colFilters !== undefined || rawFilters.column_filters !== undefined
-            ? {
-                // Merge: header filters first, DSL filters override for same column
-                column_filters: {
-                  ...(colFilters ?? {}),
-                  ...(rawFilters.column_filters ?? {})
-                }
+      const plainFilters = cloneForIpc({
+        ...rawFilters,
+        ...(colFilters !== undefined || rawFilters.column_filters !== undefined
+          ? {
+              // Merge: header filters first, DSL filters override for same column
+              column_filters: {
+                ...(colFilters ?? {}),
+                ...(rawFilters.column_filters ?? {})
               }
-            : {})
-        })
-      )
+            }
+          : {})
+      })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await (api as any).variants.query(
         caseId.value,

@@ -169,6 +169,7 @@ import type { ColumnFilter } from '../../../shared/types/column-filters'
 import type { ActiveFilter } from '../../../shared/types/filters'
 import type { FilterDrawerState } from './filterDrawerTypes'
 import { ACMG_FILTER_OPTIONS, applyPresetStateToFilters, isPresetDiverged } from '../utils/filters'
+import { cloneForIpc } from '../utils/cloneForIpc'
 import { useResponsiveLayout } from '../composables/useResponsiveLayout'
 import {
   mdiCommentText,
@@ -364,9 +365,7 @@ watch(presetDivergenceKey, () => {
 async function handleSavePreset(data: { name: string; description: string | null }): Promise<void> {
   savingPreset.value = true
   try {
-    // Deep-clone to strip Vue reactive proxies for IPC serialization
-    // (structuredClone throws on Proxy objects — use JSON round-trip instead)
-    const plainFilters = JSON.parse(JSON.stringify(filters.value))
+    const plainFilters = cloneForIpc(filters.value)
     const result = await savePreset({
       name: data.name,
       description: data.description,

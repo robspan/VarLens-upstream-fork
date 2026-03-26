@@ -494,6 +494,92 @@ export const BedImportSchema = z.object({
 })
 
 // ============================================================
+// Panel Schemas
+// ============================================================
+
+/**
+ * Schema for panel creation
+ */
+export const PanelCreateSchema = z.object({
+  name: z.string().min(1).max(200),
+  description: nullishString(),
+  version: nullishString(),
+  source: z
+    .enum(['manual', 'panelapp_uk', 'panelapp_aus', 'stringdb', 'bed_import'])
+    .default('manual'),
+  sourceId: nullishString(),
+  sourceMetadata: z
+    .record(z.unknown())
+    .nullish()
+    .transform((val) => val ?? undefined)
+})
+
+/**
+ * Schema for panel update
+ */
+export const PanelUpdateSchema = z.object({
+  id: z.number().int().positive(),
+  name: z.string().min(1).max(200).optional(),
+  description: nullishString(),
+  version: nullishString()
+})
+
+/**
+ * Schema for setting genes on a panel
+ */
+export const PanelGenesSchema = z.object({
+  panelId: z.number().int().positive(),
+  genes: z
+    .array(z.object({ hgncId: z.string().min(1), symbol: z.string().min(1) }))
+    .max(50000)
+})
+
+/**
+ * Schema for activating a panel on a case
+ */
+export const PanelActivateSchema = z.object({
+  caseId: z.number().int().positive(),
+  panelId: z.number().int().positive(),
+  paddingBp: z.number().int().nonnegative().max(1000000).default(5000)
+})
+
+/**
+ * Schema for deactivating a panel on a case
+ */
+export const PanelDeactivateSchema = z.object({
+  caseId: z.number().int().positive(),
+  panelId: z.number().int().positive()
+})
+
+/**
+ * Schema for validating gene symbols
+ */
+export const ValidateSymbolsSchema = z.object({
+  symbols: z.array(z.string().min(1)).max(50000)
+})
+
+/**
+ * Schema for gene autocomplete
+ */
+export const AutocompleteSchema = z.object({
+  query: z.string().min(1).max(100),
+  limit: z.number().int().positive().max(50).default(20)
+})
+
+/**
+ * Schema for panel duplication
+ */
+export const PanelDuplicateSchema = z.object({
+  id: z.number().int().positive(),
+  newName: z.string().min(1).max(200)
+})
+
+/**
+ * Schema for panel ID
+ */
+export const PanelIdSchema = z.number().int().positive()
+
+// ============================================================
 // Association Schemas
 // ============================================================
 

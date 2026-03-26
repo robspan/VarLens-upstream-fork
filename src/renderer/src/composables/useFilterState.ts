@@ -78,7 +78,9 @@ export function useFilterState(
     starredOnly: false,
     hasCommentOnly: false,
     acmgClassifications: [] as string[],
-    annotationScope: 'case' as const
+    annotationScope: 'case' as const,
+    activePanelIds: [] as number[],
+    panelPaddingBp: 5000
   })
 
   // Filter options loaded from database
@@ -167,7 +169,8 @@ export function useFilterState(
       filters.value.tagIds.length > 0 ||
       filters.value.starredOnly ||
       filters.value.hasCommentOnly ||
-      filters.value.acmgClassifications.length > 0
+      filters.value.acmgClassifications.length > 0 ||
+      filters.value.activePanelIds.length > 0
     )
   })
 
@@ -195,6 +198,7 @@ export function useFilterState(
     if (filters.value.starredOnly) count++
     if (filters.value.hasCommentOnly) count++
     if (filters.value.acmgClassifications.length > 0) count++
+    if (filters.value.activePanelIds.length > 0) count++
     return count
   })
 
@@ -268,6 +272,13 @@ export function useFilterState(
     if (filters.value.annotationScope === 'all') {
       list.push({ id: 'annotationScope', label: 'Scope', value: 'All (global)' })
     }
+    if (filters.value.activePanelIds.length > 0) {
+      list.push({
+        id: 'panels',
+        label: 'Panels',
+        value: `${filters.value.activePanelIds.length} panel(s)`
+      })
+    }
 
     return list
   })
@@ -308,6 +319,8 @@ export function useFilterState(
           filters.value.hasCommentOnly ||
           filters.value.acmgClassifications.length > 0
         )
+      case 'panels':
+        return filters.value.activePanelIds.length > 0
       default:
         return false
     }
@@ -360,6 +373,10 @@ export function useFilterState(
       case 'annotationScope':
         filters.value.annotationScope = 'case'
         break
+      case 'panels':
+        filters.value.activePanelIds = []
+        filters.value.panelPaddingBp = 5000
+        break
     }
   }
 
@@ -380,6 +397,8 @@ export function useFilterState(
     filters.value.hasCommentOnly = false
     filters.value.acmgClassifications = []
     filters.value.annotationScope = 'case'
+    filters.value.activePanelIds = []
+    filters.value.panelPaddingBp = 5000
     resetPresets()
     // Also reset sort order in parent
     onResetSort()
@@ -443,6 +462,8 @@ export function useFilterState(
     filters.value.hasCommentOnly = false
     filters.value.acmgClassifications = []
     filters.value.annotationScope = 'case'
+    filters.value.activePanelIds = []
+    filters.value.panelPaddingBp = 5000
     resetPresets()
   }
 

@@ -26,6 +26,7 @@ export type FilterId =
   | 'starred'
   | 'comments'
   | 'acmg'
+  | 'panels'
 
 /**
  * Clear a specific filter, returning partial state update
@@ -68,6 +69,11 @@ export function clearFilter(filterId: FilterId): Partial<FilterState> {
       return { hasCommentOnly: FILTER_DEFAULTS.hasCommentOnly }
     case 'acmg':
       return { acmgClassifications: [...FILTER_DEFAULTS.acmgClassifications] }
+    case 'panels':
+      return {
+        activePanelIds: [...FILTER_DEFAULTS.activePanelIds],
+        panelPaddingBp: FILTER_DEFAULTS.panelPaddingBp
+      }
     default:
       return {}
   }
@@ -98,6 +104,8 @@ export function clearAllFilters(): FilterState {
     minCarriers: FILTER_DEFAULTS.minCarriers,
     starredOnly: FILTER_DEFAULTS.starredOnly,
     hasCommentOnly: FILTER_DEFAULTS.hasCommentOnly,
-    acmgClassifications: [...FILTER_DEFAULTS.acmgClassifications]
+    acmgClassifications: [...FILTER_DEFAULTS.acmgClassifications],
+    activePanelIds: [...FILTER_DEFAULTS.activePanelIds],
+    panelPaddingBp: FILTER_DEFAULTS.panelPaddingBp
   }
 }

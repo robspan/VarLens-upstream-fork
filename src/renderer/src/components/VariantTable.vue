@@ -420,7 +420,9 @@ const columnActiveFilters = computed<ActiveFilter[]>(() => {
       minCarriers: null,
       starredOnly: false,
       hasCommentOnly: false,
-      acmgClassifications: []
+      acmgClassifications: [],
+      activePanelIds: [],
+      panelPaddingBp: 5000
     },
     [],
     colFilters

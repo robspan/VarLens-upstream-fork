@@ -6,6 +6,7 @@ import { useAnnotations } from '../../composables/useAnnotations'
 import { useColumnFilters } from '../../composables/useColumnFilters'
 import { useDebounce } from '../../composables/useDebounce'
 import { useApiService } from '../../composables/useApiService'
+import { cloneForIpc } from '../../utils/cloneForIpc'
 
 interface UseVariantDataOptions {
   caseId: Ref<number>
@@ -55,10 +56,10 @@ export function useVariantData(options: UseVariantDataOptions) {
         return { data: [], total_count: 0 }
       }
 
-      // Strip reactive proxies for IPC via structuredClone (faster than JSON round-trip)
+      // Deep-clone to strip Vue reactive proxies for IPC serialization
       const colFilters = getColumnFiltersParam()
       const rawFilters = filters.value
-      const plainFilters = structuredClone({
+      const plainFilters = cloneForIpc({
         ...rawFilters,
         ...(colFilters !== undefined || rawFilters.column_filters !== undefined
           ? {

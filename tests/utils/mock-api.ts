@@ -22,6 +22,7 @@ export type MockApi = {
     query: ReturnType<typeof vi.fn>
     getFilterOptions: ReturnType<typeof vi.fn>
     search: ReturnType<typeof vi.fn>
+    geneSymbols: ReturnType<typeof vi.fn>
   }
   import: {
     selectFile: ReturnType<typeof vi.fn>
@@ -158,7 +159,8 @@ export function createMockApi(): MockApi {
     variants: {
       query: vi.fn().mockResolvedValue({ data: [], total_count: 0 }),
       getFilterOptions: vi.fn().mockResolvedValue({}),
-      search: vi.fn().mockResolvedValue([])
+      search: vi.fn().mockResolvedValue([]),
+      geneSymbols: vi.fn().mockResolvedValue([])
     },
 
     import: {

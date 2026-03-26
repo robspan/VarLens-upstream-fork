@@ -21,6 +21,7 @@ import type { CohortVariant, CohortSummary } from '../../../shared/types/cohort'
 import type { ColumnFilterMeta } from '../../../shared/types/column-filters'
 import type { ColumnFiltersParam } from '../../../shared/types/column-filters'
 import { useApiService } from './useApiService'
+import { cloneForIpc } from '../utils/cloneForIpc'
 
 /**
  * Query parameters for cohort variant fetching
@@ -196,8 +197,8 @@ export function useCohortData(): UseCohortDataReturn {
       ipcParams.acmg_classifications = [...params.acmg_classifications]
     }
     if (params.column_filters !== undefined) {
-      // Strip reactive proxies for IPC via structuredClone
-      ipcParams.column_filters = structuredClone(params.column_filters)
+      // Deep-clone to strip Vue reactive proxies for IPC serialization
+      ipcParams.column_filters = cloneForIpc(params.column_filters)
     }
 
     return ipcParams

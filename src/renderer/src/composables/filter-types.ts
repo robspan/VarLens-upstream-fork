@@ -113,10 +113,10 @@ export function buildFilterFromState(
   }
 
   if (filters.funcs.length > 0) {
-    variantFilter.funcs = filters.funcs
+    variantFilter.funcs = [...filters.funcs]
   }
   if (filters.clinvars.length > 0) {
-    variantFilter.clinvars = filters.clinvars
+    variantFilter.clinvars = [...filters.clinvars]
   }
 
   const afValue = filters.maxGnomadAf
@@ -130,7 +130,7 @@ export function buildFilterFromState(
   }
 
   if (filters.tagIds.length > 0) {
-    variantFilter.tag_ids = filters.tagIds
+    variantFilter.tag_ids = [...filters.tagIds]
   }
   if (filters.starredOnly) {
     variantFilter.starred_only = true
@@ -139,7 +139,7 @@ export function buildFilterFromState(
     variantFilter.has_comment = true
   }
   if (filters.acmgClassifications.length > 0) {
-    variantFilter.acmg_classifications = filters.acmgClassifications
+    variantFilter.acmg_classifications = [...filters.acmgClassifications]
   }
   if (filters.annotationScope === 'all') {
     variantFilter.annotation_scope = 'all'

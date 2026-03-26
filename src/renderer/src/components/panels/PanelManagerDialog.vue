@@ -22,6 +22,24 @@
         <v-btn color="primary" variant="flat" density="compact" @click="openCreate">
           New Panel
         </v-btn>
+        <v-btn
+          color="success"
+          variant="flat"
+          density="compact"
+          class="ml-2"
+          @click="panelAppImportOpen = true"
+        >
+          Import PanelApp
+        </v-btn>
+        <v-btn
+          color="orange"
+          variant="flat"
+          density="compact"
+          class="ml-2"
+          @click="stringDbGenerateOpen = true"
+        >
+          StringDB Generate
+        </v-btn>
         <v-btn :icon="mdiClose" variant="text" size="small" class="ml-1" @click="close" />
       </v-toolbar>
 
@@ -110,12 +128,20 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- PanelApp import sub-dialog -->
+    <PanelAppImportDialog v-model="panelAppImportOpen" @imported="onExternalImport" />
+
+    <!-- StringDB generate sub-dialog -->
+    <StringDbGenerateDialog v-model="stringDbGenerateOpen" @generated="onExternalImport" />
   </v-dialog>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import PanelEditorDialog from './PanelEditorDialog.vue'
+import PanelAppImportDialog from './PanelAppImportDialog.vue'
+import StringDbGenerateDialog from './StringDbGenerateDialog.vue'
 import { usePanelManager } from '../../composables/usePanelManager'
 import type { PanelListItem } from '../../composables/usePanelManager'
 import { mdiClose, mdiContentCopy, mdiDelete, mdiMagnify, mdiPencil } from '@mdi/js'
@@ -136,6 +162,8 @@ const editorOpen = ref(false)
 const editingPanelId = ref<number | null>(null)
 const deleteDialogOpen = ref(false)
 const deletingPanel = ref<PanelListItem | null>(null)
+const panelAppImportOpen = ref(false)
+const stringDbGenerateOpen = ref(false)
 
 // Load panels when dialog opens
 watch(
@@ -206,6 +234,11 @@ async function doDelete(): Promise<void> {
 }
 
 function onPanelSaved(): void {
+  loadPanels()
+  emit('panelsChanged')
+}
+
+function onExternalImport(): void {
   loadPanels()
   emit('panelsChanged')
 }

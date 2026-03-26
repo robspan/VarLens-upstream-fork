@@ -238,7 +238,7 @@ const {
       ...buildCohortQueryParams()
     }
 
-    const plainParams = globalThis.structuredClone(buildIpcParams(params))
+    const plainParams = JSON.parse(JSON.stringify(buildIpcParams(params)))
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (api as any).cohort.getVariants(plainParams)
 
@@ -288,7 +288,7 @@ const exportToExcel = async (): Promise<void> => {
       cohort_frequency_min: filters.value.minCohortFrequency ?? undefined
     }
 
-    const plainParams = globalThis.structuredClone(exportParams)
+    const plainParams = JSON.parse(JSON.stringify(exportParams))
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (api as any).export.cohort(plainParams)
 

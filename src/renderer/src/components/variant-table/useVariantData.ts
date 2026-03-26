@@ -55,21 +55,24 @@ export function useVariantData(options: UseVariantDataOptions) {
         return { data: [], total_count: 0 }
       }
 
-      // Strip reactive proxies for IPC via structuredClone (faster than JSON round-trip)
+      // Deep-clone to strip Vue reactive proxies for IPC serialization
+      // (structuredClone throws on Proxy objects — use JSON round-trip instead)
       const colFilters = getColumnFiltersParam()
       const rawFilters = filters.value
-      const plainFilters = structuredClone({
-        ...rawFilters,
-        ...(colFilters !== undefined || rawFilters.column_filters !== undefined
-          ? {
-              // Merge: header filters first, DSL filters override for same column
-              column_filters: {
-                ...(colFilters ?? {}),
-                ...(rawFilters.column_filters ?? {})
+      const plainFilters = JSON.parse(
+        JSON.stringify({
+          ...rawFilters,
+          ...(colFilters !== undefined || rawFilters.column_filters !== undefined
+            ? {
+                // Merge: header filters first, DSL filters override for same column
+                column_filters: {
+                  ...(colFilters ?? {}),
+                  ...(rawFilters.column_filters ?? {})
+                }
               }
-            }
-          : {})
-      })
+            : {})
+        })
+      )
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await (api as any).variants.query(
         caseId.value,

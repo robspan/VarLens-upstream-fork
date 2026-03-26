@@ -33,7 +33,11 @@ const loadingStates = shallowRef<Map<string, boolean>>(new Map())
  * LRU-aware cache setter. Moves existing keys to the end (most-recently-used)
  * and evicts oldest entries when the cache exceeds MAX_CACHE_SIZE.
  * JavaScript Map maintains insertion order, so the first entry is the oldest.
+ *
+ * Uses microtask batching: multiple cacheSet calls in the same tick produce
+ * only one triggerRef flush, reducing reactivity churn during batch loads.
  */
+let pendingCacheTrigger = false
 function cacheSet(key: string, value: AnnotationCache): void {
   const cache = annotationCache.value
   if (cache.has(key)) {
@@ -46,7 +50,13 @@ function cacheSet(key: string, value: AnnotationCache): void {
     if (oldestKey === undefined) break
     cache.delete(oldestKey)
   }
-  triggerRef(annotationCache)
+  if (!pendingCacheTrigger) {
+    pendingCacheTrigger = true
+    Promise.resolve().then(() => {
+      triggerRef(annotationCache)
+      pendingCacheTrigger = false
+    })
+  }
 }
 
 /** Set loading state and trigger shallowRef reactivity. */

@@ -6,6 +6,16 @@
     @update:model-value="emit('update:modelValue', $event)"
   >
     <v-card>
+      <v-card-title class="d-flex align-center">
+        <span>Gene Panels</span>
+        <v-spacer />
+        <v-btn
+          :icon="mdiClose"
+          variant="text"
+          size="small"
+          @click="emit('update:modelValue', false)"
+        />
+      </v-card-title>
       <v-toolbar density="compact" color="transparent" class="px-2">
         <v-text-field
           v-model="searchQuery"
@@ -280,19 +290,20 @@ const exportingPanel = ref<PanelListItem | null>(null)
 const exportAssembly = ref('GRCh38')
 const exportPadding = ref(0)
 
-// Load panels and gene ref info when dialog opens
+// Load panels and gene ref info when dialog opens (immediate to catch first open)
 watch(
   () => props.modelValue,
   async (visible) => {
     if (visible) {
-      loadPanels()
+      await loadPanels()
       try {
         geneRefInfo.value = (await api?.geneRef.info()) ?? null
       } catch {
         // silently ignore - info bar won't show
       }
     }
-  }
+  },
+  { immediate: true }
 )
 
 const filteredPanels = computed(() => {

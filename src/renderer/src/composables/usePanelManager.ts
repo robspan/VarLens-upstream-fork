@@ -61,20 +61,31 @@ export interface UsePanelManagerReturn {
 }
 
 // ---------------------------------------------------------------------------
+// Shared state (singleton across all usePanelManager() calls)
+// ---------------------------------------------------------------------------
+
+const _panels = ref<PanelListItem[]>([])
+const _loading = ref(false)
+const _error = ref<string | null>(null)
+
+// ---------------------------------------------------------------------------
 // Composable
 // ---------------------------------------------------------------------------
 
 /**
- * Composable for gene panel CRUD operations
+ * Composable for gene panel CRUD operations.
+ *
+ * Uses shared singleton state so all consumers (PanelManagerDialog,
+ * PanelFilterSection, etc.) see the same panel list and stay in sync.
  *
  * @returns Reactive panel list and management methods
  */
 export function usePanelManager(): UsePanelManagerReturn {
   const { api } = useApiService()
 
-  const panels = ref<PanelListItem[]>([])
-  const loading = ref(false)
-  const error = ref<string | null>(null)
+  const panels = _panels
+  const loading = _loading
+  const error = _error
 
   /**
    * Fetch all panels from the database

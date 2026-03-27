@@ -1,15 +1,13 @@
 /**
  * Composable for panel selection in the filter sidebar
  *
- * Loads available panels and exposes them for selection in the
- * PanelFilterSection component. Panels are global (not per-case),
- * so no case ID is required.
+ * Delegates to usePanelManager's shared singleton state so the filter
+ * sidebar and PanelManagerDialog always see the same panel list.
  */
 
-import { ref } from 'vue'
-import type { Ref } from 'vue'
-import { useApiService } from './useApiService'
-import { logService } from '../services/LogService'
+import { computed } from 'vue'
+import type { Ref, ComputedRef } from 'vue'
+import { usePanelManager } from './usePanelManager'
 
 /**
  * Panel option for filter selection UI
@@ -25,54 +23,35 @@ export interface PanelOption {
  * Return type for usePanelFilter composable
  */
 export interface UsePanelFilterReturn {
-  availablePanels: Ref<PanelOption[]>
+  availablePanels: Ref<PanelOption[]> | ComputedRef<PanelOption[]>
   loading: Ref<boolean>
   loadAvailablePanels: () => Promise<void>
 }
 
 /**
- * Composable for loading available panels for filter selection
+ * Composable for loading available panels for filter selection.
+ *
+ * Uses the shared panel list from usePanelManager so CRUD operations
+ * in PanelManagerDialog automatically update the filter dropdown.
  *
  * @returns Available panels list and loading state
  */
 export function usePanelFilter(): UsePanelFilterReturn {
-  const { api } = useApiService()
-  const availablePanels = ref<PanelOption[]>([])
-  const loading = ref(false)
+  const { panels, loading, loadPanels } = usePanelManager()
 
-  /**
-   * Fetch all panels from the database for filter selection
-   */
-  async function loadAvailablePanels(): Promise<void> {
-    if (!api) return
-    loading.value = true
-    try {
-      const panels = await api.panels.list()
-      availablePanels.value = panels.map(
-        (p: { id: number; name: string; gene_count: number; source: string }) => ({
-          id: p.id,
-          name: p.name,
-          gene_count: p.gene_count,
-          source: p.source
-        })
-      )
-    } catch (e) {
-      logService.error(
-        'Failed to load panels for filter: ' + (e instanceof Error ? e.message : String(e)),
-        'panel-filter'
-      )
-      availablePanels.value = []
-    } finally {
-      loading.value = false
-    }
-  }
-
-  // Load panels immediately on init
-  loadAvailablePanels()
+  // Map PanelListItem[] to PanelOption[] (subset of fields for the dropdown)
+  const availablePanels = computed<PanelOption[]>(() =>
+    panels.value.map((p) => ({
+      id: p.id,
+      name: p.name,
+      gene_count: p.gene_count,
+      source: p.source
+    }))
+  )
 
   return {
     availablePanels,
     loading,
-    loadAvailablePanels
+    loadAvailablePanels: loadPanels
   }
 }

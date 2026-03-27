@@ -10,8 +10,10 @@ import {
   SortItemSchema
 } from '../../../shared/types/ipc-schemas'
 import { mainLogger } from '../../services/MainLogger'
-import { getGeneReferenceDb } from '../../database/geneReferenceLoader'
-import type { GenomicInterval } from '../../database/PanelRepository'
+import { computePanelIntervals, clearPanelIntervalCache } from './panelIntervalHelper'
+
+// Re-export for consumers that import from this module
+export { clearPanelIntervalCache }
 
 /**
  * Variants IPC handlers
@@ -20,20 +22,6 @@ import type { GenomicInterval } from '../../database/PanelRepository'
 
 // Schema for search query params
 const SearchQuerySchema = z.string().min(1).max(100)
-
-/**
- * In-memory cache for computed panel intervals.
- * Keyed on JSON.stringify({ panelIds, assembly, paddingBp, chrPrefix }).
- * Invalidated when panel CRUD operations change panel/gene data.
- */
-const panelIntervalCache = new Map<string, GenomicInterval[]>()
-
-/**
- * Clear the panel interval cache. Call this when panels or their genes change.
- */
-export function clearPanelIntervalCache(): void {
-  panelIntervalCache.clear()
-}
 
 export function registerVariantHandlers({ ipcMain, getDb, getDbPool }: HandlerDependencies): void {
   ipcMain.handle(
@@ -116,40 +104,19 @@ export function registerVariantHandlers({ ipcMain, getDb, getDbPool }: HandlerDe
           const dbRef = getDb()
           const caseData = dbRef.cases.getCase(fullFilter.case_id)
           const genomeBuild = caseData?.genome_build ?? 'GRCh38'
-          const paddingBp = fullFilter.panel_padding_bp ?? 5000
 
-          // Detect chromosome prefix from existing variants (lightweight single-row query)
-          const chrPrefix = dbRef.variants.getChrPrefix(fullFilter.case_id)
-
-          try {
-            const cacheKey = JSON.stringify({
-              panelIds: fullFilter.active_panel_ids,
-              assembly: genomeBuild,
-              paddingBp,
-              chrPrefix
-            })
-
-            const cached = panelIntervalCache.get(cacheKey)
-            if (cached) {
-              fullFilter.panel_intervals = cached
-            } else {
-              const geneRefDb = getGeneReferenceDb()
-              const intervals = dbRef.panels.computeIntervals(
-                fullFilter.active_panel_ids,
-                genomeBuild,
-                paddingBp,
-                geneRefDb,
-                chrPrefix
-              )
-              panelIntervalCache.set(cacheKey, intervals)
-              fullFilter.panel_intervals = intervals
-            }
-          } catch (error) {
-            mainLogger.warn(
-              `Failed to compute panel intervals: ${error instanceof Error ? error.message : String(error)}`,
-              'variants'
-            )
-            // Continue without panel filtering rather than failing the query
+          const intervals = computePanelIntervals(
+            dbRef,
+            {
+              active_panel_ids: fullFilter.active_panel_ids,
+              panel_padding_bp: fullFilter.panel_padding_bp,
+              genome_build: genomeBuild
+            },
+            fullFilter.case_id,
+            'variants'
+          )
+          if (intervals) {
+            fullFilter.panel_intervals = intervals
           }
 
           // Clean up IPC-only fields that shouldn't reach the repository

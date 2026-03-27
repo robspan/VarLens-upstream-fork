@@ -183,6 +183,15 @@ export class CohortService {
       paramsArray.push(...params.acmg_classifications)
     }
 
+    // Panel interval filter (region-based)
+    if (params.panel_intervals && params.panel_intervals.length > 0) {
+      const intervalConditions = params.panel_intervals.map((iv) => {
+        paramsArray.push(iv.chr, iv.start, iv.end)
+        return '(cvs.chr = ? AND cvs.pos BETWEEN ? AND ?)'
+      })
+      whereConditions.push(`(${intervalConditions.join(' OR ')})`)
+    }
+
     // Per-column typed filters
     if (params.column_filters !== undefined) {
       for (const [column, filterDef] of Object.entries(params.column_filters)) {

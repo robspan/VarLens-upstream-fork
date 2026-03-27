@@ -207,7 +207,11 @@ const buildCohortQueryParams = (): Omit<
           ...(cohortColumnFilters.value ?? {}),
           ...(cohortFilterBarRef.value?.dslColumnFilters ?? {})
         }
-      : undefined
+      : undefined,
+  active_panel_ids:
+    filters.value.activePanelIds.length > 0 ? [...filters.value.activePanelIds] : undefined,
+  panel_padding_bp:
+    filters.value.activePanelIds.length > 0 ? filters.value.panelPaddingBp : undefined
 })
 
 // Shared offset pagination (same composable as case view)

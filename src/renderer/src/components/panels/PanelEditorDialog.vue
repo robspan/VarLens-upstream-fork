@@ -232,6 +232,7 @@ import { usePanelManager } from '../../composables/usePanelManager'
 import { useApiService } from '../../composables/useApiService'
 import type { ValidationResult } from '../../composables/useGeneValidation'
 import { mdiClose, mdiCheckCircle, mdiAlertCircle, mdiCloseCircle } from '@mdi/js'
+import { logService } from '../../services/LogService'
 
 const props = defineProps<{
   modelValue: boolean
@@ -288,7 +289,10 @@ watch(
             panelDescription.value = panel.description ?? ''
           }
         } catch (e) {
-          console.error('Failed to load panel metadata:', e)
+          logService.error(
+            'Failed to load panel metadata: ' + (e instanceof Error ? e.message : String(e)),
+            'panels'
+          )
         }
       }
       const genes = await getGenes(props.editPanelId)

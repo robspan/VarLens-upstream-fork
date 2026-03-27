@@ -9,6 +9,7 @@
 import { ref, computed } from 'vue'
 import type { Ref, ComputedRef } from 'vue'
 import { useApiService } from './useApiService'
+import { logService } from '../services/LogService'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -121,7 +122,10 @@ export function useGeneValidation(): UseGeneValidationReturn {
       validationResults.value = results
       return results
     } catch (e) {
-      console.error('Failed to validate gene symbols:', e)
+      logService.error(
+        'Failed to validate gene symbols: ' + (e instanceof Error ? e.message : String(e)),
+        'gene-validation'
+      )
       validationResults.value = []
       return []
     } finally {
@@ -146,7 +150,10 @@ export function useGeneValidation(): UseGeneValidationReturn {
     try {
       suggestions.value = await api.panels.autocomplete(query, limit)
     } catch (e) {
-      console.error('Failed to autocomplete gene:', e)
+      logService.error(
+        'Failed to autocomplete gene: ' + (e instanceof Error ? e.message : String(e)),
+        'gene-validation'
+      )
       suggestions.value = []
     } finally {
       loadingSuggestions.value = false

@@ -9,6 +9,7 @@
 import { ref } from 'vue'
 import type { Ref } from 'vue'
 import { useApiService } from './useApiService'
+import { logService } from '../services/LogService'
 
 /**
  * Panel option for filter selection UI
@@ -56,7 +57,10 @@ export function usePanelFilter(): UsePanelFilterReturn {
         })
       )
     } catch (e) {
-      console.error('Failed to load panels for filter:', e)
+      logService.error(
+        'Failed to load panels for filter: ' + (e instanceof Error ? e.message : String(e)),
+        'panel-filter'
+      )
       availablePanels.value = []
     } finally {
       loading.value = false

@@ -8,6 +8,7 @@
 import { ref } from 'vue'
 import type { Ref } from 'vue'
 import { useApiService } from './useApiService'
+import { logService } from '../services/LogService'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -88,7 +89,10 @@ export function usePanelManager(): UsePanelManagerReturn {
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       error.value = message
-      console.error('Failed to load panels:', e)
+      logService.error(
+        'Failed to load panels: ' + (e instanceof Error ? e.message : String(e)),
+        'panels'
+      )
     } finally {
       loading.value = false
     }
@@ -116,7 +120,10 @@ export function usePanelManager(): UsePanelManagerReturn {
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       error.value = message
-      console.error('Failed to create panel:', e)
+      logService.error(
+        'Failed to create panel: ' + (e instanceof Error ? e.message : String(e)),
+        'panels'
+      )
       return undefined
     }
   }
@@ -137,7 +144,10 @@ export function usePanelManager(): UsePanelManagerReturn {
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       error.value = message
-      console.error('Failed to update panel:', e)
+      logService.error(
+        'Failed to update panel: ' + (e instanceof Error ? e.message : String(e)),
+        'panels'
+      )
     }
   }
 
@@ -154,7 +164,10 @@ export function usePanelManager(): UsePanelManagerReturn {
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       error.value = message
-      console.error('Failed to delete panel:', e)
+      logService.error(
+        'Failed to delete panel: ' + (e instanceof Error ? e.message : String(e)),
+        'panels'
+      )
     }
   }
 
@@ -173,7 +186,10 @@ export function usePanelManager(): UsePanelManagerReturn {
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       error.value = message
-      console.error('Failed to duplicate panel:', e)
+      logService.error(
+        'Failed to duplicate panel: ' + (e instanceof Error ? e.message : String(e)),
+        'panels'
+      )
       return undefined
     }
   }
@@ -191,7 +207,10 @@ export function usePanelManager(): UsePanelManagerReturn {
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       error.value = message
-      console.error('Failed to set panel genes:', e)
+      logService.error(
+        'Failed to set panel genes: ' + (e instanceof Error ? e.message : String(e)),
+        'panels'
+      )
     }
   }
 
@@ -205,7 +224,10 @@ export function usePanelManager(): UsePanelManagerReturn {
       const rows = await api.panels.getGenes(panelId)
       return rows.map((r) => ({ hgncId: r.hgnc_id, symbol: r.symbol }))
     } catch (e) {
-      console.error('Failed to get panel genes:', e)
+      logService.error(
+        'Failed to get panel genes: ' + (e instanceof Error ? e.message : String(e)),
+        'panels'
+      )
       return []
     }
   }

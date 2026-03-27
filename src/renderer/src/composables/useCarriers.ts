@@ -22,6 +22,7 @@ import { ref } from 'vue'
 import type { Ref } from 'vue'
 import type { CohortVariant, CohortCarrier } from '../../../shared/types/cohort'
 import { useApiService } from './useApiService'
+import { logService } from '../services/LogService'
 
 // ============================================================================
 // SINGLETON STATE - Module-scoped refs shared across all components
@@ -124,7 +125,10 @@ export function useCarriers(): UseCarriersReturn {
       )
       carrierMap.value.set(variant.variant_key, carriers)
     } catch (error) {
-      console.error('Failed to load carriers:', error)
+      logService.error(
+        'Failed to load carriers: ' + (error instanceof Error ? error.message : String(error)),
+        'carriers'
+      )
       // Set empty array to prevent retry loops
       carrierMap.value.set(variant.variant_key, [])
     }

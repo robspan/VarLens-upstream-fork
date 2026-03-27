@@ -561,6 +561,7 @@ if (process.contextIsolated === true) {
   try {
     contextBridge.exposeInMainWorld('api', api)
   } catch (error) {
+    // Console is the only option in preload context (no access to mainLogger/Electron main process)
     console.error('Failed to expose API via contextBridge:', error)
   }
 } else {

@@ -9,6 +9,17 @@ import { withSetup } from '../../utils/test-helpers'
 import { createMockApi } from '../../utils/mock-api'
 import { usePanelManager } from '@renderer/composables/usePanelManager'
 import type { PanelListItem } from '@renderer/composables/usePanelManager'
+import { logService } from '../../../src/renderer/src/services/LogService'
+
+vi.mock('../../../src/renderer/src/services/LogService', () => ({
+  logService: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+    critical: vi.fn()
+  }
+}))
 
 const mockPanels: PanelListItem[] = [
   {
@@ -92,7 +103,6 @@ describe('usePanelManager', () => {
   })
 
   it('sets error on loadPanels failure', async () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(window.api as any).panels.list.mockRejectedValue(new Error('DB error'))
 
@@ -103,7 +113,10 @@ describe('usePanelManager', () => {
 
     expect(result.error.value).toBe('DB error')
     expect(result.panels.value).toEqual([])
-    consoleErrorSpy.mockRestore()
+    expect(logService.error).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to load panels:'),
+      'panels'
+    )
   })
 
   it('creates a panel and reloads list', async () => {

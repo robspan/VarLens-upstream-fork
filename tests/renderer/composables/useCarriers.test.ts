@@ -9,6 +9,17 @@ import { withSetup } from '../../utils/test-helpers'
 import { createMockApi } from '../../utils/mock-api'
 import { useCarriers, _resetCarriersForTesting } from '@renderer/composables/useCarriers'
 import type { CohortVariant, CohortCarrier } from '../../../../../src/shared/types/cohort'
+import { logService } from '../../../src/renderer/src/services/LogService'
+
+vi.mock('../../../src/renderer/src/services/LogService', () => ({
+  logService: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+    critical: vi.fn()
+  }
+}))
 
 describe('useCarriers', () => {
   let app: { unmount: () => void }
@@ -232,7 +243,6 @@ describe('useCarriers', () => {
   })
 
   it('handles errors gracefully with empty array', async () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     window.api.cohort.getCarriers = vi.fn().mockRejectedValue(new Error('IPC error'))
 
     const [result, appInstance] = withSetup(() => useCarriers())
@@ -253,14 +263,15 @@ describe('useCarriers', () => {
 
     await result.loadCarriers(mockVariant)
 
-    // Error logged
-    expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to load carriers:', expect.any(Error))
+    // Error logged via logService
+    expect(logService.error).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to load carriers:'),
+      'carriers'
+    )
 
     // Empty array cached to prevent retry loops
     expect(result.hasCarriers('chr1-12345-A-G')).toBe(true)
     expect(result.getCarriers('chr1-12345-A-G')).toEqual([])
-
-    consoleErrorSpy.mockRestore()
   })
 
   it('clearCache clears carrier map but keeps expandedRows', () => {

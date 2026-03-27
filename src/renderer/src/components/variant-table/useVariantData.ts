@@ -3,6 +3,7 @@ import type { Variant, VariantFilter } from '../../../../shared/types/api'
 import type { ColumnFilterMeta } from '../../../../shared/types/column-filters'
 import { useOffsetPagination } from '../../composables/useOffsetPagination'
 import { useAnnotations } from '../../composables/useAnnotations'
+import { logService } from '../../services/LogService'
 import { useColumnFilters } from '../../composables/useColumnFilters'
 import { useDebounce } from '../../composables/useDebounce'
 import { useApiService } from '../../composables/useApiService'
@@ -52,7 +53,7 @@ export function useVariantData(options: UseVariantDataOptions) {
   } = useOffsetPagination<Variant>({
     fetchPage: async ({ offset, limit, sortBy: sortItems, skipCount }) => {
       if (!api) {
-        console.warn('API not available - running outside Electron')
+        logService.warn('API not available - running outside Electron', 'variants')
         return { data: [], total_count: 0 }
       }
 

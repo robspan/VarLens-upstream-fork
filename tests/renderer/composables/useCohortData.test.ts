@@ -10,6 +10,17 @@ import { withSetup, flushPromises } from '../../utils/test-helpers'
 import { createMockApi } from '../../utils/mock-api'
 import { useCohortData } from '@renderer/composables/useCohortData'
 import type { CohortVariant, CohortSummary } from '../../../../../src/shared/types/cohort'
+import { logService } from '../../../src/renderer/src/services/LogService'
+
+vi.mock('../../../src/renderer/src/services/LogService', () => ({
+  logService: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+    critical: vi.fn()
+  }
+}))
 
 describe('useCohortData', () => {
   let app: { unmount: () => void }
@@ -155,7 +166,6 @@ describe('useCohortData', () => {
   })
 
   it('handles summary fetch errors gracefully', async () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     window.api.cohort.getSummary = vi.fn().mockRejectedValue(new Error('Summary error'))
 
     const [result, appInstance] = withSetup(() => useCohortData())
@@ -164,12 +174,10 @@ describe('useCohortData', () => {
     await result.fetchSummary()
 
     expect(result.summary.value).toBeNull()
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      'Failed to load cohort summary:',
-      expect.any(Error)
+    expect(logService.error).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to load cohort summary:'),
+      'cohort'
     )
-
-    consoleErrorSpy.mockRestore()
   })
 
   it('reset clears all state', () => {
@@ -248,7 +256,6 @@ describe('useCohortData', () => {
   })
 
   it('handles window.api unavailable gracefully', async () => {
-    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     // @ts-expect-error - Testing undefined case
     delete window.api
 
@@ -257,11 +264,12 @@ describe('useCohortData', () => {
 
     await result.fetchVariants({ limit: 50, sort_order: 'desc' })
 
-    expect(consoleWarnSpy).toHaveBeenCalledWith('API not available - running outside Electron')
+    expect(logService.warn).toHaveBeenCalledWith(
+      'API not available - running outside Electron',
+      'cohort'
+    )
     expect(result.variants.value).toEqual([])
     expect(result.totalCount.value).toBe(0)
-
-    consoleWarnSpy.mockRestore()
   })
 })
 

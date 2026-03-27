@@ -143,6 +143,7 @@ import {
 } from '../composables/useCaseComments'
 import type { CaseComment, CommentCategory } from '../../../shared/types/api'
 import { mdiDeleteOutline, mdiPencilOutline } from '@mdi/js'
+import { logService } from '../services/LogService'
 
 const props = defineProps<{
   caseId: number
@@ -181,7 +182,10 @@ async function handleCreate(): Promise<void> {
     await createComment(props.caseId, newCategory.value, newContent.value.trim())
     newContent.value = ''
   } catch (error) {
-    console.error('Failed to create comment:', error)
+    logService.error(
+      'Failed to create comment: ' + (error instanceof Error ? error.message : String(error)),
+      'comments'
+    )
   } finally {
     isCreating.value = false
   }
@@ -205,7 +209,10 @@ async function handleUpdate(commentId: number): Promise<void> {
     editingId.value = null
     editContent.value = ''
   } catch (error) {
-    console.error('Failed to update comment:', error)
+    logService.error(
+      'Failed to update comment: ' + (error instanceof Error ? error.message : String(error)),
+      'comments'
+    )
   } finally {
     isSaving.value = false
   }
@@ -215,7 +222,10 @@ async function handleDelete(commentId: number): Promise<void> {
   try {
     await deleteComment(props.caseId, commentId)
   } catch (error) {
-    console.error('Failed to delete comment:', error)
+    logService.error(
+      'Failed to delete comment: ' + (error instanceof Error ? error.message : String(error)),
+      'comments'
+    )
   }
 }
 

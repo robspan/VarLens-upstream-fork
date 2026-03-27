@@ -148,6 +148,7 @@ import {
   mdiDelete,
   mdiPencil
 } from '@mdi/js'
+import { logService } from '../../services/LogService'
 
 const props = defineProps<{
   cohortGroups: OverviewCohortGroup[]
@@ -221,7 +222,10 @@ async function saveCohortEdit(): Promise<void> {
     cancelCohortEdit()
     emit('refresh')
   } catch (err) {
-    console.error('Failed to update cohort group:', err)
+    logService.error(
+      'Failed to update cohort group: ' + (err instanceof Error ? err.message : String(err)),
+      'cohort'
+    )
   } finally {
     cohortSaving.value = false
   }
@@ -248,7 +252,10 @@ async function executeDeleteCohort(): Promise<void> {
 
     emit('refresh')
   } catch (err) {
-    console.error('Failed to delete cohort group:', err)
+    logService.error(
+      'Failed to delete cohort group: ' + (err instanceof Error ? err.message : String(err)),
+      'cohort'
+    )
   } finally {
     cohortDeleting.value = false
     cohortDeleteDialog.value = false

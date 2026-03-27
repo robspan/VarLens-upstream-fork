@@ -112,6 +112,7 @@ import { useCarriers } from '../composables/useCarriers'
 import { useAnnotations } from '../composables/useAnnotations'
 import { useColumnPreferences } from '../composables/useColumnPreferences'
 import { useApiService } from '../composables/useApiService'
+import { logService } from '../services/LogService'
 import { useDebounce } from '../composables/useDebounce'
 // Sub-components
 import CohortFilterBar from './cohort/CohortFilterBar.vue'
@@ -270,7 +271,7 @@ const snackbar = ref({
 
 const exportToExcel = async (): Promise<void> => {
   if (!api) {
-    console.warn('API not available - running outside Electron')
+    logService.warn('API not available - running outside Electron', 'cohort')
     return
   }
 

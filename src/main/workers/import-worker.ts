@@ -269,6 +269,7 @@ port.on('message', async (msg: MainMessage) => {
             // Clean up pre-parse promise on error
             if (nextFileParsed) {
               nextFileParsed.catch((e) => {
+                // console.warn is the only option in worker_threads context (no access to mainLogger/Electron IPC)
                 console.warn('Pre-parse cleanup failed:', e)
               }) // prevent unhandled rejection
               nextFileParsed = null

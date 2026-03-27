@@ -235,6 +235,7 @@ import { useResponsiveLayout } from '../composables/useResponsiveLayout'
 import { useAutoUpdate } from '../composables/useAutoUpdate'
 import { useApiService } from '../composables/useApiService'
 import { APP_CONFIG } from '../../../shared/config/app.config'
+import { logService } from '../services/LogService'
 import {
   mdiAlertCircle,
   mdiArrowUpCircle,
@@ -306,7 +307,10 @@ onMounted(async () => {
       appVersion.value = versionInfo.app
       electronVersion.value = versionInfo.electron
     } catch (error) {
-      console.error('Failed to fetch version info:', error)
+      logService.error(
+        'Failed to fetch version info: ' + (error instanceof Error ? error.message : String(error)),
+        'app'
+      )
     }
   }
 })
@@ -334,10 +338,13 @@ const openGitHub = async (): Promise<void> => {
     try {
       const result = await api.shell.openExternal(APP_CONFIG.URLS.GITHUB)
       if (!result.success) {
-        console.error('Failed to open GitHub URL:', result.error)
+        logService.error('Failed to open GitHub URL: ' + String(result.error), 'app')
       }
     } catch (error) {
-      console.error('Failed to open GitHub URL:', error)
+      logService.error(
+        'Failed to open GitHub URL: ' + (error instanceof Error ? error.message : String(error)),
+        'app'
+      )
     }
   }
 }
@@ -347,10 +354,14 @@ const openDocs = async (): Promise<void> => {
     try {
       const result = await api.shell.openExternal(APP_CONFIG.URLS.DOCS)
       if (!result.success) {
-        console.error('Failed to open documentation URL:', result.error)
+        logService.error('Failed to open documentation URL: ' + String(result.error), 'app')
       }
     } catch (error) {
-      console.error('Failed to open documentation URL:', error)
+      logService.error(
+        'Failed to open documentation URL: ' +
+          (error instanceof Error ? error.message : String(error)),
+        'app'
+      )
     }
   }
 }
@@ -360,10 +371,13 @@ const openLicense = async (): Promise<void> => {
     try {
       const result = await api.shell.openExternal(APP_CONFIG.URLS.LICENSE)
       if (!result.success) {
-        console.error('Failed to open license URL:', result.error)
+        logService.error('Failed to open license URL: ' + String(result.error), 'app')
       }
     } catch (error) {
-      console.error('Failed to open license URL:', error)
+      logService.error(
+        'Failed to open license URL: ' + (error instanceof Error ? error.message : String(error)),
+        'app'
+      )
     }
   }
 }

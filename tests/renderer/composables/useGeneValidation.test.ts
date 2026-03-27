@@ -9,6 +9,17 @@ import { withSetup } from '../../utils/test-helpers'
 import { createMockApi } from '../../utils/mock-api'
 import { useGeneValidation } from '@renderer/composables/useGeneValidation'
 import type { ValidationResult, AutocompleteResult } from '@renderer/composables/useGeneValidation'
+import { logService } from '../../../src/renderer/src/services/LogService'
+
+vi.mock('../../../src/renderer/src/services/LogService', () => ({
+  logService: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+    critical: vi.fn()
+  }
+}))
 
 describe('useGeneValidation', () => {
   let app: { unmount: () => void }
@@ -190,7 +201,6 @@ describe('useGeneValidation', () => {
     })
 
     it('handles validation error gracefully', async () => {
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(window.api as any).panels.validateSymbols.mockRejectedValue(new Error('DB error'))
 
@@ -202,7 +212,10 @@ describe('useGeneValidation', () => {
       expect(returned).toEqual([])
       expect(result.validationResults.value).toEqual([])
       expect(result.validating.value).toBe(false)
-      consoleErrorSpy.mockRestore()
+      expect(logService.error).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to validate gene symbols:'),
+        'gene-validation'
+      )
     })
   })
 
@@ -286,7 +299,6 @@ describe('useGeneValidation', () => {
     })
 
     it('handles autocomplete error gracefully', async () => {
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(window.api as any).panels.autocomplete.mockRejectedValue(new Error('Network error'))
 
@@ -297,7 +309,10 @@ describe('useGeneValidation', () => {
 
       expect(result.suggestions.value).toEqual([])
       expect(result.loadingSuggestions.value).toBe(false)
-      consoleErrorSpy.mockRestore()
+      expect(logService.error).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to autocomplete gene:'),
+        'gene-validation'
+      )
     })
   })
 

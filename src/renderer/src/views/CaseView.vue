@@ -8,6 +8,7 @@ import VariantTable from '../components/VariantTable.vue'
 import { useAppState } from '../composables/useAppState'
 import type { VariantFilter, Variant } from '../../../shared/types/api'
 import { APP_CONFIG } from '../../../shared/config/app.config'
+import { logService } from '../services/LogService'
 
 const {
   selectedCaseId,
@@ -38,7 +39,11 @@ onActivated(async () => {
       try {
         await variantTableRef.value?.refresh()
       } catch (error) {
-        console.error('Failed to refresh variant table on activation:', error)
+        logService.error(
+          'Failed to refresh variant table on activation: ' +
+            (error instanceof Error ? error.message : String(error)),
+          'case'
+        )
       }
     }
   }

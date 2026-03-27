@@ -35,6 +35,7 @@ import {
 } from './filter-types'
 import { useFilterPresets } from './useFilterPresets'
 import { useFilterExport } from './useFilterExport'
+import { logService } from '../services/LogService'
 
 // Re-export types so existing consumers (e.g. filterDrawerTypes.ts) continue to work
 export type { FilterState, ActiveFilter, ExportResult, UseFilterStateReturn } from './filter-types'
@@ -506,7 +507,11 @@ export function useFilterState(
       filterOptions.value = options
       cacheFilterOptions(caseId, options)
     } catch (error) {
-      console.error('Failed to load filter options:', error)
+      logService.error(
+        'Failed to load filter options: ' +
+          (error instanceof Error ? error.message : String(error)),
+        'filters'
+      )
     }
   }
 
@@ -555,7 +560,7 @@ export function useFilterState(
   const loadFilterOptionsAndTags = async (caseId: number): Promise<void> => {
     // Guard for browser dev mode
     if (!api) {
-      console.warn('API not available - running outside Electron')
+      logService.warn('API not available - running outside Electron', 'filters')
       return
     }
 
@@ -578,7 +583,11 @@ export function useFilterState(
       filterOptions.value = options
       cacheFilterOptions(caseId, options)
     } catch (error) {
-      console.error('Failed to load filter options:', error)
+      logService.error(
+        'Failed to load filter options: ' +
+          (error instanceof Error ? error.message : String(error)),
+        'filters'
+      )
     }
   }
 

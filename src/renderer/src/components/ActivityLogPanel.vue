@@ -36,6 +36,7 @@
 import { ref, watch } from 'vue'
 import type { AuditLogEntry, AuditActionType } from '../../../main/database/types'
 import { useApiService } from '../composables/useApiService'
+import { logService } from '../services/LogService'
 
 const props = defineProps<{
   entityKey: string | null
@@ -56,7 +57,10 @@ async function loadEntries(): Promise<void> {
   try {
     entries.value = await api!.audit.getByEntity(props.entityKey)
   } catch (error) {
-    console.error('Failed to load audit entries:', error)
+    logService.error(
+      'Failed to load audit entries: ' + (error instanceof Error ? error.message : String(error)),
+      'audit'
+    )
     entries.value = []
   } finally {
     loading.value = false

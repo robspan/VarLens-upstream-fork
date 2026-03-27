@@ -49,6 +49,7 @@ import { ref, watch, onMounted } from 'vue'
 import type { GeneBurden } from '../../../shared/types/cohort'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useApiService } from '../composables/useApiService'
+import { logService } from '../services/LogService'
 
 // API service
 const { api } = useApiService()
@@ -91,7 +92,10 @@ const loadGeneBurden = async (): Promise<void> => {
     const result = await (api as any).cohort.getGeneBurden()
     geneBurden.value = result
   } catch (error) {
-    console.error('Failed to load gene burden:', error)
+    logService.error(
+      'Failed to load gene burden: ' + (error instanceof Error ? error.message : String(error)),
+      'gene-burden'
+    )
     geneBurden.value = []
   } finally {
     loading.value = false

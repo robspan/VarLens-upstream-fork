@@ -189,6 +189,7 @@ import { useCaseMetrics } from '../composables/useCaseMetrics'
 import type { MetricDefinition, CaseMetricWithDefinition } from '../../../shared/types/api'
 import { EMPTY_VALUE_PLACEHOLDER } from '../utils/formatters'
 import { mdiDeleteOutline } from '@mdi/js'
+import { logService } from '../services/LogService'
 
 const props = defineProps<{
   caseId: number
@@ -286,7 +287,10 @@ async function handleSave(): Promise<void> {
     textInput.value = ''
     dateInput.value = ''
   } catch (error) {
-    console.error('Failed to save metric:', error)
+    logService.error(
+      'Failed to save metric: ' + (error instanceof Error ? error.message : String(error)),
+      'metrics'
+    )
   } finally {
     isSaving.value = false
   }
@@ -296,7 +300,10 @@ async function handleDelete(metricId: number): Promise<void> {
   try {
     await deleteMetric(props.caseId, metricId)
   } catch (error) {
-    console.error('Failed to delete metric:', error)
+    logService.error(
+      'Failed to delete metric: ' + (error instanceof Error ? error.message : String(error)),
+      'metrics'
+    )
   }
 }
 
@@ -326,7 +333,11 @@ async function handleCreateDefinition(): Promise<void> {
     customUnit.value = ''
     customCategory.value = 'Custom'
   } catch (error) {
-    console.error('Failed to create metric definition:', error)
+    logService.error(
+      'Failed to create metric definition: ' +
+        (error instanceof Error ? error.message : String(error)),
+      'metrics'
+    )
   }
 }
 

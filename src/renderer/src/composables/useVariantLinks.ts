@@ -8,6 +8,7 @@
 import { ref } from 'vue'
 import { useApiService } from './useApiService'
 import { useExternalLinksStore, type ExternalLinkConfig } from '../stores/externalLinksStore'
+import { logService } from '../services/LogService'
 import { resolveUrlTemplate, buildOmimUrl, type VariantLinkData } from '../utils/externalLinks'
 import type { Variant } from '../../../shared/types/api'
 
@@ -79,7 +80,11 @@ export function useVariantLinks() {
           snackbar.value = { visible: true, message: 'Could not open link', color: 'error' }
         }
       } catch (error) {
-        console.error('Failed to open external link:', error)
+        logService.error(
+          'Failed to open external link: ' +
+            (error instanceof Error ? error.message : String(error)),
+          'links'
+        )
         snackbar.value = { visible: true, message: 'Could not open link', color: 'error' }
       }
     }

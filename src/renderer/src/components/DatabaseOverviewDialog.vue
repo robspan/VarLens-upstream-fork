@@ -40,6 +40,7 @@ import OverviewCohortSection from './database-overview/OverviewCohortSection.vue
 import OverviewTagsSection from './database-overview/OverviewTagsSection.vue'
 import OverviewPhenotypesSection from './database-overview/OverviewPhenotypesSection.vue'
 import { mdiAlertCircle, mdiChartBoxOutline, mdiClose } from '@mdi/js'
+import { logService } from '../services/LogService'
 
 const { api } = useApiService()
 
@@ -74,7 +75,10 @@ async function loadOverview(): Promise<void> {
     }
     overview.value = data
   } catch (err) {
-    console.error('Failed to load database overview:', err)
+    logService.error(
+      'Failed to load database overview: ' + (err instanceof Error ? err.message : String(err)),
+      'database'
+    )
     error.value = 'Failed to load database overview.'
   } finally {
     loading.value = false

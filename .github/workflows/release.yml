@@ -192,6 +192,11 @@ jobs:
       # Gated on ESIGNER_ENABLED variable to conserve signing quota (20/month).
       # Only signs .exe and .msi installers, not portable builds.
 
+      - name: Create signing output directory
+        if: vars.ESIGNER_ENABLED == 'true'
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force -Path release-signed
+
       - name: Sign Windows Setup EXE with SSL.com eSigner
         if: vars.ESIGNER_ENABLED == 'true'
         uses: sslcom/esigner-codesign@develop
@@ -201,8 +206,8 @@ jobs:
           password: ${{ secrets.ES_PASSWORD }}
           credential_id: ${{ secrets.ES_CREDENTIAL_ID }}
           totp_secret: ${{ secrets.ES_TOTP_SECRET }}
-          file_path: ${{ github.workspace }}/release/Varlens-Setup-${{ needs.create-release.outputs.version }}.exe
-          output_path: ${{ github.workspace }}/release-signed/
+          file_path: release/Varlens-Setup-${{ needs.create-release.outputs.version }}.exe
+          output_path: release-signed
           environment_name: PROD
           signing_method: v2
 
@@ -215,8 +220,8 @@ jobs:
           password: ${{ secrets.ES_PASSWORD }}
           credential_id: ${{ secrets.ES_CREDENTIAL_ID }}
           totp_secret: ${{ secrets.ES_TOTP_SECRET }}
-          file_path: ${{ github.workspace }}/release/Varlens-Setup-${{ needs.create-release.outputs.version }}.msi
-          output_path: ${{ github.workspace }}/release-signed/
+          file_path: release/Varlens-Setup-${{ needs.create-release.outputs.version }}.msi
+          output_path: release-signed
           environment_name: PROD
           signing_method: v2
 

@@ -261,6 +261,10 @@ async function doImport(): Promise<void> {
 }
 
 function close(): void {
+  // Always reset loading states so dialog is never stuck spinning
+  searching.value = false
+  importing.value = false
+  errorMessage.value = ''
   emit('update:modelValue', false)
 }
 </script>

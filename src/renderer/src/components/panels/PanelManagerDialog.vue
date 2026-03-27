@@ -19,23 +19,34 @@
           style="max-width: 320px"
         />
         <v-spacer />
-        <v-btn color="primary" variant="flat" density="compact" @click="openCreate">
+        <v-btn
+          color="primary"
+          variant="flat"
+          density="comfortable"
+          size="small"
+          :prepend-icon="mdiPlus"
+          @click="openCreate"
+        >
           New Panel
         </v-btn>
         <v-btn
           color="success"
-          variant="flat"
-          density="compact"
+          variant="tonal"
+          density="comfortable"
+          size="small"
           class="ml-2"
+          :prepend-icon="mdiDownload"
           @click="panelAppImportOpen = true"
         >
           Import PanelApp
         </v-btn>
         <v-btn
           color="orange"
-          variant="flat"
-          density="compact"
+          variant="tonal"
+          density="comfortable"
+          size="small"
           class="ml-2"
+          :prepend-icon="mdiShareVariant"
           @click="stringDbGenerateOpen = true"
         >
           StringDB Generate
@@ -83,30 +94,44 @@
               <td>
                 <div class="d-flex ga-1">
                   <v-btn
-                    size="x-small"
+                    size="small"
                     variant="text"
+                    color="primary"
                     :icon="mdiPencil"
                     @click="openEdit(panel.id)"
-                  />
+                  >
+                    <v-icon :icon="mdiPencil" />
+                    <v-tooltip activator="parent" location="top">Edit</v-tooltip>
+                  </v-btn>
                   <v-btn
-                    size="x-small"
+                    size="small"
                     variant="text"
                     :icon="mdiContentCopy"
                     @click="duplicate(panel)"
-                  />
+                  >
+                    <v-icon :icon="mdiContentCopy" />
+                    <v-tooltip activator="parent" location="top">Copy</v-tooltip>
+                  </v-btn>
                   <v-btn
-                    size="x-small"
+                    size="small"
                     variant="text"
+                    color="info"
                     :icon="mdiExport"
                     @click="exportBed(panel)"
-                  />
+                  >
+                    <v-icon :icon="mdiExport" />
+                    <v-tooltip activator="parent" location="top">Export</v-tooltip>
+                  </v-btn>
                   <v-btn
-                    size="x-small"
+                    size="small"
                     variant="text"
                     color="error"
                     :icon="mdiDelete"
                     @click="confirmDelete(panel)"
-                  />
+                  >
+                    <v-icon :icon="mdiDelete" />
+                    <v-tooltip activator="parent" location="top">Delete</v-tooltip>
+                  </v-btn>
                 </div>
               </td>
             </tr>
@@ -214,7 +239,17 @@ import StringDbGenerateDialog from './StringDbGenerateDialog.vue'
 import { usePanelManager } from '../../composables/usePanelManager'
 import type { PanelListItem } from '../../composables/usePanelManager'
 import { useApiService } from '../../composables/useApiService'
-import { mdiClose, mdiContentCopy, mdiDelete, mdiExport, mdiMagnify, mdiPencil } from '@mdi/js'
+import {
+  mdiClose,
+  mdiContentCopy,
+  mdiDelete,
+  mdiDownload,
+  mdiExport,
+  mdiMagnify,
+  mdiPencil,
+  mdiPlus,
+  mdiShareVariant
+} from '@mdi/js'
 import type { GeneRefInfo } from '../../../../shared/types/api'
 
 const props = defineProps<{

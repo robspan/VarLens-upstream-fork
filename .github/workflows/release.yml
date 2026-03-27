@@ -208,17 +208,25 @@ jobs:
           $url = "https://github.com/SSLcom/CodeSignTool/releases/download/$csVersion/CodeSignTool-$csVersion-windows.zip"
           Invoke-WebRequest -Uri $url -OutFile codesigntool.zip
           Expand-Archive -Path codesigntool.zip -DestinationPath codesigntool -Force
-          # The zip extracts to codesigntool/CodeSignTool-v1.3.2/
-          $cstDir = (Get-ChildItem codesigntool -Directory | Select-Object -First 1).FullName
+          # Zip extracts flat: codesigntool/jar/, codesigntool/conf/, etc.
+          # Find the root by locating the jar file
+          $jarFile = Get-ChildItem codesigntool -Recurse -Filter "code_sign_tool-*.jar" | Select-Object -First 1
+          if (-not $jarFile) { throw "CodeSignTool jar not found after extraction" }
+          # The CodeSignTool root is two levels up from jar/code_sign_tool-*.jar
+          $cstDir = (Split-Path (Split-Path $jarFile.FullName))
           # Write production config (CodeSignTool reads ./conf/ relative to CWD)
           $conf = Join-Path $cstDir "conf" "code_sign_tool.properties"
           $content = "CLIENT_ID=kaXTRACNijSWsFdRKg_KAfD3fqrBlzMbWs6TwWHwAn8`nOAUTH2_ENDPOINT=https://login.ssl.com/oauth2/token`nCSC_API_ENDPOINT=https://cs.ssl.com`nTSA_URL=http://ts.ssl.com`nTSA_LEGACY_URL=http://ts.ssl.com/legacy"
           Set-Content $conf $content -NoNewline
           Write-Host "CodeSignTool dir: $cstDir"
-          Write-Host "Config written to: $conf"
+          Write-Host "Jar: $($jarFile.FullName)"
+          Write-Host "Config: $conf"
           Get-Content $conf
-          # Export path for next steps
+          # Verify structure
+          Get-ChildItem $cstDir -Exclude __MACOSX | Format-Table Name, Mode
+          # Export for next steps
           echo "CST_DIR=$cstDir" >> $env:GITHUB_ENV
+          echo "CST_JAR=$($jarFile.FullName)" >> $env:GITHUB_ENV
 
       - name: Sign Windows installer with CodeSignTool
         if: vars.ESIGNER_ENABLED == 'true'
@@ -226,7 +234,7 @@ jobs:
         run: |
           $version = "${{ needs.create-release.outputs.version }}"
           $cstDir = $env:CST_DIR
-          $jarPath = (Get-ChildItem $cstDir -Recurse -Filter "code_sign_tool-*.jar" | Select-Object -First 1).FullName
+          $jarPath = $env:CST_JAR
           $username = "${{ secrets.ES_USERNAME }}".Trim()
           $password = "${{ secrets.ES_PASSWORD }}".Trim()
           $credId = "${{ secrets.ES_CREDENTIAL_ID }}".Trim()
@@ -234,7 +242,8 @@ jobs:
           $workspace = $env:GITHUB_WORKSPACE
 
           Write-Host "Jar: $jarPath"
-          Write-Host "CWD will be: $cstDir"
+          Write-Host "CWD: $cstDir"
+          Write-Host "Conf exists: $(Test-Path (Join-Path $cstDir 'conf/code_sign_tool.properties'))"
 
           # Sign the NSIS installer exe using -override (in-place signing)
           $exePath = Join-Path $workspace "release" "Varlens-Setup-${version}.exe"

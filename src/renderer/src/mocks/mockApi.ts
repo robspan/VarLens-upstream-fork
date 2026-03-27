@@ -823,6 +823,93 @@ export const mockApi: WindowAPI = {
     })
   },
 
+  panels: {
+    list: async () => [],
+    get: async () => null,
+    create: async (params: { name: string }) => ({
+      id: 1,
+      name: params.name,
+      description: null,
+      version: null,
+      source: 'manual',
+      source_id: null,
+      source_metadata: null,
+      created_at: Date.now(),
+      updated_at: Date.now()
+    }),
+    update: async (params: { id: number; name?: string }) => ({
+      id: params.id,
+      name: params.name ?? 'Panel',
+      description: null,
+      version: null,
+      source: 'manual',
+      source_id: null,
+      source_metadata: null,
+      created_at: Date.now(),
+      updated_at: Date.now()
+    }),
+    delete: async () => ({ success: true }),
+    duplicate: async () => ({
+      id: 2,
+      name: 'Copy',
+      description: null,
+      version: null,
+      source: 'manual',
+      source_id: null,
+      source_metadata: null,
+      created_at: Date.now(),
+      updated_at: Date.now()
+    }),
+    setGenes: async () => ({ success: true }),
+    getGenes: async () => [],
+    activate: async () => ({ success: true }),
+    deactivate: async () => ({ success: true }),
+    activeForCase: async () => [],
+    validateSymbols: async () => [],
+    autocomplete: async () => [],
+    searchPanelApp: async () => [],
+    importPanelApp: async () => ({
+      id: 1,
+      name: 'Imported Panel',
+      description: null,
+      version: null,
+      source: 'panelapp_uk',
+      source_id: null,
+      source_metadata: null,
+      created_at: Date.now(),
+      updated_at: Date.now()
+    }),
+    generateStringDb: async () => ({
+      id: 1,
+      name: 'Generated Panel',
+      description: null,
+      version: null,
+      source: 'stringdb',
+      source_id: null,
+      source_metadata: null,
+      created_at: Date.now(),
+      updated_at: Date.now()
+    }),
+    exportBed: async () => ({ success: true, path: '/tmp/mock.bed' })
+  },
+
+  geneRef: {
+    info: async () => ({
+      geneCount: 0,
+      aliasCount: 0,
+      coordinateCount: 0,
+      assemblies: [],
+      builtAt: 0
+    }),
+    assemblies: async () => [],
+    checkUpdates: async () => ({
+      currentBuiltAt: 0,
+      daysSinceBuilt: 0,
+      needsUpdate: false
+    }),
+    update: async () => ({ success: true, message: 'Updated' })
+  },
+
   audit: {
     getByEntity: async () => [],
     query: async () => ({ data: [], total_count: 0 })

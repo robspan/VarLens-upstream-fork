@@ -8,6 +8,7 @@
 import { ref } from 'vue'
 import type { CaseComment, CommentCategory } from '../../../shared/types/api'
 import { useApiService } from './useApiService'
+import { logService } from '../services/LogService'
 import {
   mdiCalendarCheck,
   mdiFamilyTree,
@@ -60,7 +61,10 @@ export function useCaseComments() {
       const comments = await api.caseComments.list(caseId)
       commentsCache.value.set(caseId, comments)
     } catch (error) {
-      console.error('Failed to load comments:', error)
+      logService.error(
+        'Failed to load comments: ' + (error instanceof Error ? error.message : String(error)),
+        'comments'
+      )
     } finally {
       loadingStates.value.set(caseId, false)
     }

@@ -51,6 +51,10 @@ export interface FilterState {
   hasCommentOnly: boolean
   /** Filter by ACMG classifications */
   acmgClassifications: string[]
+  /** Active gene panel IDs for region-based filtering */
+  activePanelIds: number[]
+  /** Padding in base pairs around panel gene regions */
+  panelPaddingBp: number
 }
 
 /**
@@ -70,4 +74,6 @@ export interface FilterIpcParams {
   starred_only?: boolean
   has_comment?: boolean
   acmg_classifications?: string[]
+  active_panel_ids?: number[]
+  panel_padding_bp?: number
 }

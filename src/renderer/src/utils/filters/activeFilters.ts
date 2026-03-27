@@ -123,6 +123,15 @@ export function buildActiveFiltersList(
     list.push({ id: 'acmg', label: 'ACMG', value: filters.acmgClassifications.join(', ') })
   }
 
+  // Gene panels
+  if (filters.activePanelIds.length > 0) {
+    list.push({
+      id: 'panels',
+      label: 'Panels',
+      value: `${filters.activePanelIds.length} panel(s)`
+    })
+  }
+
   // Per-column typed filters
   for (const [key, filter] of Object.entries(columnFilters)) {
     const label = COLUMN_LABELS[key] ?? key

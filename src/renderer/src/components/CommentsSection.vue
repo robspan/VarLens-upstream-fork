@@ -84,6 +84,7 @@ import InlineEditableText from './InlineEditableText.vue'
 import type { Variant } from '../../../shared/types/api'
 import type { CohortVariant } from '../../../shared/types/cohort'
 import { mdiDelete } from '@mdi/js'
+import { logService } from '../services/LogService'
 
 interface Props {
   variant: Variant | CohortVariant
@@ -180,13 +181,13 @@ const handlePerCaseSave = async (value: string | null) => {
   // For Variant type, we have id directly
   // For CohortVariant, we don't have a per-case variant ID - this shouldn't be called in cohort mode
   if (props.mode === 'cohort') {
-    console.warn('Per-case comment save called in cohort mode')
+    logService.warn('Per-case comment save called in cohort mode', 'comments')
     return
   }
 
   const variantId = (props.variant as Variant).id
   if (typeof variantId !== 'number') {
-    console.error('Variant ID not available for per-case comment')
+    logService.error('Variant ID not available for per-case comment', 'comments')
     return
   }
 
@@ -237,7 +238,7 @@ const executeDelete = async () => {
 
     const variantId = (props.variant as Variant).id
     if (typeof variantId !== 'number') {
-      console.error('Variant ID not available for per-case comment deletion')
+      logService.error('Variant ID not available for per-case comment deletion', 'comments')
       return
     }
 

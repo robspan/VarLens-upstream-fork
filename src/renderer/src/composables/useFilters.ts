@@ -78,6 +78,10 @@ export interface FilterState {
   hasCommentOnly: boolean
   /** Filter by ACMG classifications */
   acmgClassifications: string[]
+  /** Active gene panel IDs for region-based filtering */
+  activePanelIds: number[]
+  /** Padding in base pairs around panel gene regions */
+  panelPaddingBp: number
 }
 
 /**
@@ -130,7 +134,9 @@ function createInitialFilterState(): FilterState {
     minCarriers: null,
     starredOnly: false,
     hasCommentOnly: false,
-    acmgClassifications: []
+    acmgClassifications: [],
+    activePanelIds: [],
+    panelPaddingBp: 5000
   }
 }
 

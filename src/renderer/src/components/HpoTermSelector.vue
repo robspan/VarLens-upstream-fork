@@ -66,6 +66,7 @@
 import { ref, watch, onMounted } from 'vue'
 import { useDebounce } from '../composables/useDebounce'
 import { useApiService } from '../composables/useApiService'
+import { logService } from '../services/LogService'
 import type { CaseHpoTerm } from '../../../shared/types/api'
 
 interface HpoSearchResult {
@@ -115,7 +116,10 @@ async function performSearch(query: string) {
       searchResults.value = []
     }
   } catch (error) {
-    console.error('HPO search failed:', error)
+    logService.error(
+      'HPO search failed: ' + (error instanceof Error ? error.message : String(error)),
+      'hpo'
+    )
     searchResults.value = []
   } finally {
     loading.value = false

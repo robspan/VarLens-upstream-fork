@@ -35,6 +35,8 @@ export interface CohortFilterDrawerState {
     starredOnly: boolean
     hasCommentOnly: boolean
     acmgClassifications: string[]
+    activePanelIds: number[]
+    panelPaddingBp: number
   }>
   searchTerm: Ref<string>
 

@@ -158,6 +158,12 @@ export interface CohortSearchParams {
   acmg_classifications?: string[]
   /** Per-column typed filters (key = column name, value = operator + value) */
   column_filters?: ColumnFiltersParam
+  /** Active panel IDs for region-based filtering */
+  active_panel_ids?: number[]
+  /** Padding in base pairs for panel interval computation */
+  panel_padding_bp?: number
+  /** Pre-computed genomic intervals from panel genes (set by IPC handler) */
+  panel_intervals?: Array<{ chr: string; start: number; end: number }>
   /** Whether the total count needs to be recomputed (false = use cached count) */
   _count_needed?: boolean
 }

@@ -1,6 +1,7 @@
 import { Worker } from 'worker_threads'
 import { resolve } from 'path'
 import os from 'os'
+import { mainLogger } from '../services/MainLogger'
 import type {
   GeneContingencyData,
   GeneAssociationResult,
@@ -57,7 +58,7 @@ export class WorkerPool {
             totalCompleted++
             onProgress?.(totalCompleted, genes.length)
           } else if (msg.type === 'error') {
-            console.error(`Worker error for gene ${msg.gene_symbol}: ${msg.error}`)
+            mainLogger.error(`Worker error for gene ${msg.gene_symbol}: ${msg.error}`, 'statistics')
           }
         })
 

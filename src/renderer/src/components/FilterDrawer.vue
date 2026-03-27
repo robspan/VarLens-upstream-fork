@@ -114,6 +114,26 @@
         </v-expansion-panel-text>
       </v-expansion-panel>
 
+      <!-- Gene Panels -->
+      <v-expansion-panel value="panels">
+        <FilterPanelTitle
+          :icon="mdiPlaylistEdit"
+          label="Gene Panels"
+          :active="isFilterGroupActive('panels')"
+          :value-summary="panelsSummary"
+        />
+        <v-expansion-panel-text>
+          <PanelFilterSection
+            :active-panel-ids="filters.activePanelIds"
+            :panel-padding-bp="filters.panelPaddingBp"
+            :refresh-key="panelRefreshKey"
+            @update:active-panel-ids="filters.activePanelIds = $event"
+            @update:panel-padding-bp="filters.panelPaddingBp = $event"
+            @open-manager="panelManagerOpen = true"
+          />
+        </v-expansion-panel-text>
+      </v-expansion-panel>
+
       <!-- Impact -->
       <v-expansion-panel value="impact">
         <FilterPanelTitle
@@ -373,6 +393,8 @@
         </v-expansion-panel-text>
       </v-expansion-panel>
     </v-expansion-panels>
+
+    <PanelManagerDialog v-model="panelManagerOpen" @panels-changed="onPanelsChanged" />
   </FilterDrawerShell>
 </template>
 
@@ -383,6 +405,8 @@ import FilterPanelTitle from './filters/FilterPanelTitle.vue'
 import AnnotationScopeToggle from './AnnotationScopeToggle.vue'
 import DslSearchBar from './DslSearchBar.vue'
 import GroupedMultiSelect from './GroupedMultiSelect.vue'
+import PanelManagerDialog from './panels/PanelManagerDialog.vue'
+import PanelFilterSection from './panels/PanelFilterSection.vue'
 import { consequenceGroups, clinvarGroups } from '../config/filterGroups'
 import { ACMG_FILTER_OPTIONS_LONG } from '../utils/filters'
 import type { Tag } from '../../../shared/types/api'
@@ -399,6 +423,7 @@ import {
   mdiFunction,
   mdiHospitalBox,
   mdiMagnify,
+  mdiPlaylistEdit,
   mdiStar,
   mdiStarCircle,
   mdiTagMultiple
@@ -416,6 +441,7 @@ const emit = defineEmits<{
 const allPanelValues = [
   'search',
   'gene',
+  'panels',
   'impact',
   'function',
   'clinvar',
@@ -425,6 +451,14 @@ const allPanelValues = [
   'annotations'
 ]
 const expandedPanels = ref<string[]>(['search', 'impact', 'frequency'])
+
+// Gene panel manager dialog state
+const panelManagerOpen = ref(false)
+const panelRefreshKey = ref(0)
+
+function onPanelsChanged(): void {
+  panelRefreshKey.value++
+}
 
 // Inject shared filter state from FilterToolbar
 const state = inject<FilterDrawerState>('filterDrawerState')
@@ -517,6 +551,10 @@ const annotationsSummary = computed(() => {
   }
   return parts.join(', ')
 })
+
+const panelsSummary = computed(() =>
+  filters.value.activePanelIds.length > 0 ? `${filters.value.activePanelIds.length} panel(s)` : ''
+)
 
 const acmgFilterOptions = ACMG_FILTER_OPTIONS_LONG
 

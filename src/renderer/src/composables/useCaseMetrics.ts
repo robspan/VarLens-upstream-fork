@@ -13,6 +13,7 @@ import type {
   MetricValue
 } from '../../../shared/types/api'
 import { useApiService } from './useApiService'
+import { logService } from '../services/LogService'
 
 // Global metric definitions cache
 const definitionsCache = ref<MetricDefinition[]>([])
@@ -43,7 +44,11 @@ export function useCaseMetrics() {
       definitionsCache.value = await api.caseMetrics.listDefinitions()
       definitionsLoaded.value = true
     } catch (error) {
-      console.error('Failed to load metric definitions:', error)
+      logService.error(
+        'Failed to load metric definitions: ' +
+          (error instanceof Error ? error.message : String(error)),
+        'metrics'
+      )
     }
   }
 
@@ -56,7 +61,10 @@ export function useCaseMetrics() {
       const metrics = await api.caseMetrics.listForCase(caseId)
       metricsCache.value.set(caseId, metrics)
     } catch (error) {
-      console.error('Failed to load case metrics:', error)
+      logService.error(
+        'Failed to load case metrics: ' + (error instanceof Error ? error.message : String(error)),
+        'metrics'
+      )
     } finally {
       loadingStates.value.set(caseId, false)
     }

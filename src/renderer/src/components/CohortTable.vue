@@ -112,6 +112,7 @@ import { useCarriers } from '../composables/useCarriers'
 import { useAnnotations } from '../composables/useAnnotations'
 import { useColumnPreferences } from '../composables/useColumnPreferences'
 import { useApiService } from '../composables/useApiService'
+import { logService } from '../services/LogService'
 import { useDebounce } from '../composables/useDebounce'
 // Sub-components
 import CohortFilterBar from './cohort/CohortFilterBar.vue'
@@ -206,7 +207,11 @@ const buildCohortQueryParams = (): Omit<
           ...(cohortColumnFilters.value ?? {}),
           ...(cohortFilterBarRef.value?.dslColumnFilters ?? {})
         }
-      : undefined
+      : undefined,
+  active_panel_ids:
+    filters.value.activePanelIds.length > 0 ? [...filters.value.activePanelIds] : undefined,
+  panel_padding_bp:
+    filters.value.activePanelIds.length > 0 ? filters.value.panelPaddingBp : undefined
 })
 
 // Shared offset pagination (same composable as case view)
@@ -270,7 +275,7 @@ const snackbar = ref({
 
 const exportToExcel = async (): Promise<void> => {
   if (!api) {
-    console.warn('API not available - running outside Electron')
+    logService.warn('API not available - running outside Electron', 'cohort')
     return
   }
 

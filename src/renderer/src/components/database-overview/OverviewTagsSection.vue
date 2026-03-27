@@ -144,6 +144,7 @@ import {
   mdiPencil,
   mdiTagMultiple
 } from '@mdi/js'
+import { logService } from '../../services/LogService'
 
 const props = defineProps<{
   tags: OverviewTag[]
@@ -217,7 +218,10 @@ async function saveTagEdit(): Promise<void> {
     cancelTagEdit()
     emit('refresh')
   } catch (err) {
-    console.error('Failed to update tag:', err)
+    logService.error(
+      'Failed to update tag: ' + (err instanceof Error ? err.message : String(err)),
+      'tags'
+    )
   } finally {
     tagSaving.value = false
   }
@@ -244,7 +248,10 @@ async function executeDeleteTag(): Promise<void> {
 
     emit('refresh')
   } catch (err) {
-    console.error('Failed to delete tag:', err)
+    logService.error(
+      'Failed to delete tag: ' + (err instanceof Error ? err.message : String(err)),
+      'tags'
+    )
   } finally {
     tagDeleting.value = false
     tagDeleteDialog.value = false

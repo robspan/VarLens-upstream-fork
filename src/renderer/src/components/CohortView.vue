@@ -34,6 +34,7 @@ import GeneBurdenView from './association/GeneBurdenView.vue'
 import { FiltersKey, createFilters } from '../composables/useFilters'
 import { useAppState } from '../composables/useAppState'
 import type { CohortVariant } from '../../../shared/types/cohort'
+import { logService } from '../services/LogService'
 
 // Create and provide filter state for child components (CohortTable, CohortFilterBar)
 const filtersInstance = createFilters()
@@ -89,7 +90,11 @@ onActivated(async () => {
     try {
       await refresh()
     } catch (error) {
-      console.error('Failed to refresh cohort view on activation:', error)
+      logService.error(
+        'Failed to refresh cohort view on activation: ' +
+          (error instanceof Error ? error.message : String(error)),
+        'cohort'
+      )
     }
   }
 })

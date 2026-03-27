@@ -6,6 +6,7 @@
  */
 
 import { ref } from 'vue'
+import { logService } from '../services/LogService'
 import { useCaseComments } from './useCaseComments'
 import { useCaseMetrics } from './useCaseMetrics'
 import { useApiService } from './useApiService'
@@ -51,7 +52,10 @@ export function useCaseMetadata() {
       const result = await api.caseMetadata.getFullMetadata(caseId)
       metadataCache.value.set(caseId, result)
     } catch (error) {
-      console.error('Failed to load case metadata:', error)
+      logService.error(
+        'Failed to load case metadata: ' + (error instanceof Error ? error.message : String(error)),
+        'case-metadata'
+      )
     } finally {
       loadingStates.value.set(caseId, false)
     }
@@ -64,7 +68,10 @@ export function useCaseMetadata() {
       const cohorts = await api.caseMetadata.listCohorts()
       cohortGroupsCache.value = cohorts
     } catch (error) {
-      console.error('Failed to load cohort groups:', error)
+      logService.error(
+        'Failed to load cohort groups: ' + (error instanceof Error ? error.message : String(error)),
+        'case-metadata'
+      )
     }
   }
 
@@ -101,7 +108,10 @@ export function useCaseMetadata() {
         cached.metadata = updated
       }
     } catch (error) {
-      console.error('Failed to update status:', error)
+      logService.error(
+        'Failed to update status: ' + (error instanceof Error ? error.message : String(error)),
+        'case-metadata'
+      )
       // Revert optimistic update
       if (current && current.metadata) {
         current.metadata.affected_status = previousStatus
@@ -131,7 +141,10 @@ export function useCaseMetadata() {
         cached.metadata = updated
       }
     } catch (error) {
-      console.error('Failed to update sex:', error)
+      logService.error(
+        'Failed to update sex: ' + (error instanceof Error ? error.message : String(error)),
+        'case-metadata'
+      )
       // Revert optimistic update
       if (current && current.metadata) {
         current.metadata.sex = previousSex
@@ -161,7 +174,10 @@ export function useCaseMetadata() {
         cached.metadata = updated
       }
     } catch (error) {
-      console.error('Failed to update age:', error)
+      logService.error(
+        'Failed to update age: ' + (error instanceof Error ? error.message : String(error)),
+        'case-metadata'
+      )
       // Revert optimistic update
       if (current && current.metadata) {
         current.metadata.age = previousAge
@@ -193,7 +209,11 @@ export function useCaseMetadata() {
         cached.metadata = updated
       }
     } catch (error) {
-      console.error('Failed to update date of birth:', error)
+      logService.error(
+        'Failed to update date of birth: ' +
+          (error instanceof Error ? error.message : String(error)),
+        'case-metadata'
+      )
       // Revert optimistic update
       if (current && current.metadata) {
         current.metadata.date_of_birth = previousDob
@@ -216,7 +236,10 @@ export function useCaseMetadata() {
     try {
       await api.caseMetadata.setCohorts(caseId, cohortIds)
     } catch (error) {
-      console.error('Failed to set cohorts:', error)
+      logService.error(
+        'Failed to set cohorts: ' + (error instanceof Error ? error.message : String(error)),
+        'case-metadata'
+      )
       // Revert optimistic update
       if (current) {
         current.cohorts = previousCohorts
@@ -293,7 +316,10 @@ export function useCaseMetadata() {
         }
       }
     } catch (error) {
-      console.error('Failed to assign HPO term:', error)
+      logService.error(
+        'Failed to assign HPO term: ' + (error instanceof Error ? error.message : String(error)),
+        'case-metadata'
+      )
       // Revert optimistic update
       if (current) {
         current.hpoTerms = current.hpoTerms.filter((t) => t.hpo_id !== hpoId)
@@ -315,7 +341,10 @@ export function useCaseMetadata() {
     try {
       await api.caseMetadata.removeHpoTerm(caseId, hpoId)
     } catch (error) {
-      console.error('Failed to remove HPO term:', error)
+      logService.error(
+        'Failed to remove HPO term: ' + (error instanceof Error ? error.message : String(error)),
+        'case-metadata'
+      )
       // Revert optimistic update
       if (current) {
         current.hpoTerms = previousTerms

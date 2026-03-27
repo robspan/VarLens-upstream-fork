@@ -6,6 +6,7 @@
 import { ref, computed, watch } from 'vue'
 import { defineStore } from 'pinia'
 import type { GenomeBuild } from '../utils/externalLinks'
+import { logService } from '../services/LogService'
 
 const STORAGE_KEY = 'varlens_external_links'
 
@@ -163,7 +164,11 @@ function loadLinks(): ExternalLinkConfig[] {
       return result
     }
   } catch (error) {
-    console.warn('Failed to load external links from localStorage:', error)
+    logService.warn(
+      'Failed to load external links from localStorage: ' +
+        (error instanceof Error ? error.message : String(error)),
+      'settings'
+    )
   }
   return getDefaultLinks()
 }
@@ -175,7 +180,11 @@ function saveLinks(links: ExternalLinkConfig[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(links))
   } catch (error) {
-    console.warn('Failed to save external links to localStorage:', error)
+    logService.warn(
+      'Failed to save external links to localStorage: ' +
+        (error instanceof Error ? error.message : String(error)),
+      'settings'
+    )
   }
 }
 

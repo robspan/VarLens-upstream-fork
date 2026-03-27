@@ -17,7 +17,9 @@ const defaultState: FilterState = {
   starredOnly: false,
   hasCommentOnly: false,
   acmgClassifications: [],
-  annotationScope: 'case'
+  annotationScope: 'case',
+  activePanelIds: [],
+  panelPaddingBp: 5000
 }
 
 describe('buildFilterFromState', () => {
@@ -92,7 +94,9 @@ describe('buildFilterFromState', () => {
       starredOnly: true,
       hasCommentOnly: true,
       acmgClassifications: ['Pathogenic'],
-      annotationScope: 'all'
+      annotationScope: 'all',
+      activePanelIds: [1, 3],
+      panelPaddingBp: 10000
     }
     const result = buildFilterFromState(state, ['HIGH'])
 
@@ -108,6 +112,8 @@ describe('buildFilterFromState', () => {
     expect(result.has_comment).toBe(true)
     expect(result.acmg_classifications).toEqual(['Pathogenic'])
     expect(result.annotation_scope).toBe('all')
+    expect(result.active_panel_ids).toEqual([1, 3])
+    expect(result.panel_padding_bp).toBe(10000)
   })
 
   describe('IPC safety — output arrays are plain (not reactive proxies)', () => {
@@ -165,7 +171,9 @@ describe('buildFilterFromState', () => {
         starredOnly: true,
         hasCommentOnly: true,
         acmgClassifications: ['Pathogenic'],
-        annotationScope: 'all'
+        annotationScope: 'all',
+        activePanelIds: [1],
+        panelPaddingBp: 5000
       })
       const result = buildFilterFromState(state.value, ['HIGH'])
       // Must not throw — proves no Proxy objects in the output

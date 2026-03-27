@@ -66,6 +66,10 @@ make dist             # build + package for current platform
 - ESLint + Prettier, strict TypeScript
 - IPC channels use `domain:action` naming (e.g., `cases:list`, `variants:query`)
 - Vue components use `<script setup lang="ts">` with Composition API
+- **NEVER use `console.log/error/warn`** in application code. Use:
+  - Main process: `mainLogger` from `src/main/services/MainLogger` (e.g., `mainLogger.error(msg, 'source')`)
+  - Renderer: `logService` from `src/renderer/src/services/LogService` (e.g., `logService.error(msg, 'source')`)
+  - Only exceptions: `logStore.ts` (bootstrap), `main.ts` (dev mode), `preload/index.ts` (no IPC), worker threads (no Electron IPC)
 
 ## E2E Testing: Playwright + Electron
 

@@ -5,6 +5,7 @@ import { useApiService } from '../composables/useApiService'
 import { useRouter } from 'vue-router'
 import type { Variant } from '../../../shared/types/api'
 import type { CohortVariant } from '../../../shared/types/cohort'
+import { logService } from '../services/LogService'
 
 const router = useRouter()
 const { api } = useApiService()
@@ -54,7 +55,10 @@ async function handleNavigateToCase(payload: {
       selectedCaseName.value = selectedCase.name
     }
   } catch (error) {
-    console.error('Failed to fetch case name:', error)
+    logService.error(
+      'Failed to fetch case name: ' + (error instanceof Error ? error.message : String(error)),
+      'cohort'
+    )
   }
 
   router.push('/case')

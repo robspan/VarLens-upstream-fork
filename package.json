@@ -26,7 +26,8 @@
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",
-    "docs:screenshots": "npx playwright test tests/e2e/screenshots.e2e.ts"
+    "docs:screenshots": "npx playwright test tests/e2e/screenshots.e2e.ts",
+    "build:gene-ref": "npx tsx scripts/build-gene-reference-db.ts"
   },
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.2",
@@ -75,6 +76,9 @@
     "productName": "Varlens",
     "icon": "build/icon.png",
     "npmRebuild": false,
+    "extraResources": [
+      { "from": "resources/gene_reference.db", "to": "gene_reference.db" }
+    ],
     "asarUnpack": [
       "node_modules/better-sqlite3-multiple-ciphers/**/*"
     ],

@@ -13,6 +13,7 @@ import { initializeSchema } from './schema'
 import { runMigrations } from './migrations'
 import { DatabaseError, TransactionError } from './errors'
 import { DATABASE_CONFIG } from '../../shared/config'
+import { mainLogger } from '../services/MainLogger'
 import type { Kysely } from 'kysely'
 import type { VarlensDatabase } from '../../shared/types/database-schema'
 import { createRepositories, type Repositories } from './createRepositories'
@@ -28,6 +29,7 @@ import type { GeneListRepository } from './GeneListRepository'
 import type { AuthService } from '../services/auth'
 import type { CohortSummaryService } from './CohortSummaryService'
 import type { FilterPresetRepository } from './FilterPresetRepository'
+import type { PanelRepository } from './PanelRepository'
 
 /**
  * DatabaseService class
@@ -153,6 +155,10 @@ export class DatabaseService {
     return this._repos.filterPresets
   }
 
+  get panels(): PanelRepository {
+    return this._repos.panels
+  }
+
   get user(): { id: number; username: string; role: string } | null {
     return this._currentUser
   }
@@ -262,7 +268,10 @@ export class DatabaseService {
    */
   close(): void {
     this._kysely.destroy().catch((e) => {
-      console.warn('Kysely destroy failed during close:', e)
+      mainLogger.warn(
+        `Kysely destroy failed during close: ${e instanceof Error ? e.message : String(e)}`,
+        'database'
+      )
     })
     try {
       // Cap ANALYZE sampling so optimize finishes quickly even on large tables

@@ -35,6 +35,8 @@ npm-debug.log*
 # Database
 *.db
 *.db-journal
+# Exception: gene reference DB ships with the app
+!resources/gene_reference.db
 
 # Temporary files
 tmp/
@@ -82,3 +84,4 @@ docs/public/screenshots/*.png
 e2e-dsl-test.mjs
 e2e-screenshots/
 *.png
+e2e-screenshots/

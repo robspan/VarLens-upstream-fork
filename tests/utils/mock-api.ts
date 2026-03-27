@@ -131,6 +131,28 @@ export type MockApi = {
     delete: ReturnType<typeof vi.fn>
     reorder: ReturnType<typeof vi.fn>
   }
+  panels: {
+    list: ReturnType<typeof vi.fn>
+    get: ReturnType<typeof vi.fn>
+    create: ReturnType<typeof vi.fn>
+    update: ReturnType<typeof vi.fn>
+    delete: ReturnType<typeof vi.fn>
+    duplicate: ReturnType<typeof vi.fn>
+    setGenes: ReturnType<typeof vi.fn>
+    getGenes: ReturnType<typeof vi.fn>
+    activate: ReturnType<typeof vi.fn>
+    deactivate: ReturnType<typeof vi.fn>
+    activeForCase: ReturnType<typeof vi.fn>
+    validateSymbols: ReturnType<typeof vi.fn>
+    autocomplete: ReturnType<typeof vi.fn>
+    exportBed: ReturnType<typeof vi.fn>
+  }
+  geneRef: {
+    info: ReturnType<typeof vi.fn>
+    assemblies: ReturnType<typeof vi.fn>
+    checkUpdates: ReturnType<typeof vi.fn>
+    update: ReturnType<typeof vi.fn>
+  }
   logs: {
     onMessage: ReturnType<typeof vi.fn>
   }
@@ -283,6 +305,38 @@ export function createMockApi(): MockApi {
       update: vi.fn().mockResolvedValue({}),
       delete: vi.fn().mockResolvedValue(undefined),
       reorder: vi.fn().mockResolvedValue(undefined)
+    },
+
+    panels: {
+      list: vi.fn().mockResolvedValue([]),
+      get: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({ id: 1 }),
+      update: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue({ success: true }),
+      duplicate: vi.fn().mockResolvedValue({ id: 2 }),
+      setGenes: vi.fn().mockResolvedValue(undefined),
+      getGenes: vi.fn().mockResolvedValue([]),
+      activate: vi.fn().mockResolvedValue(undefined),
+      deactivate: vi.fn().mockResolvedValue(undefined),
+      activeForCase: vi.fn().mockResolvedValue([]),
+      validateSymbols: vi.fn().mockResolvedValue([]),
+      autocomplete: vi.fn().mockResolvedValue([]),
+      exportBed: vi.fn().mockResolvedValue({ success: true })
+    },
+
+    geneRef: {
+      info: vi.fn().mockResolvedValue({
+        geneCount: 44983,
+        aliasCount: 100000,
+        coordinateCount: 80000,
+        assemblies: ['GRCh37', 'GRCh38'],
+        builtAt: Math.floor(Date.now() / 1000)
+      }),
+      assemblies: vi.fn().mockResolvedValue([]),
+      checkUpdates: vi
+        .fn()
+        .mockResolvedValue({ currentBuiltAt: 0, daysSinceBuilt: 0, needsUpdate: false }),
+      update: vi.fn().mockResolvedValue({ success: true, message: 'Updated' })
     },
 
     logs: {

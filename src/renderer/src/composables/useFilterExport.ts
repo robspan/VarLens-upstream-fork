@@ -1,6 +1,7 @@
 import { type Ref } from 'vue'
 import { useApiService } from './useApiService'
 import { buildFilterFromState, type FilterState, type ExportResult } from './filter-types'
+import { logService } from '../services/LogService'
 
 /**
  * Composable for variant export functionality.
@@ -15,7 +16,7 @@ export function useFilterExport(
 
   const exportToExcel = async (caseId: number, caseName: string): Promise<ExportResult | null> => {
     if (!api) {
-      console.warn('API not available - running outside Electron')
+      logService.warn('API not available - running outside Electron', 'export')
       return null
     }
 
@@ -51,7 +52,10 @@ export function useFilterExport(
 
       return result?.error === 'Export cancelled' ? { success: false, cancelled: true } : null
     } catch (error) {
-      console.error('Export error:', error)
+      logService.error(
+        'Export error: ' + (error instanceof Error ? error.message : String(error)),
+        'export'
+      )
       return null
     } finally {
       exporting.value = false

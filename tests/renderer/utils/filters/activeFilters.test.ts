@@ -17,6 +17,8 @@ function makeDefaultFilters(overrides: Partial<FilterState> = {}): FilterState {
     starredOnly: false,
     hasCommentOnly: false,
     acmgClassifications: [],
+    activePanelIds: [],
+    panelPaddingBp: 5000,
     ...overrides
   }
 }

@@ -122,6 +122,7 @@ import { useTags, TAG_COLORS } from '../composables/useTags'
 import ColorSwatchPicker from './ColorSwatchPicker.vue'
 import type { Tag } from '../../../main/database/types'
 import { mdiAlert, mdiDelete, mdiPencil, mdiPlus } from '@mdi/js'
+import { logService } from '../services/LogService'
 
 const { loadTags, getTags, createTag, updateTag, deleteTag, getTagUsageCount } = useTags()
 
@@ -204,7 +205,10 @@ const saveEdit = async (): Promise<void> => {
     }
     cancelEdit()
   } catch (error) {
-    console.error('Failed to save tag:', error)
+    logService.error(
+      'Failed to save tag: ' + (error instanceof Error ? error.message : String(error)),
+      'tags'
+    )
   } finally {
     isSaving.value = false
   }
@@ -232,7 +236,10 @@ const executeDelete = async (): Promise<void> => {
       cancelEdit()
     }
   } catch (error) {
-    console.error('Failed to delete tag:', error)
+    logService.error(
+      'Failed to delete tag: ' + (error instanceof Error ? error.message : String(error)),
+      'tags'
+    )
   } finally {
     isDeleting.value = false
     deleteDialog.value = false

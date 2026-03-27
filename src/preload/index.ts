@@ -433,6 +433,63 @@ const api = {
       ipcRenderer.invoke('region-files:importBed', fileId, filePath)
   },
 
+  panels: {
+    list: () => ipcRenderer.invoke('panels:list'),
+    get: (id: number) => ipcRenderer.invoke('panels:get', id),
+    create: (params: {
+      name: string
+      description?: string | null
+      version?: string | null
+      source?: string
+      sourceId?: string | null
+      sourceMetadata?: Record<string, unknown> | null
+    }) => ipcRenderer.invoke('panels:create', params),
+    update: (params: {
+      id: number
+      name?: string
+      description?: string | null
+      version?: string | null
+    }) => ipcRenderer.invoke('panels:update', params),
+    delete: (id: number) => ipcRenderer.invoke('panels:delete', id),
+    duplicate: (id: number, newName: string) =>
+      ipcRenderer.invoke('panels:duplicate', { id, newName }),
+    setGenes: (panelId: number, genes: Array<{ hgncId: string; symbol: string }>) =>
+      ipcRenderer.invoke('panels:setGenes', { panelId, genes }),
+    getGenes: (panelId: number) => ipcRenderer.invoke('panels:getGenes', panelId),
+    activate: (caseId: number, panelId: number, paddingBp?: number) =>
+      ipcRenderer.invoke('panels:activate', { caseId, panelId, paddingBp }),
+    deactivate: (caseId: number, panelId: number) =>
+      ipcRenderer.invoke('panels:deactivate', { caseId, panelId }),
+    activeForCase: (caseId: number) => ipcRenderer.invoke('panels:active-for-case', caseId),
+    validateSymbols: (symbols: string[]) =>
+      ipcRenderer.invoke('panels:validate-symbols', { symbols }),
+    autocomplete: (query: string, limit?: number) =>
+      ipcRenderer.invoke('panels:autocomplete', { query, limit }),
+    searchPanelApp: (keyword: string, region: 'uk' | 'aus' | 'both') =>
+      ipcRenderer.invoke('panels:search-panelapp', { keyword, region }),
+    importPanelApp: (params: {
+      panelId: number
+      region: 'uk' | 'aus'
+      confidenceThreshold: 'green' | 'green_amber' | 'all'
+      name?: string
+    }) => ipcRenderer.invoke('panels:import-panelapp', params),
+    generateStringDb: (params: {
+      seedGenes: string[]
+      requiredScore: number
+      networkType: 'physical' | 'functional'
+      name?: string
+    }) => ipcRenderer.invoke('panels:generate-stringdb', params),
+    exportBed: (panelId: number, assembly: string, paddingBp: number) =>
+      ipcRenderer.invoke('panels:export-bed', { panelId, assembly, paddingBp })
+  },
+
+  geneRef: {
+    info: () => ipcRenderer.invoke('gene-ref:info'),
+    assemblies: () => ipcRenderer.invoke('gene-ref:assemblies'),
+    checkUpdates: () => ipcRenderer.invoke('gene-ref:check-updates'),
+    update: () => ipcRenderer.invoke('gene-ref:update')
+  },
+
   updater: {
     checkForUpdate: () => ipcRenderer.invoke('updater:check'),
     downloadUpdate: () => ipcRenderer.invoke('updater:download'),
@@ -504,6 +561,7 @@ if (process.contextIsolated === true) {
   try {
     contextBridge.exposeInMainWorld('api', api)
   } catch (error) {
+    // Console is the only option in preload context (no access to mainLogger/Electron main process)
     console.error('Failed to expose API via contextBridge:', error)
   }
 } else {

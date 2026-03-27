@@ -10,6 +10,10 @@ import {
   SortItemSchema
 } from '../../../shared/types/ipc-schemas'
 import { mainLogger } from '../../services/MainLogger'
+import { computePanelIntervals, clearPanelIntervalCache } from './panelIntervalHelper'
+
+// Re-export for consumers that import from this module
+export { clearPanelIntervalCache }
 
 /**
  * Variants IPC handlers
@@ -93,6 +97,31 @@ export function registerVariantHandlers({ ipcMain, getDb, getDbPool }: HandlerDe
         const fullFilter: VariantFilter = {
           case_id: validatedCaseId.data,
           ...validatedFilters.data
+        }
+
+        // Compute panel intervals if active panels specified
+        if (fullFilter.active_panel_ids && fullFilter.active_panel_ids.length > 0) {
+          const dbRef = getDb()
+          const caseData = dbRef.cases.getCase(fullFilter.case_id)
+          const genomeBuild = caseData?.genome_build ?? 'GRCh38'
+
+          const intervals = computePanelIntervals(
+            dbRef,
+            {
+              active_panel_ids: fullFilter.active_panel_ids,
+              panel_padding_bp: fullFilter.panel_padding_bp,
+              genome_build: genomeBuild
+            },
+            fullFilter.case_id,
+            'variants'
+          )
+          if (intervals) {
+            fullFilter.panel_intervals = intervals
+          }
+
+          // Clean up IPC-only fields that shouldn't reach the repository
+          delete fullFilter.active_panel_ids
+          delete fullFilter.panel_padding_bp
         }
 
         const pool = getDbPool?.()

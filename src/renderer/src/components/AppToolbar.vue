@@ -115,6 +115,11 @@
           @click="$emit('show-tag-management')"
         />
         <v-list-item
+          :prepend-icon="mdiPlaylistEdit"
+          title="Gene Panels"
+          @click="$emit('show-panel-manager')"
+        />
+        <v-list-item
           :prepend-icon="mdiTune"
           title="Application Preferences"
           @click="$emit('show-preferences')"
@@ -169,6 +174,7 @@ import {
   mdiInformationOutline,
   mdiLink,
   mdiTableColumn,
+  mdiPlaylistEdit,
   mdiTagMultiple,
   mdiTune
 } from '@mdi/js'
@@ -196,6 +202,7 @@ defineEmits<{
   'show-database-overview': []
   'show-external-links': []
   'show-tag-management': []
+  'show-panel-manager': []
   'show-preferences': []
   'show-import-progress': []
   'reset-columns': []

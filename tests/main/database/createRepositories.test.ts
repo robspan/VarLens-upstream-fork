@@ -33,6 +33,7 @@ describe('createRepositories', () => {
         'geneLists',
         'kysely',
         'metadata',
+        'panels',
         'overview',
         'tags',
         'transcripts',

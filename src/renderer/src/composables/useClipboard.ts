@@ -3,6 +3,7 @@
  */
 
 import { ref } from 'vue'
+import { logService } from '../services/LogService'
 
 /**
  * Provides clipboard copy functionality with state tracking
@@ -29,7 +30,10 @@ export function useClipboard() {
     } catch (e) {
       error.value = 'Failed to copy to clipboard'
       copied.value = false
-      console.error('Clipboard error:', e)
+      logService.error(
+        'Clipboard error: ' + (e instanceof Error ? e.message : String(e)),
+        'clipboard'
+      )
       return false
     }
   }

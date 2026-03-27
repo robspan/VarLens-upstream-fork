@@ -8,6 +8,7 @@
 import { ref } from 'vue'
 import type { Tag } from '../../../main/database/types'
 import { useApiService } from './useApiService'
+import { logService } from '../services/LogService'
 
 // Cache all tags (global list)
 const tagsCache = ref<Tag[]>([])
@@ -45,7 +46,10 @@ export function useTags() {
       const tags = await api.tags.list()
       tagsCache.value = tags
     } catch (error) {
-      console.error('Failed to load tags:', error)
+      logService.error(
+        'Failed to load tags: ' + (error instanceof Error ? error.message : String(error)),
+        'tags'
+      )
     } finally {
       isLoadingTags.value = false
     }
@@ -148,7 +152,10 @@ export function useTags() {
       const tags = await api.tags.getVariantTags(caseId, variantId)
       variantTagsCache.value.set(key, tags)
     } catch (error) {
-      console.error('Failed to load variant tags:', error)
+      logService.error(
+        'Failed to load variant tags: ' + (error instanceof Error ? error.message : String(error)),
+        'tags'
+      )
     } finally {
       variantTagsLoading.value.set(key, false)
     }
@@ -211,7 +218,10 @@ export function useTags() {
     try {
       await api.tags.assignVariantTag(caseId, variantId, tagId)
     } catch (error) {
-      console.error('Failed to assign variant tag:', error)
+      logService.error(
+        'Failed to assign variant tag: ' + (error instanceof Error ? error.message : String(error)),
+        'tags'
+      )
       // Revert optimistic update
       variantTagsCache.value.set(key, currentTags)
       throw error
@@ -239,7 +249,10 @@ export function useTags() {
     try {
       await api.tags.removeVariantTag(caseId, variantId, tagId)
     } catch (error) {
-      console.error('Failed to remove variant tag:', error)
+      logService.error(
+        'Failed to remove variant tag: ' + (error instanceof Error ? error.message : String(error)),
+        'tags'
+      )
       // Revert optimistic update
       variantTagsCache.value.set(key, currentTags)
       throw error
@@ -286,7 +299,10 @@ export function useTags() {
     try {
       await api.tags.setVariantTags(caseId, variantId, tagIds)
     } catch (error) {
-      console.error('Failed to set variant tags:', error)
+      logService.error(
+        'Failed to set variant tags: ' + (error instanceof Error ? error.message : String(error)),
+        'tags'
+      )
       // Revert optimistic update
       variantTagsCache.value.set(key, currentTags)
       throw error

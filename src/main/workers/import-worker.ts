@@ -147,11 +147,16 @@ port.on('message', async (msg: MainMessage) => {
 
           // Create case record
           const fileSize = statSync(file.filePath).size
+          // Default to GRCh38 for JSON-based imports. Raw VCF headers are not available
+          // in the current JSON/TSV parsing pipeline. When native VCF import is added,
+          // use GenomeBuildDetector.detectGenomeBuildFromVcfHeaders() on the ## header lines.
+          const genomeBuild = 'GRCh38'
           const caseResult = stmts.insertCase.run(
             file.caseName,
             file.filePath,
             fileSize,
-            Date.now()
+            Date.now(),
+            genomeBuild
           )
           const caseId = Number(caseResult.lastInsertRowid)
 
@@ -264,6 +269,7 @@ port.on('message', async (msg: MainMessage) => {
             // Clean up pre-parse promise on error
             if (nextFileParsed) {
               nextFileParsed.catch((e) => {
+                // console.warn is the only option in worker_threads context (no access to mainLogger/Electron IPC)
                 console.warn('Pre-parse cleanup failed:', e)
               }) // prevent unhandled rejection
               nextFileParsed = null
@@ -413,8 +419,8 @@ function prepareStatements(db: DatabaseType) {
   `)
 
   const insertCaseStmt = db.prepare(`
-    INSERT INTO cases (name, file_path, file_size, variant_count, created_at)
-    VALUES (?, ?, ?, 0, ?)
+    INSERT INTO cases (name, file_path, file_size, variant_count, created_at, genome_build)
+    VALUES (?, ?, ?, 0, ?, ?)
   `)
 
   const deleteCaseStmt = db.prepare('DELETE FROM cases WHERE id = ?')

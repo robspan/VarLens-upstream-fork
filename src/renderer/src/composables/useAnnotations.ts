@@ -6,6 +6,7 @@
  */
 
 import { shallowRef, triggerRef } from 'vue'
+import { logService } from '../services/LogService'
 import type {
   VariantAnnotation,
   CaseVariantAnnotation,
@@ -155,7 +156,10 @@ export function useAnnotations() {
       const result = await api.annotations.getForVariant(caseId, chr, pos, ref, alt)
       cacheSet(key, result)
     } catch (error) {
-      console.error('Failed to load annotations:', error)
+      logService.error(
+        'Failed to load annotations: ' + (error instanceof Error ? error.message : String(error)),
+        'annotations'
+      )
     } finally {
       setLoading(key, false)
     }
@@ -197,7 +201,10 @@ export function useAnnotations() {
         perCase: updated
       })
     } catch (error) {
-      console.error('Failed to toggle star:', error)
+      logService.error(
+        'Failed to toggle star: ' + (error instanceof Error ? error.message : String(error)),
+        'annotations'
+      )
       // Revert optimistic update
       if (current) {
         current.perCase = {
@@ -222,7 +229,10 @@ export function useAnnotations() {
     const results = await Promise.allSettled(promises)
     const failed = results.filter((r) => r.status === 'rejected')
     if (failed.length > 0) {
-      console.warn(`Failed to load ${failed.length}/${promises.length} annotations`)
+      logService.warn(
+        `Failed to load ${failed.length}/${promises.length} annotations`,
+        'annotations'
+      )
     }
   }
 
@@ -246,7 +256,11 @@ export function useAnnotations() {
       const global = await api.annotations.getGlobal(chr, pos, ref, alt)
       cacheSet(key, { global, perCase: null })
     } catch (error) {
-      console.error('Failed to load global annotations:', error)
+      logService.error(
+        'Failed to load global annotations: ' +
+          (error instanceof Error ? error.message : String(error)),
+        'annotations'
+      )
     } finally {
       setLoading(key, false)
     }
@@ -263,7 +277,10 @@ export function useAnnotations() {
     const results = await Promise.allSettled(promises)
     const failed = results.filter((r) => r.status === 'rejected')
     if (failed.length > 0) {
-      console.warn(`Failed to load ${failed.length}/${promises.length} global annotations`)
+      logService.warn(
+        `Failed to load ${failed.length}/${promises.length} global annotations`,
+        'annotations'
+      )
     }
   }
 
@@ -299,7 +316,10 @@ export function useAnnotations() {
         perCase: current?.perCase ?? null
       })
     } catch (error) {
-      console.error('Failed to toggle global star:', error)
+      logService.error(
+        'Failed to toggle global star: ' + (error instanceof Error ? error.message : String(error)),
+        'annotations'
+      )
       // Revert optimistic update
       if (current) {
         current.global = {
@@ -343,7 +363,11 @@ export function useAnnotations() {
         perCase: current?.perCase ?? null
       })
     } catch (error) {
-      console.error('Failed to set global ACMG classification:', error)
+      logService.error(
+        'Failed to set global ACMG classification: ' +
+          (error instanceof Error ? error.message : String(error)),
+        'annotations'
+      )
       // Revert optimistic update
       if (current) {
         current.global = {
@@ -399,7 +423,11 @@ export function useAnnotations() {
         perCase: current?.perCase ?? null
       })
     } catch (error) {
-      console.error('Failed to upsert global comment:', error)
+      logService.error(
+        'Failed to upsert global comment: ' +
+          (error instanceof Error ? error.message : String(error)),
+        'annotations'
+      )
       // Revert optimistic update
       if (current) {
         current.global = {
@@ -447,7 +475,11 @@ export function useAnnotations() {
         perCase: updated
       })
     } catch (error) {
-      console.error('Failed to upsert per-case comment:', error)
+      logService.error(
+        'Failed to upsert per-case comment: ' +
+          (error instanceof Error ? error.message : String(error)),
+        'annotations'
+      )
       // Revert optimistic update
       if (current) {
         current.perCase = {
@@ -517,7 +549,11 @@ export function useAnnotations() {
         perCase: updated
       })
     } catch (error) {
-      console.error('Failed to set ACMG classification:', error)
+      logService.error(
+        'Failed to set ACMG classification: ' +
+          (error instanceof Error ? error.message : String(error)),
+        'annotations'
+      )
       // Revert optimistic update
       if (current) {
         current.perCase = {
@@ -587,7 +623,11 @@ export function useAnnotations() {
         perCase: updated
       })
     } catch (error) {
-      console.error('Failed to set ACMG classification with evidence:', error)
+      logService.error(
+        'Failed to set ACMG classification with evidence: ' +
+          (error instanceof Error ? error.message : String(error)),
+        'annotations'
+      )
       // Rollback optimistic update
       if (current) {
         current.perCase = previousPerCase
@@ -632,7 +672,11 @@ export function useAnnotations() {
         perCase: current?.perCase ?? null
       })
     } catch (error) {
-      console.error('Failed to set global ACMG classification with evidence:', error)
+      logService.error(
+        'Failed to set global ACMG classification with evidence: ' +
+          (error instanceof Error ? error.message : String(error)),
+        'annotations'
+      )
       // Rollback optimistic update
       if (current) {
         current.global = previousGlobal

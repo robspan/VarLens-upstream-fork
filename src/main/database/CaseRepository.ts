@@ -27,6 +27,7 @@ interface CaseQueryRawRow {
   file_size: number
   variant_count: number
   created_at: number
+  genome_build: string
   affected_status: string | null
   sex: string | null
   cohort_names_raw: string | null
@@ -34,7 +35,7 @@ interface CaseQueryRawRow {
 }
 
 export class CaseRepository extends BaseRepository {
-  createCase(name: string, filePath: string, fileSize: number): number {
+  createCase(name: string, filePath: string, fileSize: number, genomeBuild = 'GRCh38'): number {
     try {
       const result = this.execRun(
         this.kysely.insertInto('cases').values({
@@ -42,7 +43,8 @@ export class CaseRepository extends BaseRepository {
           file_path: filePath,
           file_size: fileSize,
           variant_count: 0,
-          created_at: Date.now()
+          created_at: Date.now(),
+          genome_build: genomeBuild
         })
       )
       return Number(result.lastInsertRowid)
@@ -192,6 +194,7 @@ export class CaseRepository extends BaseRepository {
     // Main data query with LEFT JOINs
     const dataSQL = `
       SELECT c.id, c.name, c.file_path, c.file_size, c.variant_count, c.created_at,
+             c.genome_build,
              cm.affected_status, cm.sex,
              GROUP_CONCAT(cg.name, '|') AS cohort_names_raw,
              GROUP_CONCAT(cg.id, '|') AS cohort_ids_raw
@@ -216,6 +219,7 @@ export class CaseRepository extends BaseRepository {
       file_size: row.file_size,
       variant_count: row.variant_count,
       created_at: row.created_at,
+      genome_build: row.genome_build ?? 'GRCh38',
       affected_status: (row.affected_status as AffectedStatus | null) ?? null,
       sex: (row.sex as CaseSex | null) ?? null,
       cohort_names:

@@ -22,6 +22,7 @@ import type { ColumnFilterMeta } from '../../../shared/types/column-filters'
 import type { ColumnFiltersParam } from '../../../shared/types/column-filters'
 import { useApiService } from './useApiService'
 import { cloneForIpc } from '../utils/cloneForIpc'
+import { logService } from '../services/LogService'
 
 /**
  * Query parameters for cohort variant fetching
@@ -61,6 +62,10 @@ export interface CohortQueryParams {
   acmg_classifications?: string[]
   /** Per-column typed filters from table header inputs */
   column_filters?: ColumnFiltersParam
+  /** Active panel IDs for region-based filtering */
+  active_panel_ids?: number[]
+  /** Padding in base pairs for panel interval computation */
+  panel_padding_bp?: number
 }
 
 /** Raw result from cohort variant query (before state update) */
@@ -200,6 +205,12 @@ export function useCohortData(): UseCohortDataReturn {
       // Deep-clone to strip Vue reactive proxies for IPC serialization
       ipcParams.column_filters = cloneForIpc(params.column_filters)
     }
+    if (params.active_panel_ids !== undefined && params.active_panel_ids.length > 0) {
+      ipcParams.active_panel_ids = [...params.active_panel_ids]
+      if (params.panel_padding_bp !== undefined) {
+        ipcParams.panel_padding_bp = params.panel_padding_bp
+      }
+    }
 
     return ipcParams
   }
@@ -211,7 +222,7 @@ export function useCohortData(): UseCohortDataReturn {
    */
   const fetchVariants = async (params: CohortQueryParams): Promise<void> => {
     if (!api) {
-      console.warn('API not available - running outside Electron')
+      logService.warn('API not available - running outside Electron', 'cohort')
       return
     }
 
@@ -234,7 +245,9 @@ export function useCohortData(): UseCohortDataReturn {
         starred_only: params.starred_only,
         has_comment: params.has_comment,
         acmg_classifications: params.acmg_classifications,
-        column_filters: params.column_filters
+        column_filters: params.column_filters,
+        active_panel_ids: params.active_panel_ids,
+        panel_padding_bp: params.panel_padding_bp
       })
       const filtersChanged = filterHash !== cachedFilterHash
 
@@ -281,7 +294,10 @@ export function useCohortData(): UseCohortDataReturn {
       const result = await (api as any).cohort.getSummary()
       summary.value = result
     } catch (err) {
-      console.error('Failed to load cohort summary:', err)
+      logService.error(
+        'Failed to load cohort summary: ' + (err instanceof Error ? err.message : String(err)),
+        'cohort'
+      )
     }
   }
 

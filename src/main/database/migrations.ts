@@ -31,6 +31,8 @@ import { BUILT_IN_PRESETS } from './built-in-presets'
  * - 15: Filter presets table with built-in preset seeding
  * - 16: Rework built-in presets to clinical combo presets
  * - 17: Performance indexes for tag/star/ACMG filter queries
+ * - 18: Composite index on variant_annotations for coordinate lookups
+ * - 19: panels, panel_genes, case_active_panels + cases.genome_build
  *
  * @param db - better-sqlite3-multiple-ciphers Database instance
  */
@@ -1173,5 +1175,50 @@ export function runMigrations(db: Database.Database): void {
 
       PRAGMA user_version = 18;
     `)
+  }
+
+  // ── v19: panels, panel_genes, case_active_panels + cases.genome_build ──
+  if (currentVersion < 19) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS panels (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        version TEXT,
+        source TEXT NOT NULL DEFAULT 'manual',
+        source_id TEXT,
+        source_metadata TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS panel_genes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        panel_id INTEGER NOT NULL REFERENCES panels(id) ON DELETE CASCADE,
+        hgnc_id TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        UNIQUE(panel_id, hgnc_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS case_active_panels (
+        case_id INTEGER NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+        panel_id INTEGER NOT NULL REFERENCES panels(id) ON DELETE CASCADE,
+        padding_bp INTEGER NOT NULL DEFAULT 5000,
+        activated_at INTEGER NOT NULL,
+        PRIMARY KEY (case_id, panel_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_panel_genes_panel ON panel_genes(panel_id);
+      CREATE INDEX IF NOT EXISTS idx_case_active_panels_case ON case_active_panels(case_id);
+    `)
+
+    // Add genome_build column to cases
+    const caseCols = db.prepare("PRAGMA table_info('cases')").all() as Array<{ name: string }>
+    if (!caseCols.some((c) => c.name === 'genome_build')) {
+      db.exec("ALTER TABLE cases ADD COLUMN genome_build TEXT DEFAULT 'GRCh38'")
+      db.exec("UPDATE cases SET genome_build = 'GRCh38' WHERE genome_build IS NULL")
+    }
+
+    db.exec('PRAGMA user_version = 19')
   }
 }

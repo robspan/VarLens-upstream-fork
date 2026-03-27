@@ -122,6 +122,19 @@ export const CohortSearchParamsSchema = z.object({
     .nullish()
     .transform((val) => val ?? undefined),
 
+  // Panel-based genomic interval filtering
+  active_panel_ids: z
+    .array(z.number().int().positive())
+    .nullish()
+    .transform((val) => val ?? undefined),
+  panel_padding_bp: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(1000000)
+    .nullish()
+    .transform((val) => val ?? undefined),
+
   // Count optimization flag
   _count_needed: z.boolean().optional()
 })
@@ -217,7 +230,20 @@ export const VariantFilterPartialSchema = z.object({
     .transform((val) => val ?? undefined),
 
   // Annotation scope for star/ACMG filters
-  annotation_scope: z.enum(['case', 'all']).optional()
+  annotation_scope: z.enum(['case', 'all']).optional(),
+
+  // Panel-based genomic interval filtering
+  active_panel_ids: z
+    .array(z.number().int().positive())
+    .nullish()
+    .transform((val) => val ?? undefined),
+  panel_padding_bp: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(1000000)
+    .nullish()
+    .transform((val) => val ?? undefined)
 })
 
 /**
@@ -491,6 +517,131 @@ export const RegionFileCreateSchema = z.object({
 export const BedImportSchema = z.object({
   fileId: z.number().int().positive(),
   filePath: FilePathSchema
+})
+
+// ============================================================
+// Panel Schemas
+// ============================================================
+
+/**
+ * Schema for panel creation
+ */
+export const PanelCreateSchema = z.object({
+  name: z.string().min(1).max(200),
+  description: nullishString(),
+  version: nullishString(),
+  source: z
+    .enum(['manual', 'panelapp_uk', 'panelapp_aus', 'stringdb', 'bed_import'])
+    .default('manual'),
+  sourceId: nullishString(),
+  sourceMetadata: z
+    .record(z.string(), z.unknown())
+    .nullish()
+    .transform((val) => val ?? undefined)
+})
+
+/**
+ * Schema for panel update
+ */
+export const PanelUpdateSchema = z.object({
+  id: z.number().int().positive(),
+  name: z.string().min(1).max(200).optional(),
+  description: z.string().nullable().optional(),
+  version: z.string().nullable().optional()
+})
+
+/**
+ * Schema for setting genes on a panel
+ */
+export const PanelGenesSchema = z.object({
+  panelId: z.number().int().positive(),
+  genes: z.array(z.object({ hgncId: z.string().min(1), symbol: z.string().min(1) })).max(50000)
+})
+
+/**
+ * Schema for activating a panel on a case
+ */
+export const PanelActivateSchema = z.object({
+  caseId: z.number().int().positive(),
+  panelId: z.number().int().positive(),
+  paddingBp: z.number().int().nonnegative().max(1000000).default(5000)
+})
+
+/**
+ * Schema for deactivating a panel on a case
+ */
+export const PanelDeactivateSchema = z.object({
+  caseId: z.number().int().positive(),
+  panelId: z.number().int().positive()
+})
+
+/**
+ * Schema for validating gene symbols
+ */
+export const ValidateSymbolsSchema = z.object({
+  symbols: z.array(z.string().min(1)).max(50000)
+})
+
+/**
+ * Schema for gene autocomplete
+ */
+export const AutocompleteSchema = z.object({
+  query: z.string().min(1).max(100),
+  limit: z.number().int().positive().max(50).default(20)
+})
+
+/**
+ * Schema for panel duplication
+ */
+export const PanelDuplicateSchema = z.object({
+  id: z.number().int().positive(),
+  newName: z.string().min(1).max(200)
+})
+
+/**
+ * Schema for panel ID
+ */
+export const PanelIdSchema = z.number().int().positive()
+
+// ============================================================
+// PanelApp / StringDB Import Schemas
+// ============================================================
+
+/**
+ * Schema for searching PanelApp panels
+ */
+export const PanelAppSearchSchema = z.object({
+  keyword: z.string().min(1).max(200),
+  region: z.enum(['uk', 'aus', 'both']).default('both')
+})
+
+/**
+ * Schema for importing a panel from PanelApp
+ */
+export const PanelAppImportSchema = z.object({
+  panelId: z.number().int().positive(),
+  region: z.enum(['uk', 'aus']),
+  confidenceThreshold: z.enum(['green', 'green_amber', 'all']).default('green'),
+  name: z.string().min(1).max(200).optional()
+})
+
+/**
+ * Schema for generating a panel from StringDB interactions
+ */
+export const StringDbGenerateSchema = z.object({
+  seedGenes: z.array(z.string().min(1)).min(1).max(500),
+  requiredScore: z.number().int().min(0).max(1000).default(400),
+  networkType: z.enum(['physical', 'functional']).default('physical'),
+  name: z.string().min(1).max(200).optional()
+})
+
+/**
+ * Schema for exporting a panel as a BED file
+ */
+export const PanelExportBedSchema = z.object({
+  panelId: z.number().int().positive(),
+  assembly: z.string().min(1),
+  paddingBp: z.number().int().nonnegative().default(0)
 })
 
 // ============================================================

@@ -84,6 +84,19 @@ import type { FilterPreset, FilterPresetCreate, FilterPresetUpdate } from './fil
 import type { LogMessage } from './log'
 import type { TranscriptAnnotation, TranscriptInsertRow } from './transcript'
 import type { DatabaseOverview } from './database-overview'
+import type {
+  GeneValidationResult,
+  GeneAutocompleteResult,
+  GeneRefInfo,
+  AssemblyInfo
+} from '../../main/database/GeneReferenceDb'
+import type {
+  PanelRow,
+  PanelWithCount,
+  PanelGeneRow,
+  ActivePanelRow
+} from '../../main/database/PanelRepository'
+import type { PanelAppSearchResult } from '../../main/services/api/PanelAppClient'
 
 // Re-export for convenience
 export type {
@@ -121,7 +134,16 @@ export type {
   CaseExternalId,
   GeneList,
   GeneListWithCount,
-  RegionFile
+  RegionFile,
+  PanelRow,
+  PanelWithCount,
+  PanelGeneRow,
+  ActivePanelRow,
+  GeneValidationResult,
+  GeneAutocompleteResult,
+  GeneRefInfo,
+  AssemblyInfo,
+  PanelAppSearchResult
 }
 
 export interface CasesAPI {
@@ -510,6 +532,76 @@ export interface RegionFilesAPI {
   importBed: (fileId: number, filePath: string) => Promise<RegionFile>
 }
 
+export interface PanelsAPI {
+  list: () => Promise<PanelWithCount[]>
+  get: (id: number) => Promise<(PanelRow & { genes: PanelGeneRow[] }) | null>
+  create: (params: {
+    name: string
+    description?: string | null
+    version?: string | null
+    source?: string
+    sourceId?: string | null
+    sourceMetadata?: Record<string, unknown> | null
+  }) => Promise<PanelRow>
+  update: (params: {
+    id: number
+    name?: string
+    description?: string | null
+    version?: string | null
+  }) => Promise<PanelRow>
+  delete: (id: number) => Promise<{ success: boolean }>
+  duplicate: (id: number, newName: string) => Promise<PanelRow>
+  setGenes: (
+    panelId: number,
+    genes: Array<{ hgncId: string; symbol: string }>
+  ) => Promise<{ success: boolean }>
+  getGenes: (panelId: number) => Promise<PanelGeneRow[]>
+  activate: (caseId: number, panelId: number, paddingBp?: number) => Promise<{ success: boolean }>
+  deactivate: (caseId: number, panelId: number) => Promise<{ success: boolean }>
+  activeForCase: (caseId: number) => Promise<ActivePanelRow[]>
+  validateSymbols: (symbols: string[]) => Promise<GeneValidationResult[]>
+  autocomplete: (query: string, limit?: number) => Promise<GeneAutocompleteResult[]>
+  searchPanelApp: (
+    keyword: string,
+    region: 'uk' | 'aus' | 'both'
+  ) => Promise<PanelAppSearchResult[]>
+  importPanelApp: (params: {
+    panelId: number
+    region: 'uk' | 'aus'
+    confidenceThreshold: 'green' | 'green_amber' | 'all'
+    name?: string
+  }) => Promise<PanelRow>
+  generateStringDb: (params: {
+    seedGenes: string[]
+    requiredScore: number
+    networkType: 'physical' | 'functional'
+    name?: string
+  }) => Promise<PanelRow>
+  exportBed: (
+    panelId: number,
+    assembly: string,
+    paddingBp: number
+  ) => Promise<{ success: boolean; path?: string }>
+}
+
+export interface GeneRefCheckUpdatesResult {
+  currentBuiltAt: number
+  daysSinceBuilt: number
+  needsUpdate: boolean
+}
+
+export interface GeneRefUpdateResult {
+  success: boolean
+  message: string
+}
+
+export interface GeneRefAPI {
+  info: () => Promise<GeneRefInfo>
+  assemblies: () => Promise<AssemblyInfo[]>
+  checkUpdates: () => Promise<GeneRefCheckUpdatesResult>
+  update: () => Promise<GeneRefUpdateResult>
+}
+
 export interface WindowAPI {
   cases: CasesAPI
   variants: VariantsAPI
@@ -537,6 +629,8 @@ export interface WindowAPI {
   audit: AuditLogAPI
   auth: AuthAPI
   presets: PresetsAPI
+  panels: PanelsAPI
+  geneRef: GeneRefAPI
 }
 
 export interface PresetsAPI {

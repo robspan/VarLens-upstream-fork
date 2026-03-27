@@ -17,6 +17,8 @@ export interface FilterState {
   hasCommentOnly: boolean
   acmgClassifications: string[]
   annotationScope: 'case' | 'all'
+  activePanelIds: number[]
+  panelPaddingBp: number
 }
 
 /**
@@ -143,6 +145,11 @@ export function buildFilterFromState(
   }
   if (filters.annotationScope === 'all') {
     variantFilter.annotation_scope = 'all'
+  }
+
+  if (filters.activePanelIds.length > 0) {
+    variantFilter.active_panel_ids = [...filters.activePanelIds]
+    variantFilter.panel_padding_bp = filters.panelPaddingBp
   }
 
   return variantFilter

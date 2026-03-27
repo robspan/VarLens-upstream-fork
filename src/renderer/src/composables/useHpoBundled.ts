@@ -6,6 +6,7 @@
  */
 
 import { ref, computed } from 'vue'
+import { logService } from '../services/LogService'
 
 /**
  * HPO term structure matching bundled JSON format
@@ -59,7 +60,11 @@ async function loadHpoTerms(): Promise<HpoTerm[]> {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to load HPO terms'
     loadError.value = message
-    console.error('Failed to load bundled HPO terms:', error)
+    logService.error(
+      'Failed to load bundled HPO terms: ' +
+        (error instanceof Error ? error.message : String(error)),
+      'hpo'
+    )
     return []
   } finally {
     isLoading.value = false

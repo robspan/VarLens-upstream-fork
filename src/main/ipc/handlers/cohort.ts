@@ -13,6 +13,7 @@ import {
 import { mainLogger } from '../../services/MainLogger'
 import type { RebuildWorkerResponse } from '../../workers/rebuild-summary-worker'
 import type { DatabaseService } from '../../database/DatabaseService'
+import { computePanelIntervals } from './panelIntervalHelper'
 
 function convertBigInts<T>(obj: T): T {
   if (obj === null || obj === undefined) return obj
@@ -61,14 +62,37 @@ export function registerCohortHandlers({ ipcMain, getDb, getDbPool }: HandlerDep
         throw new Error('Invalid search parameters')
       }
 
+      // Compute panel intervals if active panels specified (DRY: shared helper)
+      const cohortParams = { ...validated.data } as typeof validated.data & {
+        panel_intervals?: Array<{ chr: string; start: number; end: number }>
+      }
+      if (cohortParams.active_panel_ids && cohortParams.active_panel_ids.length > 0) {
+        const dbRef = getDb()
+        const intervals = computePanelIntervals(
+          dbRef,
+          {
+            active_panel_ids: cohortParams.active_panel_ids,
+            panel_padding_bp: cohortParams.panel_padding_bp
+          },
+          undefined, // cohort mode: no specific case, sample any variant
+          'cohort'
+        )
+        if (intervals) {
+          cohortParams.panel_intervals = intervals
+        }
+        // Clean up IPC-only fields that shouldn't reach the service
+        delete cohortParams.active_panel_ids
+        delete cohortParams.panel_padding_bp
+      }
+
       const pool = getDbPool?.()
       let result: ReturnType<CohortService['getCohortVariants']>
       if (pool) {
-        result = await pool.run({ type: 'cohort:variants', params: [validated.data] })
+        result = await pool.run({ type: 'cohort:variants', params: [cohortParams] })
       } else {
         const db = getDb()
         const cohortService = new CohortService(db.database)
-        result = cohortService.getCohortVariants(validated.data)
+        result = cohortService.getCohortVariants(cohortParams)
       }
       // Deep clone to plain object for IPC serialization
       // better-sqlite3 can return objects with non-serializable properties

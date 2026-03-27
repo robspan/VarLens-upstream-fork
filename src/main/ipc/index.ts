@@ -28,6 +28,8 @@ import { registerAuditLogHandlers } from './handlers/audit-log'
 import { registerGeneListHandlers } from './handlers/gene-lists'
 import { registerAuthHandlers } from './handlers/auth'
 import { registerFilterPresetHandlers } from './handlers/filter-presets'
+import { registerPanelHandlers } from './handlers/panels'
+import { registerGeneRefHandlers } from './handlers/gene-ref'
 
 // Re-export pool lifecycle for external callers (e.g. app shutdown)
 export { initDbPool, destroyDbPool } from './dbPoolManager'
@@ -71,6 +73,8 @@ export function registerIpcHandlers(): void {
   registerGeneListHandlers(deps)
   registerAuthHandlers(deps)
   registerFilterPresetHandlers(deps)
+  registerPanelHandlers(deps)
+  registerGeneRefHandlers(deps)
 
   mainLogger.info('IPC handlers registered', 'ipc')
 }

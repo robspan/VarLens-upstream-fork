@@ -181,6 +181,17 @@ export class VariantRepository extends BaseRepository {
     return variants.length
   }
 
+  /**
+   * Lightweight check for whether variants use 'chr' prefix (e.g. 'chr1' vs '1').
+   * Only fetches a single row instead of loading full variant data.
+   */
+  getChrPrefix(caseId: number): boolean {
+    const row = this.db
+      .prepare('SELECT chr FROM variants WHERE case_id = ? LIMIT 1')
+      .get(caseId) as { chr: string } | undefined
+    return row?.chr?.startsWith('chr') ?? false
+  }
+
   getVariantCount(caseId: number): number {
     const result = this.execFirst<{ count: number }>(
       this.kysely
@@ -197,7 +208,10 @@ export class VariantRepository extends BaseRepository {
    * Build a Kysely SELECT query from a VariantFilter.
    * Used by both getVariants() and getAllVariantsForExport().
    */
-  private buildVariantQuery(filter: VariantFilter): VariantQueryBuilder {
+  private buildVariantQuery(
+    filter: VariantFilter,
+    options?: { forceOrChain?: boolean }
+  ): VariantQueryBuilder {
     let query: VariantQueryBuilder = this.kysely
       .selectFrom('variants')
       .selectAll()
@@ -259,6 +273,26 @@ export class VariantRepository extends BaseRepository {
           .where('tag_id', 'in', filter.tag_ids!)
       )
     )
+
+    // Panel genomic interval filter
+    if (filter.panel_intervals && filter.panel_intervals.length > 0) {
+      if (filter.panel_intervals.length < 50 || options?.forceOrChain === true) {
+        // Small set (or forced for compiled queries): OR chain of chr + pos range conditions
+        const intervals = filter.panel_intervals
+        query = query.where(({ or, and, eb }) =>
+          or(
+            intervals.map((iv) =>
+              and([eb('chr', '=', iv.chr), eb('pos', '>=', iv.start), eb('pos', '<=', iv.end)])
+            )
+          )
+        )
+      } else {
+        // Large set: use pre-populated temp table (preparePanelIntervals must be called first)
+        query = query.where(
+          sql<boolean>`EXISTS (SELECT 1 FROM _panel_intervals pi WHERE variants.chr = pi.chr AND variants.pos BETWEEN pi.start_pos AND pi.end_pos)`
+        )
+      }
+    }
 
     // Starred filter (scope-dependent)
     query = query.$if(filter.starred_only === true, (qb) => {
@@ -534,6 +568,51 @@ export class VariantRepository extends BaseRepository {
     return sorted
   }
 
+  // ── Panel interval temp table ────────────────────────────────
+
+  /**
+   * Populate a temp table with panel intervals for large interval sets (>= 50).
+   * Must be called before buildVariantQuery() when filter.panel_intervals.length >= 50.
+   */
+  private setupPanelIntervalsTable(
+    intervals: Array<{ chr: string; start: number; end: number }>
+  ): void {
+    this.db.exec(
+      'CREATE TEMP TABLE IF NOT EXISTS _panel_intervals (chr TEXT, start_pos INTEGER, end_pos INTEGER)'
+    )
+    this.db.exec('DELETE FROM _panel_intervals')
+    const insert = this.db.prepare(
+      'INSERT INTO _panel_intervals (chr, start_pos, end_pos) VALUES (?, ?, ?)'
+    )
+    const insertMany = this.db.transaction(
+      (items: Array<{ chr: string; start: number; end: number }>) => {
+        for (const iv of items) {
+          insert.run(iv.chr, iv.start, iv.end)
+        }
+      }
+    )
+    insertMany(intervals)
+  }
+
+  /**
+   * Clean up the temp table after query execution.
+   */
+  private cleanupPanelIntervalsTable(): void {
+    this.db.exec('DROP TABLE IF EXISTS _panel_intervals')
+  }
+
+  /**
+   * If filter uses large panel intervals, set up temp table before query.
+   * Returns true if temp table was created (caller should clean up after).
+   */
+  private preparePanelIntervals(filter: VariantFilter): boolean {
+    if (filter.panel_intervals && filter.panel_intervals.length >= 50) {
+      this.setupPanelIntervalsTable(filter.panel_intervals)
+      return true
+    }
+    return false
+  }
+
   // ── Query methods ────────────────────────────────────────────
 
   getVariants(
@@ -543,24 +622,31 @@ export class VariantRepository extends BaseRepository {
     sortBy?: SortItem[],
     skipCount?: boolean
   ): PaginatedResult<Variant> {
-    let total_count = 0
+    const useTempTable = this.preparePanelIntervals(filter)
+    try {
+      let total_count = 0
 
-    if (skipCount !== true) {
-      // Build count query using Kysely — avoids brittle string replacement
-      const countQuery = this.buildVariantQuery(filter)
-      const compiled = countQuery.compile()
-      // Wrap the filtered query in a COUNT to handle complex WHERE clauses
-      const countSql = `SELECT count(*) as count FROM (${compiled.sql})`
-      const countResult = this.db.prepare(countSql).get(...compiled.parameters) as { count: number }
-      total_count = countResult.count
+      if (skipCount !== true) {
+        // Build count query using Kysely — avoids brittle string replacement
+        const countQuery = this.buildVariantQuery(filter)
+        const compiled = countQuery.compile()
+        // Wrap the filtered query in a COUNT to handle complex WHERE clauses
+        const countSql = `SELECT count(*) as count FROM (${compiled.sql})`
+        const countResult = this.db.prepare(countSql).get(...compiled.parameters) as {
+          count: number
+        }
+        total_count = countResult.count
+      }
+
+      // Data query with sort + pagination
+      const dataQuery = this.buildVariantQuery(filter)
+      const sortedQuery = this.applySort(dataQuery, sortBy).limit(limit).offset(offset)
+      const data = this.execAll<Variant>(sortedQuery)
+
+      return { data, total_count }
+    } finally {
+      if (useTempTable) this.cleanupPanelIntervalsTable()
     }
-
-    // Data query with sort + pagination
-    const dataQuery = this.buildVariantQuery(filter)
-    const sortedQuery = this.applySort(dataQuery, sortBy).limit(limit).offset(offset)
-    const data = this.execAll<Variant>(sortedQuery)
-
-    return { data, total_count }
   }
 
   searchVariants(caseId: number, query: string, limit: number = 50): Variant[] {
@@ -595,8 +681,13 @@ export class VariantRepository extends BaseRepository {
   }
 
   getAllVariantsForExport(filter: VariantFilter): Variant[] {
-    const query = this.buildVariantQuery(filter).orderBy('chr', 'asc').orderBy('pos', 'asc')
-    return this.execAll<Variant>(query)
+    const useTempTable = this.preparePanelIntervals(filter)
+    try {
+      const query = this.buildVariantQuery(filter).orderBy('chr', 'asc').orderBy('pos', 'asc')
+      return this.execAll<Variant>(query)
+    } finally {
+      if (useTempTable) this.cleanupPanelIntervalsTable()
+    }
   }
 
   /**
@@ -604,10 +695,15 @@ export class VariantRepository extends BaseRepository {
    * Used to enforce hard limit before spawning export worker.
    */
   getExportCount(filter: VariantFilter): number {
-    const compiled = this.buildVariantQuery(filter).compile()
-    const countSql = compiled.sql.replace(/^select \* from/i, 'select count(*) as count from')
-    const result = this.db.prepare(countSql).get(...compiled.parameters) as { count: number }
-    return result.count
+    const useTempTable = this.preparePanelIntervals(filter)
+    try {
+      const compiled = this.buildVariantQuery(filter).compile()
+      const countSql = compiled.sql.replace(/^select \* from/i, 'select count(*) as count from')
+      const result = this.db.prepare(countSql).get(...compiled.parameters) as { count: number }
+      return result.count
+    } finally {
+      if (useTempTable) this.cleanupPanelIntervalsTable()
+    }
   }
 
   /**
@@ -619,7 +715,8 @@ export class VariantRepository extends BaseRepository {
     filter: VariantFilter,
     limit: number
   ): { sql: string; parameters: readonly unknown[] } {
-    const query = this.buildVariantQuery(filter)
+    // Force OR chain for compiled queries — temp tables don't transfer to worker threads
+    const query = this.buildVariantQuery(filter, { forceOrChain: true })
       .orderBy('chr', 'asc')
       .orderBy('pos', 'asc')
       .limit(limit)

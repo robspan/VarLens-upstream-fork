@@ -14,6 +14,7 @@ export interface CasesTable {
   file_size: number
   variant_count: number
   created_at: number
+  genome_build: string
 }
 
 // ── Variants ───────────────────────────────────────────────
@@ -294,6 +295,33 @@ export interface FilterPresetsTable {
   updated_at: number
 }
 
+// ── Panels ─────────────────────────────────────────────────
+export interface PanelsTable {
+  id: Generated<number>
+  name: string
+  description: string | null
+  version: string | null
+  source: string
+  source_id: string | null
+  source_metadata: string | null
+  created_at: number
+  updated_at: number
+}
+
+export interface PanelGenesTable {
+  id: Generated<number>
+  panel_id: number
+  hgnc_id: string
+  symbol: string
+}
+
+export interface CaseActivePanelsTable {
+  case_id: number
+  panel_id: number
+  padding_bp: number
+  activated_at: number
+}
+
 // ── Full Database Schema ──────────────────────────────────
 export interface VarlensDatabase {
   cases: CasesTable
@@ -321,4 +349,7 @@ export interface VarlensDatabase {
   users: UsersTable
   database_settings: DatabaseSettingsTable
   filter_presets: FilterPresetsTable
+  panels: PanelsTable
+  panel_genes: PanelGenesTable
+  case_active_panels: CaseActivePanelsTable
 }

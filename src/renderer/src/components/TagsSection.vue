@@ -65,6 +65,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useTags } from '../composables/useTags'
 import type { Tag } from '../../../shared/types/api'
 import { mdiCheckboxBlankOutline, mdiCheckboxMarked, mdiPlus } from '@mdi/js'
+import { logService } from '../services/LogService'
 
 interface Props {
   /** Case ID for per-case tag assignments */
@@ -109,7 +110,10 @@ const toggleTag = async (tagId: number) => {
       await assignVariantTag(props.caseId, props.variantId, tagId)
     }
   } catch (error) {
-    console.error('Failed to toggle tag:', error)
+    logService.error(
+      'Failed to toggle tag: ' + (error instanceof Error ? error.message : String(error)),
+      'tags'
+    )
   } finally {
     loading.value = false
   }
@@ -121,7 +125,10 @@ const removeTag = async (tagId: number) => {
   try {
     await removeVariantTag(props.caseId, props.variantId, tagId)
   } catch (error) {
-    console.error('Failed to remove tag:', error)
+    logService.error(
+      'Failed to remove tag: ' + (error instanceof Error ? error.message : String(error)),
+      'tags'
+    )
   } finally {
     loading.value = false
   }

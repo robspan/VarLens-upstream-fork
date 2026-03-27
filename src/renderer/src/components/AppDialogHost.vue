@@ -13,6 +13,7 @@
   <TagManagementDialog v-if="tagsMounted" ref="tagManagementDialogRef" />
   <DatabaseOverviewDialog v-if="dbOverviewMounted" ref="databaseOverviewDialogRef" />
   <DeleteAllCasesDialog v-if="deleteAllMounted" ref="deleteAllCasesDialogRef" />
+  <PanelManagerDialog v-if="panelManagerMounted" v-model="panelManagerOpen" />
   <CaseMetadataModal
     v-if="selectedCaseId"
     ref="caseMetadataModalRef"
@@ -39,6 +40,7 @@ const ApplicationPreferences = defineAsyncComponent(() => import('./ApplicationP
 const TagManagementDialog = defineAsyncComponent(() => import('./TagManagementDialog.vue'))
 const DatabaseOverviewDialog = defineAsyncComponent(() => import('./DatabaseOverviewDialog.vue'))
 const DeleteAllCasesDialog = defineAsyncComponent(() => import('./DeleteAllCasesDialog.vue'))
+const PanelManagerDialog = defineAsyncComponent(() => import('./panels/PanelManagerDialog.vue'))
 import { useAppState } from '../composables/useAppState'
 import { useVersionGating } from '../composables/useVersionGating'
 import { logService } from '../services/LogService'
@@ -79,6 +81,8 @@ const preferencesMounted = ref(false)
 const tagsMounted = ref(false)
 const dbOverviewMounted = ref(false)
 const deleteAllMounted = ref(false)
+const panelManagerMounted = ref(false)
+const panelManagerOpen = ref(false)
 
 // Disclaimer acknowledgment state
 const disclaimerAcknowledged = ref(false)
@@ -157,6 +161,11 @@ defineExpose({
     deleteAllMounted.value = true
     await nextTick()
     return deleteAllCasesDialogRef.value?.show(count)
+  },
+  showPanelManager: async () => {
+    panelManagerMounted.value = true
+    await nextTick()
+    panelManagerOpen.value = true
   },
   showCaseMetadata: () => caseMetadataModalRef.value?.show(),
   showSnackbar: (message: string, type: 'success' | 'error') =>

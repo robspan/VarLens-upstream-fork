@@ -20,8 +20,8 @@
     <!-- Add panel dropdown -->
     <v-select
       v-model="selectedPanelToAdd"
-      :items="availableToAdd"
-      item-title="name"
+      :items="panelSelectItems"
+      item-title="title"
       item-value="id"
       density="compact"
       variant="outlined"
@@ -31,20 +31,7 @@
       clearable
       class="mb-2"
       @update:model-value="onPanelSelected"
-    >
-      <!-- eslint-disable-next-line vue/no-unused-vars -->
-      <template #item="{ item, props: itemProps }">
-        <v-list-item v-bind="itemProps" :title="undefined">
-          <v-list-item-title>
-            {{ (item as unknown as { raw: PanelOption }).raw.name }}
-          </v-list-item-title>
-          <v-list-item-subtitle>
-            {{ (item as unknown as { raw: PanelOption }).raw.gene_count }} genes &middot;
-            {{ (item as unknown as { raw: PanelOption }).raw.source }}
-          </v-list-item-subtitle>
-        </v-list-item>
-      </template>
-    </v-select>
+    />
 
     <!-- Padding control -->
     <div class="text-body-small text-medium-emphasis mb-1">Padding</div>
@@ -172,6 +159,14 @@ const availableToAdd = computed(() => {
   const activeIds = new Set(props.activePanelIds)
   return availablePanels.value.filter((p) => !activeIds.has(p.id))
 })
+
+// Formatted items for the v-select (name + gene count in title)
+const panelSelectItems = computed(() =>
+  availableToAdd.value.map((p) => ({
+    id: p.id,
+    title: `${p.name} (${p.gene_count} genes)`
+  }))
+)
 
 function onPanelSelected(panelId: number | null): void {
   if (panelId != null) {

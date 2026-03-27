@@ -84,3 +84,4 @@ docs/public/screenshots/*.png
 e2e-dsl-test.mjs
 e2e-screenshots/
 *.png
+e2e-screenshots/

@@ -100,6 +100,7 @@
 import { ref, computed, watch } from 'vue'
 import { mdiClose } from '@mdi/js'
 import { useApiService } from '../../composables/useApiService'
+import { useGeneValidation } from '../../composables/useGeneValidation'
 
 interface Preset {
   score: number
@@ -122,6 +123,7 @@ const emit = defineEmits<{
 }>()
 
 const { api } = useApiService()
+const { parseGeneText } = useGeneValidation()
 
 // Input state
 const seedGenesText = ref('')
@@ -134,15 +136,8 @@ const panelName = ref('')
 const generating = ref(false)
 const errorMessage = ref('')
 
-// Parse genes from textarea
-const parsedGenes = computed<string[]>(() => {
-  const text = seedGenesText.value.trim()
-  if (!text) return []
-  return text
-    .split(/[,;\n]+/)
-    .map((g) => g.trim().toUpperCase())
-    .filter((g) => g.length > 0)
-})
+// Parse genes from textarea (deduplicated via useGeneValidation)
+const parsedGenes = computed<string[]>(() => parseGeneText(seedGenesText.value))
 
 // Effective score and network type (preset overrides custom)
 const effectiveScore = computed(() => {

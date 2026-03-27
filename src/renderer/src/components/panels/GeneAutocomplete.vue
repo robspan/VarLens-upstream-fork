@@ -42,7 +42,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { useGeneValidation } from '../../composables/useGeneValidation'
 import type { AutocompleteResult } from '../../composables/useGeneValidation'
 import { mdiMagnify } from '@mdi/js'
@@ -55,6 +55,10 @@ const { suggestions, loadingSuggestions, autocomplete } = useGeneValidation()
 
 const selected = ref<DisplayItem | null>(null)
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+onUnmounted(() => {
+  if (debounceTimer) clearTimeout(debounceTimer)
+})
 
 interface DisplayItem extends AutocompleteResult {
   displayText: string

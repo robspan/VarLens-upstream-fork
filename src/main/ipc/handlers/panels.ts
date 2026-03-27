@@ -1,4 +1,5 @@
 import { wrapHandler } from '../errorHandler'
+import { clearPanelIntervalCache } from './variants'
 import type { HandlerDependencies } from '../types'
 import {
   PanelCreateSchema,
@@ -70,7 +71,9 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
       }
 
       const db = getDb()
-      return db.panels.createPanel(validated.data)
+      const result = db.panels.createPanel(validated.data)
+      clearPanelIntervalCache()
+      return result
     })
   })
 
@@ -84,7 +87,9 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
 
       const { id, ...updates } = validated.data
       const db = getDb()
-      return db.panels.updatePanel(id, updates)
+      const result = db.panels.updatePanel(id, updates)
+      clearPanelIntervalCache()
+      return result
     })
   })
 
@@ -98,6 +103,7 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
 
       const db = getDb()
       db.panels.deletePanel(validated.data)
+      clearPanelIntervalCache()
       return { success: true }
     })
   })
@@ -129,6 +135,7 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
 
       const db = getDb()
       db.panels.setGenes(validated.data.panelId, validated.data.genes)
+      clearPanelIntervalCache()
       return { success: true }
     })
   })
@@ -330,6 +337,7 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
 
       // Return panel with gene count
       const genes = db.panels.getGenes(createdPanel.id)
+      clearPanelIntervalCache()
       return { ...createdPanel, genes }
     })
   })
@@ -411,6 +419,7 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
       }
 
       const genes = db.panels.getGenes(createdPanel.id)
+      clearPanelIntervalCache()
       return { ...createdPanel, genes }
     })
   })

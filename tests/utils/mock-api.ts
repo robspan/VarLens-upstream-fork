@@ -312,7 +312,7 @@ export function createMockApi(): MockApi {
       get: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({ id: 1 }),
       update: vi.fn().mockResolvedValue(undefined),
-      delete: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue({ success: true }),
       duplicate: vi.fn().mockResolvedValue({ id: 2 }),
       setGenes: vi.fn().mockResolvedValue(undefined),
       getGenes: vi.fn().mockResolvedValue([]),

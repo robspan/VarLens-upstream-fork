@@ -259,7 +259,7 @@ jobs:
             -credential_id="$credId" `
             -totp_secret="$totpSecret" `
             -input_file_path="$exePath" `
-            -override="true"
+            -override
           $exitCode = $LASTEXITCODE
           Pop-Location
 
@@ -273,7 +273,7 @@ jobs:
               -credential_id="$credId" `
               -totp_secret="$totpSecret" `
               -input_file_path="$exePath" `
-              -override="true"
+              -override
             $exitCode = $LASTEXITCODE
             Pop-Location
             if ($exitCode -ne 0) { throw "Code signing failed after retry (exit $exitCode)" }

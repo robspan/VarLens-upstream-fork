@@ -16,11 +16,16 @@ jobs:
       contents: write
     outputs:
       release_id: ${{ steps.create.outputs.release_id }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Generate release notes
         run: |
@@ -86,11 +91,19 @@ jobs:
       - name: Rebuild native modules for Electron
         run: npm run rebuild:electron
 
-      - name: Build and publish
-        run: npx electron-vite build && npx electron-builder --linux --publish always
+      - name: Build
+        run: npx electron-vite build && npx electron-builder --linux --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/latest-linux.yml
 
   release-macos:
     name: Release (macOS)
@@ -124,11 +137,19 @@ jobs:
       - name: Rebuild native modules for Electron
         run: npm run rebuild:electron
 
-      - name: Build and publish
-        run: npx electron-vite build && npx electron-builder --mac --publish always
+      - name: Build
+        run: npx electron-vite build && npx electron-builder --mac --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/latest-mac.yml
 
   release-windows:
     name: Release (Windows)
@@ -136,7 +157,6 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
-      actions: read
 
     steps:
       - name: Configure git line endings
@@ -163,42 +183,78 @@ jobs:
       - name: Rebuild native modules for Electron
         run: npm run rebuild:electron
 
-      - name: Build and publish
-        run: npx electron-vite build && npx electron-builder --win --publish always
+      - name: Build
+        run: npx electron-vite build && npx electron-builder --win --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # --- SSL.com eSigner Code Signing (Windows) ---
+      # Gated on ESIGNER_ENABLED variable to conserve signing quota (20/month).
+      # Only signs .exe and .msi installers, not portable builds.
 
-      - name: Regenerate latest.yml with signed exe hashes
-        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+      - name: Sign Windows Setup EXE with SSL.com eSigner
+        if: vars.ESIGNER_ENABLED == 'true'
+        uses: sslcom/esigner-codesign@develop
+        with:
+          command: sign
+          username: ${{ secrets.ES_USERNAME }}
+          password: ${{ secrets.ES_PASSWORD }}
+          credential_id: ${{ secrets.ES_CREDENTIAL_ID }}
+          totp_secret: ${{ secrets.ES_TOTP_SECRET }}
+          file_path: ${{ github.workspace }}/release/Varlens-Setup-${{ needs.create-release.outputs.version }}.exe
+          output_path: ${{ github.workspace }}/release-signed/
+          environment_name: PROD
+          signing_method: v2
+
+      - name: Sign Windows Setup MSI with SSL.com eSigner
+        if: vars.ESIGNER_ENABLED == 'true'
+        uses: sslcom/esigner-codesign@develop
+        with:
+          command: sign
+          username: ${{ secrets.ES_USERNAME }}
+          password: ${{ secrets.ES_PASSWORD }}
+          credential_id: ${{ secrets.ES_CREDENTIAL_ID }}
+          totp_secret: ${{ secrets.ES_TOTP_SECRET }}
+          file_path: ${{ github.workspace }}/release/Varlens-Setup-${{ needs.create-release.outputs.version }}.msi
+          output_path: ${{ github.workspace }}/release-signed/
+          environment_name: PROD
+          signing_method: v2
+
+      - name: Replace unsigned artifacts with signed versions
+        if: vars.ESIGNER_ENABLED == 'true'
         shell: pwsh
         run: |
-          # Replace unsigned .exe files with signed versions in release/
-          Copy-Item -Path release-signed/*.exe -Destination release/ -Force
+          if (Test-Path release-signed/*.exe) {
+            Copy-Item -Path release-signed/*.exe -Destination release/ -Force
+          }
+          if (Test-Path release-signed/*.msi) {
+            Copy-Item -Path release-signed/*.msi -Destination release/ -Force
+          }
 
-          # Recalculate SHA512 hashes and file sizes, update latest.yml
+      - name: Regenerate latest.yml with signed artifact hashes
+        if: vars.ESIGNER_ENABLED == 'true'
+        shell: pwsh
+        run: |
           $yml = Get-Content release/latest.yml -Raw
           foreach ($exe in Get-ChildItem release/*.exe) {
             $hash = (Get-FileHash $exe.FullName -Algorithm SHA512).Hash.ToLower()
             $b64 = [Convert]::ToBase64String([byte[]] -split ($hash -replace '..', '0x$& '))
             $size = $exe.Length
             $name = $exe.Name
-            # Update sha512 for this file's entry
             $yml = $yml -replace "(?<=path: $([regex]::Escape($name))\s*\n\s*sha512: )\S+", $b64
             $yml = $yml -replace "(?<=path: $([regex]::Escape($name))\s*\n\s*sha512: \S+\s*\n\s*size: )\d+", $size
           }
           Set-Content release/latest.yml $yml -NoNewline
 
-      - name: Upload updated latest.yml
-        if: vars.SIGNPATH_ORGANIZATION_ID != ''
-        uses: svenstaro/upload-release-action@v2
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          file: release/latest.yml
-          tag: ${{ github.ref_name }}
-          overwrite: true
-          prerelease: false
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          name: release-windows
+          path: |
+            release/*.exe
+            release/*.msi
+            release/*.zip
+            release/latest.yml
 
   publish-release:
     name: Publish Release
@@ -208,6 +264,21 @@ jobs:
       contents: write
 
     steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Upload all assets to release
+        run: |
+          for file in artifacts/*; do
+            [ -f "$file" ] && gh release upload "${{ github.ref_name }}" "$file" --clobber
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+
       - name: Publish draft release and mark as latest
         run: |
           gh api -X PATCH repos/${{ github.repository }}/releases/${{ needs.create-release.outputs.release_id }} \

@@ -142,7 +142,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
 import { mdiClose, mdiMagnify } from '@mdi/js'
 import { useApiService } from '../../composables/useApiService'
 import type { PanelAppSearchResult } from '../../../../shared/types/api'
@@ -175,6 +175,11 @@ const errorMessage = ref('')
 
 // Debounced search
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
+
+// Clean up debounce timer on component unmount
+onUnmounted(() => {
+  if (searchTimeout) clearTimeout(searchTimeout)
+})
 
 watch(
   [searchKeyword, region],

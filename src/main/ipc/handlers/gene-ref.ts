@@ -5,7 +5,7 @@ import { mainLogger } from '../../services/MainLogger'
 import { execFile } from 'child_process'
 import { resolve, join } from 'path'
 import { app } from 'electron'
-import { existsSync } from 'fs'
+import { existsSync, copyFileSync } from 'fs'
 
 /**
  * Gene Reference database IPC handlers
@@ -48,7 +48,11 @@ export function registerGeneRefHandlers({ ipcMain }: HandlerDependencies): void 
 
   /**
    * Update the gene reference DB by running the build script.
-   * Uses child_process to execute the build script, then reloads the DB singleton.
+   * Uses child_process to execute the build script, then copies the result
+   * to userData path and reloads the DB singleton.
+   *
+   * In production builds the build script is not available, so returns a
+   * descriptive error message.
    */
   ipcMain.handle('gene-ref:update', async () => {
     return wrapHandler(async () => {
@@ -61,12 +65,17 @@ export function registerGeneRefHandlers({ ipcMain }: HandlerDependencies): void 
         return {
           success: false,
           message:
-            'Build script not available in packaged app. Use "npm run build:gene-ref" from the project directory.'
+            'Gene reference update is not available in the packaged app. A future update will include this feature.'
         }
       }
 
       // Find tsx binary (used to run TypeScript scripts)
       const tsxPath = join(appPath, 'node_modules', '.bin', 'tsx')
+
+      // Destination: always write to userData so it takes precedence on next load
+      const userDataDbPath = join(app.getPath('userData'), 'gene_reference.db')
+      // The build script writes to resources/gene_reference.db by default
+      const buildOutputPath = resolve(appPath, 'resources', 'gene_reference.db')
 
       mainLogger.info('Starting gene reference DB update...', 'gene-ref')
 
@@ -92,7 +101,23 @@ export function registerGeneRefHandlers({ ipcMain }: HandlerDependencies): void 
 
             mainLogger.info(`Gene ref build output: ${stdout}`, 'gene-ref')
 
-            // Reload the DB singleton
+            // Copy the rebuilt DB to userData so it takes precedence over the bundled version
+            try {
+              copyFileSync(buildOutputPath, userDataDbPath)
+              mainLogger.info(`Gene ref DB copied to userData: ${userDataDbPath}`, 'gene-ref')
+            } catch (copyError) {
+              mainLogger.error(
+                `Failed to copy gene ref DB to userData: ${copyError instanceof Error ? copyError.message : String(copyError)}`,
+                'gene-ref'
+              )
+              resolve_p({
+                success: false,
+                message: `Build succeeded but failed to copy to user data directory: ${copyError instanceof Error ? copyError.message : String(copyError)}`
+              })
+              return
+            }
+
+            // Reload the DB singleton (will now pick up userData copy first)
             try {
               closeGeneReferenceDb()
               const geneRef = getGeneReferenceDb()

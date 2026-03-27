@@ -17,29 +17,38 @@ let instance: GeneReferenceDb | null = null
 let rawDb: import('better-sqlite3-multiple-ciphers').Database | null = null
 
 /**
- * Resolve the path to the bundled gene_reference.db file.
+ * Resolve the path to the gene_reference.db file.
  *
- * Path resolution order:
- * 1. Production: process.resourcesPath/gene_reference.db
- * 2. Dev: app.getAppPath()/resources/gene_reference.db
- * 3. Fallback: __dirname/../../resources/gene_reference.db
+ * Path resolution order (first existing file wins):
+ * 1. User data: app.getPath('userData')/gene_reference.db
+ *    (updated copy written by gene-ref:update takes precedence)
+ * 2. Production: process.resourcesPath/gene_reference.db
+ * 3. Dev: app.getAppPath()/resources/gene_reference.db
+ * 4. Fallback: __dirname/../../resources/gene_reference.db
  */
 function resolveDbPath(): string {
-  // 1. Production build: extraResources copies to resourcesPath root
+  // 1. User data path: updated DB from gene-ref:update takes precedence
+  const userDataPath = join(app.getPath('userData'), 'gene_reference.db')
+  if (existsSync(userDataPath)) {
+    mainLogger.debug(`Gene reference DB found at userData path: ${userDataPath}`, 'gene-ref')
+    return userDataPath
+  }
+
+  // 2. Production build: extraResources copies to resourcesPath root
   const prodPath = join(process.resourcesPath, 'gene_reference.db')
   if (existsSync(prodPath)) {
     mainLogger.debug(`Gene reference DB found at production path: ${prodPath}`, 'gene-ref')
     return prodPath
   }
 
-  // 2. Dev mode: project root resources/ directory
+  // 3. Dev mode: project root resources/ directory
   const devPath = join(app.getAppPath(), 'resources', 'gene_reference.db')
   if (existsSync(devPath)) {
     mainLogger.debug(`Gene reference DB found at dev path: ${devPath}`, 'gene-ref')
     return devPath
   }
 
-  // 3. Fallback: relative to compiled output
+  // 4. Fallback: relative to compiled output
   const fallbackPath = join(__dirname, '..', '..', 'resources', 'gene_reference.db')
   if (existsSync(fallbackPath)) {
     mainLogger.debug(`Gene reference DB found at fallback path: ${fallbackPath}`, 'gene-ref')
@@ -48,6 +57,7 @@ function resolveDbPath(): string {
 
   throw new Error(
     `Gene reference database not found. Checked:\n` +
+      `  - ${userDataPath}\n` +
       `  - ${prodPath}\n` +
       `  - ${devPath}\n` +
       `  - ${fallbackPath}`

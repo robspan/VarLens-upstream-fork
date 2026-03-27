@@ -233,7 +233,7 @@ export function useGeneValidation(): UseGeneValidationReturn {
         (r): r is ValidationResult & { hgncId: string; symbol: string } =>
           r.status === 'approved' && r.hgncId !== undefined && r.symbol !== undefined
       )
-      .map((r) => ({ hgncId: r.hgncId!, symbol: r.symbol! }))
+      .map((r) => ({ hgncId: r.hgncId, symbol: r.symbol }))
   )
 
   return {

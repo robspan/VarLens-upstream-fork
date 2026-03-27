@@ -98,8 +98,7 @@ const emit = defineEmits<{
 }>()
 
 // Load available panels (panels are global, not per-case)
-const dummyCaseId = ref(0)
-const { availablePanels, loading: panelLoading, loadAvailablePanels } = usePanelFilter(dummyCaseId)
+const { availablePanels, loading: panelLoading, loadAvailablePanels } = usePanelFilter()
 
 // Reload panels when parent signals a change (e.g. after CRUD in PanelManagerDialog)
 watch(

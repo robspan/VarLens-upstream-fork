@@ -9,7 +9,56 @@
  * - AU: https://panelapp-aus.org/api/v1/
  */
 
+import { z } from 'zod'
 import { mainLogger } from '../MainLogger'
+
+// ---------------------------------------------------------------------------
+// Zod schemas for runtime validation of API responses
+// ---------------------------------------------------------------------------
+
+const PanelAppGeneSchema = z
+  .object({
+    gene_data: z.object({
+      gene_symbol: z.string(),
+      hgnc_id: z.string(),
+      gene_name: z.string().optional()
+    }),
+    confidence_level: z.string(),
+    mode_of_inheritance: z.string().optional(),
+    phenotypes: z.array(z.string()).optional()
+  })
+  .passthrough()
+
+const PanelAppPanelResponseSchema = z
+  .object({
+    id: z.number(),
+    name: z.string(),
+    version: z.string(),
+    genes: z.array(PanelAppGeneSchema),
+    stats: z.object({ number_of_genes: z.number() }).passthrough()
+  })
+  .passthrough()
+
+const PanelAppSearchResponseSchema = z
+  .object({
+    count: z.number(),
+    results: z.array(
+      z
+        .object({
+          id: z.number(),
+          name: z.string(),
+          version: z.string().optional(),
+          disease_group: z.string().optional(),
+          disease_sub_group: z.string().optional(),
+          status: z.string().optional(),
+          relevant_disorders: z.array(z.string()).optional(),
+          stats: z.object({ number_of_genes: z.number() }).passthrough().optional(),
+          types: z.array(z.object({ name: z.string(), slug: z.string() })).optional()
+        })
+        .passthrough()
+    )
+  })
+  .passthrough()
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,13 +97,6 @@ export interface PanelAppPanel {
   genes: PanelAppGene[]
   stats: { number_of_genes: number }
   region: 'uk' | 'aus'
-}
-
-/** Raw paginated response from PanelApp list endpoints */
-interface PanelAppListResponse {
-  count: number
-  next: string | null
-  results: Array<Record<string, unknown>>
 }
 
 // ---------------------------------------------------------------------------
@@ -112,8 +154,12 @@ export class PanelAppClient {
       throw new Error(`PanelApp API error: ${response.status} ${response.statusText}`)
     }
 
-    const data = (await response.json()) as Record<string, unknown>
-    return this.mapPanelResponse(data, region)
+    const rawData = await response.json()
+    const parseResult = PanelAppPanelResponseSchema.safeParse(rawData)
+    if (!parseResult.success) {
+      throw new Error(`PanelApp panel response validation failed: ${parseResult.error.message}`)
+    }
+    return this.mapPanelResponse(parseResult.data as Record<string, unknown>, region)
   }
 
   // -----------------------------------------------------------------------
@@ -145,10 +191,18 @@ export class PanelAppClient {
       return []
     }
 
-    const body = (await response.json()) as PanelAppListResponse
-    const results = body.results ?? []
+    const rawBody = await response.json()
+    const parseResult = PanelAppSearchResponseSchema.safeParse(rawBody)
+    if (!parseResult.success) {
+      mainLogger.warn(
+        `PanelApp ${region} search response validation failed: ${parseResult.error.message}`,
+        'api'
+      )
+      return []
+    }
+    const results = parseResult.data.results ?? []
 
-    return results.map((r) => this.mapSearchResult(r, region))
+    return results.map((r) => this.mapSearchResult(r as Record<string, unknown>, region))
   }
 
   private mapSearchResult(

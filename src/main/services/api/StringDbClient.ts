@@ -7,7 +7,22 @@
  * API docs: https://string-db.org/help/api/
  */
 
+import { z } from 'zod'
 import { mainLogger } from '../MainLogger'
+
+// ---------------------------------------------------------------------------
+// Zod schemas for runtime validation of API responses
+// ---------------------------------------------------------------------------
+
+const StringDbInteractionSchema = z
+  .object({
+    preferredName_A: z.string(),
+    preferredName_B: z.string(),
+    score: z.number()
+  })
+  .passthrough()
+
+const StringDbResponseSchema = z.array(StringDbInteractionSchema)
 
 // ---------------------------------------------------------------------------
 // Types
@@ -137,12 +152,13 @@ export class StringDbClient {
 
       const data = await response.json()
 
-      if (!Array.isArray(data)) {
-        mainLogger.warn('StringDB returned non-array response', 'api')
+      const parseResult = StringDbResponseSchema.safeParse(data)
+      if (!parseResult.success) {
+        mainLogger.warn(`StringDB response validation failed: ${parseResult.error.message}`, 'api')
         return []
       }
 
-      return data as StringDbInteraction[]
+      return parseResult.data as unknown as StringDbInteraction[]
     } finally {
       clearTimeout(timer)
     }

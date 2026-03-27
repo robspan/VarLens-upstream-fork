@@ -3,10 +3,11 @@
  *
  * Loads available panels and exposes them for selection in the
  * PanelFilterSection component. Panels are global (not per-case),
- * but the list is refreshed when the case changes to stay current.
+ * so no case ID is required.
  */
 
-import { ref, watch, type Ref, type ComputedRef } from 'vue'
+import { ref } from 'vue'
+import type { Ref } from 'vue'
 import { useApiService } from './useApiService'
 
 /**
@@ -31,10 +32,9 @@ export interface UsePanelFilterReturn {
 /**
  * Composable for loading available panels for filter selection
  *
- * @param caseIdRef - Reactive ref to the current case ID (triggers reload on change)
  * @returns Available panels list and loading state
  */
-export function usePanelFilter(caseIdRef: Ref<number> | ComputedRef<number>): UsePanelFilterReturn {
+export function usePanelFilter(): UsePanelFilterReturn {
   const { api } = useApiService()
   const availablePanels = ref<PanelOption[]>([])
   const loading = ref(false)
@@ -63,14 +63,8 @@ export function usePanelFilter(caseIdRef: Ref<number> | ComputedRef<number>): Us
     }
   }
 
-  // Reload panels when case changes (panels are global, but good to refresh)
-  watch(
-    () => caseIdRef.value,
-    () => {
-      loadAvailablePanels()
-    },
-    { immediate: true }
-  )
+  // Load panels immediately on init
+  loadAvailablePanels()
 
   return {
     availablePanels,

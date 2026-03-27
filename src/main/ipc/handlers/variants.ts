@@ -103,15 +103,8 @@ export function registerVariantHandlers({ ipcMain, getDb, getDbPool }: HandlerDe
           const genomeBuild = caseData?.genome_build ?? 'GRCh38'
           const paddingBp = fullFilter.panel_padding_bp ?? 5000
 
-          // Detect chromosome prefix from existing variants
-          const sampleVariant = dbRef.variants.getVariants(
-            { case_id: fullFilter.case_id },
-            1,
-            0,
-            undefined,
-            true
-          )
-          const chrPrefix = sampleVariant.data[0]?.chr?.startsWith('chr') ?? false
+          // Detect chromosome prefix from existing variants (lightweight single-row query)
+          const chrPrefix = dbRef.variants.getChrPrefix(fullFilter.case_id)
 
           try {
             const geneRefDb = getGeneReferenceDb()

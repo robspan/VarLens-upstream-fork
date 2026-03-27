@@ -195,6 +195,14 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Error snackbar -->
+    <v-snackbar v-model="errorSnackbar" color="error" :timeout="6000" location="bottom">
+      {{ errorSnackbarText }}
+      <template #actions>
+        <v-btn variant="text" @click="errorSnackbar = false">Close</v-btn>
+      </template>
+    </v-snackbar>
   </v-dialog>
 </template>
 
@@ -228,6 +236,8 @@ const panelAppImportOpen = ref(false)
 const stringDbGenerateOpen = ref(false)
 const geneRefInfo = ref<GeneRefInfo | null>(null)
 const geneRefUpdating = ref(false)
+const errorSnackbar = ref(false)
+const errorSnackbarText = ref('')
 const exportAssemblyDialogOpen = ref(false)
 const exportingPanel = ref<PanelListItem | null>(null)
 const exportAssembly = ref('GRCh38')
@@ -322,9 +332,13 @@ async function updateGeneRef(): Promise<void> {
     const result = await window.api.geneRef.update()
     if (result.success) {
       geneRefInfo.value = await window.api.geneRef.info()
+    } else {
+      errorSnackbarText.value = result.message
+      errorSnackbar.value = true
     }
-  } catch {
-    // ignore
+  } catch (e) {
+    errorSnackbarText.value = e instanceof Error ? e.message : String(e)
+    errorSnackbar.value = true
   } finally {
     geneRefUpdating.value = false
   }
@@ -345,8 +359,9 @@ async function doExportBed(): Promise<void> {
       exportAssembly.value,
       exportPadding.value
     )
-  } catch {
-    // ignore
+  } catch (e) {
+    errorSnackbarText.value = e instanceof Error ? e.message : String(e)
+    errorSnackbar.value = true
   }
   exportAssemblyDialogOpen.value = false
   exportingPanel.value = null

@@ -208,74 +208,68 @@ jobs:
           $url = "https://github.com/SSLcom/CodeSignTool/releases/download/$csVersion/CodeSignTool-$csVersion-windows.zip"
           Invoke-WebRequest -Uri $url -OutFile codesigntool.zip
           Expand-Archive -Path codesigntool.zip -DestinationPath codesigntool -Force
-          # Write production config (no leading whitespace)
-          $basePath = (Get-ChildItem codesigntool -Directory | Select-Object -First 1).FullName
-          $conf = Join-Path $basePath "conf/code_sign_tool.properties"
-          Set-Content $conf @"
-          CLIENT_ID=kaXTRACNijSWsFdRKg_KAfD3fqrBlzMbWs6TwWHwAn8
-          OAUTH2_ENDPOINT=https://login.ssl.com/oauth2/token
-          CSC_API_ENDPOINT=https://cs.ssl.com
-          TSA_URL=http://ts.ssl.com
-          TSA_LEGACY_URL=http://ts.ssl.com/legacy
-          "@.Replace("          ", "")
+          # The zip extracts to codesigntool/CodeSignTool-v1.3.2/
+          $cstDir = (Get-ChildItem codesigntool -Directory | Select-Object -First 1).FullName
+          # Write production config (CodeSignTool reads ./conf/ relative to CWD)
+          $conf = Join-Path $cstDir "conf" "code_sign_tool.properties"
+          $content = "CLIENT_ID=kaXTRACNijSWsFdRKg_KAfD3fqrBlzMbWs6TwWHwAn8`nOAUTH2_ENDPOINT=https://login.ssl.com/oauth2/token`nCSC_API_ENDPOINT=https://cs.ssl.com`nTSA_URL=http://ts.ssl.com`nTSA_LEGACY_URL=http://ts.ssl.com/legacy"
+          Set-Content $conf $content -NoNewline
+          Write-Host "CodeSignTool dir: $cstDir"
+          Write-Host "Config written to: $conf"
+          Get-Content $conf
+          # Export path for next steps
+          echo "CST_DIR=$cstDir" >> $env:GITHUB_ENV
 
-      - name: Stage and sign Windows installers
+      - name: Sign Windows installer with CodeSignTool
         if: vars.ESIGNER_ENABLED == 'true'
         shell: pwsh
         run: |
           $version = "${{ needs.create-release.outputs.version }}"
-          $jarPath = (Get-ChildItem codesigntool -Recurse -Filter "code_sign_tool-*.jar" | Select-Object -First 1).FullName
-          # Trim secrets to avoid trailing whitespace from GitHub Secrets
+          $cstDir = $env:CST_DIR
+          $jarPath = (Get-ChildItem $cstDir -Recurse -Filter "code_sign_tool-*.jar" | Select-Object -First 1).FullName
           $username = "${{ secrets.ES_USERNAME }}".Trim()
           $password = "${{ secrets.ES_PASSWORD }}".Trim()
           $credId = "${{ secrets.ES_CREDENTIAL_ID }}".Trim()
           $totpSecret = "${{ secrets.ES_TOTP_SECRET }}".Trim()
+          $workspace = $env:GITHUB_WORKSPACE
 
-          # Stage only the files we want to sign into a clean directory
-          New-Item -ItemType Directory -Force -Path to-sign
-          $filesToSign = @(
-            "Varlens-Setup-${version}.exe",
-            "Varlens-Setup-${version}.msi"
-          )
-          foreach ($name in $filesToSign) {
-            $src = "release/$name"
-            if (Test-Path $src) {
-              Copy-Item $src to-sign/
-              Write-Host "Staged $name for signing"
-            } else {
-              Write-Host "::warning::$src not found, skipping"
-            }
-          }
+          Write-Host "Jar: $jarPath"
+          Write-Host "CWD will be: $cstDir"
 
-          # batch_sign signs all files in a directory with a single OTP
-          # This avoids TOTP replay issues entirely
-          Write-Host "Running batch_sign on to-sign/ ..."
-          java -jar $jarPath batch_sign `
+          # Sign the NSIS installer exe using -override (in-place signing)
+          $exePath = Join-Path $workspace "release" "Varlens-Setup-${version}.exe"
+          if (-not (Test-Path $exePath)) { throw "Installer not found: $exePath" }
+
+          Write-Host "Signing $exePath ..."
+          # CodeSignTool reads ./conf/code_sign_tool.properties relative to CWD
+          # so we must run from the CodeSignTool directory
+          Push-Location $cstDir
+          java -jar $jarPath sign `
             -username="$username" `
             -password="$password" `
             -credential_id="$credId" `
             -totp_secret="$totpSecret" `
-            -input_dir_path="to-sign" `
-            -output_dir_path="release-signed"
+            -input_file_path="$exePath" `
+            -override="true"
+          $exitCode = $LASTEXITCODE
+          Pop-Location
 
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "::warning::batch_sign failed, retrying after 31s..."
+          if ($exitCode -ne 0) {
+            Write-Host "::warning::First attempt failed (exit $exitCode), retrying after 31s..."
             Start-Sleep -Seconds 31
-            java -jar $jarPath batch_sign `
+            Push-Location $cstDir
+            java -jar $jarPath sign `
               -username="$username" `
               -password="$password" `
               -credential_id="$credId" `
               -totp_secret="$totpSecret" `
-              -input_dir_path="to-sign" `
-              -output_dir_path="release-signed"
-            if ($LASTEXITCODE -ne 0) { throw "Code signing failed after retry" }
+              -input_file_path="$exePath" `
+              -override="true"
+            $exitCode = $LASTEXITCODE
+            Pop-Location
+            if ($exitCode -ne 0) { throw "Code signing failed after retry (exit $exitCode)" }
           }
-
-          # Copy signed files back to release/
-          Get-ChildItem release-signed | ForEach-Object {
-            Copy-Item $_.FullName -Destination release/ -Force
-            Write-Host "Signed: $($_.Name)"
-          }
+          Write-Host "Successfully signed Varlens-Setup-${version}.exe"
 
       - name: Regenerate latest.yml with signed artifact hashes
         if: vars.ESIGNER_ENABLED == 'true'
@@ -298,7 +292,6 @@ jobs:
           name: release-windows
           path: |
             release/*.exe
-            release/*.msi
             release/*.zip
             release/latest.yml
 

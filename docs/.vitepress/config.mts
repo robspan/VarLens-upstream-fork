@@ -55,6 +55,7 @@ export default defineConfig({
             { text: 'Variant Table', link: '/features/variant-table' },
             { text: 'Filtering', link: '/features/filtering' },
             { text: 'Filter Presets', link: '/features/filter-presets' },
+            { text: 'Gene Panels', link: '/features/gene-panels' },
             { text: 'Variant Details', link: '/features/variant-details' },
             { text: 'Annotations', link: '/features/annotations' },
             { text: 'Cohort Analysis', link: '/features/cohort-analysis' }

@@ -189,8 +189,8 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
       # --- SSL.com eSigner Code Signing (Windows) ---
-      # Uses CodeSignTool directly instead of the GitHub Action to avoid
-      # TOTP replay issues in the sslcom/esigner-codesign action.
+      # Uses CodeSignTool v1.3.2 jar directly (not the buggy GitHub Action).
+      # batch_sign signs all files with a single OTP, avoiding TOTP replay.
       # Gated on ESIGNER_ENABLED variable to conserve signing quota (20/month).
 
       - name: Setup Java for CodeSignTool
@@ -200,76 +200,81 @@ jobs:
           distribution: corretto
           java-version: '11'
 
-      - name: Download and extract CodeSignTool
+      - name: Download and configure CodeSignTool
         if: vars.ESIGNER_ENABLED == 'true'
         shell: pwsh
         run: |
-          Invoke-WebRequest -Uri "https://www.ssl.com/download/codesigntool-for-windows/" -OutFile codesigntool.zip
+          $csVersion = "v1.3.2"
+          $url = "https://github.com/SSLcom/CodeSignTool/releases/download/$csVersion/CodeSignTool-$csVersion-windows.zip"
+          Invoke-WebRequest -Uri $url -OutFile codesigntool.zip
           Expand-Archive -Path codesigntool.zip -DestinationPath codesigntool -Force
-          # Configure for production
-          $conf = "codesigntool/conf/code_sign_tool.properties"
-          @"
+          # Write production config (no leading whitespace)
+          $basePath = (Get-ChildItem codesigntool -Directory | Select-Object -First 1).FullName
+          $conf = Join-Path $basePath "conf/code_sign_tool.properties"
+          Set-Content $conf @"
           CLIENT_ID=kaXTRACNijSWsFdRKg_KAfD3fqrBlzMbWs6TwWHwAn8
           OAUTH2_ENDPOINT=https://login.ssl.com/oauth2/token
           CSC_API_ENDPOINT=https://cs.ssl.com
           TSA_URL=http://ts.ssl.com
           TSA_LEGACY_URL=http://ts.ssl.com/legacy
-          "@ | Set-Content $conf
+          "@.Replace("          ", "")
 
-      - name: Sign Windows installers with CodeSignTool
+      - name: Stage and sign Windows installers
         if: vars.ESIGNER_ENABLED == 'true'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path release-signed
           $version = "${{ needs.create-release.outputs.version }}"
-          $jarPath = (Get-ChildItem codesigntool/jar/*.jar | Select-Object -First 1).FullName
-          $files = @(
-            "release/Varlens-Setup-${version}.exe",
-            "release/Varlens-Setup-${version}.msi"
+          $jarPath = (Get-ChildItem codesigntool -Recurse -Filter "code_sign_tool-*.jar" | Select-Object -First 1).FullName
+          # Trim secrets to avoid trailing whitespace from GitHub Secrets
+          $username = "${{ secrets.ES_USERNAME }}".Trim()
+          $password = "${{ secrets.ES_PASSWORD }}".Trim()
+          $credId = "${{ secrets.ES_CREDENTIAL_ID }}".Trim()
+          $totpSecret = "${{ secrets.ES_TOTP_SECRET }}".Trim()
+
+          # Stage only the files we want to sign into a clean directory
+          New-Item -ItemType Directory -Force -Path to-sign
+          $filesToSign = @(
+            "Varlens-Setup-${version}.exe",
+            "Varlens-Setup-${version}.msi"
           )
-          foreach ($file in $files) {
-            if (Test-Path $file) {
-              Write-Host "Signing $file ..."
-              # Run CodeSignTool with override to sign in-place
-              java -jar $jarPath sign `
-                -username="${{ secrets.ES_USERNAME }}" `
-                -password="${{ secrets.ES_PASSWORD }}" `
-                -credential_id="${{ secrets.ES_CREDENTIAL_ID }}" `
-                -totp_secret="${{ secrets.ES_TOTP_SECRET }}" `
-                -input_file_path="$file" `
-                -output_dir_path="release-signed"
-              if ($LASTEXITCODE -ne 0) {
-                Write-Host "::warning::Signing failed for $file, retrying after 31s..."
-                Start-Sleep -Seconds 31
-                java -jar $jarPath sign `
-                  -username="${{ secrets.ES_USERNAME }}" `
-                  -password="${{ secrets.ES_PASSWORD }}" `
-                  -credential_id="${{ secrets.ES_CREDENTIAL_ID }}" `
-                  -totp_secret="${{ secrets.ES_TOTP_SECRET }}" `
-                  -input_file_path="$file" `
-                  -output_dir_path="release-signed"
-                if ($LASTEXITCODE -ne 0) { throw "Signing failed for $file after retry" }
-              }
-              Write-Host "Successfully signed $file"
-              # Wait for next TOTP window before signing next file
-              if ($files.IndexOf($file) -lt ($files.Count - 1)) {
-                Write-Host "Waiting 31s for next TOTP window..."
-                Start-Sleep -Seconds 31
-              }
+          foreach ($name in $filesToSign) {
+            $src = "release/$name"
+            if (Test-Path $src) {
+              Copy-Item $src to-sign/
+              Write-Host "Staged $name for signing"
             } else {
-              Write-Host "::warning::File $file not found, skipping"
+              Write-Host "::warning::$src not found, skipping"
             }
           }
 
-      - name: Replace unsigned artifacts with signed versions
-        if: vars.ESIGNER_ENABLED == 'true'
-        shell: pwsh
-        run: |
-          if (Test-Path release-signed/*.exe) {
-            Copy-Item -Path release-signed/*.exe -Destination release/ -Force
+          # batch_sign signs all files in a directory with a single OTP
+          # This avoids TOTP replay issues entirely
+          Write-Host "Running batch_sign on to-sign/ ..."
+          java -jar $jarPath batch_sign `
+            -username="$username" `
+            -password="$password" `
+            -credential_id="$credId" `
+            -totp_secret="$totpSecret" `
+            -input_dir_path="to-sign" `
+            -output_dir_path="release-signed"
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::warning::batch_sign failed, retrying after 31s..."
+            Start-Sleep -Seconds 31
+            java -jar $jarPath batch_sign `
+              -username="$username" `
+              -password="$password" `
+              -credential_id="$credId" `
+              -totp_secret="$totpSecret" `
+              -input_dir_path="to-sign" `
+              -output_dir_path="release-signed"
+            if ($LASTEXITCODE -ne 0) { throw "Code signing failed after retry" }
           }
-          if (Test-Path release-signed/*.msi) {
-            Copy-Item -Path release-signed/*.msi -Destination release/ -Force
+
+          # Copy signed files back to release/
+          Get-ChildItem release-signed | ForEach-Object {
+            Copy-Item $_.FullName -Destination release/ -Force
+            Write-Host "Signed: $($_.Name)"
           }
 
       - name: Regenerate latest.yml with signed artifact hashes

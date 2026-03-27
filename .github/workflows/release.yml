@@ -189,41 +189,77 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
       # --- SSL.com eSigner Code Signing (Windows) ---
+      # Uses CodeSignTool directly instead of the GitHub Action to avoid
+      # TOTP replay issues in the sslcom/esigner-codesign action.
       # Gated on ESIGNER_ENABLED variable to conserve signing quota (20/month).
-      # Only signs .exe and .msi installers, not portable builds.
 
-      - name: Create signing output directory
+      - name: Setup Java for CodeSignTool
+        if: vars.ESIGNER_ENABLED == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: corretto
+          java-version: '11'
+
+      - name: Download and extract CodeSignTool
         if: vars.ESIGNER_ENABLED == 'true'
         shell: pwsh
-        run: New-Item -ItemType Directory -Force -Path release-signed
+        run: |
+          Invoke-WebRequest -Uri "https://www.ssl.com/download/codesigntool-for-windows/" -OutFile codesigntool.zip
+          Expand-Archive -Path codesigntool.zip -DestinationPath codesigntool -Force
+          # Configure for production
+          $conf = "codesigntool/conf/code_sign_tool.properties"
+          @"
+          CLIENT_ID=kaXTRACNijSWsFdRKg_KAfD3fqrBlzMbWs6TwWHwAn8
+          OAUTH2_ENDPOINT=https://login.ssl.com/oauth2/token
+          CSC_API_ENDPOINT=https://cs.ssl.com
+          TSA_URL=http://ts.ssl.com
+          TSA_LEGACY_URL=http://ts.ssl.com/legacy
+          "@ | Set-Content $conf
 
-      - name: Sign Windows Setup EXE with SSL.com eSigner
+      - name: Sign Windows installers with CodeSignTool
         if: vars.ESIGNER_ENABLED == 'true'
-        uses: sslcom/esigner-codesign@develop
-        with:
-          command: sign
-          username: ${{ secrets.ES_USERNAME }}
-          password: ${{ secrets.ES_PASSWORD }}
-          credential_id: ${{ secrets.ES_CREDENTIAL_ID }}
-          totp_secret: ${{ secrets.ES_TOTP_SECRET }}
-          file_path: release/Varlens-Setup-${{ needs.create-release.outputs.version }}.exe
-          output_path: release-signed
-          environment_name: PROD
-          signing_method: v2
-
-      - name: Sign Windows Setup MSI with SSL.com eSigner
-        if: vars.ESIGNER_ENABLED == 'true'
-        uses: sslcom/esigner-codesign@develop
-        with:
-          command: sign
-          username: ${{ secrets.ES_USERNAME }}
-          password: ${{ secrets.ES_PASSWORD }}
-          credential_id: ${{ secrets.ES_CREDENTIAL_ID }}
-          totp_secret: ${{ secrets.ES_TOTP_SECRET }}
-          file_path: release/Varlens-Setup-${{ needs.create-release.outputs.version }}.msi
-          output_path: release-signed
-          environment_name: PROD
-          signing_method: v2
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-signed
+          $version = "${{ needs.create-release.outputs.version }}"
+          $jarPath = (Get-ChildItem codesigntool/jar/*.jar | Select-Object -First 1).FullName
+          $files = @(
+            "release/Varlens-Setup-${version}.exe",
+            "release/Varlens-Setup-${version}.msi"
+          )
+          foreach ($file in $files) {
+            if (Test-Path $file) {
+              Write-Host "Signing $file ..."
+              # Run CodeSignTool with override to sign in-place
+              java -jar $jarPath sign `
+                -username="${{ secrets.ES_USERNAME }}" `
+                -password="${{ secrets.ES_PASSWORD }}" `
+                -credential_id="${{ secrets.ES_CREDENTIAL_ID }}" `
+                -totp_secret="${{ secrets.ES_TOTP_SECRET }}" `
+                -input_file_path="$file" `
+                -output_dir_path="release-signed"
+              if ($LASTEXITCODE -ne 0) {
+                Write-Host "::warning::Signing failed for $file, retrying after 31s..."
+                Start-Sleep -Seconds 31
+                java -jar $jarPath sign `
+                  -username="${{ secrets.ES_USERNAME }}" `
+                  -password="${{ secrets.ES_PASSWORD }}" `
+                  -credential_id="${{ secrets.ES_CREDENTIAL_ID }}" `
+                  -totp_secret="${{ secrets.ES_TOTP_SECRET }}" `
+                  -input_file_path="$file" `
+                  -output_dir_path="release-signed"
+                if ($LASTEXITCODE -ne 0) { throw "Signing failed for $file after retry" }
+              }
+              Write-Host "Successfully signed $file"
+              # Wait for next TOTP window before signing next file
+              if ($files.IndexOf($file) -lt ($files.Count - 1)) {
+                Write-Host "Waiting 31s for next TOTP window..."
+                Start-Sleep -Seconds 31
+              }
+            } else {
+              Write-Host "::warning::File $file not found, skipping"
+            }
+          }
 
       - name: Replace unsigned artifacts with signed versions
         if: vars.ESIGNER_ENABLED == 'true'

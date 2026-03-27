@@ -1,6 +1,6 @@
 {
   "name": "varlens",
-  "version": "0.40.2",
+  "version": "0.41.0",
   "description": "Offline variant analysis tool for external collaborators",
   "main": "./out/main/index.js",
   "author": "Bernt Popp <bernt.popp@gmail.com>",
@@ -77,7 +77,10 @@
     "icon": "build/icon.png",
     "npmRebuild": false,
     "extraResources": [
-      { "from": "resources/gene_reference.db", "to": "gene_reference.db" }
+      {
+        "from": "resources/gene_reference.db",
+        "to": "gene_reference.db"
+      }
     ],
     "asarUnpack": [
       "node_modules/better-sqlite3-multiple-ciphers/**/*"

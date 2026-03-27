@@ -245,40 +245,43 @@ jobs:
           Write-Host "CWD: $cstDir"
           Write-Host "Conf exists: $(Test-Path (Join-Path $cstDir 'conf/code_sign_tool.properties'))"
 
-          # Sign the NSIS installer exe using -override (in-place signing)
-          $exePath = Join-Path $workspace "release" "Varlens-Setup-${version}.exe"
-          if (-not (Test-Path $exePath)) { throw "Installer not found: $exePath" }
+          # Sign both installer and portable exe files
+          $filesToSign = @(
+            "Varlens-Setup-${version}.exe",
+            "Varlens-Portable-${version}.exe"
+          )
 
-          Write-Host "Signing $exePath ..."
           # CodeSignTool reads ./conf/code_sign_tool.properties relative to CWD
-          # so we must run from the CodeSignTool directory
           Push-Location $cstDir
-          java -jar $jarPath sign `
-            -username="$username" `
-            -password="$password" `
-            -credential_id="$credId" `
-            -totp_secret="$totpSecret" `
-            -input_file_path="$exePath" `
-            -override
-          $exitCode = $LASTEXITCODE
-          Pop-Location
-
-          if ($exitCode -ne 0) {
-            Write-Host "::warning::First attempt failed (exit $exitCode), retrying after 31s..."
-            Start-Sleep -Seconds 31
-            Push-Location $cstDir
+          foreach ($fileName in $filesToSign) {
+            $filePath = Join-Path $workspace "release" $fileName
+            if (-not (Test-Path $filePath)) {
+              Write-Host "::warning::$fileName not found, skipping"
+              continue
+            }
+            Write-Host "Signing $fileName ..."
             java -jar $jarPath sign `
               -username="$username" `
               -password="$password" `
               -credential_id="$credId" `
               -totp_secret="$totpSecret" `
-              -input_file_path="$exePath" `
+              -input_file_path="$filePath" `
               -override
-            $exitCode = $LASTEXITCODE
-            Pop-Location
-            if ($exitCode -ne 0) { throw "Code signing failed after retry (exit $exitCode)" }
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "::warning::First attempt failed, retrying after 31s..."
+              Start-Sleep -Seconds 31
+              java -jar $jarPath sign `
+                -username="$username" `
+                -password="$password" `
+                -credential_id="$credId" `
+                -totp_secret="$totpSecret" `
+                -input_file_path="$filePath" `
+                -override
+              if ($LASTEXITCODE -ne 0) { throw "Code signing failed for $fileName after retry" }
+            }
+            Write-Host "Successfully signed $fileName"
           }
-          Write-Host "Successfully signed Varlens-Setup-${version}.exe"
+          Pop-Location
 
       - name: Regenerate latest.yml with signed artifact hashes
         if: vars.ESIGNER_ENABLED == 'true'

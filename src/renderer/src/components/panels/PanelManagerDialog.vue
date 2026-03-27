@@ -409,8 +409,4 @@ async function doExportBed(): Promise<void> {
   exportAssemblyDialogOpen.value = false
   exportingPanel.value = null
 }
-
-function close(): void {
-  emit('update:modelValue', false)
-}
 </script>

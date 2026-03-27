@@ -68,6 +68,13 @@ const _panels = ref<PanelListItem[]>([])
 const _loading = ref(false)
 const _error = ref<string | null>(null)
 
+/** Reset shared state — only for use in tests */
+export function _resetPanelManagerState(): void {
+  _panels.value = []
+  _loading.value = false
+  _error.value = null
+}
+
 // ---------------------------------------------------------------------------
 // Composable
 // ---------------------------------------------------------------------------

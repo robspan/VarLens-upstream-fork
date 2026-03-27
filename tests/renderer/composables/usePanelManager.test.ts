@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { withSetup } from '../../utils/test-helpers'
 import { createMockApi } from '../../utils/mock-api'
-import { usePanelManager } from '@renderer/composables/usePanelManager'
+import { usePanelManager, _resetPanelManagerState } from '@renderer/composables/usePanelManager'
 import type { PanelListItem } from '@renderer/composables/usePanelManager'
 import { logService } from '../../../src/renderer/src/services/LogService'
 
@@ -50,6 +50,7 @@ describe('usePanelManager', () => {
   let app: { unmount: () => void }
 
   beforeEach(() => {
+    _resetPanelManagerState()
     window.api = createMockApi()
   })
 

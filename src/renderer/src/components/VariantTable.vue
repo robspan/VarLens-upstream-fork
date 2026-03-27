@@ -178,9 +178,11 @@
         <EmptyPlaceholder v-else />
       </template>
 
-      <!-- Qual score (handle null) -->
+      <!-- Qual score (handle null/undefined/non-number) -->
       <template #[`item.qual`]="{ value }">
-        <template v-if="value !== null">{{ value.toFixed(1) }}</template>
+        <template v-if="value !== null && value !== undefined && typeof value === 'number'">{{
+          value.toFixed(1)
+        }}</template>
         <EmptyPlaceholder v-else />
       </template>
 
@@ -209,9 +211,11 @@
         <EmptyPlaceholder v-else />
       </template>
 
-      <!-- HPO Sim Score (handle null) -->
+      <!-- HPO Sim Score (handle null/undefined/non-number) -->
       <template #[`item.hpo_sim_score`]="{ value }">
-        <template v-if="value !== null">{{ value.toFixed(2) }}</template>
+        <template v-if="value !== null && value !== undefined && typeof value === 'number'">{{
+          value.toFixed(2)
+        }}</template>
         <EmptyPlaceholder v-else />
       </template>
 

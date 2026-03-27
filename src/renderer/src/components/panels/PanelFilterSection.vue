@@ -82,7 +82,7 @@
  * Works with both the case-view FilterDrawer and CohortFilterDrawer
  * by accepting activePanelIds and panelPaddingBp as props with v-model.
  */
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { usePanelFilter, type PanelOption } from '../../composables/usePanelFilter'
 
 const props = defineProps<{
@@ -100,11 +100,26 @@ const emit = defineEmits<{
 // Load available panels (panels are global, not per-case)
 const { availablePanels, loading: panelLoading, loadAvailablePanels } = usePanelFilter()
 
+// Load panels when the component mounts (ensures Electron IPC is ready)
+onMounted(() => {
+  loadAvailablePanels()
+})
+
 // Reload panels when parent signals a change (e.g. after CRUD in PanelManagerDialog)
 watch(
   () => props.refreshKey,
   () => {
     loadAvailablePanels()
+  }
+)
+
+// Retry loading if panels are empty when expansion panel becomes visible
+watch(
+  () => props.activePanelIds,
+  () => {
+    if (availablePanels.value.length === 0) {
+      loadAvailablePanels()
+    }
   }
 )
 

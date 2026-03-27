@@ -61,7 +61,6 @@
         >
           StringDB Generate
         </v-btn>
-        <v-btn :icon="mdiClose" variant="text" size="small" class="ml-1" @click="close" />
       </v-toolbar>
 
       <v-card-text class="pa-0">

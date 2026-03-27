@@ -213,6 +213,7 @@ import PanelAppImportDialog from './PanelAppImportDialog.vue'
 import StringDbGenerateDialog from './StringDbGenerateDialog.vue'
 import { usePanelManager } from '../../composables/usePanelManager'
 import type { PanelListItem } from '../../composables/usePanelManager'
+import { useApiService } from '../../composables/useApiService'
 import { mdiClose, mdiContentCopy, mdiDelete, mdiExport, mdiMagnify, mdiPencil } from '@mdi/js'
 import type { GeneRefInfo } from '../../../../shared/types/api'
 
@@ -226,6 +227,7 @@ const emit = defineEmits<{
 }>()
 
 const { panels, loadPanels, duplicatePanel, deletePanel } = usePanelManager()
+const { api } = useApiService()
 
 const searchQuery = ref('')
 const editorOpen = ref(false)
@@ -250,7 +252,7 @@ watch(
     if (visible) {
       loadPanels()
       try {
-        geneRefInfo.value = await window.api.geneRef.info()
+        geneRefInfo.value = (await api?.geneRef.info()) ?? null
       } catch {
         // silently ignore - info bar won't show
       }
@@ -329,11 +331,11 @@ function onExternalImport(): void {
 async function updateGeneRef(): Promise<void> {
   geneRefUpdating.value = true
   try {
-    const result = await window.api.geneRef.update()
-    if (result.success) {
-      geneRefInfo.value = await window.api.geneRef.info()
+    const result = await api?.geneRef.update()
+    if (result?.success === true) {
+      geneRefInfo.value = (await api?.geneRef.info()) ?? null
     } else {
-      errorSnackbarText.value = result.message
+      errorSnackbarText.value = result?.message ?? 'API not available'
       errorSnackbar.value = true
     }
   } catch (e) {
@@ -354,11 +356,7 @@ function exportBed(panel: PanelListItem): void {
 async function doExportBed(): Promise<void> {
   if (!exportingPanel.value) return
   try {
-    await window.api.panels.exportBed(
-      exportingPanel.value.id,
-      exportAssembly.value,
-      exportPadding.value
-    )
+    await api?.panels.exportBed(exportingPanel.value.id, exportAssembly.value, exportPadding.value)
   } catch (e) {
     errorSnackbarText.value = e instanceof Error ? e.message : String(e)
     errorSnackbar.value = true

@@ -69,8 +69,8 @@ export function registerGeneRefHandlers({ ipcMain }: HandlerDependencies): void 
         }
       }
 
-      // Find tsx binary (used to run TypeScript scripts)
-      const tsxPath = join(appPath, 'node_modules', '.bin', 'tsx')
+      // Use npx to resolve tsx portably (handles .cmd on Windows, PATH resolution)
+      const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx'
 
       // Destination: always write to userData so it takes precedence on next load
       const userDataDbPath = join(app.getPath('userData'), 'gene_reference.db')
@@ -81,8 +81,8 @@ export function registerGeneRefHandlers({ ipcMain }: HandlerDependencies): void 
 
       return new Promise<{ success: boolean; message: string }>((resolve_p) => {
         execFile(
-          tsxPath,
-          [scriptPath],
+          npxCmd,
+          ['tsx', scriptPath],
           {
             cwd: appPath,
             timeout: 5 * 60 * 1000, // 5 minute timeout

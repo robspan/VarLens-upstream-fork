@@ -1,12 +1,13 @@
 <template>
   <v-dialog
     :model-value="modelValue"
-    max-width="1000"
+    max-width="800"
     scrollable
     @update:model-value="emit('update:modelValue', $event)"
   >
-    <v-card>
+    <v-card min-height="450">
       <v-card-title class="d-flex align-center">
+        <v-icon :icon="mdiPlaylistEdit" class="mr-2" />
         <span>Gene Panels</span>
         <v-spacer />
         <v-btn
@@ -40,8 +41,8 @@
           New Panel
         </v-btn>
         <v-btn
-          color="success"
-          variant="tonal"
+          color="primary"
+          variant="outlined"
           density="comfortable"
           size="small"
           class="ml-2"
@@ -51,8 +52,8 @@
           Import PanelApp
         </v-btn>
         <v-btn
-          color="orange"
-          variant="tonal"
+          color="primary"
+          variant="outlined"
           density="comfortable"
           size="small"
           class="ml-2"
@@ -256,6 +257,7 @@ import {
   mdiExport,
   mdiMagnify,
   mdiPencil,
+  mdiPlaylistEdit,
   mdiPlus,
   mdiShareVariant
 } from '@mdi/js'

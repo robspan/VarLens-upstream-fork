@@ -21,9 +21,12 @@
               :variant="getButtonVariant(code)"
               size="x-small"
               density="compact"
+              :aria-pressed="isCodeActive(code)"
+              :aria-label="`${code}: ${CODE_DESCRIPTIONS[code]}${isCodeActive(code) ? ' (active)' : ''}${isCodeSuggested(code) ? ' (suggested)' : ''}`"
               :class="[
                 'criteria-btn text-caption',
                 {
+                  'criteria-btn--active': isCodeActive(code),
                   'criteria-btn--suggested': isCodeSuggested(code),
                   'criteria-btn--deprecated': isDeprecated(code)
                 }
@@ -107,13 +110,15 @@ const STRENGTH_COLORS: Record<EvidenceStrength, string> = {
   stand_alone: 'red-darken-2'
 }
 
-/** Muted color hints for inactive (unselected) buttons by default strength */
+/** Muted color for inactive (unselected) buttons by default strength.
+ *  Uses lighten-1 for clearly visible outlined buttons on #FAFBFD surface.
+ *  The outline + color text provides sufficient affordance without dominating. */
 const INACTIVE_COLORS: Record<EvidenceStrength, string> = {
-  very_strong: 'deep-purple-lighten-5',
-  strong: 'orange-lighten-5',
-  moderate: 'amber-lighten-5',
-  supporting: 'blue-grey-lighten-5',
-  stand_alone: 'red-lighten-5'
+  very_strong: 'deep-purple-lighten-1',
+  strong: 'orange-darken-1',
+  moderate: 'amber-darken-2',
+  supporting: 'blue-grey',
+  stand_alone: 'red-lighten-1'
 }
 
 function getCodeStrength(code: AcmgCode): EvidenceStrength {
@@ -132,14 +137,14 @@ function isDeprecated(code: AcmgCode): boolean {
 function getButtonColor(code: AcmgCode): string {
   if (props.isCodeActive(code)) return STRENGTH_COLORS[getCodeStrength(code)]
   if (props.isCodeSuggested(code)) return 'amber-darken-2'
-  if (isDeprecated(code)) return 'grey-lighten-2'
+  if (isDeprecated(code)) return 'grey'
   return INACTIVE_COLORS[getDefaultStrength(code)]
 }
 
 function getButtonVariant(code: AcmgCode): 'flat' | 'outlined' | 'tonal' {
   if (props.isCodeActive(code)) return 'flat'
   if (props.isCodeSuggested(code)) return 'outlined'
-  return 'tonal'
+  return 'outlined'
 }
 
 function getStrengthLabel(strength: EvidenceStrength): string {
@@ -166,8 +171,8 @@ function getStrengthPoints(strength: EvidenceStrength): number {
 }
 
 .strength-label {
-  font-size: 10px !important;
-  line-height: 1.2;
+  font-size: 11px !important;
+  line-height: 1.3;
 }
 
 .mb-half {
@@ -183,9 +188,14 @@ function getStrengthPoints(strength: EvidenceStrength): number {
 .criteria-btn {
   min-width: 0 !important;
   padding: 2px 8px !important;
-  font-size: 11px !important;
+  font-size: 12px !important;
   letter-spacing: 0 !important;
-  height: 26px !important;
+  height: 28px !important;
+}
+
+.criteria-btn--active {
+  font-weight: 600;
+  box-shadow: 0 0 0 2px currentColor;
 }
 
 .criteria-btn--suggested {
@@ -193,7 +203,7 @@ function getStrengthPoints(strength: EvidenceStrength): number {
 }
 
 .criteria-btn--deprecated {
-  opacity: 0.5;
+  opacity: 0.7;
   text-decoration: line-through;
 }
 

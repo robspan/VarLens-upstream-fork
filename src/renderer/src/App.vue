@@ -3,6 +3,7 @@
     <AppToolbar
       @show-case-metadata="dialogHostRef?.showCaseMetadata()"
       @show-database-overview="dialogHostRef?.showDatabaseOverview()"
+      @import-click="dialogHostRef?.showImportDialog()"
       @show-external-links="dialogHostRef?.showExternalLinks()"
       @show-tag-management="dialogHostRef?.showTagManagement()"
       @show-panel-manager="dialogHostRef?.showPanelManager()"
@@ -16,13 +17,7 @@
     />
 
     <v-navigation-drawer v-model="sidebarOpen" :width="sidebarWidth" :scrim="tier === 'narrow'">
-      <AppSidebar
-        :case-count="caseCount"
-        @import-click="dialogHostRef?.showImportDialog()"
-        @batch-import-files="dialogHostRef?.showBatchImportDialog('files')"
-        @batch-import-folder="dialogHostRef?.showBatchImportDialog('folder')"
-        @batch-import-zip="dialogHostRef?.showBatchImportDialog('zip')"
-      >
+      <AppSidebar :case-count="caseCount" @import-click="dialogHostRef?.showImportDialog()">
         <CaseList
           ref="caseListRef"
           @case-selected="handleCaseSelected"
@@ -316,7 +311,8 @@ useKeyboardShortcuts({
   onHelp: () => {
     showKeyboardHelp.value = true
   },
-  onClearAllFilters: () => filterToolbarRef.value?.handleClearAll()
+  onClearAllFilters: () => filterToolbarRef.value?.handleClearAll(),
+  onImport: () => dialogHostRef.value?.showImportDialog()
 })
 
 // Global listener for background import completion
@@ -324,9 +320,17 @@ useKeyboardShortcuts({
 let cleanupImportComplete: (() => void) | null = null
 
 // Lifecycle
-onMounted(async () => {
+onMounted(() => {
   logService.setupMainProcessListener()
-  await databaseStore.fetchInfo()
+
+  // Fire-and-forget: fetch database info without blocking the initial render.
+  // The UI will show immediately and the data will arrive on the next tick.
+  databaseStore.fetchInfo().catch((error) => {
+    logService.error(
+      'Failed to fetch database info: ' + (error instanceof Error ? error.message : String(error)),
+      'app'
+    )
+  })
 
   if (api) {
     cleanupImportComplete = api.batchImport.onComplete((result) => {

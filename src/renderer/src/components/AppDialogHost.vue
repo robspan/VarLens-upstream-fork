@@ -1,7 +1,7 @@
 <template>
-  <ImportDialog ref="importDialogRef" @import-complete="handleImportComplete" />
-  <BatchImportDialog
-    ref="batchImportDialogRef"
+  <ImportWizard
+    ref="importWizardRef"
+    @import-complete="handleImportComplete"
     @batch-import-complete="handleBatchImportComplete"
   />
   <AppSnackbar ref="snackbarRef" />
@@ -25,9 +25,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, defineAsyncComponent, onMounted, nextTick } from 'vue'
-import ImportDialog from './ImportDialog.vue'
-import BatchImportDialog from './BatchImportDialog.vue'
+import { ref, defineAsyncComponent, onMounted, nextTick, watch } from 'vue'
+import ImportWizard from './import/ImportWizard.vue'
 import AppSnackbar from './AppSnackbar.vue'
 import LogViewer from './LogViewer.vue'
 import DisclaimerDialog from './DisclaimerDialog.vue'
@@ -59,8 +58,7 @@ const emit = defineEmits<{
 }>()
 
 // Dialog refs
-const importDialogRef = ref<InstanceType<typeof ImportDialog> | null>(null)
-const batchImportDialogRef = ref<InstanceType<typeof BatchImportDialog> | null>(null)
+const importWizardRef = ref<InstanceType<typeof ImportWizard> | null>(null)
 const snackbarRef = ref<InstanceType<typeof AppSnackbar> | null>(null)
 const disclaimerRef = ref<InstanceType<typeof DisclaimerDialog> | null>(null)
 const faqDialogRef = ref<InstanceType<typeof FaqDialog> | null>(null)
@@ -83,6 +81,29 @@ const dbOverviewMounted = ref(false)
 const deleteAllMounted = ref(false)
 const panelManagerMounted = ref(false)
 const panelManagerOpen = ref(false)
+
+/**
+ * Wait for a lazy-loaded dialog ref to become available after setting its mount flag.
+ * defineAsyncComponent loads the chunk asynchronously, so a single nextTick() after
+ * setting the v-if flag is insufficient — the ref stays null until the chunk loads,
+ * parses, and the component mounts. This watches the ref until it's populated.
+ */
+function waitForRef<T>(r: ReturnType<typeof ref<T | null>>, timeoutMs = 3000): Promise<T> {
+  if (r.value !== null) return Promise.resolve(r.value as T)
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      stop()
+      reject(new Error('Dialog component did not mount in time'))
+    }, timeoutMs)
+    const stop = watch(r, (val) => {
+      if (val !== null) {
+        clearTimeout(timer)
+        stop()
+        resolve(val as T)
+      }
+    })
+  })
+}
 
 // Disclaimer acknowledgment state
 const disclaimerAcknowledged = ref(false)
@@ -128,50 +149,49 @@ onMounted(() => {
 
 // Expose dialog triggers for parent coordination
 defineExpose({
-  showImportDialog: () => importDialogRef.value?.show(),
-  showBatchImportDialog: (mode: 'files' | 'folder' | 'zip') =>
-    batchImportDialogRef.value?.show(mode),
+  showImportDialog: () => importWizardRef.value?.show(),
   showDisclaimer: () => disclaimerRef.value?.show(),
   showFaq: async () => {
     faqMounted.value = true
-    await nextTick()
-    faqDialogRef.value?.show()
+    const dialog = await waitForRef(faqDialogRef)
+    dialog.show()
   },
   showExternalLinks: async () => {
     externalLinksMounted.value = true
-    await nextTick()
-    externalLinksSettingsRef.value?.show()
+    const dialog = await waitForRef(externalLinksSettingsRef)
+    dialog.show()
   },
   showPreferences: async () => {
     preferencesMounted.value = true
-    await nextTick()
-    applicationPreferencesRef.value?.show()
+    const dialog = await waitForRef(applicationPreferencesRef)
+    dialog.show()
   },
   showTagManagement: async () => {
     tagsMounted.value = true
-    await nextTick()
-    tagManagementDialogRef.value?.show()
+    const dialog = await waitForRef(tagManagementDialogRef)
+    dialog.show()
   },
   showDatabaseOverview: async () => {
     dbOverviewMounted.value = true
-    await nextTick()
-    databaseOverviewDialogRef.value?.show()
+    const dialog = await waitForRef(databaseOverviewDialogRef)
+    dialog.show()
   },
   showDeleteAllCases: async (count: number) => {
     deleteAllMounted.value = true
-    await nextTick()
-    return deleteAllCasesDialogRef.value?.show(count)
+    const dialog = await waitForRef(deleteAllCasesDialogRef)
+    return dialog.show(count)
   },
   showPanelManager: async () => {
     panelManagerMounted.value = true
+    // PanelManagerDialog uses v-model, not a ref .show() method
     await nextTick()
     panelManagerOpen.value = true
   },
   showCaseMetadata: () => caseMetadataModalRef.value?.show(),
   showSnackbar: (message: string, type: 'success' | 'error') =>
     snackbarRef.value?.show(message, type),
-  reopenImportDialog: () => importDialogRef.value?.reopen(),
-  reopenBatchImportDialog: () => batchImportDialogRef.value?.reopen(),
+  reopenImportDialog: () => importWizardRef.value?.reopen(),
+  reopenBatchImportDialog: () => importWizardRef.value?.reopen(),
   toggleLogViewer: () => {
     logViewerOpen.value = !logViewerOpen.value
   },

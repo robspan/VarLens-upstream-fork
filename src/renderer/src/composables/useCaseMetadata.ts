@@ -5,7 +5,7 @@
  * Used by CaseList, CaseMetadataCard for status, cohort, and HPO display/editing.
  */
 
-import { ref } from 'vue'
+import { ref, shallowRef, triggerRef } from 'vue'
 import { logService } from '../services/LogService'
 import { useCaseComments } from './useCaseComments'
 import { useCaseMetrics } from './useCaseMetrics'
@@ -27,11 +27,43 @@ import type {
   FullCaseMetadata
 } from '../../../shared/types/api'
 
-// Cache full metadata by caseId
-const metadataCache = ref<Map<number, FullCaseMetadata>>(new Map())
+/** Maximum cached case metadata entries — evicts oldest on overflow */
+const MAX_METADATA_CACHE_SIZE = 200
 
-// Loading states per case
-const loadingStates = ref<Map<number, boolean>>(new Map())
+// Cache full metadata by caseId — shallowRef avoids deep reactivity overhead
+// on the Map's values (FullCaseMetadata objects are never observed individually)
+const metadataCache = shallowRef<Map<number, FullCaseMetadata>>(new Map())
+
+// Loading states per case — shallowRef since we trigger manually
+const loadingStates = shallowRef<Map<number, boolean>>(new Map())
+
+/**
+ * Notify Vue that metadataCache changed (batched via microtask).
+ * Multiple synchronous mutations within one tick coalesce into a single
+ * triggerRef — this is intentional for optimistic updates where a mutation
+ * and its revert may both run before the next render cycle.
+ */
+let _pendingTrigger = false
+function triggerCacheUpdate(): void {
+  if (!_pendingTrigger) {
+    _pendingTrigger = true
+    Promise.resolve().then(() => {
+      triggerRef(metadataCache)
+      _pendingTrigger = false
+    })
+  }
+}
+
+/** Evict oldest entries when cache exceeds limit (Map preserves insertion order) */
+function evictIfNeeded(): void {
+  const cache = metadataCache.value
+  if (cache.size > MAX_METADATA_CACHE_SIZE) {
+    const keysToDelete = Array.from(cache.keys()).slice(0, cache.size - MAX_METADATA_CACHE_SIZE)
+    for (const key of keysToDelete) {
+      cache.delete(key)
+    }
+  }
+}
 
 // Global cohort groups list
 const cohortGroupsCache = ref<CohortGroup[]>([])
@@ -48,9 +80,12 @@ export function useCaseMetadata() {
     }
 
     loadingStates.value.set(caseId, true)
+    triggerRef(loadingStates)
     try {
       const result = await api.caseMetadata.getFullMetadata(caseId)
       metadataCache.value.set(caseId, result)
+      evictIfNeeded()
+      triggerCacheUpdate()
     } catch (error) {
       logService.error(
         'Failed to load case metadata: ' + (error instanceof Error ? error.message : String(error)),
@@ -58,6 +93,7 @@ export function useCaseMetadata() {
       )
     } finally {
       loadingStates.value.set(caseId, false)
+      triggerRef(loadingStates)
     }
   }
 
@@ -75,9 +111,16 @@ export function useCaseMetadata() {
     }
   }
 
-  // Get metadata from cache
+  // Get metadata from cache (LRU: move to end on access to mark as recently used)
   function getMetadata(caseId: number): FullCaseMetadata | undefined {
-    return metadataCache.value.get(caseId)
+    const cache = metadataCache.value
+    const value = cache.get(caseId)
+    if (value !== undefined) {
+      // Move to end of Map (most recently used) for LRU eviction
+      cache.delete(caseId)
+      cache.set(caseId, value)
+    }
+    return value
   }
 
   // Check if loading
@@ -98,6 +141,7 @@ export function useCaseMetadata() {
         case_id: caseId,
         affected_status: status
       } as CaseMetadata
+      triggerCacheUpdate()
     }
 
     try {
@@ -106,6 +150,7 @@ export function useCaseMetadata() {
       const cached = metadataCache.value.get(caseId)
       if (cached) {
         cached.metadata = updated
+        triggerCacheUpdate()
       }
     } catch (error) {
       logService.error(
@@ -115,6 +160,7 @@ export function useCaseMetadata() {
       // Revert optimistic update
       if (current && current.metadata) {
         current.metadata.affected_status = previousStatus
+        triggerCacheUpdate()
       }
     }
   }
@@ -132,6 +178,7 @@ export function useCaseMetadata() {
         case_id: caseId,
         sex: sex
       } as CaseMetadata
+      triggerCacheUpdate()
     }
 
     try {
@@ -139,15 +186,16 @@ export function useCaseMetadata() {
       const cached = metadataCache.value.get(caseId)
       if (cached) {
         cached.metadata = updated
+        triggerCacheUpdate()
       }
     } catch (error) {
       logService.error(
         'Failed to update sex: ' + (error instanceof Error ? error.message : String(error)),
         'case-metadata'
       )
-      // Revert optimistic update
       if (current && current.metadata) {
         current.metadata.sex = previousSex
+        triggerCacheUpdate()
       }
     }
   }
@@ -165,6 +213,7 @@ export function useCaseMetadata() {
         case_id: caseId,
         age
       } as CaseMetadata
+      triggerCacheUpdate()
     }
 
     try {
@@ -172,15 +221,16 @@ export function useCaseMetadata() {
       const cached = metadataCache.value.get(caseId)
       if (cached) {
         cached.metadata = updated
+        triggerCacheUpdate()
       }
     } catch (error) {
       logService.error(
         'Failed to update age: ' + (error instanceof Error ? error.message : String(error)),
         'case-metadata'
       )
-      // Revert optimistic update
       if (current && current.metadata) {
         current.metadata.age = previousAge
+        triggerCacheUpdate()
       }
     }
   }
@@ -198,6 +248,7 @@ export function useCaseMetadata() {
         case_id: caseId,
         date_of_birth: dateOfBirth
       } as CaseMetadata
+      triggerCacheUpdate()
     }
 
     try {
@@ -207,6 +258,7 @@ export function useCaseMetadata() {
       const cached = metadataCache.value.get(caseId)
       if (cached) {
         cached.metadata = updated
+        triggerCacheUpdate()
       }
     } catch (error) {
       logService.error(
@@ -214,9 +266,9 @@ export function useCaseMetadata() {
           (error instanceof Error ? error.message : String(error)),
         'case-metadata'
       )
-      // Revert optimistic update
       if (current && current.metadata) {
         current.metadata.date_of_birth = previousDob
+        triggerCacheUpdate()
       }
     }
   }
@@ -231,6 +283,7 @@ export function useCaseMetadata() {
     const newCohorts = cohortGroupsCache.value.filter((c) => cohortIds.includes(c.id))
     if (current) {
       current.cohorts = newCohorts
+      triggerCacheUpdate()
     }
 
     try {
@@ -240,9 +293,9 @@ export function useCaseMetadata() {
         'Failed to set cohorts: ' + (error instanceof Error ? error.message : String(error)),
         'case-metadata'
       )
-      // Revert optimistic update
       if (current) {
         current.cohorts = previousCohorts
+        triggerCacheUpdate()
       }
       // Reload full metadata to ensure consistency
       metadataCache.value.delete(caseId)
@@ -265,6 +318,7 @@ export function useCaseMetadata() {
     const current = metadataCache.value.get(caseId)
     if (current) {
       current.cohorts.push(newCohort)
+      triggerCacheUpdate()
     }
 
     return newCohort
@@ -304,15 +358,16 @@ export function useCaseMetadata() {
 
     if (current) {
       current.hpoTerms.push(newTerm)
+      triggerCacheUpdate()
     }
 
     try {
       const created = await api.caseMetadata.assignHpoTerm(caseId, hpoId, hpoLabel)
-      // Update cache with server response (correct ID)
       if (current) {
         const index = current.hpoTerms.findIndex((t) => t.hpo_id === hpoId)
         if (index !== -1) {
           current.hpoTerms[index] = created
+          triggerCacheUpdate()
         }
       }
     } catch (error) {
@@ -320,9 +375,9 @@ export function useCaseMetadata() {
         'Failed to assign HPO term: ' + (error instanceof Error ? error.message : String(error)),
         'case-metadata'
       )
-      // Revert optimistic update
       if (current) {
         current.hpoTerms = current.hpoTerms.filter((t) => t.hpo_id !== hpoId)
+        triggerCacheUpdate()
       }
     }
   }
@@ -336,6 +391,7 @@ export function useCaseMetadata() {
     // Optimistic update: remove from hpoTerms array
     if (current) {
       current.hpoTerms = current.hpoTerms.filter((t) => t.hpo_id !== hpoId)
+      triggerCacheUpdate()
     }
 
     try {
@@ -345,9 +401,9 @@ export function useCaseMetadata() {
         'Failed to remove HPO term: ' + (error instanceof Error ? error.message : String(error)),
         'case-metadata'
       )
-      // Revert optimistic update
       if (current) {
         current.hpoTerms = previousTerms
+        triggerCacheUpdate()
       }
     }
   }
@@ -355,7 +411,9 @@ export function useCaseMetadata() {
   // Clear all caches (call on database switch)
   function clearCache(): void {
     metadataCache.value.clear()
+    triggerRef(metadataCache)
     loadingStates.value.clear()
+    triggerRef(loadingStates)
     cohortGroupsCache.value = []
     useCaseComments().clearCache()
     useCaseMetrics().clearCache()
@@ -364,7 +422,9 @@ export function useCaseMetadata() {
   // Invalidate single case (force reload)
   function invalidateCase(caseId: number): void {
     metadataCache.value.delete(caseId)
+    triggerCacheUpdate()
     loadingStates.value.delete(caseId)
+    triggerRef(loadingStates)
   }
 
   return {

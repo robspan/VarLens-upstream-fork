@@ -50,9 +50,10 @@
         </span>
       </template>
       <template v-else>
-        <v-icon size="small" class="mr-1" :icon="mdiAccount" />
+        <v-icon size="small" class="mr-1" :icon="mdiAccount" style="opacity: 0.7" />
         <span
-          class="text-body-medium text-medium-emphasis select-case-hint"
+          class="text-body-medium select-case-hint"
+          style="opacity: 0.7"
           role="button"
           tabindex="0"
           @click="sidebarOpen = true"
@@ -73,7 +74,7 @@
       density="compact"
       variant="outlined"
       divided
-      color="white"
+      selected-class="mode-toggle--active"
       class="mode-toggle mr-2"
     >
       <v-btn value="case" size="small">
@@ -98,12 +99,20 @@
         </v-btn>
       </template>
       <v-list density="compact">
+        <v-list-subheader>Data</v-list-subheader>
         <v-list-item
           :prepend-icon="mdiChartBoxOutline"
           title="Database Overview"
           @click="$emit('show-database-overview')"
         />
+        <v-list-item
+          :prepend-icon="mdiDatabaseImport"
+          title="Import Data"
+          subtitle="Ctrl+I"
+          @click="$emit('import-click')"
+        />
         <v-divider class="my-1" />
+        <v-list-subheader>Settings</v-list-subheader>
         <v-list-item
           :prepend-icon="mdiLink"
           title="External Links"
@@ -169,6 +178,7 @@ import {
   mdiChevronDoubleLeft,
   mdiChevronDoubleRight,
   mdiCog,
+  mdiDatabaseImport,
   mdiDeleteSweep,
   mdiFilterOff,
   mdiInformationOutline,
@@ -205,6 +215,7 @@ defineEmits<{
   'show-panel-manager': []
   'show-preferences': []
   'show-import-progress': []
+  'import-click': []
   'reset-columns': []
   'reset-filters': []
   'delete-all-cases': []
@@ -275,14 +286,17 @@ const handleHomeClick = (): void => {
   height: 32px;
 }
 
-.mode-toggle :deep(.v-btn--active) {
-  background-color: rgba(255, 255, 255, 0.3) !important;
+.mode-toggle :deep(.v-btn--active),
+.mode-toggle :deep(.mode-toggle--active) {
+  background-color: rgba(255, 255, 255, 0.85) !important;
+  color: rgba(var(--v-theme-primary)) !important;
   font-weight: 600;
-  border-bottom: 2px solid rgba(255, 255, 255, 0.8);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.9);
 }
 
 .mode-toggle :deep(.v-btn:not(.v-btn--active)) {
-  opacity: 0.7;
+  color: rgba(255, 255, 255, 0.85) !important;
+  opacity: 0.85;
 }
 
 .sidebar-toggle-btn :deep(.v-icon) {

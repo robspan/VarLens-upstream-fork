@@ -10,6 +10,9 @@
  * - CohortTable.vue, FilterToolbar.vue
  */
 
+// TODO: The renderer has local copies of FilterState in composables/filter-types.ts
+// and composables/useFilters.ts that must be kept in sync. Consider consolidating.
+
 /**
  * Active filter representation for chip display
  */
@@ -55,6 +58,14 @@ export interface FilterState {
   activePanelIds: number[]
   /** Padding in base pairs around panel gene regions */
   panelPaddingBp: number
+  /** Maximum internal database allele frequency (0-1) */
+  maxInternalAf: number | null
+  /** Selected inheritance mode filters (multi-select) */
+  inheritanceModes: string[]
+  /** Active analysis group ID for trio filtering */
+  analysisGroupId: number | null
+  /** Consider phasing information for compound het */
+  considerPhasing: boolean
 }
 
 /**
@@ -76,4 +87,8 @@ export interface FilterIpcParams {
   acmg_classifications?: string[]
   active_panel_ids?: number[]
   panel_padding_bp?: number
+  max_internal_af?: number
+  inheritance_modes?: string[]
+  analysis_group_id?: number
+  consider_phasing?: boolean
 }

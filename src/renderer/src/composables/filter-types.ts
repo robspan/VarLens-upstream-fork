@@ -19,6 +19,10 @@ export interface FilterState {
   annotationScope: 'case' | 'all'
   activePanelIds: number[]
   panelPaddingBp: number
+  maxInternalAf: number | null
+  inheritanceModes: string[]
+  analysisGroupId: number | null
+  considerPhasing: boolean
 }
 
 /**
@@ -150,6 +154,21 @@ export function buildFilterFromState(
   if (filters.activePanelIds.length > 0) {
     variantFilter.active_panel_ids = [...filters.activePanelIds]
     variantFilter.panel_padding_bp = filters.panelPaddingBp
+  }
+
+  const internalAfValue = filters.maxInternalAf
+  if (internalAfValue !== null && Number.isNaN(internalAfValue) === false && internalAfValue > 0) {
+    variantFilter.max_internal_af = internalAfValue
+  }
+
+  if (filters.inheritanceModes.length > 0) {
+    variantFilter.inheritance_modes = [...filters.inheritanceModes]
+  }
+  if (filters.analysisGroupId !== null) {
+    variantFilter.analysis_group_id = filters.analysisGroupId
+  }
+  if (filters.considerPhasing) {
+    variantFilter.consider_phasing = true
   }
 
   return variantFilter

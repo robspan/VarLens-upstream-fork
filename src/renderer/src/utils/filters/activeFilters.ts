@@ -9,6 +9,7 @@
 
 import type { FilterState, ActiveFilter } from '../../../../shared/types/filters'
 import type { ColumnFiltersParam } from '../../../../shared/types/column-filters'
+import { INHERITANCE_MODE_META } from '../../../../shared/types/inheritance'
 
 /** Human-readable labels for column filter keys */
 const COLUMN_LABELS: Record<string, string> = {
@@ -29,7 +30,8 @@ const COLUMN_LABELS: Record<string, string> = {
   het_count: 'Het',
   hom_count: 'Hom',
   ref: 'Ref',
-  alt: 'Alt'
+  alt: 'Alt',
+  internal_af: 'Internal AF'
 }
 
 /**
@@ -101,6 +103,10 @@ export function buildActiveFiltersList(
     const pct = (filters.maxGnomadAf * 100).toFixed(2)
     list.push({ id: 'frequency', label: 'AF', value: `<= ${pct}%` })
   }
+  if (filters.maxInternalAf !== null && filters.maxInternalAf > 0) {
+    const pct = (filters.maxInternalAf * 100).toFixed(2)
+    list.push({ id: 'internal-frequency', label: 'Internal AF', value: `\u2264 ${pct}%` })
+  }
   if (filters.minCadd !== null && filters.minCadd >= 0) {
     list.push({ id: 'cadd', label: 'CADD', value: `>= ${filters.minCadd}` })
   }
@@ -121,6 +127,15 @@ export function buildActiveFiltersList(
   }
   if (filters.acmgClassifications.length > 0) {
     list.push({ id: 'acmg', label: 'ACMG', value: filters.acmgClassifications.join(', ') })
+  }
+
+  // Inheritance modes
+  if (filters.inheritanceModes.length > 0) {
+    const labels = filters.inheritanceModes.map((m) => {
+      const meta = INHERITANCE_MODE_META[m as keyof typeof INHERITANCE_MODE_META]
+      return meta?.abbr ?? m
+    })
+    list.push({ id: 'inheritance', label: 'Inheritance', value: labels.join(', ') })
   }
 
   // Gene panels

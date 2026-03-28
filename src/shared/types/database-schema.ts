@@ -322,6 +322,35 @@ export interface CaseActivePanelsTable {
   activated_at: number
 }
 
+// ── Variant Frequency ────────────────────────────────────
+export interface VariantFrequencyTable {
+  chr: string
+  pos: number
+  ref: string
+  alt: string
+  case_count: number
+}
+
+// ── Analysis Groups ──────────────────────────────────────
+export interface AnalysisGroupsTable {
+  id: Generated<number>
+  name: string
+  group_type: string
+  description: string | null
+  created_at: number
+  updated_at: number
+}
+
+// ── Analysis Group Members ───────────────────────────────
+export interface AnalysisGroupMembersTable {
+  id: Generated<number>
+  group_id: number
+  case_id: number
+  role: string
+  affected_status: string
+  individual_id: string | null
+}
+
 // ── Full Database Schema ──────────────────────────────────
 export interface VarlensDatabase {
   cases: CasesTable
@@ -352,4 +381,7 @@ export interface VarlensDatabase {
   panels: PanelsTable
   panel_genes: PanelGenesTable
   case_active_panels: CaseActivePanelsTable
+  variant_frequency: VariantFrequencyTable
+  analysis_groups: AnalysisGroupsTable
+  analysis_group_members: AnalysisGroupMembersTable
 }

@@ -27,6 +27,8 @@ export type FilterId =
   | 'comments'
   | 'acmg'
   | 'panels'
+  | 'internal-frequency'
+  | 'inheritance'
 
 /**
  * Clear a specific filter, returning partial state update
@@ -74,6 +76,14 @@ export function clearFilter(filterId: FilterId): Partial<FilterState> {
         activePanelIds: [...FILTER_DEFAULTS.activePanelIds],
         panelPaddingBp: FILTER_DEFAULTS.panelPaddingBp
       }
+    case 'internal-frequency':
+      return { maxInternalAf: FILTER_DEFAULTS.maxInternalAf }
+    case 'inheritance':
+      return {
+        inheritanceModes: [...FILTER_DEFAULTS.inheritanceModes],
+        analysisGroupId: FILTER_DEFAULTS.analysisGroupId,
+        considerPhasing: FILTER_DEFAULTS.considerPhasing
+      }
     default:
       return {}
   }
@@ -106,6 +116,10 @@ export function clearAllFilters(): FilterState {
     hasCommentOnly: FILTER_DEFAULTS.hasCommentOnly,
     acmgClassifications: [...FILTER_DEFAULTS.acmgClassifications],
     activePanelIds: [...FILTER_DEFAULTS.activePanelIds],
-    panelPaddingBp: FILTER_DEFAULTS.panelPaddingBp
+    panelPaddingBp: FILTER_DEFAULTS.panelPaddingBp,
+    maxInternalAf: FILTER_DEFAULTS.maxInternalAf,
+    inheritanceModes: [...FILTER_DEFAULTS.inheritanceModes],
+    analysisGroupId: FILTER_DEFAULTS.analysisGroupId,
+    considerPhasing: FILTER_DEFAULTS.considerPhasing
   }
 }

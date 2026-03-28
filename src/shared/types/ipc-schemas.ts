@@ -203,6 +203,12 @@ export const VariantFilterPartialSchema = z.object({
     .max(DOMAIN_CONFIG.MAX_CADD_SCORE)
     .nullish()
     .transform((val) => val ?? undefined),
+  max_internal_af: z
+    .number()
+    .min(0)
+    .max(1)
+    .nullish()
+    .transform((val) => val ?? undefined),
 
   // Exact match filters (for variant navigation)
   chr: nullishString(),
@@ -242,6 +248,32 @@ export const VariantFilterPartialSchema = z.object({
     .int()
     .nonnegative()
     .max(1000000)
+    .nullish()
+    .transform((val) => val ?? undefined),
+
+  // Inheritance mode filters
+  inheritance_modes: z
+    .array(
+      z.enum([
+        'homozygous',
+        'heterozygous',
+        'x_hemizygous',
+        'candidate_compound_het',
+        'de_novo',
+        'autosomal_recessive',
+        'compound_het'
+      ])
+    )
+    .nullish()
+    .transform((val) => val ?? undefined),
+  analysis_group_id: z
+    .number()
+    .int()
+    .positive()
+    .nullish()
+    .transform((val) => val ?? undefined),
+  consider_phasing: z
+    .boolean()
     .nullish()
     .transform((val) => val ?? undefined)
 })
@@ -699,3 +731,42 @@ export const FilterPresetReorderSchema = z.array(
     sortOrder: z.number().int()
   })
 )
+
+// ============================================================
+// Analysis Group Schemas
+// ============================================================
+
+/**
+ * Schema for analysis group creation
+ */
+export const AnalysisGroupCreateSchema = z.object({
+  name: z.string().min(1).max(200),
+  groupType: z.enum(['family', 'tumor_normal']).default('family'),
+  description: z
+    .string()
+    .max(1000)
+    .nullish()
+    .transform((val) => val ?? undefined)
+})
+
+/**
+ * Schema for analysis group update
+ */
+export const AnalysisGroupUpdateSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  description: z.string().max(1000).nullable().optional()
+})
+
+/**
+ * Schema for adding a member to an analysis group
+ */
+export const AnalysisGroupMemberAddSchema = z.object({
+  groupId: z.number().int().positive(),
+  caseId: z.number().int().positive(),
+  role: z.enum(['proband', 'father', 'mother', 'sibling', 'partner', 'other', 'tumor', 'normal']),
+  affectedStatus: z.enum(['affected', 'unaffected', 'unknown']).default('unknown'),
+  individualId: z
+    .string()
+    .nullish()
+    .transform((val) => val ?? undefined)
+})

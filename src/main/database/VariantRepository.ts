@@ -12,8 +12,13 @@ import { mainLogger } from '../services/MainLogger'
 
 import { DATABASE_CONFIG } from '../../shared/config'
 
-/** Kysely query builder type for variant queries */
-type VariantQueryBuilder = SelectQueryBuilder<VarlensDatabase, 'variants', Record<string, unknown>>
+/**
+ * Kysely query builder type for variant queries.
+ * Uses `any` for the table union to accommodate the LEFT JOIN alias ('vf')
+ * and the computed `internal_af` column which isn't in any physical table schema.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type VariantQueryBuilder = SelectQueryBuilder<VarlensDatabase, any, Record<string, unknown>>
 
 const BATCH_SIZE = DATABASE_CONFIG.BATCH_INSERT_SIZE
 
@@ -37,6 +42,9 @@ const SORTABLE_COLUMNS: Record<string, string> = {
 }
 
 const NUMERIC_COLUMNS = new Set(['pos', 'gnomad_af', 'cadd', 'qual', 'hpo_sim_score'])
+
+/** Columns that are computed at query time (not physical table columns) -- excluded from getColumnMeta */
+const COMPUTED_COLUMNS = new Set(['internal_af'])
 
 export class VariantRepository extends BaseRepository {
   private cases: CaseRepository
@@ -214,8 +222,20 @@ export class VariantRepository extends BaseRepository {
   ): VariantQueryBuilder {
     let query: VariantQueryBuilder = this.kysely
       .selectFrom('variants')
-      .selectAll()
-      .where('case_id', '=', filter.case_id)
+      .selectAll('variants')
+      .leftJoin('variant_frequency as vf', (join) =>
+        join
+          .onRef('vf.chr', '=', 'variants.chr')
+          .onRef('vf.pos', '=', 'variants.pos')
+          .onRef('vf.ref', '=', 'variants.ref')
+          .onRef('vf.alt', '=', 'variants.alt')
+      )
+      .select(
+        sql<
+          number | null
+        >`CAST(vf.case_count AS REAL) / NULLIF((SELECT COUNT(*) FROM cases), 0)`.as('internal_af')
+      )
+      .where('variants.case_id', '=', filter.case_id)
 
     // Simple filters via $if
     query = query.$if(filter.gene_symbol !== undefined && filter.gene_symbol !== '', (qb) =>
@@ -249,17 +269,37 @@ export class VariantRepository extends BaseRepository {
         qb.where(({ or, eb }) => or([eb('cadd', 'is', null), eb('cadd', '>=', filter.cadd_min!)]))
       )
 
+    // Internal AF filter (NULL-inclusive: variants without frequency data pass)
+    query = query.$if(filter.max_internal_af !== undefined && filter.max_internal_af > 0, (qb) =>
+      qb.where(({ or, eb }) =>
+        or([
+          eb(sql.ref('vf.case_count'), 'is', null),
+          eb(
+            sql<number>`CAST(vf.case_count AS REAL) / NULLIF((SELECT COUNT(*) FROM cases), 0)`,
+            '<=',
+            filter.max_internal_af!
+          )
+        ])
+      )
+    )
+
     // FTS5 search
     if (filter.search_query != null && filter.search_query !== '') {
       query = this.applySearchFilter(query, filter.search_query)
     }
 
-    // Exact variant match
+    // Exact variant match (table-qualified to avoid ambiguity with LEFT JOIN)
     query = query
-      .$if(filter.chr != null && filter.chr !== '', (qb) => qb.where('chr', '=', filter.chr!))
-      .$if(filter.pos != null, (qb) => qb.where('pos', '=', filter.pos!))
-      .$if(filter.ref != null && filter.ref !== '', (qb) => qb.where('ref', '=', filter.ref!))
-      .$if(filter.alt != null && filter.alt !== '', (qb) => qb.where('alt', '=', filter.alt!))
+      .$if(filter.chr != null && filter.chr !== '', (qb) =>
+        qb.where('variants.chr', '=', filter.chr!)
+      )
+      .$if(filter.pos != null, (qb) => qb.where('variants.pos', '=', filter.pos!))
+      .$if(filter.ref != null && filter.ref !== '', (qb) =>
+        qb.where('variants.ref', '=', filter.ref!)
+      )
+      .$if(filter.alt != null && filter.alt !== '', (qb) =>
+        qb.where('variants.alt', '=', filter.alt!)
+      )
 
     // Tag filter
     query = query.$if((filter.tag_ids?.length ?? 0) > 0, (qb) =>
@@ -450,6 +490,146 @@ export class VariantRepository extends BaseRepository {
             query = query.where(col, op, compValue)
           }
         }
+      }
+    }
+
+    // ── Inheritance mode filters ─────────────────────────────
+    // NOTE: filter.consider_phasing is accepted but not yet implemented.
+    // Phasing-aware compound het detection (distinguishing 0|1 from 1|0)
+    // will be added when long-read phased VCF import is supported.
+    if (filter.inheritance_modes && filter.inheritance_modes.length > 0) {
+      const modes = filter.inheritance_modes
+      const cid = filter.case_id
+      const gid = filter.analysis_group_id ?? null
+
+      // Build parameterized SQL fragments (Kysely sql`` auto-binds interpolated values)
+      const sqlConditions: ReturnType<typeof sql>[] = []
+
+      // Solo modes
+      if (modes.includes('homozygous')) {
+        sqlConditions.push(sql`variants.gt_num IN ('1/1', '1|1')`)
+      }
+      if (modes.includes('heterozygous')) {
+        sqlConditions.push(sql`variants.gt_num IN ('0/1', '0|1', '1|0')`)
+      }
+      if (modes.includes('x_hemizygous')) {
+        sqlConditions.push(
+          sql`(variants.chr IN ('X', 'chrX') AND variants.gt_num IN ('1/1', '1|1', '1'))`
+        )
+      }
+      if (modes.includes('candidate_compound_het')) {
+        sqlConditions.push(
+          sql`(variants.gene_symbol IN (
+            SELECT v2.gene_symbol FROM variants v2
+            WHERE v2.case_id = ${cid}
+              AND v2.gt_num IN ('0/1', '0|1', '1|0')
+              AND v2.gene_symbol IS NOT NULL
+            GROUP BY v2.gene_symbol HAVING COUNT(*) >= 2
+          ) AND variants.gt_num IN ('0/1', '0|1', '1|0'))`
+        )
+      }
+
+      // Trio modes — require analysis_group_id
+      // NOTE: If only trio modes are selected without an analysis group,
+      // conditions will be empty and no inheritance filter is applied.
+      // The UI prevents this by disabling trio chips when no group is set.
+      if (gid !== null) {
+        if (modes.includes('de_novo')) {
+          // Het in proband, absent or ref in both parents
+          sqlConditions.push(sql`(
+            variants.gt_num IN ('0/1', '0|1', '1|0')
+            AND variants.id NOT IN (
+              SELECT p.id FROM variants p
+              INNER JOIN analysis_group_members agm_f
+                ON agm_f.group_id = ${gid} AND agm_f.role = 'father'
+              INNER JOIN variants f
+                ON f.case_id = agm_f.case_id
+                AND f.chr = p.chr AND f.pos = p.pos AND f.ref = p.ref AND f.alt = p.alt
+                AND f.gt_num NOT IN ('0/0', '0|0', './.', '', '0')
+              WHERE p.case_id = ${cid}
+            )
+            AND variants.id NOT IN (
+              SELECT p.id FROM variants p
+              INNER JOIN analysis_group_members agm_m
+                ON agm_m.group_id = ${gid} AND agm_m.role = 'mother'
+              INNER JOIN variants f
+                ON f.case_id = agm_m.case_id
+                AND f.chr = p.chr AND f.pos = p.pos AND f.ref = p.ref AND f.alt = p.alt
+                AND f.gt_num NOT IN ('0/0', '0|0', './.', '', '0')
+              WHERE p.case_id = ${cid}
+            )
+          )`)
+        }
+
+        if (modes.includes('autosomal_recessive')) {
+          // Proband hom, parents NOT hom (must be het carriers or absent)
+          sqlConditions.push(sql`(
+            variants.gt_num IN ('1/1', '1|1')
+            AND variants.id NOT IN (
+              SELECT p.id FROM variants p
+              INNER JOIN analysis_group_members agm_par
+                ON agm_par.group_id = ${gid} AND agm_par.role IN ('father', 'mother')
+              INNER JOIN variants par
+                ON par.case_id = agm_par.case_id
+                AND par.chr = p.chr AND par.pos = p.pos AND par.ref = p.ref AND par.alt = p.alt
+                AND par.gt_num IN ('1/1', '1|1')
+              WHERE p.case_id = ${cid}
+            )
+          )`)
+        }
+
+        if (modes.includes('compound_het')) {
+          // Het variants in genes where:
+          // 1. Gene has >= 2 distinct het variants in proband
+          // 2. At least one variant is shared with father
+          // 3. At least one DIFFERENT variant is shared with mother
+          sqlConditions.push(sql`(
+            variants.gt_num IN ('0/1', '0|1', '1|0')
+            AND variants.gene_symbol IS NOT NULL
+            AND variants.gene_symbol IN (
+              SELECT v_inner.gene_symbol
+              FROM variants v_inner
+              WHERE v_inner.case_id = ${cid}
+                AND v_inner.gt_num IN ('0/1', '0|1', '1|0')
+                AND v_inner.gene_symbol IS NOT NULL
+              GROUP BY v_inner.gene_symbol HAVING COUNT(*) >= 2
+            )
+            AND variants.gene_symbol IN (
+              SELECT pf.gene_symbol
+              FROM variants pf
+              INNER JOIN analysis_group_members agm_f
+                ON agm_f.group_id = ${gid} AND agm_f.role = 'father'
+              INNER JOIN variants f ON f.case_id = agm_f.case_id
+                AND f.chr = pf.chr AND f.pos = pf.pos AND f.ref = pf.ref AND f.alt = pf.alt
+                AND f.gt_num IN ('0/1', '0|1', '1|0')
+              INNER JOIN variants pm
+                ON pm.case_id = ${cid}
+                AND pm.gene_symbol = pf.gene_symbol
+                AND pm.gt_num IN ('0/1', '0|1', '1|0')
+                AND (pm.chr != pf.chr OR pm.pos != pf.pos OR pm.ref != pf.ref OR pm.alt != pf.alt)
+              INNER JOIN analysis_group_members agm_m
+                ON agm_m.group_id = ${gid} AND agm_m.role = 'mother'
+              INNER JOIN variants m ON m.case_id = agm_m.case_id
+                AND m.chr = pm.chr AND m.pos = pm.pos AND m.ref = pm.ref AND m.alt = pm.alt
+                AND m.gt_num IN ('0/1', '0|1', '1|0')
+              WHERE pf.case_id = ${cid}
+                AND pf.gt_num IN ('0/1', '0|1', '1|0')
+                AND pf.gene_symbol IS NOT NULL
+            )
+          )`)
+        }
+      }
+
+      // Combine all conditions with OR using Kysely's sql tagged templates
+      if (sqlConditions.length === 1) {
+        query = query.where(sql<boolean>`(${sqlConditions[0]})`)
+      } else if (sqlConditions.length > 1) {
+        // Build OR chain: (cond1 OR cond2 OR ...)
+        let combined = sqlConditions[0]
+        for (let i = 1; i < sqlConditions.length; i++) {
+          combined = sql`${combined} OR ${sqlConditions[i]}`
+        }
+        query = query.where(sql<boolean>`(${combined})`)
       }
     }
 
@@ -698,7 +878,7 @@ export class VariantRepository extends BaseRepository {
     const useTempTable = this.preparePanelIntervals(filter)
     try {
       const compiled = this.buildVariantQuery(filter).compile()
-      const countSql = compiled.sql.replace(/^select \* from/i, 'select count(*) as count from')
+      const countSql = `SELECT count(*) as count FROM (${compiled.sql})`
       const result = this.db.prepare(countSql).get(...compiled.parameters) as { count: number }
       return result.count
     } finally {
@@ -730,7 +910,8 @@ export class VariantRepository extends BaseRepository {
    */
   private getColumnMeta(caseId: number): ColumnFilterMeta[] {
     const DISTINCT_THRESHOLD = 50
-    const columns = Object.entries(SORTABLE_COLUMNS)
+    // Exclude computed columns (e.g. internal_af) which don't exist as physical table columns
+    const columns = Object.entries(SORTABLE_COLUMNS).filter(([key]) => !COMPUTED_COLUMNS.has(key))
 
     // Query 1: Single scan — COUNT(DISTINCT col) for all columns + MIN/MAX for numeric columns
     const selectParts: string[] = []
@@ -807,6 +988,56 @@ export class VariantRepository extends BaseRepository {
     }
 
     return meta
+  }
+
+  /**
+   * Update variant_frequency counts for all variants in a case.
+   * Called after import to increment shared variant counts.
+   */
+  updateFrequencies(caseId: number): void {
+    this.db
+      .prepare(
+        `
+      INSERT INTO variant_frequency (chr, pos, ref, alt, case_count)
+      SELECT DISTINCT chr, pos, ref, alt, 1
+      FROM variants WHERE case_id = ?
+      ON CONFLICT(chr, pos, ref, alt)
+      DO UPDATE SET case_count = case_count + 1
+    `
+      )
+      .run(caseId)
+  }
+
+  /**
+   * Decrement variant_frequency counts for all variants in a case.
+   * Called before case deletion. Removes rows where count reaches 0.
+   */
+  decrementFrequencies(caseId: number): void {
+    this.db
+      .prepare(
+        `
+      UPDATE variant_frequency
+      SET case_count = case_count - 1
+      WHERE (chr, pos, ref, alt) IN (
+        SELECT DISTINCT chr, pos, ref, alt FROM variants WHERE case_id = ?
+      )
+    `
+      )
+      .run(caseId)
+    this.db.exec('DELETE FROM variant_frequency WHERE case_count <= 0')
+  }
+
+  /**
+   * Recompute all variant_frequency counts from scratch.
+   * Used after bulk deletion operations where incremental updates aren't possible.
+   */
+  recomputeAllFrequencies(): void {
+    this.db.exec('DELETE FROM variant_frequency')
+    this.db.exec(`
+      INSERT INTO variant_frequency (chr, pos, ref, alt, case_count)
+      SELECT chr, pos, ref, alt, COUNT(DISTINCT case_id)
+      FROM variants GROUP BY chr, pos, ref, alt
+    `)
   }
 
   getFilterOptions(caseId: number): FilterOptions {

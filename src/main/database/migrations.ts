@@ -33,6 +33,8 @@ import { BUILT_IN_PRESETS } from './built-in-presets'
  * - 17: Performance indexes for tag/star/ACMG filter queries
  * - 18: Composite index on variant_annotations for coordinate lookups
  * - 19: panels, panel_genes, case_active_panels + cases.genome_build
+ * - 20: variant_frequency table for internal AF tracking (#106)
+ * - 21: analysis_groups + analysis_group_members for family/trio support (#107)
  *
  * @param db - better-sqlite3-multiple-ciphers Database instance
  */
@@ -1220,5 +1222,72 @@ export function runMigrations(db: Database.Database): void {
     }
 
     db.exec('PRAGMA user_version = 19')
+  }
+
+  // v20: variant_frequency table for internal AF tracking (#106)
+  if (currentVersion < 20) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS variant_frequency (
+        chr TEXT NOT NULL,
+        pos INTEGER NOT NULL,
+        ref TEXT NOT NULL,
+        alt TEXT NOT NULL,
+        case_count INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY (chr, pos, ref, alt)
+      );
+    `)
+
+    // Backfill from existing variants
+    db.exec(`
+      INSERT OR IGNORE INTO variant_frequency (chr, pos, ref, alt, case_count)
+      SELECT chr, pos, ref, alt, COUNT(DISTINCT case_id) as case_count
+      FROM variants
+      GROUP BY chr, pos, ref, alt;
+    `)
+
+    db.exec('PRAGMA user_version = 20')
+  }
+
+  // v21: analysis_groups + analysis_group_members for family/trio support (#107)
+  if (currentVersion < 21) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS analysis_groups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        group_type TEXT NOT NULL DEFAULT 'family'
+          CHECK(group_type IN ('family', 'tumor_normal')),
+        description TEXT,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+      );
+
+      CREATE TABLE IF NOT EXISTS analysis_group_members (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_id INTEGER NOT NULL REFERENCES analysis_groups(id) ON DELETE CASCADE,
+        case_id INTEGER NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+        role TEXT NOT NULL CHECK(role IN (
+          'proband', 'father', 'mother', 'sibling', 'partner', 'other',
+          'tumor', 'normal'
+        )),
+        affected_status TEXT NOT NULL DEFAULT 'unknown'
+          CHECK(affected_status IN ('affected', 'unaffected', 'unknown')),
+        individual_id TEXT,
+        UNIQUE(group_id, case_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_agm_group ON analysis_group_members(group_id);
+      CREATE INDEX IF NOT EXISTS idx_agm_case ON analysis_group_members(case_id);
+    `)
+
+    db.exec('PRAGMA user_version = 21')
+  }
+
+  // v22: Cross-case variant coordinate index for trio inheritance queries (#107)
+  if (currentVersion < 22) {
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_variants_coord_case
+        ON variants(chr, pos, ref, alt, case_id);
+    `)
+    db.exec('PRAGMA user_version = 22')
   }
 }

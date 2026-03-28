@@ -67,6 +67,13 @@ export function buildIpcParams(filters: FilterState): FilterIpcParams {
     params.cadd_min = filters.minCadd
   }
   if (
+    filters.maxInternalAf !== null &&
+    !Number.isNaN(filters.maxInternalAf) &&
+    filters.maxInternalAf > 0
+  ) {
+    params.max_internal_af = Math.min(filters.maxInternalAf, 1)
+  }
+  if (
     filters.minCohortFrequency !== null &&
     !Number.isNaN(filters.minCohortFrequency) &&
     filters.minCohortFrequency > 0
@@ -79,6 +86,17 @@ export function buildIpcParams(filters: FilterState): FilterIpcParams {
     filters.minCarriers > 0
   ) {
     params.carrier_count_min = filters.minCarriers
+  }
+
+  // Inheritance filters
+  if (filters.inheritanceModes.length > 0) {
+    params.inheritance_modes = [...filters.inheritanceModes]
+  }
+  if (filters.analysisGroupId !== null) {
+    params.analysis_group_id = filters.analysisGroupId
+  }
+  if (filters.considerPhasing) {
+    params.consider_phasing = true
   }
 
   // Annotation filters

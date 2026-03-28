@@ -113,6 +113,14 @@ export function registerCaseHandlers({ ipcMain, getDb, getDbPool }: HandlerDepen
         safeEmit('cohort:summaryRebuilt', { is_stale: true })
       }
 
+      // NOTE: Decrement before delete because we need variant data to identify coordinates.
+      // If deleteCase() fails (extremely rare), frequencies may be slightly off until next import.
+      try {
+        db.variants.decrementFrequencies(validated.data)
+      } catch (freqError) {
+        mainLogger.warn(`Failed to decrement variant frequencies: ${freqError}`, 'cases')
+      }
+
       db.cases.deleteCase(validated.data)
 
       if (incrementalSucceeded) {
@@ -129,6 +137,7 @@ export function registerCaseHandlers({ ipcMain, getDb, getDbPool }: HandlerDepen
       const db = getDb()
       mainLogger.info(`Starting deleteAll worker (db: ${db.getPath()})`, 'cases')
       safeEmit('cohort:summaryRebuilt', { is_stale: true })
+
       try {
         const deleted = await runDeleteWorker({
           type: 'deleteAll',
@@ -136,6 +145,14 @@ export function registerCaseHandlers({ ipcMain, getDb, getDbPool }: HandlerDepen
           encryptionKey: db.getEncryptionKey()
         })
         mainLogger.info(`deleteAll completed: ${deleted} cases deleted`, 'cases')
+
+        // Recompute variant frequencies after bulk deletion
+        try {
+          db.variants.recomputeAllFrequencies()
+        } catch (freqError) {
+          mainLogger.warn(`Failed to recompute variant frequencies: ${freqError}`, 'cases')
+        }
+
         safeEmit('cases:deleted', { deleted })
         safeEmit('cohort:summaryRebuilt', { is_stale: false })
         return deleted
@@ -160,12 +177,21 @@ export function registerCaseHandlers({ ipcMain, getDb, getDbPool }: HandlerDepen
 
       const db = getDb()
       safeEmit('cohort:summaryRebuilt', { is_stale: true })
+
       const deleted = await runDeleteWorker({
         type: 'deleteBatch',
         dbPath: db.getPath(),
         encryptionKey: db.getEncryptionKey(),
         ids: validated.data
       })
+
+      // Recompute variant frequencies after batch deletion
+      try {
+        db.variants.recomputeAllFrequencies()
+      } catch (freqError) {
+        mainLogger.warn(`Failed to recompute variant frequencies: ${freqError}`, 'cases')
+      }
+
       safeEmit('cases:deleted', { deleted })
       safeEmit('cohort:summaryRebuilt', { is_stale: false })
       return deleted

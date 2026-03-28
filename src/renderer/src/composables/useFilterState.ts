@@ -75,13 +75,17 @@ export function useFilterState(
     clinvars: [] as string[],
     maxGnomadAf: null as number | null,
     minCadd: null as number | null,
+    maxInternalAf: null as number | null,
     tagIds: [] as number[],
     starredOnly: false,
     hasCommentOnly: false,
     acmgClassifications: [] as string[],
     annotationScope: 'case' as const,
     activePanelIds: [] as number[],
-    panelPaddingBp: 5000
+    panelPaddingBp: 5000,
+    inheritanceModes: [] as string[],
+    analysisGroupId: null as number | null,
+    considerPhasing: false
   })
 
   // Filter options loaded from database
@@ -157,6 +161,10 @@ export function useFilterState(
       filters.value.minCadd !== null &&
       Number.isNaN(filters.value.minCadd) === false &&
       filters.value.minCadd >= 0
+    const internalAfActive =
+      filters.value.maxInternalAf !== null &&
+      Number.isNaN(filters.value.maxInternalAf) === false &&
+      filters.value.maxInternalAf > 0
 
     return (
       filters.value.searchQuery !== '' ||
@@ -167,11 +175,13 @@ export function useFilterState(
       filters.value.clinvars.length > 0 ||
       afActive ||
       caddActive ||
+      internalAfActive ||
       filters.value.tagIds.length > 0 ||
       filters.value.starredOnly ||
       filters.value.hasCommentOnly ||
       filters.value.acmgClassifications.length > 0 ||
-      filters.value.activePanelIds.length > 0
+      filters.value.activePanelIds.length > 0 ||
+      filters.value.inheritanceModes.length > 0
     )
   })
 
@@ -195,11 +205,18 @@ export function useFilterState(
       filters.value.minCadd >= 0
     )
       count++
+    if (
+      filters.value.maxInternalAf !== null &&
+      !Number.isNaN(filters.value.maxInternalAf) &&
+      filters.value.maxInternalAf > 0
+    )
+      count++
     if (filters.value.tagIds.length > 0) count++
     if (filters.value.starredOnly) count++
     if (filters.value.hasCommentOnly) count++
     if (filters.value.acmgClassifications.length > 0) count++
     if (filters.value.activePanelIds.length > 0) count++
+    if (filters.value.inheritanceModes.length > 0) count++
     return count
   })
 
@@ -251,6 +268,14 @@ export function useFilterState(
     ) {
       list.push({ id: 'cadd', label: 'CADD \u2265', value: String(filters.value.minCadd) })
     }
+    if (
+      filters.value.maxInternalAf !== null &&
+      !Number.isNaN(filters.value.maxInternalAf) &&
+      filters.value.maxInternalAf > 0
+    ) {
+      const pct = (filters.value.maxInternalAf * 100).toFixed(2)
+      list.push({ id: 'internal-frequency', label: 'Internal AF \u2264', value: `${pct}%` })
+    }
     if (filters.value.tagIds.length > 0) {
       const tagNames = availableTags.value
         .filter((t) => filters.value.tagIds.includes(t.id))
@@ -280,6 +305,13 @@ export function useFilterState(
         value: `${filters.value.activePanelIds.length} panel(s)`
       })
     }
+    if (filters.value.inheritanceModes.length > 0) {
+      list.push({
+        id: 'inheritance',
+        label: 'Inheritance',
+        value: filters.value.inheritanceModes.join(', ')
+      })
+    }
 
     return list
   })
@@ -306,6 +338,12 @@ export function useFilterState(
           !Number.isNaN(filters.value.maxGnomadAf) &&
           filters.value.maxGnomadAf > 0
         )
+      case 'internal-frequency':
+        return (
+          filters.value.maxInternalAf !== null &&
+          !Number.isNaN(filters.value.maxInternalAf) &&
+          filters.value.maxInternalAf > 0
+        )
       case 'cadd':
         return (
           filters.value.minCadd !== null &&
@@ -322,6 +360,8 @@ export function useFilterState(
         )
       case 'panels':
         return filters.value.activePanelIds.length > 0
+      case 'inheritance':
+        return filters.value.inheritanceModes.length > 0
       default:
         return false
     }
@@ -355,6 +395,9 @@ export function useFilterState(
         filters.value.maxGnomadAf = null
         selectedAfPreset.value = null
         break
+      case 'internal-frequency':
+        filters.value.maxInternalAf = null
+        break
       case 'cadd':
         filters.value.minCadd = null
         selectedCaddPreset.value = null
@@ -378,6 +421,11 @@ export function useFilterState(
         filters.value.activePanelIds = []
         filters.value.panelPaddingBp = 5000
         break
+      case 'inheritance':
+        filters.value.inheritanceModes = []
+        filters.value.analysisGroupId = null
+        filters.value.considerPhasing = false
+        break
     }
   }
 
@@ -393,6 +441,7 @@ export function useFilterState(
     filters.value.clinvars = []
     filters.value.maxGnomadAf = null
     filters.value.minCadd = null
+    filters.value.maxInternalAf = null
     filters.value.tagIds = []
     filters.value.starredOnly = false
     filters.value.hasCommentOnly = false
@@ -400,6 +449,9 @@ export function useFilterState(
     filters.value.annotationScope = 'case'
     filters.value.activePanelIds = []
     filters.value.panelPaddingBp = 5000
+    filters.value.inheritanceModes = []
+    filters.value.analysisGroupId = null
+    filters.value.considerPhasing = false
     resetPresets()
     // Also reset sort order in parent
     onResetSort()
@@ -458,6 +510,7 @@ export function useFilterState(
     filters.value.clinvars = []
     filters.value.maxGnomadAf = null
     filters.value.minCadd = null
+    filters.value.maxInternalAf = null
     filters.value.tagIds = []
     filters.value.starredOnly = false
     filters.value.hasCommentOnly = false
@@ -465,6 +518,9 @@ export function useFilterState(
     filters.value.annotationScope = 'case'
     filters.value.activePanelIds = []
     filters.value.panelPaddingBp = 5000
+    filters.value.inheritanceModes = []
+    filters.value.analysisGroupId = null
+    filters.value.considerPhasing = false
     resetPresets()
   }
 

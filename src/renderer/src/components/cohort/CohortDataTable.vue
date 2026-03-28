@@ -581,13 +581,17 @@ const columnActiveFilters = computed<ActiveFilter[]>(() => {
       clinvars: [],
       maxGnomadAf: null,
       minCadd: null,
+      maxInternalAf: null,
       minCohortFrequency: null,
       minCarriers: null,
       starredOnly: false,
       hasCommentOnly: false,
       acmgClassifications: [],
       activePanelIds: [],
-      panelPaddingBp: 5000
+      panelPaddingBp: 5000,
+      inheritanceModes: [],
+      analysisGroupId: null,
+      considerPhasing: false
     },
     [],
     colFilters

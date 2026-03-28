@@ -255,6 +255,48 @@
         </v-expansion-panel-text>
       </v-expansion-panel>
 
+      <!-- Internal Frequency -->
+      <v-expansion-panel value="internal-frequency">
+        <FilterPanelTitle
+          :icon="mdiDatabase"
+          label="Internal Frequency"
+          :active="isFilterGroupActive('internal-frequency')"
+          :value-summary="internalFrequencySummary"
+        />
+        <v-expansion-panel-text>
+          <div class="d-flex ga-1 flex-wrap mb-2">
+            <v-chip
+              v-for="preset in internalAfPresets"
+              :key="preset.value"
+              :color="selectedInternalAfPreset === preset.value ? 'primary' : undefined"
+              :variant="selectedInternalAfPreset === preset.value ? 'flat' : 'outlined'"
+              size="small"
+              label
+              @click="
+                selectedInternalAfPreset =
+                  selectedInternalAfPreset === preset.value ? null : preset.value
+              "
+            >
+              {{ preset.label }}
+            </v-chip>
+          </div>
+          <v-text-field
+            v-model="customInternalAf"
+            density="compact"
+            variant="outlined"
+            hide-details
+            type="number"
+            step="0.1"
+            min="0"
+            max="100"
+            placeholder="Max internal AF % (e.g. 5)"
+            clearable
+            suffix="%"
+            @click:clear="customInternalAf = ''"
+          />
+        </v-expansion-panel-text>
+      </v-expansion-panel>
+
       <!-- CADD -->
       <v-expansion-panel value="cadd">
         <FilterPanelTitle
@@ -393,6 +435,79 @@
           </div>
         </v-expansion-panel-text>
       </v-expansion-panel>
+      <!-- === INHERITANCE === -->
+      <div class="filter-section-header text-overline text-medium-emphasis px-3 pt-3 pb-1">
+        <v-divider class="mb-2" />
+        Inheritance
+      </div>
+
+      <!-- Inheritance Modes -->
+      <v-expansion-panel value="inheritance">
+        <FilterPanelTitle
+          :icon="mdiDna"
+          label="Inheritance"
+          :active="isFilterGroupActive('inheritance')"
+          :value-summary="inheritanceSummary"
+        />
+        <v-expansion-panel-text>
+          <v-select
+            v-model="filters.analysisGroupId"
+            :items="groupOptions"
+            :loading="groupsLoading"
+            label="Family / Analysis Group"
+            density="compact"
+            variant="outlined"
+            clearable
+            hide-details
+            class="mb-3"
+            no-data-text="No families defined yet"
+            @click:clear="filters.analysisGroupId = null"
+          />
+          <div class="text-caption text-medium-emphasis mb-1">Genotype (always available)</div>
+          <div class="d-flex ga-1 flex-wrap mb-3">
+            <v-chip
+              v-for="meta in soloModes"
+              :key="meta.mode"
+              :color="filters.inheritanceModes.includes(meta.mode) ? meta.color : undefined"
+              :variant="filters.inheritanceModes.includes(meta.mode) ? 'flat' : 'outlined'"
+              size="small"
+              @click="toggleInheritanceMode(meta.mode)"
+            >
+              {{ meta.abbr }}
+              <v-tooltip activator="parent" location="top">{{ meta.label }}</v-tooltip>
+            </v-chip>
+          </div>
+          <div class="text-caption text-medium-emphasis mb-1">Segregation (requires family)</div>
+          <div class="d-flex ga-1 flex-wrap mb-3">
+            <v-chip
+              v-for="meta in trioModes"
+              :key="meta.mode"
+              :disabled="filters.analysisGroupId === null"
+              :color="filters.inheritanceModes.includes(meta.mode) ? meta.color : undefined"
+              :variant="filters.inheritanceModes.includes(meta.mode) ? 'flat' : 'outlined'"
+              size="small"
+              @click="toggleInheritanceMode(meta.mode)"
+            >
+              {{ meta.abbr }}
+              <v-tooltip activator="parent" location="top">
+                {{
+                  filters.analysisGroupId !== null
+                    ? meta.label
+                    : meta.label + ' — assign a family to enable'
+                }}
+              </v-tooltip>
+            </v-chip>
+          </div>
+          <v-switch
+            v-if="filters.inheritanceModes.some((m: string) => m.includes('compound'))"
+            v-model="filters.considerPhasing"
+            label="Consider phased variants"
+            density="compact"
+            hide-details
+            class="mt-1 mb-2"
+          />
+        </v-expansion-panel-text>
+      </v-expansion-panel>
     </v-expansion-panels>
 
     <PanelManagerDialog v-model="panelManagerOpen" @panels-changed="onPanelsChanged" />
@@ -400,7 +515,7 @@
 </template>
 
 <script setup lang="ts">
-import { inject, ref, computed } from 'vue'
+import { inject, ref, computed, watch, onMounted } from 'vue'
 import FilterDrawerShell from './filters/FilterDrawerShell.vue'
 import FilterPanelTitle from './filters/FilterPanelTitle.vue'
 import AnnotationScopeToggle from './AnnotationScopeToggle.vue'
@@ -410,6 +525,8 @@ import PanelManagerDialog from './panels/PanelManagerDialog.vue'
 import PanelFilterSection from './panels/PanelFilterSection.vue'
 import { consequenceGroups, clinvarGroups } from '../config/filterGroups'
 import { ACMG_FILTER_OPTIONS_LONG } from '../utils/filters'
+import { INHERITANCE_MODE_META, SOLO_MODES, TRIO_MODES } from '../../../shared/types/inheritance'
+import { useAnalysisGroups } from '../composables/useAnalysisGroups'
 import type { Tag } from '../../../shared/types/api'
 import type { FilterDrawerState } from './filterDrawerTypes'
 import {
@@ -418,6 +535,7 @@ import {
   mdiCircle,
   mdiCogOutline,
   mdiCommentText,
+  mdiDatabase,
   mdiDna,
   mdiEarth,
   mdiFlash,
@@ -447,9 +565,11 @@ const allPanelValues = [
   'function',
   'clinvar',
   'frequency',
+  'internal-frequency',
   'cadd',
   'tags',
-  'annotations'
+  'annotations',
+  'inheritance'
 ]
 const expandedPanels = ref<string[]>(['search', 'impact', 'frequency'])
 
@@ -532,6 +652,70 @@ const frequencySummary = computed(() => {
   return ''
 })
 
+// Internal frequency filter state
+const internalAfPresets = [
+  { label: '<= 1%', value: 0.01 },
+  { label: '<= 5%', value: 0.05 },
+  { label: '<= 10%', value: 0.1 }
+] as const
+
+const selectedInternalAfPreset = ref<number | null>(null)
+const customInternalAf = ref<string>('')
+
+// Bidirectional sync: preset selection sets filter state and clears custom input
+watch(selectedInternalAfPreset, (val) => {
+  if (val !== null) {
+    filters.value.maxInternalAf = val
+    customInternalAf.value = ''
+  } else if (customInternalAf.value === '') {
+    filters.value.maxInternalAf = null
+  }
+})
+
+// Bidirectional sync: custom input sets filter state and clears preset
+watch(customInternalAf, (val) => {
+  const num = parseFloat(val)
+  if (val !== '' && !Number.isNaN(num) && num > 0) {
+    const clamped = Math.min(Math.max(num, 0), 100)
+    filters.value.maxInternalAf = clamped / 100
+    selectedInternalAfPreset.value = null
+  } else if (val === '') {
+    // Only clear if no preset is active
+    if (selectedInternalAfPreset.value === null) {
+      filters.value.maxInternalAf = null
+    }
+  }
+})
+
+// Sync filter state back to UI when changed externally (e.g. "Clear all", loading presets)
+watch(
+  () => filters.value.maxInternalAf,
+  (val) => {
+    if (val === null || val === 0) {
+      selectedInternalAfPreset.value = null
+      customInternalAf.value = ''
+    } else if (typeof val === 'number' && Number.isFinite(val) && val > 0) {
+      // Check if it matches a preset
+      const matchingPreset = internalAfPresets.find((p) => p.value === val)
+      if (matchingPreset) {
+        selectedInternalAfPreset.value = matchingPreset.value
+        customInternalAf.value = ''
+      } else {
+        selectedInternalAfPreset.value = null
+        customInternalAf.value = String(val * 100)
+      }
+    }
+  }
+)
+
+const internalFrequencySummary = computed(() => {
+  if (filters.value.maxInternalAf !== null && filters.value.maxInternalAf > 0) {
+    const pct = (filters.value.maxInternalAf * 100).toFixed(2)
+    return `<= ${pct}%`
+  }
+  return ''
+})
+
 const caddSummary = computed(() => {
   if (filters.value.minCadd !== null && filters.value.minCadd >= 0) {
     return `>= ${filters.value.minCadd}`
@@ -576,6 +760,36 @@ const toggleAcmgFilter = (value: string): void => {
     filters.value.acmgClassifications = [...current, value]
   }
 }
+
+// Analysis groups composable for family selector
+const { loadGroups, groupOptions, loading: groupsLoading } = useAnalysisGroups()
+
+onMounted(() => {
+  loadGroups()
+})
+
+// Inheritance modes
+const soloModes = SOLO_MODES.map((m) => INHERITANCE_MODE_META[m])
+const trioModes = TRIO_MODES.map((m) => INHERITANCE_MODE_META[m])
+
+function toggleInheritanceMode(mode: string): void {
+  const idx = filters.value.inheritanceModes.indexOf(mode)
+  if (idx >= 0) {
+    filters.value.inheritanceModes.splice(idx, 1)
+  } else {
+    filters.value.inheritanceModes.push(mode)
+  }
+}
+
+const inheritanceSummary = computed(() => {
+  if (filters.value.inheritanceModes.length === 0) return ''
+  return filters.value.inheritanceModes
+    .map((m) => {
+      const meta = INHERITANCE_MODE_META[m as keyof typeof INHERITANCE_MODE_META]
+      return meta?.abbr ?? m
+    })
+    .join(', ')
+})
 </script>
 
 <style scoped>

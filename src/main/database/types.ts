@@ -103,6 +103,8 @@ export interface Variant {
   aa_change: string | null
   /** Mode of inheritance, nullable */
   moi: string | null
+  /** Internal allele frequency across all cases (computed, not stored on variants table) */
+  internal_af?: number | null
 }
 
 /**
@@ -153,6 +155,14 @@ export interface VariantFilter {
   active_panel_ids?: number[]
   /** Panel padding in base pairs (IPC-only, used during interval computation) */
   panel_padding_bp?: number
+  /** Maximum internal allele frequency (0-1) */
+  max_internal_af?: number
+  /** Inheritance mode filters */
+  inheritance_modes?: string[]
+  /** Analysis group ID for trio-based inheritance filtering */
+  analysis_group_id?: number
+  /** Whether to consider phasing for compound het */
+  consider_phasing?: boolean
 }
 
 /**
@@ -531,6 +541,49 @@ export interface CaseMetricWithDefinition extends CaseMetric {
   unit: string
   /** Category */
   metric_category: string
+}
+
+/**
+ * AnalysisGroup - Family or tumor/normal group definition
+ */
+export interface AnalysisGroup {
+  id: number
+  name: string
+  group_type: 'family' | 'tumor_normal'
+  description: string | null
+  created_at: number
+  updated_at: number
+}
+
+export type AnalysisGroupRole =
+  | 'proband'
+  | 'father'
+  | 'mother'
+  | 'sibling'
+  | 'partner'
+  | 'other'
+  | 'tumor'
+  | 'normal'
+
+export type AffectedStatusValue = 'affected' | 'unaffected' | 'unknown'
+
+/**
+ * AnalysisGroupMember - Case membership within an analysis group
+ */
+export interface AnalysisGroupMember {
+  id: number
+  group_id: number
+  case_id: number
+  role: AnalysisGroupRole
+  affected_status: AffectedStatusValue
+  individual_id: string | null
+}
+
+/**
+ * AnalysisGroupWithMembers - Analysis group with its members populated
+ */
+export interface AnalysisGroupWithMembers extends AnalysisGroup {
+  members: AnalysisGroupMember[]
 }
 
 /**

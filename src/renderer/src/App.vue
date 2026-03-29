@@ -66,6 +66,8 @@
     />
 
     <KeyboardShortcutsDialog v-model="showKeyboardHelp" />
+
+    <ViewTransitionOverlay :model-value="transitioning" />
   </v-app>
 </template>
 
@@ -91,6 +93,7 @@ import { AppStateKey, createAppState } from './composables/useAppState'
 import { useApiService } from './composables/useApiService'
 import ImportStatusBar from './components/ImportStatusBar.vue'
 import { useImportStatusStore } from './stores/importStatusStore'
+import ViewTransitionOverlay from './components/ViewTransitionOverlay.vue'
 
 const router = useRouter()
 const { api } = useApiService()
@@ -117,12 +120,14 @@ const {
   panelMode,
   variantTableRef,
   filterToolbarRef,
-  cohortViewRef,
   dataGeneration
 } = appState
 
 // Keyboard shortcuts help dialog
 const showKeyboardHelp = ref(false)
+
+// View transition overlay
+const transitioning = ref(false)
 
 // Responsive layout
 const { tier } = useResponsiveLayout()
@@ -241,15 +246,18 @@ const handleBatchImportComplete = async (): Promise<void> => {
 watch(activeTab, async (newTab) => {
   panelOpen.value = false
   selectedPanelVariant.value = null
-  if (newTab === 'cohort') {
-    sidebarOpen.value = false
-    await router.push('/cohort')
-    // Wait for the CohortView to mount before refreshing —
-    // the ref isn't available until after the next render cycle
+  transitioning.value = true
+  try {
+    if (newTab === 'cohort') {
+      sidebarOpen.value = false
+      await router.push('/cohort')
+    } else {
+      await router.push('/case')
+    }
+  } finally {
+    // Allow a tick for onActivated to fire before hiding overlay
     await nextTick()
-    await cohortViewRef.value?.refresh()
-  } else {
-    router.push('/case')
+    transitioning.value = false
   }
 })
 

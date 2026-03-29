@@ -21,6 +21,34 @@ import {
 } from '../../../shared/utils/protein-utils'
 import { logService } from '../services/LogService'
 
+/** Lazy-load the pdbe-molstar web component script on first use */
+let molstarScriptLoaded = false
+let molstarScriptLoadPromise: Promise<void> | null = null
+function ensureMolstarScript(): Promise<void> {
+  if (molstarScriptLoaded) return Promise.resolve()
+  // Return the in-flight promise if a load is already pending
+  if (molstarScriptLoadPromise) return molstarScriptLoadPromise
+
+  molstarScriptLoadPromise = new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = '/pdbe-molstar-component.js'
+    script.onload = () => {
+      logService.info('pdbe-molstar script loaded on demand', 'MolstarViewer')
+      molstarScriptLoaded = true
+      molstarScriptLoadPromise = null
+      resolve()
+    }
+    script.onerror = () => {
+      molstarScriptLoadPromise = null // Allow retry on next call
+      script.remove() // Remove failed element to avoid duplicates on retry
+      reject(new Error('Failed to load pdbe-molstar script'))
+    }
+    document.head.appendChild(script)
+  })
+
+  return molstarScriptLoadPromise
+}
+
 /** Representation types supported by pdbe-molstar */
 export type RepresentationType = 'cartoon' | 'molecular-surface' | 'ball-and-stick'
 
@@ -180,48 +208,91 @@ export function useMolstarViewer(
   }
 
   /**
-   * Poll for the viewer instance to become available.
-   * The pdbe-molstar web component initializes asynchronously, so
-   * viewerInstance may not be available immediately after DOM insertion.
+   * Wait for the pdbe-molstar custom element to be registered, then poll
+   * for the viewerInstance to appear on the DOM element.
+   *
+   * Uses the standard `customElements.whenDefined()` API which returns a
+   * Promise that resolves when the element is registered. This is superior
+   * to polling because it reacts instantly to registration and handles
+   * slow script loading gracefully (e.g. Windows antivirus scanning the
+   * 6 MB pdbe-molstar script during ASAR extraction).
+   *
+   * After registration, a short poll waits for viewerInstance which is
+   * set synchronously in connectedCallback but may be delayed by Vue's
+   * DOM update batching.
    */
   function startPolling(): void {
     stopPolling()
 
-    // Pre-check: if the custom element is not registered, the 6 MB script
-    // failed to load/parse (common on Windows with antivirus scanning or
-    // ASAR extraction issues). Fail immediately instead of waiting 30s.
-    if (typeof customElements === 'undefined' || !customElements.get('pdbe-molstar')) {
+    if (typeof customElements === 'undefined') {
       loading.value = false
-      error.value = '3D viewer component failed to load. Try restarting the application.'
-      logService.error(
-        'pdbe-molstar custom element is not registered — script may have failed to load',
-        'MolstarViewer'
-      )
+      error.value = '3D viewer is not supported in this environment.'
+      logService.error('customElements API is unavailable', 'MolstarViewer')
       return
     }
 
-    let attempts = 0
-    const maxAttempts = 60 // 30 seconds max
+    // Phase 0: Ensure script is loaded (lazy — only on first 3D viewer open).
+    // Phase 1: Wait for custom element registration (with timeout).
+    // Phase 2: Poll for viewerInstance on the DOM element.
+    void ensureMolstarScript()
+      .then(() => {
+        // If already registered, skip whenDefined
+        if (customElements.get('pdbe-molstar')) return
 
-    pollingTimer = setInterval(() => {
-      attempts++
-      if (tryAttachViewer()) {
-        stopPolling()
-        return
-      }
-      if (attempts >= maxAttempts) {
-        stopPolling()
+        // Wrap whenDefined in a timeout — if the script loads but fails to
+        // call customElements.define(), we don't hang forever
+        return new Promise<void>((resolve, reject) => {
+          const timeoutMs = 30_000
+          const timeoutId = setTimeout(() => {
+            reject(new Error('Timed out waiting for pdbe-molstar custom element registration'))
+          }, timeoutMs)
+
+          void customElements
+            .whenDefined('pdbe-molstar')
+            .then(() => {
+              clearTimeout(timeoutId)
+              resolve()
+            })
+            .catch((err) => {
+              clearTimeout(timeoutId)
+              reject(err)
+            })
+        })
+      })
+      .then(() => {
+        logService.info('pdbe-molstar custom element registered', 'MolstarViewer')
+
+        // Phase 2: Poll for viewerInstance on the DOM element.
+        // connectedCallback sets it synchronously, but Vue may not have
+        // flushed the DOM update yet, so a brief poll is warranted.
+        let viewerAttempts = 0
+        const maxViewerAttempts = 60 // 30 seconds
+
+        pollingTimer = setInterval(() => {
+          viewerAttempts++
+          if (tryAttachViewer()) {
+            stopPolling()
+            return
+          }
+          if (viewerAttempts >= maxViewerAttempts) {
+            stopPolling()
+            loading.value = false
+            error.value = 'Timed out waiting for 3D viewer to initialize'
+            logService.error(
+              'pdbe-molstar viewer instance not found after timeout — ' +
+                `element exists: ${!!molstarRef.value}, ` +
+                `tagName: ${molstarRef.value?.tagName ?? 'null'}, ` +
+                `has viewerInstance: ${!!(molstarRef.value as PdbeMolstarElement | null)?.viewerInstance}`,
+              'MolstarViewer'
+            )
+          }
+        }, 500)
+      })
+      .catch((err: Error) => {
         loading.value = false
-        error.value = 'Timed out waiting for 3D viewer to initialize'
-        logService.error(
-          'pdbe-molstar viewer instance not found after timeout — ' +
-            `element exists: ${!!molstarRef.value}, ` +
-            `tagName: ${molstarRef.value?.tagName ?? 'null'}, ` +
-            `has viewerInstance: ${!!(molstarRef.value as PdbeMolstarElement | null)?.viewerInstance}`,
-          'MolstarViewer'
-        )
-      }
-    }, 500)
+        error.value = '3D viewer component failed to load. Try restarting the application.'
+        logService.error(`pdbe-molstar init failed: ${err.message}`, 'MolstarViewer')
+      })
   }
 
   function stopPolling(): void {

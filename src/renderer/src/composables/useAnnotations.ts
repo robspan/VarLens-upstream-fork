@@ -221,18 +221,39 @@ export function useAnnotations() {
     caseId: number,
     variants: Array<{ chr: string; pos: number; ref: string; alt: string }>
   ): Promise<void> {
-    // Load in parallel, skip already cached
-    const promises = variants
-      .filter((v) => !annotationCache.value.has(variantKey(v.chr, v.pos, v.ref, v.alt)))
-      .map((v) => loadAnnotations(caseId, v.chr, v.pos, v.ref, v.alt))
+    if (!api) return
 
-    const results = await Promise.allSettled(promises)
-    const failed = results.filter((r) => r.status === 'rejected')
-    if (failed.length > 0) {
+    // Filter out cached AND in-flight keys to prevent duplicate IPC calls
+    const uncached = variants
+      .filter(
+        (v) =>
+          !annotationCache.value.has(variantKey(v.chr, v.pos, v.ref, v.alt)) &&
+          loadingStates.value.get(variantKey(v.chr, v.pos, v.ref, v.alt)) !== true
+      )
+      .map((v) => ({ chr: v.chr, pos: v.pos, ref: v.ref, alt: v.alt }))
+
+    if (uncached.length === 0) return
+
+    // Mark all keys as in-flight before the IPC call
+    for (const vk of uncached) {
+      setLoading(variantKey(vk.chr, vk.pos, vk.ref, vk.alt), true)
+    }
+
+    try {
+      const results = await api.annotations.batchGet(caseId, uncached)
+      for (const [key, value] of Object.entries(results)) {
+        cacheSet(key, value as AnnotationCache)
+      }
+    } catch (error) {
       logService.warn(
-        `Failed to load ${failed.length}/${promises.length} annotations`,
+        'Failed to load annotation batch: ' +
+          (error instanceof Error ? error.message : String(error)),
         'annotations'
       )
+    } finally {
+      for (const vk of uncached) {
+        setLoading(variantKey(vk.chr, vk.pos, vk.ref, vk.alt), false)
+      }
     }
   }
 
@@ -270,17 +291,39 @@ export function useAnnotations() {
   async function loadGlobalAnnotationsBatch(
     variants: Array<{ chr: string; pos: number; ref: string; alt: string }>
   ): Promise<void> {
-    const promises = variants
-      .filter((v) => !annotationCache.value.has(variantKey(v.chr, v.pos, v.ref, v.alt)))
-      .map((v) => loadGlobalAnnotations(v.chr, v.pos, v.ref, v.alt))
+    if (!api) return
 
-    const results = await Promise.allSettled(promises)
-    const failed = results.filter((r) => r.status === 'rejected')
-    if (failed.length > 0) {
+    // Filter out cached AND in-flight keys to prevent duplicate IPC calls
+    const uncached = variants
+      .filter(
+        (v) =>
+          !annotationCache.value.has(variantKey(v.chr, v.pos, v.ref, v.alt)) &&
+          loadingStates.value.get(variantKey(v.chr, v.pos, v.ref, v.alt)) !== true
+      )
+      .map((v) => ({ chr: v.chr, pos: v.pos, ref: v.ref, alt: v.alt }))
+
+    if (uncached.length === 0) return
+
+    // Mark all keys as in-flight before the IPC call
+    for (const vk of uncached) {
+      setLoading(variantKey(vk.chr, vk.pos, vk.ref, vk.alt), true)
+    }
+
+    try {
+      const results = await api.annotations.batchGet(null, uncached)
+      for (const [key, value] of Object.entries(results)) {
+        cacheSet(key, value as AnnotationCache)
+      }
+    } catch (error) {
       logService.warn(
-        `Failed to load ${failed.length}/${promises.length} global annotations`,
+        'Failed to load global annotation batch: ' +
+          (error instanceof Error ? error.message : String(error)),
         'annotations'
       )
+    } finally {
+      for (const vk of uncached) {
+        setLoading(variantKey(vk.chr, vk.pos, vk.ref, vk.alt), false)
+      }
     }
   }
 

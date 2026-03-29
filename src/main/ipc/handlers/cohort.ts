@@ -14,20 +14,7 @@ import { mainLogger } from '../../services/MainLogger'
 import type { RebuildWorkerResponse } from '../../workers/rebuild-summary-worker'
 import type { DatabaseService } from '../../database/DatabaseService'
 import { computePanelIntervals } from './panelIntervalHelper'
-
-function convertBigInts<T>(obj: T): T {
-  if (obj === null || obj === undefined) return obj
-  if (typeof obj === 'bigint') return Number(obj) as unknown as T
-  if (Array.isArray(obj)) return obj.map(convertBigInts) as unknown as T
-  if (typeof obj === 'object') {
-    const result: Record<string, unknown> = {}
-    for (const [key, value] of Object.entries(obj)) {
-      result[key] = typeof value === 'bigint' ? Number(value) : value
-    }
-    return result as T
-  }
-  return obj
-}
+import { convertBigInts } from '../../utils/convertBigInts'
 
 function safeEmit(channel: string, data: unknown): void {
   const win = BrowserWindow.getAllWindows()[0]
@@ -180,11 +167,7 @@ export function registerCohortHandlers({ ipcMain, getDb, getDbPool }: HandlerDep
           )
         }
         // Ensure data is serializable (convert any BigInt to Number)
-        return JSON.parse(
-          JSON.stringify(carriers, (_key, value) =>
-            typeof value === 'bigint' ? Number(value) : value
-          )
-        )
+        return convertBigInts(carriers)
       })
     }
   )
@@ -269,10 +252,55 @@ export function registerCohortHandlers({ ipcMain, getDb, getDbPool }: HandlerDep
     return wrapHandler(async () => {
       const db = getDb()
       safeEmit('cohort:summaryRebuilt', { is_stale: true })
-      db.cohortSummary.rebuild()
+      await spawnRebuildWorker(db.getPath(), db.getEncryptionKey())
       db.cohort.invalidateColumnMetaCache()
       safeEmit('cohort:summaryRebuilt', { is_stale: false })
     })
+  })
+}
+
+/**
+ * Spawn a worker thread to rebuild the cohort summary.
+ * Returns a Promise that resolves on success and rejects on error.
+ */
+function spawnRebuildWorker(dbPath: string, encryptionKey?: string): Promise<void> {
+  return new Promise<void>((promiseResolve: () => void, promiseReject: (err: Error) => void) => {
+    const workerPath = resolve(__dirname, 'rebuild-summary-worker.js')
+    const worker = new Worker(workerPath)
+    let settled = false
+
+    const settle = (err?: Error): void => {
+      if (settled) return
+      settled = true
+      worker.terminate().catch((e) => {
+        mainLogger.warn(`Summary rebuild worker termination failed: ${e}`, 'cohort')
+      })
+      if (err) {
+        promiseReject(err)
+      } else {
+        promiseResolve()
+      }
+    }
+
+    worker.on('message', (msg: RebuildWorkerResponse) => {
+      if (msg.type === 'complete') {
+        settle()
+      } else {
+        settle(new Error(msg.error ?? 'Rebuild worker reported failure'))
+      }
+    })
+
+    worker.on('error', (err: Error) => {
+      settle(err)
+    })
+
+    worker.on('exit', (code) => {
+      if (!settled) {
+        settle(new Error(`Rebuild worker exited unexpectedly with code ${code}`))
+      }
+    })
+
+    worker.postMessage({ dbPath, encryptionKey })
   })
 }
 
@@ -293,20 +321,8 @@ export function triggerStartupRebuildIfNeeded(db: DatabaseService): void {
   )
   safeEmit('cohort:summaryRebuilt', { is_stale: true })
 
-  const workerPath = resolve(__dirname, 'rebuild-summary-worker.js')
-  const worker = new Worker(workerPath)
-  let settled = false
-
-  const settle = (): void => {
-    if (settled) return
-    settled = true
-    worker.terminate().catch((e) => {
-      mainLogger.warn(`Summary rebuild worker termination failed: ${e}`, 'cohort')
-    })
-  }
-
-  worker.on('message', (msg: RebuildWorkerResponse) => {
-    if (msg.type === 'complete') {
+  spawnRebuildWorker(db.getPath(), db.getEncryptionKey())
+    .then(() => {
       mainLogger.info('Startup: cohort summary rebuild completed', 'cohort')
       try {
         db.cohort.invalidateColumnMetaCache()
@@ -314,27 +330,9 @@ export function triggerStartupRebuildIfNeeded(db: DatabaseService): void {
         /* DB may be closed */
       }
       safeEmit('cohort:summaryRebuilt', { is_stale: false })
-    } else {
-      mainLogger.error(`Startup: cohort summary rebuild failed: ${msg.error}`, 'cohort')
+    })
+    .catch((err: Error) => {
+      mainLogger.error(`Startup: cohort summary rebuild failed: ${err.message}`, 'cohort')
       // Leave is_stale: true so the user can trigger a manual rebuild
-    }
-    settle()
-  })
-
-  worker.on('error', (err: Error) => {
-    mainLogger.error(`Startup: rebuild worker error: ${err.message}`, 'cohort')
-    settle()
-  })
-
-  worker.on('exit', (code) => {
-    if (!settled) {
-      mainLogger.error(`Startup: rebuild worker exited unexpectedly with code ${code}`, 'cohort')
-    }
-    settled = true
-  })
-
-  worker.postMessage({
-    dbPath: db.getPath(),
-    encryptionKey: db.getEncryptionKey()
-  })
+    })
 }

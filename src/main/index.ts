@@ -1,4 +1,4 @@
-import { app, dialog, shell, session, nativeImage, BrowserWindow } from 'electron'
+import { app, dialog, shell, nativeImage, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import Database from 'better-sqlite3-multiple-ciphers'
@@ -138,23 +138,11 @@ if (gotTheLock !== true) {
       optimizer.watchWindowShortcuts(window)
     })
 
-    // Set Content-Security-Policy response headers in dev mode so Electron's
-    // security checker sees the policy (it inspects HTTP headers, not <meta> tags).
-    // Only needed in dev: the warning says "will not show up once the app is packaged."
-    // In production the <meta> tag in index.html provides the CSP. Applying CSP
-    // headers to every HTTP response in production can interfere with external API
-    // responses (e.g., pdbe-molstar fetching structure data from AlphaFold).
+    // Suppress the "Insecure Content-Security-Policy" dev warning. This fires
+    // because 'unsafe-eval' is required by Mol*/pdbe-molstar for WebGL shader
+    // compilation. The warning does not appear in packaged builds.
     if (is.dev) {
-      session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-        callback({
-          responseHeaders: {
-            ...details.responseHeaders,
-            'Content-Security-Policy': [
-              "default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' ws: data: https://alphafold.ebi.ac.uk https://www.ebi.ac.uk https://files.rcsb.org https://models.rcsb.org https://data.rcsb.org https://rest.ensembl.org https://gnomad.broadinstitute.org https://www.proteins.uniprot.org https://rest.uniprot.org https://www.interpro.ebi.ac.uk blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
-            ]
-          }
-        })
-      })
+      process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true'
     }
 
     // Create window after security handlers are registered

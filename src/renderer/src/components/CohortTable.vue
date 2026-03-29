@@ -457,9 +457,7 @@ onUnmounted(() => {
 
 // Expose refresh method — single entry point for all data loading
 const refresh = async () => {
-  void fetchSummary()
-  void fetchColumnMeta()
-  await invalidateAndReload()
+  await Promise.all([fetchSummary(), fetchColumnMeta(), invalidateAndReload()])
 }
 defineExpose({ refresh })
 </script>

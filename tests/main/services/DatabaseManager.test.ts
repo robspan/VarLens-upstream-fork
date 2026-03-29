@@ -2,13 +2,13 @@
  * Tests for DatabaseManager - lifecycle, switching, rollback, and error handling
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { unlinkSync, existsSync, writeFileSync } from 'fs'
 import { DatabaseManager } from '../../../src/main/services/DatabaseManager'
 import { RecentDatabasesService } from '../../../src/main/services/RecentDatabasesService'
-import { DatabaseError, WrongPasswordError } from '../../../src/main/database/errors'
+import { DatabaseError } from '../../../src/main/database/errors'
 
 // Helper to create a unique temp file path
 function tempDbPath(suffix = ''): string {

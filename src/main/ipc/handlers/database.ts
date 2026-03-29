@@ -6,8 +6,13 @@
  */
 
 import { dialog, shell } from 'electron'
-import { existsSync, unlinkSync } from 'fs'
+import { existsSync } from 'fs'
+import { unlink } from 'fs/promises'
+import { extname, resolve } from 'path'
 import { WrongPasswordError } from '../../database/errors'
+
+/** File extensions allowed for database deletion — prevents accidental non-DB file removal */
+const ALLOWED_DB_EXTENSIONS = new Set(['.db', '.sqlite', '.sqlite3'])
 import { wrapHandler } from '../errorHandler'
 import type { HandlerDependencies } from '../types'
 import { mainLogger } from '../../services/MainLogger'
@@ -259,28 +264,46 @@ export function registerDatabaseHandlers({
         throw new Error('Invalid file path')
       }
 
+      // Canonicalize to resolve any ../ segments (defense-in-depth)
+      const canonicalPath = resolve(validated.data)
+
+      // Only allow deletion of known database file extensions
+      const ext = extname(canonicalPath).toLowerCase()
+      if (!ALLOWED_DB_EXTENSIONS.has(ext)) {
+        throw new Error(
+          `Refusing to delete file with extension "${ext}". Only database files (.db, .sqlite, .sqlite3) can be deleted.`
+        )
+      }
+
       const manager = getDbManager()
+
+      // Verify the path exists in the recent databases list before allowing deletion
+      const recentPaths = manager.getRecentDatabases().map((db) => db.path)
+      if (!recentPaths.includes(canonicalPath)) {
+        throw new Error('Can only delete databases that appear in the recent databases list.')
+      }
+
       const currentPath = manager.getCurrentPath()
 
       // Refuse to delete the currently active database
-      if (currentPath === validated.data) {
+      if (currentPath === canonicalPath) {
         throw new Error(
           'Cannot delete the currently active database. Switch to a different database first.'
         )
       }
 
-      if (!existsSync(validated.data)) {
+      if (!existsSync(canonicalPath)) {
         // File already gone — just remove from recent list
-        manager.removeRecentDatabase(validated.data)
+        manager.removeRecentDatabase(canonicalPath)
         return { success: true }
       }
 
       // Delete the database file and associated WAL/SHM files
-      for (const ext of ['', '-wal', '-shm']) {
-        const filePath = validated.data + ext
+      for (const suffix of ['', '-wal', '-shm']) {
+        const filePath = canonicalPath + suffix
         if (existsSync(filePath)) {
           try {
-            unlinkSync(filePath)
+            await unlink(filePath)
           } catch (e) {
             mainLogger.warn(
               `Failed to delete ${filePath}: ${e instanceof Error ? e.message : String(e)}`,
@@ -290,8 +313,8 @@ export function registerDatabaseHandlers({
         }
       }
 
-      manager.removeRecentDatabase(validated.data)
-      mainLogger.info(`Deleted database file: ${validated.data}`, 'database')
+      manager.removeRecentDatabase(canonicalPath)
+      mainLogger.info(`Deleted database file: ${canonicalPath}`, 'database')
       return { success: true }
     })
   })

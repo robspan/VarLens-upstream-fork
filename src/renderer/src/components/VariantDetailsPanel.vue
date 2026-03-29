@@ -37,6 +37,7 @@
             :variant="variant"
             :colocated-variants="colocatedVariants"
             class="mb-4"
+            @open-protein-view="openProteinView"
           />
 
           <!-- Transcript Section (case + cohort mode) -->
@@ -170,12 +171,20 @@
 
         <div v-else class="text-grey text-center mt-4">Select a variant to view details</div>
       </div>
+
+      <!-- Protein Visualization Modal -->
+      <ProteinVisualizationModal
+        v-model="proteinModalOpen"
+        :variant="variant"
+        :case-id="caseId"
+        :mode="mode"
+      />
     </v-card>
   </v-navigation-drawer>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, computed, watch, defineAsyncComponent } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch, defineAsyncComponent } from 'vue'
 import { usePanelResize } from '../composables/usePanelResize'
 import { useResponsiveLayout } from '../composables/useResponsiveLayout'
 import { useAnnotations } from '../composables/useAnnotations'
@@ -209,6 +218,10 @@ const ActivityLogPanel = defineAsyncComponent({
   loader: () => import('./ActivityLogPanel.vue'),
   ...asyncOpts
 })
+const ProteinVisualizationModal = defineAsyncComponent({
+  loader: () => import('./protein/ProteinVisualizationModal.vue'),
+  ...asyncOpts
+})
 import type { Variant } from '../../../shared/types/api'
 import type { CohortVariant } from '../../../shared/types/cohort'
 import type { AcmgClassification } from '../../../main/database/types'
@@ -228,6 +241,13 @@ const emit = defineEmits<{
   'update:open': [value: boolean]
   'variant-updated': []
 }>()
+
+// Protein visualization modal state
+const proteinModalOpen = ref(false)
+
+function openProteinView(): void {
+  proteinModalOpen.value = true
+}
 
 // Use panel resize composable
 const { panelWidth, startResize } = usePanelResize()

@@ -153,6 +153,16 @@ export type MockApi = {
     checkUpdates: ReturnType<typeof vi.fn>
     update: ReturnType<typeof vi.fn>
   }
+  protein: {
+    getMapping: ReturnType<typeof vi.fn>
+    getDomains: ReturnType<typeof vi.fn>
+    getStructure: ReturnType<typeof vi.fn>
+    getGeneStructure: ReturnType<typeof vi.fn>
+  }
+  gnomad: {
+    getVariants: ReturnType<typeof vi.fn>
+    getClinVarVariants: ReturnType<typeof vi.fn>
+  }
   logs: {
     onMessage: ReturnType<typeof vi.fn>
   }
@@ -337,6 +347,18 @@ export function createMockApi(): MockApi {
         .fn()
         .mockResolvedValue({ currentBuiltAt: 0, daysSinceBuilt: 0, needsUpdate: false }),
       update: vi.fn().mockResolvedValue({ success: true, message: 'Updated' })
+    },
+
+    protein: {
+      getMapping: vi.fn().mockResolvedValue({ success: false, error: 'Not mocked' }),
+      getDomains: vi.fn().mockResolvedValue({ success: false, error: 'Not mocked' }),
+      getStructure: vi.fn().mockResolvedValue({ success: false, error: 'Not mocked' }),
+      getGeneStructure: vi.fn().mockResolvedValue({ success: false, error: 'Not mocked' })
+    },
+
+    gnomad: {
+      getVariants: vi.fn().mockResolvedValue({ success: false, error: 'Not mocked' }),
+      getClinVarVariants: vi.fn().mockResolvedValue({ success: false, error: 'Not mocked' })
     },
 
     logs: {

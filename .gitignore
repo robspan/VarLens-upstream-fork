@@ -59,7 +59,6 @@ coverage/
 # Sensitive genetic/clinical data - never commit
 test-data/
 plan/
-.planning/
 *.json.gz
 
 # VitePress

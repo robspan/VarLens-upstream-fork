@@ -233,24 +233,23 @@ setup_snpeff_db() {
     return
   fi
 
-  # Determine snpEff data directory
-  local snpeff_data_dir
-  snpeff_data_dir="$(conda run -n "$CONDA_ENV_NAME" snpEff -version 2>&1 | head -1 || true)"
-
-  # Check if database already exists by looking in the snpEff data directory
-  local snpeff_config_dir
-  snpeff_config_dir="$(conda run -n "$CONDA_ENV_NAME" bash -c 'dirname "$(which snpEff)"')/share/snpeff-current/data"
-
-  if [[ -d "${snpeff_config_dir}/${SNPEFF_DB}" ]]; then
+  # Check if database already exists by trying a quick snpEff dump
+  if conda run -n "$CONDA_ENV_NAME" snpEff dump "$SNPEFF_DB" &>/dev/null; then
     log_ok "SnpEff database '${SNPEFF_DB}' already present"
     STATUS[snpeff_db]="OK"
     return
   fi
 
   log_info "Downloading SnpEff database '${SNPEFF_DB}' ..."
-  conda run -n "$CONDA_ENV_NAME" snpEff download -v "$SNPEFF_DB"
-  log_ok "SnpEff database '${SNPEFF_DB}' downloaded"
-  STATUS[snpeff_db]="OK"
+  conda run -n "$CONDA_ENV_NAME" snpEff download "$SNPEFF_DB"
+
+  if conda run -n "$CONDA_ENV_NAME" snpEff dump "$SNPEFF_DB" &>/dev/null; then
+    log_ok "SnpEff database '${SNPEFF_DB}' downloaded"
+    STATUS[snpeff_db]="OK"
+  else
+    log_error "SnpEff database '${SNPEFF_DB}' download may have failed — verify manually"
+    STATUS[snpeff_db]="MISSING"
+  fi
 }
 
 # ---------------------------------------------------------------------------

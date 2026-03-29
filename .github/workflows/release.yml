@@ -303,6 +303,10 @@ jobs:
             $b64 = [Convert]::ToBase64String([byte[]] -split ($hash -replace '..', '0x$& '))
             $size = $exe.Length
             $name = $exe.Name
+            # Update per-file entries in the files array (use "url:" key)
+            $yml = $yml -replace "(?<=url: $([regex]::Escape($name))\s*\n\s*sha512: )\S+", $b64
+            $yml = $yml -replace "(?<=url: $([regex]::Escape($name))\s*\n\s*sha512: \S+\s*\n\s*size: )\d+", $size
+            # Update top-level entry (uses "path:" key)
             $yml = $yml -replace "(?<=path: $([regex]::Escape($name))\s*\n\s*sha512: )\S+", $b64
             $yml = $yml -replace "(?<=path: $([regex]::Escape($name))\s*\n\s*sha512: \S+\s*\n\s*size: )\d+", $size
           }

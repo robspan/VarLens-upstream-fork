@@ -2,8 +2,6 @@
 
 VarLens includes an interactive protein visualization modal for exploring variant context at the protein and gene level. Access it from the Variant Details panel by clicking the DNA icon next to the gene symbol.
 
-![Protein view button in the variant details panel](/screenshots/protein-viz-button.png)
-
 ## Opening the Viewer
 
 1. Click any variant row in the variant table to open the Details panel
@@ -13,8 +11,6 @@ VarLens includes an interactive protein visualization modal for exploring varian
 ## Lollipop Plot
 
 The default tab shows your variant on a protein backbone alongside population and clinical data.
-
-![Lollipop plot showing variant on protein with domains and gnomAD overlay](/screenshots/protein-viz-lollipop.png)
 
 ### Tracks (top to bottom)
 
@@ -43,8 +39,6 @@ Filter each track independently using the legend chips:
 
 The Gene Structure tab shows exon/intron architecture from the canonical Ensembl transcript.
 
-![Gene structure showing exons with variant position](/screenshots/protein-viz-gene-structure.png)
-
 ### Features
 
 - **Exons** — Blue rectangles with exon numbers, sized proportionally
@@ -61,8 +55,6 @@ Zoom controls, exon count indicator, gene length, and SVG/PNG export.
 ## 3D Structure
 
 The 3D Structure tab renders the protein's predicted structure from AlphaFold using the Mol* (pdbe-molstar) viewer.
-
-![3D protein structure with variant highlighted](/screenshots/protein-viz-3d-structure.png)
 
 ### Representations
 

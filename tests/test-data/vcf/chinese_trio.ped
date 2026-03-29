@@ -1,0 +1,4 @@
+#Family_ID	Individual_ID	Paternal_ID	Maternal_ID	Sex	Phenotype
+CHINESE_TRIO	HG005	HG006	HG007	1	2
+CHINESE_TRIO	HG006	0	0	1	1
+CHINESE_TRIO	HG007	0	0	2	1

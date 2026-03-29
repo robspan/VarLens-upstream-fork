@@ -188,16 +188,15 @@ setup_vep_cache() {
 
   mkdir -p "$VEP_CACHE_DIR"
 
+  local cache_tarball="${VEP_SPECIES}_vep_${VEP_RELEASE}_${VEP_ASSEMBLY}.tar.gz"
+  local cache_url="https://ftp.ensembl.org/pub/release-${VEP_RELEASE}/variation/indexed_vep_cache/${cache_tarball}"
+
   log_info "Downloading VEP ${VEP_ASSEMBLY} cache (release ${VEP_RELEASE}) — this may take a while (~20 GB) ..."
-  docker run --rm \
-    -v "${VEP_CACHE_DIR}:/opt/vep/.vep" \
-    "$VEP_DOCKER_IMAGE" \
-    perl INSTALL.pl \
-      --AUTO cf \
-      --SPECIES "$VEP_SPECIES" \
-      --ASSEMBLY "$VEP_ASSEMBLY" \
-      --CACHEDIR /opt/vep/.vep \
-      --NO_UPDATE
+  wget -c -q --show-progress -P "$VEP_CACHE_DIR" "$cache_url"
+
+  log_info "Extracting VEP cache (this also takes a while) ..."
+  tar xzf "${VEP_CACHE_DIR}/${cache_tarball}" -C "$VEP_CACHE_DIR"
+  rm -f "${VEP_CACHE_DIR}/${cache_tarball}"
 
   if [[ -d "$cache_subdir" ]]; then
     log_ok "VEP cache installed at $cache_subdir"

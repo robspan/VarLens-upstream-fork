@@ -386,7 +386,6 @@ describe('useFilters', () => {
       expect(result.customCadd.value).toBeNull()
       expect(result.filters.value.minCadd).toBeNull()
     })
-
   })
 
   describe('getIpcParams', () => {

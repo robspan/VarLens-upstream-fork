@@ -80,6 +80,11 @@ docs/public/screenshots/*.png
 *.cram
 *.bed
 *.fastq
+
+# Exception: small VCF test fixtures for VCF import/trio testing
+!tests/test-data/
+!tests/test-data/vcf/
+!tests/test-data/vcf/**
 *.fq
 *.fastq.gz
 *.fq.gz

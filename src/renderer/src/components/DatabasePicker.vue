@@ -64,9 +64,7 @@
                 @click.stop="handleDeleteFile(db)"
               >
                 <v-icon :icon="mdiDeleteOutline" size="x-small" />
-                <v-tooltip activator="parent" location="top"
-                  >Delete file from disk</v-tooltip
-                >
+                <v-tooltip activator="parent" location="top">Delete file from disk</v-tooltip>
               </v-btn>
             </div>
           </template>

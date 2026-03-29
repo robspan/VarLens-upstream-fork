@@ -302,9 +302,11 @@ export function registerDatabaseHandlers({
       try {
         await unlink(canonicalPath)
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e)
-        mainLogger.error(`Failed to delete database file ${canonicalPath}: ${msg}`, 'database')
-        throw new Error(`Failed to delete database file: ${msg}`)
+        mainLogger.error(
+          `Failed to delete database file ${canonicalPath}: ${e instanceof Error ? e.message : String(e)}`,
+          'database'
+        )
+        throw e
       }
 
       // Best-effort cleanup of WAL/SHM companion files

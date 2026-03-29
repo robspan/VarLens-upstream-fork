@@ -138,21 +138,24 @@ if (gotTheLock !== true) {
       optimizer.watchWindowShortcuts(window)
     })
 
-    // Set Content-Security-Policy response headers so Electron's security
-    // checker sees the policy (it inspects HTTP headers, not <meta> tags).
-    // In production (file:// protocol) this handler never fires — the meta
-    // tag in index.html provides the CSP instead.
-    // Must be registered BEFORE createWindow() so the first navigation has CSP.
-    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-      callback({
-        responseHeaders: {
-          ...details.responseHeaders,
-          'Content-Security-Policy': [
-            "default-src 'self'; script-src 'self' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' ws: data: https://alphafold.ebi.ac.uk https://www.ebi.ac.uk https://files.rcsb.org https://models.rcsb.org https://data.rcsb.org https://rest.ensembl.org https://gnomad.broadinstitute.org https://www.proteins.uniprot.org https://rest.uniprot.org https://www.interpro.ebi.ac.uk blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
-          ]
-        }
+    // Set Content-Security-Policy response headers in dev mode so Electron's
+    // security checker sees the policy (it inspects HTTP headers, not <meta> tags).
+    // Only needed in dev: the warning says "will not show up once the app is packaged."
+    // In production the <meta> tag in index.html provides the CSP. Applying CSP
+    // headers to every HTTP response in production can interfere with external API
+    // responses (e.g., pdbe-molstar fetching structure data from AlphaFold).
+    if (is.dev) {
+      session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+        callback({
+          responseHeaders: {
+            ...details.responseHeaders,
+            'Content-Security-Policy': [
+              "default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' ws: data: https://alphafold.ebi.ac.uk https://www.ebi.ac.uk https://files.rcsb.org https://models.rcsb.org https://data.rcsb.org https://rest.ensembl.org https://gnomad.broadinstitute.org https://www.proteins.uniprot.org https://rest.uniprot.org https://www.interpro.ebi.ac.uk blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+            ]
+          }
+        })
       })
-    })
+    }
 
     // Create window after security handlers are registered
     createWindow()

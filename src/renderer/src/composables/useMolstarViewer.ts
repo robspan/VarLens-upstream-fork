@@ -186,6 +186,20 @@ export function useMolstarViewer(
    */
   function startPolling(): void {
     stopPolling()
+
+    // Pre-check: if the custom element is not registered, the 6 MB script
+    // failed to load/parse (common on Windows with antivirus scanning or
+    // ASAR extraction issues). Fail immediately instead of waiting 30s.
+    if (typeof customElements === 'undefined' || !customElements.get('pdbe-molstar')) {
+      loading.value = false
+      error.value = '3D viewer component failed to load. Try restarting the application.'
+      logService.error(
+        'pdbe-molstar custom element is not registered — script may have failed to load',
+        'MolstarViewer'
+      )
+      return
+    }
+
     let attempts = 0
     const maxAttempts = 60 // 30 seconds max
 
@@ -199,7 +213,13 @@ export function useMolstarViewer(
         stopPolling()
         loading.value = false
         error.value = 'Timed out waiting for 3D viewer to initialize'
-        logService.error('pdbe-molstar viewer instance not found after timeout', 'MolstarViewer')
+        logService.error(
+          'pdbe-molstar viewer instance not found after timeout — ' +
+            `element exists: ${!!molstarRef.value}, ` +
+            `tagName: ${molstarRef.value?.tagName ?? 'null'}, ` +
+            `has viewerInstance: ${!!(molstarRef.value as PdbeMolstarElement | null)?.viewerInstance}`,
+          'MolstarViewer'
+        )
       }
     }, 500)
   }

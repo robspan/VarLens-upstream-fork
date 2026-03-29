@@ -498,20 +498,30 @@ step_annotate_vep() {
     return 1
   fi
 
-  log "Running VEP annotation via Docker ..."
-  run_cmd docker run --rm \
-    -v "${INTERMEDIATE_DIR}:/data" \
-    -v "${VEP_CACHE_DIR}:/opt/vep/.vep" \
+  # Decompress input for VEP (avoids bgzf issues in some VEP versions)
+  local input_plain="${INTERMEDIATE_DIR}/trio_region_for_vep.vcf"
+  zcat "$input" > "$input_plain"
+
+  log "Running VEP annotation via Docker (STDOUT mode) ..."
+  # Mount input file directly into /opt/vep/ (VEP container has issues with /data mounts)
+  # Use STDOUT to avoid container write-permission issues on host volumes
+  docker run --rm \
+    -v "${input_plain}:/opt/vep/input.vcf:ro" \
+    -v "${VEP_CACHE_DIR}:/opt/vep/.vep:ro" \
     "${VEP_IMAGE}" \
     vep \
-      --input_file /data/trio_region.vcf.gz \
-      --output_file /data/trio_region.vep.vcf \
+      --input_file /opt/vep/input.vcf \
+      --output_file STDOUT \
       --vcf --cache --offline \
+      --dir_cache /opt/vep/.vep \
       --assembly GRCh38 \
       --everything --pick \
       --fork 4 \
-      --force_overwrite \
-      --no_stats
+      --no_stats \
+    2>"${LOG_DIR:-/tmp}/vep_stderr.log" \
+    > "$output_vcf"
+
+  rm -f "$input_plain"
 
   if $DRY_RUN; then
     log_ok "VEP annotation complete (dry-run)"

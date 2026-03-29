@@ -55,7 +55,7 @@ export function useFilterState(
   caseIdRef: Ref<number> | ComputedRef<number>,
   options: UseFilterStateOptions
 ): UseFilterStateReturn {
-  const { onFiltersUpdate, onResetSort } = options
+  const { onFiltersUpdate, onResetSort, onCaseSwitch } = options
 
   // API service
   const { api } = useApiService()
@@ -583,6 +583,9 @@ export function useFilterState(
     if (newCaseId !== oldCaseId && oldCaseId !== undefined) {
       // Reset all filters when switching cases
       resetForCaseSwitch()
+
+      // Notify parent to clear UI-only state (DSL column filters, etc.)
+      onCaseSwitch?.()
 
       // Emit reset filters immediately (bypass debounce for case switch)
       onFiltersUpdate({})

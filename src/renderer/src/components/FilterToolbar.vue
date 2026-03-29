@@ -258,7 +258,13 @@ const {
         emit('update:filters', f)
       }
     },
-    onResetSort: () => emit('reset-sort')
+    onResetSort: () => emit('reset-sort'),
+    onCaseSwitch: () => {
+      // Clear DSL column filters and active presets when switching cases
+      handleDslClear()
+      clearActivePresets()
+      emit('clear-column-filters')
+    }
   }
 )
 

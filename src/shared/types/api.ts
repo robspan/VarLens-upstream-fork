@@ -200,6 +200,7 @@ export interface SystemAPI {
   getCpuCount: () => Promise<number>
   setWorkerThreads: (count: number) => Promise<void>
   getWorkerThreads: () => Promise<number>
+  getLogFilePath: () => Promise<string>
 }
 
 export interface ShellOpenExternalResult {
@@ -251,6 +252,9 @@ export interface DatabaseAPI {
   info: () => Promise<DatabaseInfo | null>
   recentList: () => Promise<RecentDatabase[]>
   getOverview: () => Promise<DatabaseOverview>
+  removeRecent: (path: string) => Promise<{ success: boolean }>
+  deleteFile: (path: string) => Promise<{ success: boolean }>
+  showInFolder: (path: string) => Promise<{ success: boolean }>
 }
 
 // Batch import types

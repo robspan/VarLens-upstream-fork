@@ -42,6 +42,8 @@ export interface UseFilterStateOptions {
   onFiltersUpdate: (filters: Omit<VariantFilter, 'case_id'>) => void
   /** Callback to reset sort order (replaces emit('reset-sort')) */
   onResetSort: () => void
+  /** Callback when case switches — used to clear UI state like DSL column filters */
+  onCaseSwitch?: () => void
 }
 
 /**

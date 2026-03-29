@@ -137,7 +137,8 @@ export const mockApi: WindowAPI = {
     getUserDataPath: async () => '/mock/user/data',
     getCpuCount: async () => 4,
     setWorkerThreads: async () => {},
-    getWorkerThreads: async () => 0
+    getWorkerThreads: async () => 0,
+    getLogFilePath: async () => '/mock/logs/main.log'
   },
 
   export: {
@@ -189,7 +190,10 @@ export const mockApi: WindowAPI = {
       cohortGroups: [],
       tags: [],
       topPhenotypes: []
-    })
+    }),
+    removeRecent: async () => ({ success: true }),
+    deleteFile: async () => ({ success: true }),
+    showInFolder: async () => ({ success: true })
   },
 
   batchImport: {

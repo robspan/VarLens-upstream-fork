@@ -28,8 +28,8 @@
           <v-icon start size="small" :icon="mdiFilterVariant" />
           <strong>{{ filteredCount.toLocaleString() }}</strong>
           <template v-if="totalCount !== null">
-            <span class="mx-1 text-medium-emphasis">/</span>
-            <span class="text-medium-emphasis">{{ totalCount.toLocaleString() }}</span>
+            <span class="mx-1" style="opacity: 0.7">/</span>
+            <span style="opacity: 0.7">{{ totalCount.toLocaleString() }}</span>
           </template>
         </v-chip>
 

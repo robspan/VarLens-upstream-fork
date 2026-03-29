@@ -8,6 +8,7 @@
 import { readFileSync, writeFileSync } from 'fs'
 import { basename } from 'path'
 import { DATABASE_CONFIG } from '../../shared/config'
+import { mainLogger } from './MainLogger'
 
 /**
  * Recent database entry
@@ -101,7 +102,24 @@ export class RecentDatabasesService {
   private load(): SettingsData {
     try {
       const json = readFileSync(this.settingsPath, 'utf-8')
-      return JSON.parse(json) as SettingsData
+      const data = JSON.parse(json)
+      // Validate structure — ensure recentDatabases is an array
+      if (!Array.isArray(data?.recentDatabases)) {
+        return { recentDatabases: [] }
+      }
+      // Sanitize entries — ensure each has the expected shape
+      const recentDatabases: RecentDatabase[] = data.recentDatabases.filter(
+        (entry: unknown): entry is RecentDatabase => {
+          if (entry === null || typeof entry !== 'object') return false
+          const e = entry as { path?: unknown; name?: unknown; lastOpened?: unknown }
+          return (
+            typeof e.path === 'string' &&
+            typeof e.name === 'string' &&
+            typeof e.lastOpened === 'number'
+          )
+        }
+      )
+      return { recentDatabases }
     } catch {
       // File doesn't exist or is invalid - return empty structure
       return { recentDatabases: [] }
@@ -117,9 +135,17 @@ export class RecentDatabasesService {
     try {
       const json = JSON.stringify(data, null, 2)
       writeFileSync(this.settingsPath, json, 'utf-8')
-    } catch {
-      // Non-fatal - recent list not critical to app function
-      // Silently ignore save errors
+    } catch (error) {
+      // Non-fatal - recent list not critical to app function.
+      // Log best-effort (mainLogger may not be available in tests).
+      try {
+        mainLogger.warn(
+          `Failed to save recent databases: ${error instanceof Error ? error.message : String(error)}`,
+          'database'
+        )
+      } catch {
+        // Logging not available — silently ignore
+      }
     }
   }
 }

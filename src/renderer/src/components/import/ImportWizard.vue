@@ -141,10 +141,14 @@
           color="primary"
           variant="flat"
           size="small"
-          :disabled="hasEmptyCaseNames || fileCount === 0"
+          :disabled="hasEmptyCaseNames || fileCount === 0 || importStore.isActive"
           @click="startImport"
         >
-          Import {{ fileCount }} {{ fileCount === 1 ? 'file' : 'files' }}
+          {{
+            importStore.isActive
+              ? 'Import in progress...'
+              : `Import ${fileCount} ${fileCount === 1 ? 'file' : 'files'}`
+          }}
         </v-btn>
         <v-btn v-if="step === 4" color="primary" variant="flat" size="small" @click="handleClose">
           Done
@@ -362,6 +366,13 @@ function cancelZip(): void {
 }
 
 async function startImport(): Promise<void> {
+  // Prevent starting a new import while one is already running.
+  // This avoids resetting the store state and losing progress on the active import.
+  if (importStore.isActive) {
+    logService.warn('Import already in progress — cannot start another', 'ImportWizard')
+    return
+  }
+
   step.value = 3
   totalFiles.value = fileCount.value
   currentIndex.value = 0

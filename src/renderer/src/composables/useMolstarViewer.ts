@@ -21,6 +21,21 @@ import {
 } from '../../../shared/utils/protein-utils'
 import { logService } from '../services/LogService'
 
+/**
+ * Check if WebGL is available in the current environment.
+ * Returns the context type ('webgl2' | 'webgl') or null if unavailable.
+ */
+function checkWebGLSupport(): string | null {
+  try {
+    const canvas = document.createElement('canvas')
+    if (canvas.getContext('webgl2')) return 'webgl2'
+    if (canvas.getContext('webgl')) return 'webgl'
+    return null
+  } catch {
+    return null
+  }
+}
+
 /** Lazy-load the pdbe-molstar web component script on first use */
 let molstarScriptLoaded = false
 let molstarScriptLoadPromise: Promise<void> | null = null
@@ -231,6 +246,21 @@ export function useMolstarViewer(
       return
     }
 
+    // Phase -1: Verify WebGL is available before loading the 6 MB script.
+    const webglContext = checkWebGLSupport()
+    if (webglContext === null) {
+      loading.value = false
+      error.value =
+        '3D viewer requires WebGL which is not available. ' +
+        'Try updating your GPU drivers, or launch VarLens with the --disable-gpu flag.'
+      logService.error(
+        'WebGL is not available — canvas.getContext() returned null for both webgl2 and webgl',
+        'MolstarViewer'
+      )
+      return
+    }
+    logService.info(`WebGL available: ${webglContext}`, 'MolstarViewer')
+
     // Phase 0: Ensure script is loaded (lazy — only on first 3D viewer open).
     // Phase 1: Wait for custom element registration (with timeout).
     // Phase 2: Poll for viewerInstance on the DOM element.
@@ -290,8 +320,14 @@ export function useMolstarViewer(
       })
       .catch((err: Error) => {
         loading.value = false
-        error.value = '3D viewer component failed to load. Try restarting the application.'
-        logService.error(`pdbe-molstar init failed: ${err.message}`, 'MolstarViewer')
+        error.value =
+          '3D viewer component failed to load. ' +
+          'Try restarting the application. If the problem persists, try launching with --disable-gpu flag.'
+        logService.error(
+          `pdbe-molstar init failed: ${err.message} ` +
+            `(webgl=${webglContext}, userAgent=${navigator.userAgent})`,
+          'MolstarViewer'
+        )
       })
   }
 

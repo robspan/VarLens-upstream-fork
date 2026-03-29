@@ -3,10 +3,22 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import Database from 'better-sqlite3-multiple-ciphers'
 import { registerIpcHandlers, destroyDbPool } from './ipc'
-import { initDatabaseManager, closeDatabaseManager } from './database'
+import { initDatabaseManager, initDatabaseManagerSafe, closeDatabaseManager } from './database'
 import { mainLogger } from './services/MainLogger'
 import { initAutoUpdater, scheduleUpdateChecks } from './services/AutoUpdater'
 import { APP_CONFIG } from '../shared/config'
+
+// Disable GPU hardware acceleration when --disable-gpu flag is passed.
+// This prevents blank/white windows on Windows systems with outdated or
+// incompatible GPU drivers. Users can add this flag to the shortcut target.
+if (app.commandLine.hasSwitch('disable-gpu')) {
+  app.disableHardwareAcceleration()
+}
+
+// Prevent Chromium from permanently disabling WebGL after a GPU process crash.
+// Without this, a single GPU glitch on Windows can break the 3D protein viewer
+// for the rest of the session.
+app.disableDomainBlockingFor3DAPIs()
 
 // Global error handlers — surfaces crashes that would otherwise be silent on Windows
 process.on('uncaughtException', (error) => {
@@ -99,6 +111,27 @@ if (gotTheLock !== true) {
     // Set app user model id for windows
     electronApp.setAppUserModelId('com.varlens.app')
 
+    // Log startup context for cross-platform debugging
+    mainLogger.info(
+      `VarLens starting — platform=${process.platform}, arch=${process.arch}, ` +
+        `electron=${process.versions.electron}, node=${process.versions.node}, ` +
+        `userData=${app.getPath('userData')}`,
+      'app'
+    )
+    mainLogger.info(`Log file: ${mainLogger.getLogFilePath()}`, 'app')
+
+    // Log GPU feature status for diagnosing 3D viewer / WebGL issues on Windows
+    try {
+      const gpuStatus = app.getGPUFeatureStatus()
+      mainLogger.info(
+        `GPU features: webgl=${gpuStatus.webgl}, webgl2=${gpuStatus.webgl2}, ` +
+          `gpu_compositing=${gpuStatus.gpu_compositing}`,
+        'app'
+      )
+    } catch {
+      // Best effort — getGPUFeatureStatus may not be available in all contexts
+    }
+
     // Verify better-sqlite3-multiple-ciphers works (in-memory test)
     try {
       const testDb = new Database(':memory:')
@@ -125,8 +158,18 @@ if (gotTheLock !== true) {
       return
     }
 
-    // Initialize database manager with default database
-    initDatabaseManager()
+    // Initialize database manager with default database.
+    // Wrapped in try/catch so a corrupted/locked default DB does not prevent
+    // the window from opening — the user can still switch databases from the UI.
+    try {
+      initDatabaseManager()
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      mainLogger.error(`Failed to open default database: ${msg}`, 'database')
+      // Create manager without opening a database so the app can still start.
+      // The user will see "No database" and can pick/create one from the UI.
+      initDatabaseManagerSafe()
+    }
 
     // Register IPC handlers
     registerIpcHandlers()

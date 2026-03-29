@@ -86,7 +86,8 @@ const api = {
     getCpuCount: (): Promise<number> => ipcRenderer.invoke('system:getCpuCount'),
     setWorkerThreads: (count: number): Promise<void> =>
       ipcRenderer.invoke('system:setWorkerThreads', count),
-    getWorkerThreads: (): Promise<number> => ipcRenderer.invoke('system:getWorkerThreads')
+    getWorkerThreads: (): Promise<number> => ipcRenderer.invoke('system:getWorkerThreads'),
+    getLogFilePath: (): Promise<string> => ipcRenderer.invoke('system:logFilePath')
   },
 
   export: {
@@ -111,7 +112,10 @@ const api = {
     rekey: (newPassword: string) => ipcRenderer.invoke('database:rekey', newPassword),
     info: () => ipcRenderer.invoke('database:info'),
     recentList: () => ipcRenderer.invoke('database:recentList'),
-    getOverview: () => ipcRenderer.invoke('database:overview')
+    getOverview: () => ipcRenderer.invoke('database:overview'),
+    removeRecent: (path: string) => ipcRenderer.invoke('database:removeRecent', path),
+    deleteFile: (path: string) => ipcRenderer.invoke('database:deleteFile', path),
+    showInFolder: (path: string) => ipcRenderer.invoke('database:showInFolder', path)
   },
 
   batchImport: {

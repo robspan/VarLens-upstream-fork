@@ -103,7 +103,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onUnmounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 // Composables
 import { useOffsetPagination } from '../composables/useOffsetPagination'
 import { useCohortData } from '../composables/useCohortData'
@@ -449,8 +449,14 @@ watch(summaryStale, (newVal, oldVal) => {
   }
 })
 
-// Lifecycle — no data fetching on mount; parent controls initialization
-// via refresh() to avoid duplicate IPC calls (onMounted + parent refresh).
+// Fetch summary + column metadata on mount so the filter chip can show
+// filtered/total from the start. Table data itself loads via v-data-table-server's
+// immediate update:options event, so we only need summary + meta here.
+onMounted(() => {
+  void fetchSummary()
+  void fetchColumnMeta()
+})
+
 onUnmounted(() => {
   cleanupListeners()
 })

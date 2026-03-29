@@ -304,7 +304,7 @@ export function registerDatabaseHandlers({
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
         mainLogger.error(`Failed to delete database file ${canonicalPath}: ${msg}`, 'database')
-        throw new Error(`Failed to delete database file: ${msg}`, { cause: e })
+        throw new Error(`Failed to delete database file: ${msg}`)
       }
 
       // Best-effort cleanup of WAL/SHM companion files

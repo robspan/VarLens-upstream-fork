@@ -32,39 +32,43 @@
           <v-list-item-title>{{ db.name }}</v-list-item-title>
           <v-list-item-subtitle class="text-truncate">{{ db.path }}</v-list-item-subtitle>
           <template #append>
-            <v-btn
-              :icon="mdiFolderEye"
-              size="x-small"
-              variant="text"
-              @click.stop="handleShowInFolder(db.path)"
-            >
-              <v-icon :icon="mdiFolderEye" size="small" />
-              <v-tooltip activator="parent" location="top">Show in folder</v-tooltip>
-            </v-btn>
-            <v-btn
-              :icon="mdiClose"
-              size="x-small"
-              variant="text"
-              @click.stop="handleRemoveRecent(db.path)"
-            >
-              <v-icon :icon="mdiClose" size="small" />
-              <v-tooltip activator="parent" location="top">Remove from list</v-tooltip>
-            </v-btn>
-            <v-btn
-              :icon="mdiDeleteOutline"
-              size="x-small"
-              variant="text"
-              color="error"
-              :disabled="db.path === databaseStore.currentPath"
-              @click.stop="handleDeleteFile(db)"
-            >
-              <v-icon :icon="mdiDeleteOutline" size="small" />
-              <v-tooltip activator="parent" location="top">{{
-                db.path === databaseStore.currentPath
-                  ? 'Cannot delete active database'
-                  : 'Delete file from disk'
-              }}</v-tooltip>
-            </v-btn>
+            <div class="d-flex align-center ml-2">
+              <v-btn
+                icon
+                size="x-small"
+                variant="text"
+                density="compact"
+                @click.stop="handleShowInFolder(db.path)"
+              >
+                <v-icon :icon="mdiFolderEye" size="x-small" />
+                <v-tooltip activator="parent" location="top">Show in folder</v-tooltip>
+              </v-btn>
+              <v-btn
+                v-if="db.path !== databaseStore.currentPath"
+                icon
+                size="x-small"
+                variant="text"
+                density="compact"
+                @click.stop="handleRemoveRecent(db.path)"
+              >
+                <v-icon :icon="mdiClose" size="x-small" />
+                <v-tooltip activator="parent" location="top">Remove from list</v-tooltip>
+              </v-btn>
+              <v-btn
+                v-if="db.path !== databaseStore.currentPath"
+                icon
+                size="x-small"
+                variant="text"
+                density="compact"
+                color="error"
+                @click.stop="handleDeleteFile(db)"
+              >
+                <v-icon :icon="mdiDeleteOutline" size="x-small" />
+                <v-tooltip activator="parent" location="top"
+                  >Delete file from disk</v-tooltip
+                >
+              </v-btn>
+            </div>
           </template>
         </v-list-item>
       </template>

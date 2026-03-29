@@ -87,7 +87,8 @@
       }
     ],
     "asarUnpack": [
-      "node_modules/better-sqlite3-multiple-ciphers/**/*"
+      "node_modules/better-sqlite3-multiple-ciphers/**/*",
+      "out/renderer/pdbe-molstar-component.js"
     ],
     "files": [
       "out/**/*",

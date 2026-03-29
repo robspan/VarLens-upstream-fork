@@ -24,11 +24,12 @@
   </head>
 
   <body>
-    <div id="app"></div>
     <!-- pdbe-molstar: 3D protein structure viewer (web component).
-         Loaded as a classic script because it is a 6 MB webpack IIFE that
-         self-registers the <pdbe-molstar> custom element on window. -->
+         Loaded as a classic script BEFORE the app div so the custom element
+         is registered before Vue starts. The file is extracted from ASAR
+         via asarUnpack to avoid large-file read issues on Windows. -->
     <script src="/pdbe-molstar-component.js"></script>
+    <div id="app"></div>
     <script type="module" src="./src/main.ts"></script>
   </body>
 </html>

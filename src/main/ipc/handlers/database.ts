@@ -5,7 +5,8 @@
  * Handles encryption detection and password validation.
  */
 
-import { dialog } from 'electron'
+import { dialog, shell } from 'electron'
+import { existsSync, unlinkSync } from 'fs'
 import { WrongPasswordError } from '../../database/errors'
 import { wrapHandler } from '../errorHandler'
 import type { HandlerDependencies } from '../types'
@@ -105,9 +106,11 @@ export function registerDatabaseHandlers({
         }
       }
 
-      // Try to open with password (or without if plaintext)
+      // Switch to new database with rollback on failure.
+      // switchDatabase() preserves the previous connection if the new one fails.
       try {
-        manager.open(vPath, vPassword)
+        manager.switchDatabase(vPath, vPassword)
+        mainLogger.info(`Switched to database: ${vPath}`, 'database')
         // Initialise worker pool for off-thread reads (best effort)
         try {
           await initDbPool(vPath, vPassword)
@@ -220,6 +223,90 @@ export function registerDatabaseHandlers({
       const overview = db.overview.getDatabaseOverview()
       // Deep clone for IPC serialization (handle BigInt)
       return convertBigInts(overview)
+    })
+  })
+
+  /**
+   * Remove a database from the recent list (does not delete the file)
+   */
+  ipcMain.handle('database:removeRecent', async (_event, path: unknown) => {
+    return wrapHandler(async () => {
+      const validated = FilePathSchema.safeParse(path)
+      if (!validated.success) {
+        mainLogger.error(
+          `Invalid database:removeRecent path: ${validated.error.message}`,
+          'database'
+        )
+        throw new Error('Invalid file path')
+      }
+
+      const manager = getDbManager()
+      manager.removeRecentDatabase(validated.data)
+      mainLogger.info(`Removed from recent databases: ${validated.data}`, 'database')
+      return { success: true }
+    })
+  })
+
+  /**
+   * Delete a database file from disk and remove from recent list.
+   * Refuses to delete the currently active database.
+   */
+  ipcMain.handle('database:deleteFile', async (_event, path: unknown) => {
+    return wrapHandler(async () => {
+      const validated = FilePathSchema.safeParse(path)
+      if (!validated.success) {
+        mainLogger.error(`Invalid database:deleteFile path: ${validated.error.message}`, 'database')
+        throw new Error('Invalid file path')
+      }
+
+      const manager = getDbManager()
+      const currentPath = manager.getCurrentPath()
+
+      // Refuse to delete the currently active database
+      if (currentPath === validated.data) {
+        throw new Error(
+          'Cannot delete the currently active database. Switch to a different database first.'
+        )
+      }
+
+      if (!existsSync(validated.data)) {
+        // File already gone — just remove from recent list
+        manager.removeRecentDatabase(validated.data)
+        return { success: true }
+      }
+
+      // Delete the database file and associated WAL/SHM files
+      for (const ext of ['', '-wal', '-shm']) {
+        const filePath = validated.data + ext
+        if (existsSync(filePath)) {
+          try {
+            unlinkSync(filePath)
+          } catch (e) {
+            mainLogger.warn(
+              `Failed to delete ${filePath}: ${e instanceof Error ? e.message : String(e)}`,
+              'database'
+            )
+          }
+        }
+      }
+
+      manager.removeRecentDatabase(validated.data)
+      mainLogger.info(`Deleted database file: ${validated.data}`, 'database')
+      return { success: true }
+    })
+  })
+
+  /**
+   * Reveal a database file in the system file manager
+   */
+  ipcMain.handle('database:showInFolder', async (_event, path: unknown) => {
+    return wrapHandler(async () => {
+      const validated = FilePathSchema.safeParse(path)
+      if (!validated.success) {
+        throw new Error('Invalid file path')
+      }
+      shell.showItemInFolder(validated.data)
+      return { success: true }
     })
   })
 

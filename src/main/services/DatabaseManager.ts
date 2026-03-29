@@ -298,4 +298,13 @@ export class DatabaseManager {
   getRecentDatabases(): RecentDatabase[] {
     return this.recentDatabases.getRecent()
   }
+
+  /**
+   * Remove a database from the recent list
+   *
+   * @param dbPath - Path to the database to remove from recent list
+   */
+  removeRecentDatabase(dbPath: string): void {
+    this.recentDatabases.removeRecent(dbPath)
+  }
 }

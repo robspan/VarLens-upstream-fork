@@ -11,6 +11,10 @@ import type { DeleteWorkerRequest, DeleteWorkerResponse } from '../../workers/de
 // Schema for batch delete IDs array
 const CaseIdArraySchema = z.array(z.number().int().positive()).min(1)
 
+// Guard against concurrent delete operations.
+// SQLite is single-writer — overlapping deletes cause "database is locked".
+let deleteInProgress = false
+
 function safeEmit(channel: string, data: unknown): void {
   const win = BrowserWindow.getAllWindows()[0]
   if (win === undefined || win.isDestroyed()) return
@@ -100,6 +104,15 @@ export function registerCaseHandlers({ ipcMain, getDb, getDbPool }: HandlerDepen
         throw new Error('Invalid parameters')
       }
 
+      if (deleteInProgress) {
+        mainLogger.warn(
+          `Delete already in progress, rejecting delete for case ${validated.data}`,
+          'cases'
+        )
+        throw new Error('A delete operation is already in progress. Please wait for it to finish.')
+      }
+
+      deleteInProgress = true
       const db = getDb()
       mainLogger.info(`Starting single-case delete worker (id: ${validated.data})`, 'cases')
       safeEmit('cohort:summaryRebuilt', { is_stale: true })
@@ -136,12 +149,20 @@ export function registerCaseHandlers({ ipcMain, getDb, getDbPool }: HandlerDepen
           mainLogger.warn('Failed to recompute frequencies after delete failure', 'cases')
         }
         throw error
+      } finally {
+        deleteInProgress = false
       }
     })
   })
 
   ipcMain.handle('cases:deleteAll', async () => {
     return wrapHandler(async () => {
+      if (deleteInProgress) {
+        mainLogger.warn('Delete already in progress, rejecting deleteAll', 'cases')
+        throw new Error('A delete operation is already in progress. Please wait for it to finish.')
+      }
+
+      deleteInProgress = true
       const db = getDb()
       mainLogger.info(`Starting deleteAll worker (db: ${db.getPath()})`, 'cases')
       safeEmit('cohort:summaryRebuilt', { is_stale: true })
@@ -170,6 +191,8 @@ export function registerCaseHandlers({ ipcMain, getDb, getDbPool }: HandlerDepen
           'cases'
         )
         throw error
+      } finally {
+        deleteInProgress = false
       }
     })
   })
@@ -183,26 +206,42 @@ export function registerCaseHandlers({ ipcMain, getDb, getDbPool }: HandlerDepen
         throw new Error('Invalid parameters')
       }
 
+      if (deleteInProgress) {
+        mainLogger.warn('Delete already in progress, rejecting deleteBatch', 'cases')
+        throw new Error('A delete operation is already in progress. Please wait for it to finish.')
+      }
+
+      deleteInProgress = true
       const db = getDb()
       safeEmit('cohort:summaryRebuilt', { is_stale: true })
 
-      const deleted = await runDeleteWorker({
-        type: 'deleteBatch',
-        dbPath: db.getPath(),
-        encryptionKey: db.getEncryptionKey(),
-        ids: validated.data
-      })
-
-      // Recompute variant frequencies after batch deletion
       try {
-        db.variants.recomputeAllFrequencies()
-      } catch (freqError) {
-        mainLogger.warn(`Failed to recompute variant frequencies: ${freqError}`, 'cases')
-      }
+        const deleted = await runDeleteWorker({
+          type: 'deleteBatch',
+          dbPath: db.getPath(),
+          encryptionKey: db.getEncryptionKey(),
+          ids: validated.data
+        })
 
-      safeEmit('cases:deleted', { deleted })
-      safeEmit('cohort:summaryRebuilt', { is_stale: false })
-      return deleted
+        // Recompute variant frequencies after batch deletion
+        try {
+          db.variants.recomputeAllFrequencies()
+        } catch (freqError) {
+          mainLogger.warn(`Failed to recompute variant frequencies: ${freqError}`, 'cases')
+        }
+
+        safeEmit('cases:deleted', { deleted })
+        safeEmit('cohort:summaryRebuilt', { is_stale: false })
+        return deleted
+      } catch (error) {
+        mainLogger.error(
+          `deleteBatch worker failed: ${error instanceof Error ? error.message : error}`,
+          'cases'
+        )
+        throw error
+      } finally {
+        deleteInProgress = false
+      }
     })
   })
 }

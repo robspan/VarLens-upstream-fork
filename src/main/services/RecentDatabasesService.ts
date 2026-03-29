@@ -8,6 +8,7 @@
 import { readFileSync, writeFileSync } from 'fs'
 import { basename } from 'path'
 import { DATABASE_CONFIG } from '../../shared/config'
+import { mainLogger } from './MainLogger'
 
 /**
  * Recent database entry
@@ -101,7 +102,12 @@ export class RecentDatabasesService {
   private load(): SettingsData {
     try {
       const json = readFileSync(this.settingsPath, 'utf-8')
-      return JSON.parse(json) as SettingsData
+      const data = JSON.parse(json)
+      // Validate structure — ensure recentDatabases is an array
+      if (!Array.isArray(data?.recentDatabases)) {
+        return { recentDatabases: [] }
+      }
+      return data as SettingsData
     } catch {
       // File doesn't exist or is invalid - return empty structure
       return { recentDatabases: [] }
@@ -117,9 +123,17 @@ export class RecentDatabasesService {
     try {
       const json = JSON.stringify(data, null, 2)
       writeFileSync(this.settingsPath, json, 'utf-8')
-    } catch {
-      // Non-fatal - recent list not critical to app function
-      // Silently ignore save errors
+    } catch (error) {
+      // Non-fatal - recent list not critical to app function.
+      // Log best-effort (mainLogger may not be available in tests).
+      try {
+        mainLogger.warn(
+          `Failed to save recent databases: ${error instanceof Error ? error.message : String(error)}`,
+          'database'
+        )
+      } catch {
+        // Logging not available — silently ignore
+      }
     }
   }
 }

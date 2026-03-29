@@ -31,6 +31,41 @@
           </template>
           <v-list-item-title>{{ db.name }}</v-list-item-title>
           <v-list-item-subtitle class="text-truncate">{{ db.path }}</v-list-item-subtitle>
+          <template #append>
+            <v-btn
+              :icon="mdiFolderEye"
+              size="x-small"
+              variant="text"
+              @click.stop="handleShowInFolder(db.path)"
+            >
+              <v-icon :icon="mdiFolderEye" size="small" />
+              <v-tooltip activator="parent" location="top">Show in folder</v-tooltip>
+            </v-btn>
+            <v-btn
+              :icon="mdiClose"
+              size="x-small"
+              variant="text"
+              @click.stop="handleRemoveRecent(db.path)"
+            >
+              <v-icon :icon="mdiClose" size="small" />
+              <v-tooltip activator="parent" location="top">Remove from list</v-tooltip>
+            </v-btn>
+            <v-btn
+              :icon="mdiDeleteOutline"
+              size="x-small"
+              variant="text"
+              color="error"
+              :disabled="db.path === databaseStore.currentPath"
+              @click.stop="handleDeleteFile(db)"
+            >
+              <v-icon :icon="mdiDeleteOutline" size="small" />
+              <v-tooltip activator="parent" location="top">{{
+                db.path === databaseStore.currentPath
+                  ? 'Cannot delete active database'
+                  : 'Delete file from disk'
+              }}</v-tooltip>
+            </v-btn>
+          </template>
         </v-list-item>
       </template>
       <v-list-item v-else disabled>
@@ -73,6 +108,22 @@
   <PasswordDialog ref="passwordDialogRef" />
   <CreateDatabaseDialog ref="createDialogRef" @database-created="handleDatabaseCreated" />
   <ChangePasswordDialog ref="changePasswordDialogRef" @password-changed="handlePasswordChanged" />
+
+  <!-- Delete confirmation dialog -->
+  <v-dialog v-model="deleteDialog" max-width="440">
+    <v-card>
+      <v-card-title>Delete Database</v-card-title>
+      <v-card-text>
+        Permanently delete <strong>{{ pendingDeleteDb?.name }}</strong> from disk? This cannot be
+        undone.
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn @click="deleteDialog = false">Cancel</v-btn>
+        <v-btn color="error" variant="elevated" @click="confirmDeleteFile">Delete</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup lang="ts">
@@ -81,7 +132,17 @@ import { useDatabaseStore } from '../stores/databaseStore'
 import PasswordDialog from './PasswordDialog.vue'
 import CreateDatabaseDialog from './CreateDatabaseDialog.vue'
 import ChangePasswordDialog from './ChangePasswordDialog.vue'
-import { mdiDatabase, mdiDatabasePlus, mdiFolderOpen, mdiLock, mdiLockReset } from '@mdi/js'
+import type { RecentDatabase } from '../../../shared/types/api'
+import {
+  mdiClose,
+  mdiDatabase,
+  mdiDatabasePlus,
+  mdiDeleteOutline,
+  mdiFolderEye,
+  mdiFolderOpen,
+  mdiLock,
+  mdiLockReset
+} from '@mdi/js'
 
 const databaseStore = useDatabaseStore()
 
@@ -92,6 +153,10 @@ const changePasswordDialogRef = ref<InstanceType<typeof ChangePasswordDialog> | 
 
 // Track pending password authentication
 const pendingOpenPath = ref<string | null>(null)
+
+// Delete confirmation state
+const deleteDialog = ref(false)
+const pendingDeleteDb = ref<RecentDatabase | null>(null)
 
 // Emits
 const emit = defineEmits<{
@@ -163,6 +228,33 @@ function handleDatabaseCreated(): void {
 
 function handlePasswordChanged(): void {
   emit('database-switched')
+}
+
+async function handleRemoveRecent(path: string): Promise<void> {
+  await window.api.database.removeRecent(path)
+  await databaseStore.fetchRecent()
+}
+
+async function handleShowInFolder(path: string): Promise<void> {
+  await window.api.database.showInFolder(path)
+}
+
+function handleDeleteFile(db: RecentDatabase): void {
+  pendingDeleteDb.value = db
+  deleteDialog.value = true
+}
+
+async function confirmDeleteFile(): Promise<void> {
+  if (!pendingDeleteDb.value) return
+  try {
+    await window.api.database.deleteFile(pendingDeleteDb.value.path)
+    await databaseStore.fetchRecent()
+  } catch (e) {
+    emit('error', e instanceof Error ? e.message : String(e))
+  } finally {
+    deleteDialog.value = false
+    pendingDeleteDb.value = null
+  }
 }
 </script>
 

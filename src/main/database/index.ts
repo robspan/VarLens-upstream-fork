@@ -20,6 +20,7 @@ let databaseManager: DatabaseManager | null = null
  * Should be called once during app initialization.
  *
  * @returns DatabaseManager singleton instance
+ * @throws DatabaseError if the default database cannot be opened
  */
 export function initDatabaseManager(): DatabaseManager {
   if (!databaseManager) {
@@ -30,6 +31,23 @@ export function initDatabaseManager(): DatabaseManager {
     // Open default database
     const dbPath = join(app.getPath('userData'), 'varlens.db')
     databaseManager.open(dbPath)
+  }
+  return databaseManager
+}
+
+/**
+ * Initialize the DatabaseManager singleton WITHOUT opening a database
+ *
+ * Used as a fallback when the default database fails to open (e.g., corrupt/locked).
+ * The app starts with no active database — the user can pick or create one from the UI.
+ *
+ * @returns DatabaseManager singleton instance (with no active database)
+ */
+export function initDatabaseManagerSafe(): DatabaseManager {
+  if (!databaseManager) {
+    const settingsPath = join(app.getPath('userData'), 'varlens-settings.json')
+    const recentDatabases = new RecentDatabasesService(settingsPath)
+    databaseManager = new DatabaseManager(recentDatabases)
   }
   return databaseManager
 }

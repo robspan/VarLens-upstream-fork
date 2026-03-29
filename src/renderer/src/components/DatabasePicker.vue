@@ -231,12 +231,20 @@ function handlePasswordChanged(): void {
 }
 
 async function handleRemoveRecent(path: string): Promise<void> {
-  await window.api.database.removeRecent(path)
-  await databaseStore.fetchRecent()
+  try {
+    await window.api.database.removeRecent(path)
+    await databaseStore.fetchRecent()
+  } catch (e) {
+    emit('error', e instanceof Error ? e.message : String(e))
+  }
 }
 
 async function handleShowInFolder(path: string): Promise<void> {
-  await window.api.database.showInFolder(path)
+  try {
+    await window.api.database.showInFolder(path)
+  } catch (e) {
+    emit('error', e instanceof Error ? e.message : String(e))
+  }
 }
 
 function handleDeleteFile(db: RecentDatabase): void {

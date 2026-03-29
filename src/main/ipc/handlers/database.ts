@@ -298,8 +298,17 @@ export function registerDatabaseHandlers({
         return { success: true }
       }
 
-      // Delete the database file and associated WAL/SHM files
-      for (const suffix of ['', '-wal', '-shm']) {
+      // Delete the main database file — failure here is fatal (return error)
+      try {
+        await unlink(canonicalPath)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        mainLogger.error(`Failed to delete database file ${canonicalPath}: ${msg}`, 'database')
+        throw new Error(`Failed to delete database file: ${msg}`, { cause: e })
+      }
+
+      // Best-effort cleanup of WAL/SHM companion files
+      for (const suffix of ['-wal', '-shm']) {
         const filePath = canonicalPath + suffix
         if (existsSync(filePath)) {
           try {

@@ -107,7 +107,19 @@ export class RecentDatabasesService {
       if (!Array.isArray(data?.recentDatabases)) {
         return { recentDatabases: [] }
       }
-      return data as SettingsData
+      // Sanitize entries — ensure each has the expected shape
+      const recentDatabases: RecentDatabase[] = data.recentDatabases.filter(
+        (entry: unknown): entry is RecentDatabase => {
+          if (entry === null || typeof entry !== 'object') return false
+          const e = entry as { path?: unknown; name?: unknown; lastOpened?: unknown }
+          return (
+            typeof e.path === 'string' &&
+            typeof e.name === 'string' &&
+            typeof e.lastOpened === 'number'
+          )
+        }
+      )
+      return { recentDatabases }
     } catch {
       // File doesn't exist or is invalid - return empty structure
       return { recentDatabases: [] }

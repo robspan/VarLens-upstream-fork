@@ -58,8 +58,13 @@ const api = {
   import: {
     selectFile: () => ipcRenderer.invoke('import:selectFile'),
 
-    start: (filePath: string, caseName: string) =>
-      ipcRenderer.invoke('import:start', filePath, caseName),
+    start: (
+      filePath: string,
+      caseName: string,
+      vcfOptions?: { selectedSample?: string; genomeBuild?: string }
+    ) => ipcRenderer.invoke('import:start', filePath, caseName, vcfOptions),
+
+    vcfPreview: (filePath: string) => ipcRenderer.invoke('import:vcfPreview', filePath),
 
     /**
      * Register progress listener. Returns cleanup function.

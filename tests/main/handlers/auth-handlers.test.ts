@@ -158,6 +158,32 @@ describe('auth IPC handlers', () => {
       expect(usernames).toContain('user1')
       expect(usernames).toContain('user2')
     })
+
+    it('rejects unauthenticated access with an error', async () => {
+      // No user logged in
+      const result = (await invokeHandler('auth:listUsers')) as { code: string; message: string }
+
+      expect(result).toHaveProperty('code')
+      expect(result).toHaveProperty('message')
+      expect(result.message).toBe('Only admins can list users')
+    })
+
+    it('rejects non-admin users with an error', async () => {
+      // Create admin, log in, create a regular user, then switch to that user
+      await db.auth.createFirstUser('admin', 'Admin User', 'password123')
+      await invokeHandler('auth:login', 'admin', 'password123')
+      await invokeHandler('auth:createUser', 'regularuser', 'Regular User', 'userpass123')
+      await invokeHandler('auth:logout')
+
+      // Log in as the non-admin user
+      await invokeHandler('auth:login', 'regularuser', 'userpass123')
+
+      const result = (await invokeHandler('auth:listUsers')) as { code: string; message: string }
+
+      expect(result).toHaveProperty('code')
+      expect(result).toHaveProperty('message')
+      expect(result.message).toBe('Only admins can list users')
+    })
   })
 
   describe('auth:logout', () => {

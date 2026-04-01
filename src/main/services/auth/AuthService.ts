@@ -63,24 +63,28 @@ export class AuthService {
     const recoveryKey = nanoid(32)
     const recoveryKeyHash = await hash(recoveryKey, ARGON2_OPTIONS)
 
-    // Store recovery key hash
-    this.db
-      .prepare('INSERT INTO database_settings (key, value) VALUES (?, ?)')
-      .run('recovery_key_hash', recoveryKeyHash)
+    const createUser = this.db.transaction(() => {
+      // Store recovery key hash
+      this.db
+        .prepare('INSERT INTO database_settings (key, value) VALUES (?, ?)')
+        .run('recovery_key_hash', recoveryKeyHash)
 
-    // Enable accounts
-    this.db
-      .prepare(
-        "INSERT OR REPLACE INTO database_settings (key, value) VALUES ('accounts_enabled', 'true')"
-      )
-      .run()
+      // Enable accounts
+      this.db
+        .prepare(
+          "INSERT OR REPLACE INTO database_settings (key, value) VALUES ('accounts_enabled', 'true')"
+        )
+        .run()
 
-    const result = this.db
-      .prepare(
-        `INSERT INTO users (username, display_name, password_hash, role, password_changed_at)
-         VALUES (?, ?, ?, 'admin', datetime('now'))`
-      )
-      .run(username, displayName, passwordHash)
+      return this.db
+        .prepare(
+          `INSERT INTO users (username, display_name, password_hash, role, password_changed_at)
+           VALUES (?, ?, ?, 'admin', datetime('now'))`
+        )
+        .run(username, displayName, passwordHash)
+    })
+
+    const result = createUser()
 
     return {
       id: Number(result.lastInsertRowid),

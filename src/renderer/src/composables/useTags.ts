@@ -6,7 +6,7 @@
  */
 
 import { ref } from 'vue'
-import type { Tag } from '../../../main/database/types'
+import type { Tag } from '../../../shared/types/database-entities'
 import { useApiService } from './useApiService'
 import { logService } from '../services/LogService'
 

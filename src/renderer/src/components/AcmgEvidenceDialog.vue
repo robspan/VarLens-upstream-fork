@@ -32,7 +32,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { AcmgClassification } from '../../../main/database/types'
+import type { AcmgClassification } from '../../../shared/config/domain.config'
 import type { VariantAnnotationData } from '../utils/acmg/acmg-suggestions'
 import AcmgClassificationPanel from './AcmgClassificationPanel.vue'
 import { mdiClipboardCheckOutline, mdiClose } from '@mdi/js'

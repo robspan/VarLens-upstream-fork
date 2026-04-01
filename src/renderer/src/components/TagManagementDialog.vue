@@ -127,7 +127,7 @@
 import { ref, computed, watch } from 'vue'
 import { useTags, TAG_COLORS } from '../composables/useTags'
 import ColorSwatchPicker from './ColorSwatchPicker.vue'
-import type { Tag } from '../../../main/database/types'
+import type { Tag } from '../../../shared/types/database-entities'
 import { mdiAlert, mdiClose, mdiDelete, mdiPencil, mdiPlus, mdiTagMultiple } from '@mdi/js'
 import { logService } from '../services/LogService'
 

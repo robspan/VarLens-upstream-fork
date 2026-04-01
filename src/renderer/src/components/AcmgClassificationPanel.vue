@@ -105,7 +105,7 @@
 
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import type { AcmgClassification } from '../../../main/database/types'
+import type { AcmgClassification } from '../../../shared/config/domain.config'
 import type { AcmgCode, EvidenceStrength, AcmgEvidenceCode } from '../utils/acmg/types'
 import {
   PATHOGENIC_CODES,

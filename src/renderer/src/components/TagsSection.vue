@@ -63,7 +63,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useTags } from '../composables/useTags'
-import type { Tag } from '../../../shared/types/api'
+import type { Tag } from '../../../shared/types/database-entities'
 import { mdiCheckboxBlankOutline, mdiCheckboxMarked, mdiPlus } from '@mdi/js'
 import { logService } from '../services/LogService'
 

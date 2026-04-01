@@ -5,7 +5,8 @@
 
 import type { Ref, ComputedRef } from 'vue'
 import type { FilterState, ActiveFilter } from '../composables/useFilterState'
-import type { Tag, FilterOptions } from '../../../shared/types/api'
+import type { FilterOptions } from '../../../shared/types/api'
+import type { Tag } from '../../../shared/types/database-entities'
 import type { FilterPreset } from '../../../shared/types/filter-presets'
 import type { Suggestion } from '../dsl/autocomplete'
 import type { DslParseError } from '../dsl/types'

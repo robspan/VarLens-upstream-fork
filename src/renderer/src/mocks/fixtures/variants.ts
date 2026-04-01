@@ -1,4 +1,4 @@
-import type { Variant } from '../../../../main/database/types'
+import type { Variant } from '../../../../shared/types/api'
 import type { FilterOptions } from '../../../../shared/types/api'
 
 /**

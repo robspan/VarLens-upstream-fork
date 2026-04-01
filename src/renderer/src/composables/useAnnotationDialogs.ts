@@ -7,7 +7,7 @@
 
 import { ref, computed, nextTick, type Ref } from 'vue'
 import type { Variant } from '../../../shared/types/api'
-import type { AcmgClassification } from '../../../main/database/types'
+import type { AcmgClassification } from '../../../shared/config/domain.config'
 import type AcmgEvidenceDialog from '../components/AcmgEvidenceDialog.vue'
 import type { AnnotationScope, AnnotationTarget } from '../../../shared/types/annotations'
 

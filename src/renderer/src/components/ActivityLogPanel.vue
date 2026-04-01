@@ -34,7 +34,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import type { AuditLogEntry, AuditActionType } from '../../../main/database/types'
+import type { AuditLogEntry, AuditActionType } from '../../../shared/types/database-entities'
 import { useApiService } from '../composables/useApiService'
 import { logService } from '../services/LogService'
 

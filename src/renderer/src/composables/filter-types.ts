@@ -1,5 +1,6 @@
 import type { Ref, ComputedRef } from 'vue'
-import type { VariantFilter, Tag, FilterOptions } from '../../../shared/types/api'
+import type { VariantFilter, FilterOptions } from '../../../shared/types/api'
+import type { Tag } from '../../../shared/types/database-entities'
 import type { FilterState, ActiveFilter } from '../../../shared/types/filters'
 
 // Re-export for existing consumers

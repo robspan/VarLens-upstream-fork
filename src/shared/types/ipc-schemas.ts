@@ -20,6 +20,8 @@
 
 import { z } from 'zod'
 import { DOMAIN_CONFIG } from '../config'
+import { ACMG_CLASSIFICATIONS } from '../config/domain.config'
+import { normalizeAcmgClassification } from '../utils/acmg'
 
 /**
  * Helper to create a nullish string that transforms null to undefined
@@ -381,9 +383,22 @@ export const VariantCoordsSchema = z.object({
  * Valid ACMG classification values
  */
 const AcmgClassificationSchema = z
-  .enum(['Pathogenic', 'Likely Pathogenic', 'VUS', 'Likely Benign', 'Benign'])
+  .enum([
+    ...ACMG_CLASSIFICATIONS,
+    'Likely Pathogenic',
+    'VUS',
+    'Likely Benign',
+    'Uncertain Significance',
+    'LP',
+    'LB',
+    'P',
+    'B'
+  ] as const)
   .nullish()
-  .transform((val) => val ?? undefined)
+  .transform((val) => {
+    if (val == null) return undefined
+    return normalizeAcmgClassification(val) ?? undefined
+  })
 
 /**
  * Schema for global annotation updates

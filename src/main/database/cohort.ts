@@ -427,13 +427,13 @@ export class CohortService {
         case 'Pathogenic':
           acmgCounts.pathogenic = row.count
           break
-        case 'Likely Pathogenic':
+        case 'Likely pathogenic':
           acmgCounts.likely_pathogenic = row.count
           break
-        case 'VUS':
+        case 'Uncertain significance':
           acmgCounts.vus = row.count
           break
-        case 'Likely Benign':
+        case 'Likely benign':
           acmgCounts.likely_benign = row.count
           break
         case 'Benign':

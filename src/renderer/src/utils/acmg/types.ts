@@ -199,6 +199,6 @@ export interface AcmgEvidenceState {
  */
 export const DEPRECATED_CODES: ReadonlySet<AcmgCode> = new Set(['PP5', 'BP6'])
 
-// Re-export for convenience
-import type { AcmgClassification } from '../../../../main/database/types'
+// Re-export for convenience — canonical type from shared domain config
+import type { AcmgClassification } from '../../../../shared/config/domain.config'
 export type { AcmgClassification }

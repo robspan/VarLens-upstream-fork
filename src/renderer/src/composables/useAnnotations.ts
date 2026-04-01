@@ -7,11 +7,8 @@
 
 import { shallowRef, triggerRef } from 'vue'
 import { logService } from '../services/LogService'
-import type {
-  VariantAnnotation,
-  CaseVariantAnnotation,
-  AcmgClassification
-} from '../../../main/database/types'
+import type { VariantAnnotation, CaseVariantAnnotation } from '../../../main/database/types'
+import type { AcmgClassification } from '../../../shared/config/domain.config'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useApiService } from './useApiService'
 
@@ -795,32 +792,8 @@ export function _resetAnnotationsForTesting(): void {
   annotationGeneration = 0
 }
 
-// ACMG classification values in display order
-export const ACMG_CLASSIFICATIONS: AcmgClassification[] = [
-  'Pathogenic',
-  'Likely Pathogenic',
-  'VUS',
-  'Likely Benign',
-  'Benign'
-]
-
-// ACMG color mapping — colorblind-safe palette (Okabe-Ito derived).
-// Avoids red/green confusion for deuteranopia/protanopia (~8% of males).
-// Uses blue for benign instead of green, vermillion for pathogenic instead of
-// pure red, ensuring distinguishable hues across all CVD types.
-export const ACMG_COLORS: Record<AcmgClassification, string> = {
-  Pathogenic: '#C62828', // Deep red — distinct in all CVD types
-  'Likely Pathogenic': '#D55E00', // Vermillion (Okabe-Ito) — warm, distinct from red
-  VUS: '#757575', // Neutral grey — no hue confusion
-  'Likely Benign': '#0072B2', // Blue (Okabe-Ito) — universally distinguishable
-  Benign: '#009E73' // Teal/bluish-green (Okabe-Ito) — distinct from red/orange for CVD
-}
-
-// ACMG abbreviations for compact display
-export const ACMG_ABBREV: Record<AcmgClassification, string> = {
-  Pathogenic: 'P',
-  'Likely Pathogenic': 'LP',
-  VUS: 'VUS',
-  'Likely Benign': 'LB',
-  Benign: 'B'
-}
+export {
+  ACMG_CLASSIFICATIONS,
+  ACMG_COLORS,
+  ACMG_ABBREV
+} from '../../../shared/config/domain.config'

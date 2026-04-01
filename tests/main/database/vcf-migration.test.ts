@@ -43,17 +43,17 @@ describe('Migration v23: VCF import columns', () => {
     expect(indexes.map((i) => i.name)).toContain('idx_variants_info_json')
   })
 
-  it('sets user_version to 23', () => {
+  it('sets user_version to latest', () => {
     runMigrations(db)
     const result = db.prepare('PRAGMA user_version').get() as { user_version: number }
-    expect(result.user_version).toBe(23)
+    expect(result.user_version).toBe(24)
   })
 
   it('is idempotent — running migrations twice does not fail', () => {
     runMigrations(db)
     expect(() => runMigrations(db)).not.toThrow()
     const result = db.prepare('PRAGMA user_version').get() as { user_version: number }
-    expect(result.user_version).toBe(23)
+    expect(result.user_version).toBe(24)
   })
 
   it('new variant columns are nullable and default to NULL', () => {

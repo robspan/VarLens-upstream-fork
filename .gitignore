@@ -16,6 +16,7 @@ test-results/
 .idea/
 .vscode/*
 !.vscode/settings.json
+.codex
 *.swp
 *.swo
 

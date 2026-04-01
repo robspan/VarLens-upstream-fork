@@ -135,8 +135,7 @@ export function useCohortData(): UseCohortDataReturn {
 
   function registerSummaryListener(): void {
     if (!api || cleanupSummaryListener) return
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const cohortApi = (api as any).cohort
+    const cohortApi = api.cohort
     if (typeof cohortApi.onSummaryRebuilt === 'function') {
       cleanupSummaryListener = cohortApi.onSummaryRebuilt((status: { is_stale: boolean }) => {
         summaryStale.value = status.is_stale
@@ -156,8 +155,7 @@ export function useCohortData(): UseCohortDataReturn {
 
   // Initialize staleness from current status (catches in-progress rebuilds)
   if (api) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const cohortApi = (api as any).cohort
+    const cohortApi = api.cohort
     if (typeof cohortApi.getSummaryStatus === 'function') {
       cohortApi
         .getSummaryStatus()
@@ -295,8 +293,7 @@ export function useCohortData(): UseCohortDataReturn {
       }
 
       // No structuredClone — buildIpcParams already strips Vue Proxies via spread
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await (api as any).cohort.getVariants(ipcParams)
+      const result = await api.cohort.getVariants(ipcParams)
 
       // Discard stale responses from superseded requests
       if (thisGeneration !== requestGeneration) return
@@ -328,8 +325,7 @@ export function useCohortData(): UseCohortDataReturn {
     }
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await (api as any).cohort.getSummary()
+      const result = await api.cohort.getSummary()
       summary.value = result
     } catch (err) {
       logService.error(

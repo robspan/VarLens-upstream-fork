@@ -112,8 +112,7 @@ watch(
 async function selectBedFile(): Promise<void> {
   if (!api) return
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await (api as any).import.selectFile()
+    const result = await api.import.selectFile()
     if (typeof result === 'string') {
       selectedBedPath.value = result
       if (regionFileName.value.trim() === '') {
@@ -135,8 +134,7 @@ async function importRegionFile(): Promise<void> {
   if (name === '' || !selectedBedPath.value || !api) return
   importingRegion.value = true
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const regionFilesApi = (api as any).regionFiles
+    const regionFilesApi = api.regionFiles
     const created = await regionFilesApi.create(name, regionFileDescription.value.trim() || null)
     await regionFilesApi.importBed(created.id, selectedBedPath.value)
 

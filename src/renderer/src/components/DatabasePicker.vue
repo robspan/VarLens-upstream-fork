@@ -131,6 +131,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useDatabaseStore } from '../stores/databaseStore'
+import { useApiService } from '../composables/useApiService'
 import PasswordDialog from './PasswordDialog.vue'
 import CreateDatabaseDialog from './CreateDatabaseDialog.vue'
 import ChangePasswordDialog from './ChangePasswordDialog.vue'
@@ -147,6 +148,7 @@ import {
 } from '@mdi/js'
 
 const databaseStore = useDatabaseStore()
+const { api } = useApiService()
 
 // Component refs
 const passwordDialogRef = ref<InstanceType<typeof PasswordDialog> | null>(null)
@@ -233,8 +235,9 @@ function handlePasswordChanged(): void {
 }
 
 async function handleRemoveRecent(path: string): Promise<void> {
+  if (!api) return
   try {
-    await window.api.database.removeRecent(path)
+    await api.database.removeRecent(path)
     await databaseStore.fetchRecent()
   } catch (e) {
     emit('error', e instanceof Error ? e.message : String(e))
@@ -242,8 +245,9 @@ async function handleRemoveRecent(path: string): Promise<void> {
 }
 
 async function handleShowInFolder(path: string): Promise<void> {
+  if (!api) return
   try {
-    await window.api.database.showInFolder(path)
+    await api.database.showInFolder(path)
   } catch (e) {
     emit('error', e instanceof Error ? e.message : String(e))
   }
@@ -257,7 +261,8 @@ function handleDeleteFile(db: RecentDatabase): void {
 async function confirmDeleteFile(): Promise<void> {
   if (!pendingDeleteDb.value) return
   try {
-    await window.api.database.deleteFile(pendingDeleteDb.value.path)
+    if (!api) return
+    await api.database.deleteFile(pendingDeleteDb.value.path)
     await databaseStore.fetchRecent()
   } catch (e) {
     emit('error', e instanceof Error ? e.message : String(e))

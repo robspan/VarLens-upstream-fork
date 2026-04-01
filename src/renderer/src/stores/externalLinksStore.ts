@@ -284,8 +284,10 @@ export const useExternalLinksStore = defineStore('externalLinks', () => {
   }
 
   function syncDomains(): void {
-    if (typeof window.api === 'undefined') return
+    // eslint-disable-next-line no-restricted-syntax -- store initializes before Vue mount
+    if (typeof window === 'undefined' || typeof window.api === 'undefined') return
     const domains = configuredDomains.value
+    // eslint-disable-next-line no-restricted-syntax -- store initializes before Vue mount
     window.api.shell.updateDomains(domains)
   }
 

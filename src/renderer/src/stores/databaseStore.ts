@@ -5,7 +5,15 @@
 
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { DatabaseOpenResult, RecentDatabase } from '../../../shared/types/api'
+import type { DatabaseOpenResult, RecentDatabase, WindowAPI } from '../../../shared/types/api'
+
+/** Lazy accessor for window.api -- avoids import-time evaluation */
+function getApi(): WindowAPI {
+  if (typeof window === 'undefined' || typeof window.api === 'undefined') {
+    throw new Error('Database store requires Electron API (window.api)')
+  }
+  return window.api
+}
 
 /**
  * Database store using setup store pattern
@@ -20,7 +28,7 @@ export const useDatabaseStore = defineStore('database', () => {
 
   // Actions
   async function fetchInfo(): Promise<void> {
-    const info = await window.api.database.info()
+    const info = await getApi().database.info()
     if (info) {
       currentPath.value = info.path
       currentName.value = info.name
@@ -30,13 +38,13 @@ export const useDatabaseStore = defineStore('database', () => {
   }
 
   async function fetchRecent(): Promise<void> {
-    recentDatabases.value = await window.api.database.recentList()
+    recentDatabases.value = await getApi().database.recentList()
   }
 
   async function openDatabase(path: string, password?: string): Promise<DatabaseOpenResult> {
     isLoading.value = true
     try {
-      const result = await window.api.database.open(path, password)
+      const result = await getApi().database.open(path, password)
       if (result.success && result.info) {
         currentPath.value = result.info.path
         currentName.value = result.info.name
@@ -52,7 +60,7 @@ export const useDatabaseStore = defineStore('database', () => {
   async function createDatabase(path: string, password?: string): Promise<DatabaseOpenResult> {
     isLoading.value = true
     try {
-      const result = await window.api.database.create(path, password)
+      const result = await getApi().database.create(path, password)
       if (result.success && result.info) {
         currentPath.value = result.info.path
         currentName.value = result.info.name
@@ -66,7 +74,7 @@ export const useDatabaseStore = defineStore('database', () => {
   }
 
   async function selectAndOpenFile(): Promise<DatabaseOpenResult | null> {
-    const path = await window.api.database.selectFile()
+    const path = await getApi().database.selectFile()
     if (path === null) {
       return null
     }
@@ -74,13 +82,13 @@ export const useDatabaseStore = defineStore('database', () => {
   }
 
   async function selectSaveLocation(defaultName: string): Promise<string | null> {
-    return await window.api.database.selectSaveLocation(defaultName)
+    return await getApi().database.selectSaveLocation(defaultName)
   }
 
   async function changePassword(
     newPassword: string
   ): Promise<{ success: boolean; error?: string }> {
-    return await window.api.database.rekey(newPassword)
+    return await getApi().database.rekey(newPassword)
   }
 
   return {

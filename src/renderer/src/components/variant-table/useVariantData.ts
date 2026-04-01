@@ -80,8 +80,7 @@ export function useVariantData(options: UseVariantDataOptions) {
           : {})
       })
       const shouldFetchUnfiltered = needsUnfilteredCount
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await (api as any).variants.query(
+      const result = await api.variants.query(
         caseId.value,
         plainFilters,
         offset,

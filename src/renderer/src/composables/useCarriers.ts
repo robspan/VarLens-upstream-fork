@@ -116,8 +116,7 @@ export function useCarriers(): UseCarriersReturn {
     }
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const carriers = await (api as any).cohort.getCarriers(
+      const carriers = await api.cohort.getCarriers(
         variant.chr,
         variant.pos,
         variant.ref,

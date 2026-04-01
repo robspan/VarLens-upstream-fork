@@ -88,6 +88,10 @@ export function registerAuthHandlers({ ipcMain, getDb }: HandlerDependencies): v
   ipcMain.handle('auth:listUsers', async () => {
     return wrapHandler(async () => {
       const db = getDb()
+      const currentUser = db.user
+      if (!currentUser || currentUser.role !== 'admin') {
+        throw new Error('Only admins can list users')
+      }
       return db.auth.listUsers()
     })
   })

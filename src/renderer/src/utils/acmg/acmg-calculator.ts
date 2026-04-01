@@ -1,4 +1,5 @@
-import type { AcmgEvidenceCode, AcmgClassification } from './types'
+import type { AcmgEvidenceCode } from './types'
+import type { AcmgClassification } from '../../../../shared/config/domain.config'
 import { EVIDENCE_POINTS } from './types'
 
 export interface PointBreakdown {
@@ -120,22 +121,22 @@ export function classifyByRules(
 
   // --- Likely Pathogenic rules ---
   if (p.veryStrong >= 1) {
-    if (p.moderate >= 1) return 'Likely Pathogenic' // PVS + PM
-    if (p.supporting >= 1) return 'Likely Pathogenic' // PVS + PP
+    if (p.moderate >= 1) return 'Likely pathogenic' // PVS + PM
+    if (p.supporting >= 1) return 'Likely pathogenic' // PVS + PP
   }
   if (p.strong >= 1) {
-    if (p.moderate >= 1) return 'Likely Pathogenic' // PS + 1-2 PM
-    if (p.supporting >= 2) return 'Likely Pathogenic' // PS + 2 PP
+    if (p.moderate >= 1) return 'Likely pathogenic' // PS + 1-2 PM
+    if (p.supporting >= 2) return 'Likely pathogenic' // PS + 2 PP
   }
-  if (p.moderate >= 3) return 'Likely Pathogenic' // 3 PM
-  if (p.moderate >= 2 && p.supporting >= 2) return 'Likely Pathogenic' // 2 PM + 2 PP
-  if (p.moderate >= 1 && p.supporting >= 4) return 'Likely Pathogenic' // 1 PM + 4 PP
+  if (p.moderate >= 3) return 'Likely pathogenic' // 3 PM
+  if (p.moderate >= 2 && p.supporting >= 2) return 'Likely pathogenic' // 2 PM + 2 PP
+  if (p.moderate >= 1 && p.supporting >= 4) return 'Likely pathogenic' // 1 PM + 4 PP
 
   // --- Likely Benign rules (after pathogenic/LP to avoid overriding strong pathogenic evidence) ---
-  if (b.strong >= 1 && b.supporting >= 1) return 'Likely Benign'
-  if (b.supporting >= 2) return 'Likely Benign'
+  if (b.strong >= 1 && b.supporting >= 1) return 'Likely benign'
+  if (b.supporting >= 2) return 'Likely benign'
 
-  return 'VUS'
+  return 'Uncertain significance'
 }
 
 /**

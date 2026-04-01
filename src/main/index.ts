@@ -7,6 +7,7 @@ import { initDatabaseManager, initDatabaseManagerSafe, closeDatabaseManager } fr
 import { mainLogger } from './services/MainLogger'
 import { initAutoUpdater, scheduleUpdateChecks } from './services/AutoUpdater'
 import { APP_CONFIG } from '../shared/config'
+import { isUrlSafeForExternal } from './utils/url-validation'
 
 // Disable GPU hardware acceleration when --disable-gpu flag is passed.
 // This prevents blank/white windows on Windows systems with outdated or
@@ -73,8 +74,10 @@ function createWindow(): void {
     }
   })
 
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isUrlSafeForExternal(url)) {
+      setImmediate(() => shell.openExternal(url))
+    }
     return { action: 'deny' }
   })
 

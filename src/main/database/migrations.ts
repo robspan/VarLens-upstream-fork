@@ -1323,4 +1323,78 @@ export function runMigrations(db: Database.Database): void {
 
     db.exec('PRAGMA user_version = 23')
   }
+
+  // v24: Normalize ACMG classification labels to ClinVar sentence case
+  if (currentVersion < 24) {
+    // Step 1: Normalize variant_annotations
+    db.exec(`
+      UPDATE variant_annotations SET acmg_classification = 'Pathogenic'
+        WHERE acmg_classification = 'P';
+      UPDATE variant_annotations SET acmg_classification = 'Likely pathogenic'
+        WHERE acmg_classification IN ('Likely Pathogenic', 'LP');
+      UPDATE variant_annotations SET acmg_classification = 'Uncertain significance'
+        WHERE acmg_classification IN ('VUS', 'Uncertain Significance');
+      UPDATE variant_annotations SET acmg_classification = 'Likely benign'
+        WHERE acmg_classification IN ('Likely Benign', 'LB');
+      UPDATE variant_annotations SET acmg_classification = 'Benign'
+        WHERE acmg_classification = 'B';
+    `)
+
+    // Step 2: Normalize case_variant_annotations
+    db.exec(`
+      UPDATE case_variant_annotations SET acmg_classification = 'Pathogenic'
+        WHERE acmg_classification = 'P';
+      UPDATE case_variant_annotations SET acmg_classification = 'Likely pathogenic'
+        WHERE acmg_classification IN ('Likely Pathogenic', 'LP');
+      UPDATE case_variant_annotations SET acmg_classification = 'Uncertain significance'
+        WHERE acmg_classification IN ('VUS', 'Uncertain Significance');
+      UPDATE case_variant_annotations SET acmg_classification = 'Likely benign'
+        WHERE acmg_classification IN ('Likely Benign', 'LB');
+      UPDATE case_variant_annotations SET acmg_classification = 'Benign'
+        WHERE acmg_classification = 'B';
+    `)
+
+    // Step 3: Recompute acmg_best in cohort_variant_summary
+    const hasSummary = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='cohort_variant_summary'"
+      )
+      .get()
+    if (hasSummary != null) {
+      db.exec(`
+        UPDATE cohort_variant_summary SET acmg_best = (
+          SELECT CASE MAX(rank)
+            WHEN 5 THEN 'Pathogenic' WHEN 4 THEN 'Likely pathogenic'
+            WHEN 3 THEN 'Uncertain significance' WHEN 2 THEN 'Likely benign'
+            WHEN 1 THEN 'Benign' ELSE NULL END
+          FROM (
+            SELECT CASE va.acmg_classification
+              WHEN 'Pathogenic' THEN 5 WHEN 'Likely pathogenic' THEN 4
+              WHEN 'Uncertain significance' THEN 3 WHEN 'Likely benign' THEN 2
+              WHEN 'Benign' THEN 1 ELSE 0 END AS rank
+            FROM variant_annotations va
+            WHERE va.chr = cohort_variant_summary.chr
+              AND va.pos = cohort_variant_summary.pos
+              AND va.ref = cohort_variant_summary.ref
+              AND va.alt = cohort_variant_summary.alt
+              AND va.acmg_classification IS NOT NULL
+            UNION ALL
+            SELECT CASE cva.acmg_classification
+              WHEN 'Pathogenic' THEN 5 WHEN 'Likely pathogenic' THEN 4
+              WHEN 'Uncertain significance' THEN 3 WHEN 'Likely benign' THEN 2
+              WHEN 'Benign' THEN 1 ELSE 0 END AS rank
+            FROM case_variant_annotations cva
+            JOIN variants v ON v.id = cva.variant_id
+            WHERE v.chr = cohort_variant_summary.chr
+              AND v.pos = cohort_variant_summary.pos
+              AND v.ref = cohort_variant_summary.ref
+              AND v.alt = cohort_variant_summary.alt
+              AND cva.acmg_classification IS NOT NULL
+          )
+        )
+      `)
+    }
+
+    db.exec('PRAGMA user_version = 24')
+  }
 }

@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3-multiple-ciphers'
 import type { GeneContingencyData, SampleBurdenData, VariantFilters } from '../statistics/types'
+import { GT_DOSAGE_SQL } from '../../shared/sql/genotype-dosage'
 import { sqlPlaceholders } from './sql-utils'
 
 export class AssociationDataBuilder {
@@ -56,7 +57,7 @@ export class AssociationDataBuilder {
         `
       SELECT gene_symbol, case_id,
              chr || ':' || pos || ':' || ref || ':' || alt AS variant_key,
-             CAST(COALESCE(gt_num, '0') AS INTEGER) AS dosage,
+             ${GT_DOSAGE_SQL} AS dosage,
              gnomad_af, cadd
       FROM variants
       WHERE ${whereClause}

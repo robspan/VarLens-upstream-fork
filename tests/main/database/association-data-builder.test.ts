@@ -25,27 +25,27 @@ describe('AssociationDataBuilder', () => {
 
     // Case 1: BRCA1 het variant
     db.prepare(
-      "INSERT INTO variants (case_id, chr, pos, ref, alt, gene_symbol, consequence, gnomad_af, cadd, gt_num) VALUES (1, 'chr17', 41244000, 'A', 'G', 'BRCA1', 'missense_variant', 0.001, 25.0, '1')"
+      "INSERT INTO variants (case_id, chr, pos, ref, alt, gene_symbol, consequence, gnomad_af, cadd, gt_num) VALUES (1, 'chr17', 41244000, 'A', 'G', 'BRCA1', 'missense_variant', 0.001, 25.0, '0/1')"
     ).run()
 
     // Case 2: BRCA1 het variant (same)
     db.prepare(
-      "INSERT INTO variants (case_id, chr, pos, ref, alt, gene_symbol, consequence, gnomad_af, cadd, gt_num) VALUES (2, 'chr17', 41244000, 'A', 'G', 'BRCA1', 'missense_variant', 0.001, 25.0, '1')"
+      "INSERT INTO variants (case_id, chr, pos, ref, alt, gene_symbol, consequence, gnomad_af, cadd, gt_num) VALUES (2, 'chr17', 41244000, 'A', 'G', 'BRCA1', 'missense_variant', 0.001, 25.0, '0/1')"
     ).run()
 
     // Case 3: BRCA1 hom variant
     db.prepare(
-      "INSERT INTO variants (case_id, chr, pos, ref, alt, gene_symbol, consequence, gnomad_af, cadd, gt_num) VALUES (3, 'chr17', 41244000, 'A', 'G', 'BRCA1', 'missense_variant', 0.001, 25.0, '2')"
+      "INSERT INTO variants (case_id, chr, pos, ref, alt, gene_symbol, consequence, gnomad_af, cadd, gt_num) VALUES (3, 'chr17', 41244000, 'A', 'G', 'BRCA1', 'missense_variant', 0.001, 25.0, '1/1')"
     ).run()
 
     // Case 4: TP53 variant only
     db.prepare(
-      "INSERT INTO variants (case_id, chr, pos, ref, alt, gene_symbol, consequence, gnomad_af, cadd, gt_num) VALUES (4, 'chr17', 7579472, 'C', 'T', 'TP53', 'missense_variant', 0.0001, 30.0, '1')"
+      "INSERT INTO variants (case_id, chr, pos, ref, alt, gene_symbol, consequence, gnomad_af, cadd, gt_num) VALUES (4, 'chr17', 7579472, 'C', 'T', 'TP53', 'missense_variant', 0.0001, 30.0, '0/1')"
     ).run()
 
     // Case 5: no qualifying variants
     db.prepare(
-      "INSERT INTO variants (case_id, chr, pos, ref, alt, gene_symbol, consequence, gnomad_af, cadd, gt_num) VALUES (5, 'chr1', 100, 'A', 'T', NULL, NULL, 0.5, 5.0, '1')"
+      "INSERT INTO variants (case_id, chr, pos, ref, alt, gene_symbol, consequence, gnomad_af, cadd, gt_num) VALUES (5, 'chr1', 100, 'A', 'T', NULL, NULL, 0.5, 5.0, '0/1')"
     ).run()
   })
 

@@ -204,13 +204,10 @@ export interface PaginatedResult<T> {
 
 /**
  * ACMG Classification - 5-tier variant pathogenicity classification
+ * Re-exported from shared domain config (canonical ClinVar sentence case).
  */
-export type AcmgClassification =
-  | 'Pathogenic'
-  | 'Likely Pathogenic'
-  | 'VUS'
-  | 'Likely Benign'
-  | 'Benign'
+import type { AcmgClassification as _AcmgClassification } from '../../shared/config/domain.config'
+export type AcmgClassification = _AcmgClassification
 
 /**
  * ACMG Evidence - Structure for acmg_evidence JSON field

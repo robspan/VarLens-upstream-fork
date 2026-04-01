@@ -17,6 +17,8 @@ import type {
 } from '../../shared/types/cohort'
 import type { ColumnFilterMeta } from '../../shared/types/column-filters'
 import { sqlPlaceholders } from './sql-utils'
+import { tokenize, parse } from '../../shared/utils/boolean-search'
+import { emitCohortSearch } from './search/cohort-search-emitter'
 
 /**
  * Sortable columns for cohort queries
@@ -330,25 +332,18 @@ export class CohortService {
    * Build a SQL boolean expression from a search string containing AND/OR/NOT.
    */
   private buildBooleanSearchCondition(term: string, paramsArray: (string | number)[]): string {
-    const parts = term
-      .split(/\b(AND|OR|NOT)\b/)
-      .map((p) => p.trim())
-      .filter((p) => p !== '')
-
-    const sqlParts: string[] = []
-    for (const part of parts) {
-      if (part === 'AND') {
-        sqlParts.push('AND')
-      } else if (part === 'OR') {
-        sqlParts.push('OR')
-      } else if (part === 'NOT') {
-        sqlParts.push('AND NOT')
-      } else {
-        sqlParts.push(this.buildSingleTermCondition(part, paramsArray))
-      }
+    const tokens = tokenize(term)
+    if (tokens.length === 0) return '1=1'
+    let ast
+    try {
+      ast = parse(tokens)
+    } catch {
+      // Malformed boolean expression — fall back to single-term search
+      return this.buildSingleTermCondition(term, paramsArray)
     }
-
-    return `(${sqlParts.join(' ')})`
+    const { sql, params } = emitCohortSearch(ast)
+    paramsArray.push(...params)
+    return sql
   }
 
   /**
@@ -427,13 +422,13 @@ export class CohortService {
         case 'Pathogenic':
           acmgCounts.pathogenic = row.count
           break
-        case 'Likely Pathogenic':
+        case 'Likely pathogenic':
           acmgCounts.likely_pathogenic = row.count
           break
-        case 'VUS':
+        case 'Uncertain significance':
           acmgCounts.vus = row.count
           break
-        case 'Likely Benign':
+        case 'Likely benign':
           acmgCounts.likely_benign = row.count
           break
         case 'Benign':

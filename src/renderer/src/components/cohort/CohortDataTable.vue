@@ -590,6 +590,8 @@ const columnActiveFilters = computed<ActiveFilter[]>(() => {
       starredOnly: false,
       hasCommentOnly: false,
       acmgClassifications: [],
+      tagIds: [],
+      annotationScope: 'case',
       activePanelIds: [],
       panelPaddingBp: 5000,
       inheritanceModes: [],

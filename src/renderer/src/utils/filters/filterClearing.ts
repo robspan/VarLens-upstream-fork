@@ -111,6 +111,8 @@ export function clearAllFilters(): FilterState {
     starredOnly: FILTER_DEFAULTS.starredOnly,
     hasCommentOnly: FILTER_DEFAULTS.hasCommentOnly,
     acmgClassifications: [...FILTER_DEFAULTS.acmgClassifications],
+    tagIds: [...FILTER_DEFAULTS.tagIds],
+    annotationScope: FILTER_DEFAULTS.annotationScope,
     activePanelIds: [...FILTER_DEFAULTS.activePanelIds],
     panelPaddingBp: FILTER_DEFAULTS.panelPaddingBp,
     maxInternalAf: FILTER_DEFAULTS.maxInternalAf,

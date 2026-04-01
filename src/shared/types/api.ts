@@ -217,6 +217,7 @@ export interface ShellOpenExternalResult {
 
 export interface ShellAPI {
   openExternal: (url: string) => Promise<ShellOpenExternalResult>
+  showItemInFolder: (filePath: string) => Promise<void>
   updateDomains: (domains: string[]) => Promise<void>
 }
 

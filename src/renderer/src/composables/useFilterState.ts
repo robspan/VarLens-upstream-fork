@@ -93,6 +93,7 @@ export function useFilterState(
     maxGnomadAf: null as number | null,
     minCadd: null as number | null,
     maxInternalAf: null as number | null,
+    minCarriers: null as number | null,
     tagIds: [] as number[],
     starredOnly: false,
     hasCommentOnly: false,

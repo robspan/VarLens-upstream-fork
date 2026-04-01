@@ -167,6 +167,7 @@ export const mockApi: WindowAPI = {
       window.open(url, '_blank')
       return { success: true }
     },
+    showItemInFolder: async () => {},
     updateDomains: async () => {}
   },
 

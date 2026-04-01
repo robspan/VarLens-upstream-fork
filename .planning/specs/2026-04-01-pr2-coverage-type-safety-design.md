@@ -76,46 +76,54 @@ Stabilize the test coverage pipeline, enforce coverage thresholds in CI, convert
 ### 2.3 Convert IPC Handler Tests
 
 **Approach:**
-Rewrite 6 handler test files using the `auth-handlers.test.ts` DI pattern:
+Rewrite existing handler test files using the `auth-handlers.test.ts` DI pattern:
 - Mock `ipcMain.handle` to capture handler registrations
 - Create real dependencies via DI (real DB, real services)
 - Invoke handlers through the captured registration
 - Assert on return values and side effects
 
-**Files to create/rewrite (priority order):**
-1. `tests/main/handlers/variant-handlers.test.ts`
-2. `tests/main/handlers/database-handlers.test.ts`
-3. `tests/main/handlers/case-handlers.test.ts`
-4. `tests/main/handlers/cohort-handlers.test.ts`
-5. `tests/main/handlers/annotation-handlers.test.ts`
-6. `tests/main/handlers/import-handlers.test.ts`
+**Existing files to convert (actual filenames from repo):**
+1. `tests/main/handlers/variants-handlers.test.ts` — currently minimal stubs
+2. `tests/main/handlers/cases-handlers.test.ts` — currently minimal stubs
+3. `tests/main/handlers/cohort-handlers.test.ts` — currently minimal stubs
+4. `tests/main/handlers/annotations-handlers.test.ts` — currently minimal stubs
+5. `tests/main/handlers/export-handlers.test.ts` — currently minimal stubs
 
-**Reference:** `tests/main/handlers/auth-handlers.test.ts` (existing, working pattern)
+**Already converted:** `tests/main/handlers/auth-handlers.test.ts` (reference pattern)
 
-**Verification:** All new tests pass, total test count increases
+**Not in scope:** `case-metadata-handlers.test.ts`, `tags-handlers.test.ts`, `updater-handlers.test.ts`, `cohort-serialization.test.ts`, `panel-interval-offload.test.ts` (these are already adequate or orthogonal)
+
+**Note:** There is no `database-handlers.test.ts` or `import-handlers.test.ts` in the repo. Database operations are tested through other handler files. Import handlers test coverage comes from task 2.4 (worker logic extraction).
+
+**Verification:** All converted tests pass with real DB operations, total test count increases
 
 ---
 
 ### 2.4 Extract Worker Business Logic
 
+**Complexity note:** The workers are tightly coupled to messaging, I/O, DB lifecycle, progress throttling, and cancellation. This is not a simple "move functions out" refactor — the extraction boundary must be chosen carefully.
+
 **Approach:**
-Extract pure business logic from each worker into importable, testable modules:
+Extract the core data-processing logic from each worker into testable modules, while leaving worker-thread concerns (messaging, cancellation, progress reporting, DB open/close) in the worker entry files.
 
-| Worker entry | Logic module | Responsibility |
-|---|---|---|
-| `import-worker.ts` | `import-logic.ts` | Parsing + batch insert |
-| `delete-worker.ts` | `delete-logic.ts` | Case/DB deletion logic |
-| `export-worker.ts` | `export-logic.ts` | Export serialization |
+| Worker (lines) | Logic module | What moves out | What stays in worker |
+|---|---|---|---|
+| `import-worker.ts` (840) | `import-pipeline.ts` | Format detection, per-file parsing orchestration, batch insert SQL | DB open/close, FTS/index drop/restore, cancellation checks, progress postMessage, file iteration |
+| `delete-worker.ts` (163) | `delete-operations.ts` | Batch deletion SQL, case-specific cleanup | DB open/close, FTS teardown/restore, summary rebuild, error recovery |
+| `export-worker.ts` (225) | `export-renderer.ts` | Row formatting (CSV escaping, XLSX cell formatting), metadata sheet construction | DB open/close, file streaming with backpressure, progress postMessage |
 
-Worker entry files become thin messaging shells (receive message → call logic → post result).
+**Design constraints:**
+- Logic modules accept a DB connection (already opened) and a progress callback `(phase: string, current: number, total: number) => void`
+- Logic modules do NOT import `parentPort`, `workerData`, or `worker_threads`
+- Logic modules do NOT manage DB lifecycle (open/close/pragma) — that stays in the worker shell
+- Cancellation remains in the worker shell (checked between logical steps, throws to abort)
+- FTS/index/summary management stays in the worker shell (it's lifecycle, not logic)
 
-Logic modules accept a database connection and return results — no `parentPort`, no `workerData`.
-
-**Files created:** `src/main/workers/import-logic.ts`, `delete-logic.ts`, `export-logic.ts`
+**Files created:** `src/main/workers/import-pipeline.ts`, `delete-operations.ts`, `export-renderer.ts`
 **Files modified:** `src/main/workers/import-worker.ts`, `delete-worker.ts`, `export-worker.ts`
-**Tests:** Logic module tests with in-memory SQLite
+**Tests:** Logic module tests with in-memory SQLite, mock progress callback
 
-**Verification:** All existing tests pass, new logic module tests pass
+**Verification:** All existing tests pass, new logic module tests pass, workers behave identically
 
 ---
 
@@ -134,23 +142,23 @@ Logic modules accept a database connection and return results — no `parentPort
 
 ---
 
-### 2.6 Re-Export Shared Types (Remove Renderer → Main Imports)
+### 2.6 Move Canonical Type Ownership to Shared
 
-**Problem:** ~8 renderer files import types directly from `src/main/database/types` and other main-process modules, violating the process boundary.
+**Problem:** ~8 renderer files import types directly from `src/main/database/types`. Additionally, `src/shared/types/api.ts` itself imports ~40 types from `src/main/` — so the shared layer already depends on main. Simply re-exporting through shared would not fix the layering violation; it would just add another hop.
 
 **Approach:**
-1. Identify all cross-boundary type imports in `src/renderer/`
-2. Re-export needed types through `src/shared/types/` modules (e.g., `src/shared/types/database.ts` or existing modules)
-3. Update all renderer imports to use `src/shared/types/`
+1. **Move canonical type definitions** from `src/main/database/types.ts` to `src/shared/types/database.ts` (new file). These are pure TypeScript interfaces/types with no runtime dependencies on main-process code.
+2. **Update `src/main/database/types.ts`** to re-export from shared (preserving backward compatibility for main-process consumers)
+3. **Update `src/shared/types/api.ts`** to import from `src/shared/types/database.ts` instead of `src/main/database/types`
+4. **Update ~8 renderer files** to import from `src/shared/types/database` or `src/shared/types/api`
+5. **Move import-related types** (`ProgressUpdate`, `ImportResult`, `VcfPreviewResult`) to `src/shared/types/import.ts`
+6. **Move gene reference types** (`GeneValidationResult`, etc.) to `src/shared/types/gene-reference.ts`
 
-Known imports to move:
-- `VariantAnnotation`, `CaseVariantAnnotation` from `main/database/types`
-- `VepTranscriptConsequence`, `VcfPreviewResult` from main modules
-- `Tag`, `GeneList` and other domain types
+**Boundary rule after this task:** `src/shared/` never imports from `src/main/`. `src/main/` re-exports from `src/shared/` for backward compat. `src/renderer/` imports only from `src/shared/`.
 
-**Files modified:** `src/shared/types/` modules, ~8 renderer files
-
-**Verification:** `npm run typecheck` passes, grep confirms no `from '.*main/` imports in `src/renderer/`
+**Files created:** `src/shared/types/database.ts`, `src/shared/types/import.ts`, `src/shared/types/gene-reference.ts`
+**Files modified:** `src/main/database/types.ts`, `src/shared/types/api.ts`, ~8 renderer files
+**Verification:** `npm run typecheck` passes, grep confirms no `from '.*main/` imports in `src/renderer/` or `src/shared/`
 
 ---
 
@@ -171,20 +179,35 @@ Known imports to move:
 
 ### 2.8 Consolidate FilterState Types
 
-**Approach:**
-1. Define canonical types in `src/shared/types/filters.ts`:
-   - `FilterStateBase` — common fields
-   - `CaseFilterState extends FilterStateBase` — case-level filtering
-   - `CohortFilterState extends FilterStateBase` — cohort-level filtering
-2. Preserve existing wire semantics (`annotationScope: 'case' | 'all'`)
-3. Delete `src/renderer/src/composables/filter-types.ts`
-4. Update `useFilters.ts` to import from shared
-5. Resolve existing TODO at `filters.ts:14`
+**Problem:** Filter types are split across two files with different fields:
+- `src/shared/types/filters.ts` — `VariantFilter` (IPC wire format, lines 32-67) — lacks `tagIds`, `annotationScope`
+- `src/renderer/src/composables/filter-types.ts` — `FilterState` (renderer state, lines 7-25) — has `tagIds: number[]`, `annotationScope: 'case' | 'all'`, plus `ActiveFilter`, `UseFilterStateOptions`, `ExportResult`, `UseFilterStateReturn`
 
-**Files modified:** `src/shared/types/filters.ts`, `src/renderer/src/composables/useFilters.ts`
+The renderer `FilterState` is the primary type used by `useFilterState.ts` (lines 27-42, 86-105). Simply deleting `filter-types.ts` would break the case-filter composable.
+
+**Approach:**
+1. **Merge fields into `src/shared/types/filters.ts`:**
+   - Add `tagIds: number[]` to the shared filter type
+   - Add `annotationScope: 'case' | 'all'` to the shared filter type
+   - Define `FilterStateBase` with all common fields
+   - Define `CaseFilterState extends FilterStateBase` — includes case-specific fields
+   - Define `CohortFilterState extends FilterStateBase` — cohort-specific fields
+2. **Move helper types** from `filter-types.ts` to shared:
+   - `ActiveFilter` — used by filter toolbar UI
+   - `UseFilterStateOptions`, `UseFilterStateReturn` — composable contract types
+   - `ExportResult` — export dialog return type
+3. **Move `buildFilterFromState`** helper to `src/shared/utils/filters.ts` (or keep in the composable if it has renderer dependencies)
+4. **Update consumers:**
+   - `src/renderer/src/composables/useFilterState.ts` — import from shared
+   - `src/renderer/src/composables/useFilters.ts` — import from shared
+   - Any other files importing from `filter-types.ts`
+5. **Delete** `src/renderer/src/composables/filter-types.ts`
+6. **Resolve TODO** at `filters.ts:14`
+
+**Files modified:** `src/shared/types/filters.ts`, `src/renderer/src/composables/useFilterState.ts`, `src/renderer/src/composables/useFilters.ts`
 **Files deleted:** `src/renderer/src/composables/filter-types.ts`
 
-**Verification:** `npm run typecheck` passes, deleted file is gone, no imports reference it
+**Verification:** `npm run typecheck` passes, deleted file is gone, `useFilterState` still works with `tagIds` and `annotationScope`
 
 ---
 
@@ -213,7 +236,7 @@ Wave C (after Wave B):
 2. `npm run typecheck` passes
 3. `npm run test:coverage` passes with per-directory thresholds
 4. CI runs coverage and posts PR coverage comment
-5. Zero renderer → main imports (type boundary enforced)
+5. Zero renderer → main imports AND zero shared → main imports (type boundary enforced)
 6. `as any` count in renderer reduced to near zero
 7. All IPC handlers have DI-pattern tests
 8. Worker logic is testable without worker threads

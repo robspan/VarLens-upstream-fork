@@ -65,7 +65,7 @@
     "prettier": "^3.8.1",
     "sass-embedded": "^1.98.0",
     "tar": "^7.5.13",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.2",
     "typescript-eslint": "^8.57.2",
     "vite": "^7.3.1",
     "vite-plugin-vuetify": "^2.1.3",

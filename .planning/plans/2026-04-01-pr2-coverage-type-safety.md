@@ -22,6 +22,13 @@
 | `src/shared/types/import.ts` | Import-related types (moved from main) |
 | `src/shared/types/gene-reference.ts` | Gene reference types (moved from main) |
 | `src/shared/types/panel.ts` | Panel types (moved from main) |
+| `src/main/workers/worker-db.ts` | Shared worker DB open/close, FTS rebuild, cohort rebuild |
+| `src/main/workers/export-renderer.ts` | Export formatting utilities (formatCellValue, csvEscape) |
+| `src/main/workers/delete-operations.ts` | Delete operations (deleteAllCases, deleteCaseBatch) |
+| `src/main/workers/import-pipeline.ts` | Import pipeline logic (prepareStatements, streamInsert*, parseHeader) |
+| `tests/main/workers/export-renderer.test.ts` | Export renderer tests |
+| `tests/main/workers/delete-operations.test.ts` | Delete operations tests |
+| `tests/main/workers/import-pipeline.test.ts` | Import pipeline tests |
 
 ### Modified Files
 | File | What Changes |
@@ -794,64 +801,153 @@ composables."
 
 **Files:**
 - Create: `src/main/workers/export-renderer.ts`
-- Create: `tests/main/workers/export-renderer.test.ts`
 - Create: `src/main/workers/delete-operations.ts`
+- Create: `src/main/workers/import-pipeline.ts`
+- Create: `src/main/workers/worker-db.ts`
+- Create: `tests/main/workers/export-renderer.test.ts`
 - Create: `tests/main/workers/delete-operations.test.ts`
+- Create: `tests/main/workers/import-pipeline.test.ts`
 - Modify: `src/main/workers/export-worker.ts`
 - Modify: `src/main/workers/delete-worker.ts`
+- Modify: `src/main/workers/import-worker.ts`
 
-**Note:** `import-worker.ts` is 840 lines with deep coupling to streaming, cancellation, format detection, and progress throttling. Extracting its logic is a significantly larger effort than export/delete. This task extracts export and delete logic only. Import worker extraction is deferred to a follow-up task to keep the PR manageable.
+All three workers share an `openDatabase()` pattern. Extract it once, then extract each worker's logic.
 
-- [ ] **Step 1: Extract export formatting logic**
+### Part A: Shared worker DB utility
 
-Create `src/main/workers/export-renderer.ts` with the pure formatting functions from `export-worker.ts`:
+- [ ] **Step 1: Create shared worker DB utility**
+
+Create `src/main/workers/worker-db.ts`:
 
 ```typescript
+import Database from 'better-sqlite3-multiple-ciphers'
+import type { Database as DatabaseType } from 'better-sqlite3-multiple-ciphers'
+import { DATABASE_CONFIG } from '../../shared/config'
+import { createFTSTriggers } from '../database/schema'
+import {
+  REBUILD_VARIANT_SUMMARY_SQL,
+  REBUILD_GENE_BURDEN_SQL,
+  UPDATE_META_SQL,
+  MARK_STALE_SQL,
+  CHECK_TABLE_EXISTS_SQL
+} from '../../shared/sql/cohort-summary-rebuild'
+
 /**
- * Export data formatting utilities.
- * Pure functions extracted from export-worker for testability.
+ * Open a database with worker-optimized pragmas.
+ * Shared across import, delete, and export workers.
  */
+export function openWorkerDatabase(dbPath: string, encryptionKey?: string): DatabaseType {
+  const db = new Database(dbPath)
 
-/** Format a cell value for export (gnomAD AF as exponential, CADD as fixed decimal) */
-export function formatCellValue(value: unknown, column: string): string {
-  // Copy from export-worker.ts formatCellValue (lines 32-44)
+  if (encryptionKey !== undefined && encryptionKey !== '') {
+    const safeKey = encryptionKey.replace(/'/g, "''")
+    db.pragma(`key='${safeKey}'`)
+  }
+
+  db.pragma('journal_mode = WAL')
+  db.pragma('foreign_keys = OFF')
+  db.pragma('synchronous = OFF')
+  db.pragma(`busy_timeout = ${DATABASE_CONFIG.BUSY_TIMEOUT_MS}`)
+  db.pragma(`cache_size = ${DATABASE_CONFIG.IMPORT_CACHE_SIZE_KB}`)
+  db.pragma('temp_store = MEMORY')
+  db.pragma(`mmap_size = ${DATABASE_CONFIG.MMAP_SIZE_BYTES}`)
+  db.pragma('wal_autocheckpoint = 0')
+
+  return db
 }
 
-/** Escape a value for RFC 4180 CSV */
-export function csvEscape(value: string): string {
-  // Copy from export-worker.ts csvEscape (lines 47-58)
+/** Open a database in read-only mode (for export). */
+export function openWorkerDatabaseReadOnly(dbPath: string, encryptionKey?: string): DatabaseType {
+  const db = new Database(dbPath, { readonly: true })
+
+  if (encryptionKey !== undefined && encryptionKey !== '') {
+    const safeKey = encryptionKey.replace(/'/g, "''")
+    db.pragma(`key='${safeKey}'`)
+  }
+
+  return db
 }
 
-/** Build XLSX metadata sheet rows */
-export function buildMetadataRows(
-  caseName: string,
-  variantCount: number,
-  filters: Record<string, unknown>
-): Array<Record<string, string>> {
-  // Extract metadata construction from runXlsx (lines 164-191)
+/** Rebuild FTS index, triggers, and run ANALYZE. */
+export function rebuildFts(db: DatabaseType): void {
+  try {
+    db.exec("INSERT INTO variants_fts(variants_fts) VALUES('rebuild')")
+  } catch { /* best effort */ }
+  try {
+    db.exec(createFTSTriggers)
+  } catch { /* best effort */ }
+  try {
+    db.exec('ANALYZE')
+  } catch { /* best effort */ }
+  try {
+    db.exec("INSERT INTO variants_fts(variants_fts) VALUES('optimize')")
+  } catch { /* best effort */ }
 }
+
+/** Rebuild cohort summary tables if they exist. */
+export function rebuildCohortSummary(db: DatabaseType): void {
+  try {
+    const tableExists = db.prepare(CHECK_TABLE_EXISTS_SQL).get() as { c: number }
+    if (tableExists.c === 0) return
+
+    db.transaction(() => {
+      db.exec(REBUILD_VARIANT_SUMMARY_SQL)
+      db.exec(REBUILD_GENE_BURDEN_SQL)
+      db.exec(UPDATE_META_SQL)
+    })()
+
+    db.exec('ANALYZE cohort_variant_summary')
+    db.exec('ANALYZE gene_burden_summary')
+  } catch { /* best effort */ }
+}
+
+/** FTS trigger SQL constants */
+export const DROP_FTS_TRIGGERS = `
+  DROP TRIGGER IF EXISTS variants_fts_ai;
+  DROP TRIGGER IF EXISTS variants_fts_ad;
+  DROP TRIGGER IF EXISTS variants_fts_au;
+`
 ```
 
-- [ ] **Step 2: Write tests for export renderer**
+- [ ] **Step 2: Run existing tests to verify no regressions**
+
+Run: `npx vitest run`
+Expected: All tests pass. (No consumers yet, just verifying the module compiles.)
+
+### Part B: Export worker extraction
+
+- [ ] **Step 3: Extract export formatting logic**
+
+Create `src/main/workers/export-renderer.ts` with the pure formatting functions copied from `export-worker.ts`:
+
+- `formatCellValue()` (from lines 32-44): formats gnomAD AF as exponential, CADD as fixed decimal, nulls as empty string
+- `csvEscape()` (from lines 47-58): RFC 4180 CSV escaping — wraps in quotes if contains comma/quote/newline, doubles internal quotes
+
+Copy the exact implementations. These are pure functions with no worker dependencies.
+
+- [ ] **Step 4: Write tests for export renderer**
 
 Create `tests/main/workers/export-renderer.test.ts`:
 
 ```typescript
 import { describe, it, expect } from 'vitest'
-import { formatCellValue, csvEscape, buildMetadataRows } from '../../../src/main/workers/export-renderer'
+import { formatCellValue, csvEscape } from '../../../src/main/workers/export-renderer'
 
 describe('formatCellValue', () => {
   it('formats gnomAD AF in exponential notation', () => {
-    expect(formatCellValue(0.001, 'gnomad_af')).toBe('1.00e-3')
+    expect(formatCellValue(0.001, 'gnomad_af')).toMatch(/1\.00e-3/)
   })
   it('formats CADD as fixed decimal', () => {
     expect(formatCellValue(25.123, 'cadd')).toBe('25.12')
   })
-  it('returns string for other columns', () => {
+  it('returns string representation for other columns', () => {
     expect(formatCellValue('BRCA1', 'gene_symbol')).toBe('BRCA1')
   })
-  it('handles null values', () => {
+  it('returns empty string for null', () => {
     expect(formatCellValue(null, 'gene_symbol')).toBe('')
+  })
+  it('returns empty string for undefined', () => {
+    expect(formatCellValue(undefined, 'gene_symbol')).toBe('')
   })
 })
 
@@ -859,76 +955,263 @@ describe('csvEscape', () => {
   it('wraps values containing commas in quotes', () => {
     expect(csvEscape('a,b')).toBe('"a,b"')
   })
-  it('escapes double quotes', () => {
+  it('escapes double quotes by doubling them', () => {
     expect(csvEscape('a"b')).toBe('"a""b"')
   })
-  it('passes through simple values', () => {
+  it('passes through simple values unchanged', () => {
     expect(csvEscape('BRCA1')).toBe('BRCA1')
+  })
+  it('wraps values containing newlines', () => {
+    expect(csvEscape('a\nb')).toBe('"a\nb"')
   })
 })
 ```
 
-- [ ] **Step 3: Run export renderer tests**
+- [ ] **Step 5: Run export renderer tests**
 
 Run: `npx vitest run tests/main/workers/export-renderer.test.ts`
 Expected: All tests pass.
 
-- [ ] **Step 4: Update export-worker to import from shared**
+- [ ] **Step 6: Update export-worker to import from export-renderer**
 
-Modify `src/main/workers/export-worker.ts` to import `formatCellValue` and `csvEscape` from `./export-renderer` instead of defining them locally.
+Modify `src/main/workers/export-worker.ts`:
+- Remove local `formatCellValue` and `csvEscape` function definitions
+- Add: `import { formatCellValue, csvEscape } from './export-renderer'`
+- Replace local `openDb()` with: `import { openWorkerDatabaseReadOnly } from './worker-db'`
 
-- [ ] **Step 5: Extract delete operations logic**
-
-Create `src/main/workers/delete-operations.ts` with the pure DB operations:
-
-```typescript
-import type Database from 'better-sqlite3-multiple-ciphers'
-
-/**
- * Delete operations extracted from delete-worker for testability.
- */
-
-/** Delete all cases and their variants from the database */
-export function deleteAllCases(db: Database.Database): void {
-  // Extract from delete-worker.ts deleteAll logic
-}
-
-/** Delete specific cases by ID */
-export function deleteCaseBatch(db: Database.Database, caseIds: number[]): void {
-  // Extract from delete-worker.ts deleteBatch logic
-}
-```
-
-- [ ] **Step 6: Write tests for delete operations**
-
-Create `tests/main/workers/delete-operations.test.ts` testing with in-memory SQLite.
-
-- [ ] **Step 7: Run delete operations tests**
-
-Run: `npx vitest run tests/main/workers/delete-operations.test.ts`
-Expected: All tests pass.
-
-- [ ] **Step 8: Update delete-worker to import from shared**
-
-Modify `src/main/workers/delete-worker.ts` to use functions from `./delete-operations`.
-
-- [ ] **Step 9: Run full test suite**
+- [ ] **Step 7: Run tests to verify export worker still works**
 
 Run: `npx vitest run`
 Expected: All tests pass.
 
-- [ ] **Step 10: Commit**
+### Part C: Delete worker extraction
+
+- [ ] **Step 8: Extract delete operations logic**
+
+Create `src/main/workers/delete-operations.ts`:
+
+Copy the delete logic from `delete-worker.ts`. The worker has two paths:
+- `deleteAll`: `DELETE FROM cases` (cascades to variants via FK)
+- `deleteBatch`: `DELETE FROM cases WHERE id IN (...)` with SQL placeholder construction
+
+```typescript
+import type { Database as DatabaseType } from 'better-sqlite3-multiple-ciphers'
+
+/**
+ * Delete operations extracted from delete-worker for testability.
+ * Accept an opened DB connection — caller manages lifecycle.
+ */
+
+/** Delete all cases (cascading to variants). */
+export function deleteAllCases(db: DatabaseType): number {
+  const result = db.prepare('DELETE FROM cases').run()
+  return result.changes
+}
+
+/** Delete specific cases by ID. */
+export function deleteCaseBatch(db: DatabaseType, caseIds: number[]): number {
+  if (caseIds.length === 0) return 0
+  const placeholders = caseIds.map(() => '?').join(',')
+  const result = db.prepare(`DELETE FROM cases WHERE id IN (${placeholders})`).run(...caseIds)
+  return result.changes
+}
+```
+
+Read the actual `delete-worker.ts` implementation to ensure the extraction matches exactly.
+
+- [ ] **Step 9: Write tests for delete operations**
+
+Create `tests/main/workers/delete-operations.test.ts`:
+
+```typescript
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import Database from 'better-sqlite3-multiple-ciphers'
+import { deleteAllCases, deleteCaseBatch } from '../../../src/main/workers/delete-operations'
+
+describe('delete-operations', () => {
+  let db: InstanceType<typeof Database>
+
+  beforeEach(() => {
+    db = new Database(':memory:')
+    db.exec(`
+      CREATE TABLE cases (id INTEGER PRIMARY KEY, name TEXT);
+      INSERT INTO cases (name) VALUES ('case1'), ('case2'), ('case3');
+    `)
+  })
+
+  afterEach(() => {
+    db.close()
+  })
+
+  it('deleteAllCases removes all rows', () => {
+    const deleted = deleteAllCases(db)
+    expect(deleted).toBe(3)
+    const remaining = db.prepare('SELECT COUNT(*) as c FROM cases').get() as { c: number }
+    expect(remaining.c).toBe(0)
+  })
+
+  it('deleteCaseBatch removes specified IDs', () => {
+    const deleted = deleteCaseBatch(db, [1, 3])
+    expect(deleted).toBe(2)
+    const remaining = db.prepare('SELECT name FROM cases').all() as { name: string }[]
+    expect(remaining).toEqual([{ name: 'case2' }])
+  })
+
+  it('deleteCaseBatch with empty array deletes nothing', () => {
+    const deleted = deleteCaseBatch(db, [])
+    expect(deleted).toBe(0)
+  })
+})
+```
+
+- [ ] **Step 10: Run delete operations tests**
+
+Run: `npx vitest run tests/main/workers/delete-operations.test.ts`
+Expected: All tests pass.
+
+- [ ] **Step 11: Update delete-worker to import from shared modules**
+
+Modify `src/main/workers/delete-worker.ts`:
+- Replace local `openDatabase()` with: `import { openWorkerDatabase, rebuildFts, rebuildCohortSummary, DROP_FTS_TRIGGERS } from './worker-db'`
+- Replace inline delete logic with: `import { deleteAllCases, deleteCaseBatch } from './delete-operations'`
+
+- [ ] **Step 12: Run tests to verify delete worker still works**
+
+Run: `npx vitest run`
+Expected: All tests pass.
+
+### Part D: Import worker extraction
+
+- [ ] **Step 13: Extract import pipeline logic**
+
+Create `src/main/workers/import-pipeline.ts`. Extract these functions from `import-worker.ts`:
+
+1. **`prepareStatements(db)`** (lines 382-514) — Prepares all SQL statements and returns a typed statement bag. No worker dependencies.
+
+2. **`streamInsertJson(filePath, formatInfo, caseId, batchSize, stmts, isCancelled, onProgress)`** (lines 563-605) — Streams JSON file and inserts variants in batches. Takes a cancellation callback and progress callback. No `parentPort`.
+
+3. **`streamInsertVcf(filePath, formatInfo, caseId, batchSize, stmts, isCancelled, vcfSelectedSamples, onProgress)`** (lines 614-700) — Streams VCF file and inserts variants. Same callback pattern.
+
+4. **`createMapperPipeline(filePath, formatInfo)`** (lines 709-748) — Creates a readable stream that outputs mapped variant objects. Pure streaming, no worker deps.
+
+5. **`parseHeader(filePath, headerPath)`** (lines 753-840) — Parses columnar JSON header for data dictionaries. Pure parsing.
+
+6. **SQL constants**: `DROP_INDEXES` and `RECREATE_INDEXES` (lines 46-68).
+
+The module should export all of these. The worker entry file keeps:
+- `parentPort` message handler
+- `openDatabase()` call (via `worker-db.ts`)
+- Cancellation flag management
+- Progress `postMessage` calls (wrapping the `onProgress` callback)
+- FTS/index drop/restore lifecycle
+- Cohort summary rebuild
+- Error handling and cleanup in `finally` block
+
+```typescript
+/**
+ * Import pipeline logic extracted from import-worker.
+ *
+ * All functions accept a DB connection and callbacks — no worker_threads imports.
+ * The worker entry file remains the messaging shell.
+ */
+
+// ... copy the functions listed above, removing any parentPort references
+// The onProgress callback replaces direct postMessage calls
+// The isCancelled callback replaces the module-level `cancelled` flag
+```
+
+- [ ] **Step 14: Write tests for import pipeline**
+
+Create `tests/main/workers/import-pipeline.test.ts`:
+
+Test `prepareStatements` with in-memory SQLite:
+```typescript
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import Database from 'better-sqlite3-multiple-ciphers'
+import { initializeSchema } from '../../../src/main/database/schema'
+import { runMigrations } from '../../../src/main/database/migrations'
+import { prepareStatements } from '../../../src/main/workers/import-pipeline'
+
+describe('prepareStatements', () => {
+  let db: InstanceType<typeof Database>
+
+  beforeEach(() => {
+    db = new Database(':memory:')
+    initializeSchema(db)
+    runMigrations(db)
+  })
+
+  afterEach(() => {
+    db.close()
+  })
+
+  it('returns all required statement handles', () => {
+    const stmts = prepareStatements(db)
+    expect(stmts.insertCase).toBeDefined()
+    expect(stmts.deleteCase).toBeDefined()
+    expect(stmts.getCaseByName).toBeDefined()
+    expect(stmts.insertBatch).toBeDefined()
+    expect(stmts.beginBulkInsert).toBeDefined()
+    expect(stmts.finishBulkInsert).toBeDefined()
+  })
+
+  it('insertCase creates a case record', () => {
+    const stmts = prepareStatements(db)
+    const result = stmts.insertCase.run('test-case', '/path/to/file', 1024, Date.now(), 'GRCh38')
+    expect(Number(result.lastInsertRowid)).toBeGreaterThan(0)
+  })
+
+  it('insertBatch inserts variants for a case', () => {
+    const stmts = prepareStatements(db)
+    const caseResult = stmts.insertCase.run('test', '/path', 100, Date.now(), 'GRCh38')
+    const caseId = Number(caseResult.lastInsertRowid)
+
+    stmts.insertBatch(caseId, [
+      { chr: 'chr1', pos: 100, ref: 'A', alt: 'T', gene_symbol: 'TEST' }
+    ])
+
+    const count = db.prepare('SELECT COUNT(*) as c FROM variants WHERE case_id = ?').get(caseId) as { c: number }
+    expect(count.c).toBe(1)
+  })
+})
+```
+
+- [ ] **Step 15: Run import pipeline tests**
+
+Run: `npx vitest run tests/main/workers/import-pipeline.test.ts`
+Expected: All tests pass.
+
+- [ ] **Step 16: Update import-worker to import from pipeline**
+
+Modify `src/main/workers/import-worker.ts`:
+- Replace local `openDatabase()` with: `import { openWorkerDatabase, rebuildFts, rebuildCohortSummary, DROP_FTS_TRIGGERS } from './worker-db'`
+- Replace local function definitions with: `import { prepareStatements, streamInsertJson, streamInsertVcf, DROP_INDEXES, RECREATE_INDEXES } from './import-pipeline'`
+- Keep: `parentPort` message handler, cancellation flag, `sendProgress` function, error handling, `finally` cleanup block
+
+The worker entry file should shrink from ~840 lines to ~120 lines (message handler + lifecycle management).
+
+- [ ] **Step 17: Run full test suite**
+
+Run: `npx vitest run`
+Expected: All tests pass — workers behave identically.
+
+- [ ] **Step 18: Commit**
 
 ```bash
-git add src/main/workers/export-renderer.ts src/main/workers/delete-operations.ts \
+git add src/main/workers/worker-db.ts src/main/workers/export-renderer.ts \
+  src/main/workers/delete-operations.ts src/main/workers/import-pipeline.ts \
   src/main/workers/export-worker.ts src/main/workers/delete-worker.ts \
+  src/main/workers/import-worker.ts \
   tests/main/workers/
-git commit -m "refactor: extract testable logic from export and delete workers
+git commit -m "refactor: extract testable logic from all three workers
 
-Extract pure formatting functions (formatCellValue, csvEscape) and delete
-operations into importable modules. Worker entry files remain as messaging
-shells. Import worker deferred due to complexity (840 lines, streaming,
-cancellation)."
+Create worker-db.ts (shared DB open/close, FTS rebuild, cohort rebuild),
+export-renderer.ts (formatCellValue, csvEscape), delete-operations.ts
+(deleteAllCases, deleteCaseBatch), and import-pipeline.ts (prepareStatements,
+streamInsertJson, streamInsertVcf, createMapperPipeline, parseHeader).
+
+Worker entry files are now thin messaging shells. All extracted logic
+is testable with in-memory SQLite."
 ```
 
 ---
@@ -979,7 +1262,7 @@ Second of three stability hardening PRs based on cross-AI code review.
 
 - **Coverage pipeline**: Fixed ENOENT bug, set per-directory thresholds with auto-ratcheting, wired coverage into CI with PR comments
 - **IPC handler tests**: Converted 5 test files to DI pattern (real DB, channel invocation)
-- **Worker extraction**: Extracted testable logic from export and delete workers
+- **Worker extraction**: Extracted testable logic from all three workers (import, export, delete)
 - **safeEmit**: Deduplicated 4 identical copies into shared utility
 - **Type boundary**: Moved canonical type ownership to src/shared/, eliminated renderer→main imports
 - **as-any casts**: Added missing WindowAPI methods, removed ~34 casts

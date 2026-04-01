@@ -10,6 +10,7 @@ import { logService } from '../services/LogService'
 import type { VariantAnnotation, CaseVariantAnnotation } from '../../../main/database/types'
 import type { AcmgClassification } from '../../../shared/config/domain.config'
 import { useSettingsStore } from '../stores/settingsStore'
+import { useDatabaseStore } from '../stores/databaseStore'
 import { useApiService } from './useApiService'
 
 interface AnnotationCache {
@@ -67,6 +68,43 @@ function setLoading(key: string, value: boolean): void {
 // Generation counter — incremented on page/variant-set change so in-flight
 // batch results from a prior page are discarded when they resolve.
 let annotationGeneration = 0
+
+// Scope tracking — detect db/case switches and auto-clear stale cache
+let lastDbPath: string | null = null
+let lastCaseId: number | null = null
+
+/**
+ * Get current database path safely (returns null if Pinia not available,
+ * e.g. in unit tests without a store setup).
+ */
+function getCurrentDbPath(): string | null {
+  try {
+    const db = useDatabaseStore()
+    return db.currentPath
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Check if the scope (dbPath + caseId) has changed and clear cache if so.
+ * Called before cache reads/writes to ensure stale data from a previous
+ * database or case is never served.
+ */
+function ensureScopeOrClear(dbPath: string | null, caseId: number | null): void {
+  const dbChanged = dbPath !== null && lastDbPath !== null && dbPath !== lastDbPath
+  const caseChanged = caseId !== null && lastCaseId !== null && caseId !== lastCaseId
+
+  if (dbChanged || caseChanged) {
+    annotationCache.value.clear()
+    loadingStates.value.clear()
+    triggerRef(annotationCache)
+    triggerRef(loadingStates)
+  }
+
+  if (dbPath !== null) lastDbPath = dbPath
+  if (caseId !== null) lastCaseId = caseId
+}
 
 export function useAnnotations() {
   const { api } = useApiService()
@@ -150,6 +188,8 @@ export function useAnnotations() {
     alt: string
   ): Promise<void> {
     if (!api) return
+    const dbPath = getCurrentDbPath()
+    ensureScopeOrClear(dbPath, caseId)
     const key = variantKey(chr, pos, ref, alt)
 
     // Skip if already cached or loading
@@ -160,6 +200,12 @@ export function useAnnotations() {
     setLoading(key, true)
     try {
       const result = await api.annotations.getForVariant(caseId, chr, pos, ref, alt)
+
+      // Guard against db/case switch during await
+      const currentDbPath = getCurrentDbPath()
+      const currentCaseId = lastCaseId
+      if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
+      if (currentCaseId !== caseId) return
       cacheSet(key, result)
     } catch (error) {
       logService.error(
@@ -181,6 +227,8 @@ export function useAnnotations() {
     alt: string
   ): Promise<void> {
     if (!api) return
+    const dbPath = getCurrentDbPath()
+    ensureScopeOrClear(dbPath, caseId)
     const key = variantKey(chr, pos, ref, alt)
     const current = annotationCache.value.get(key)
     const currentStarred = current?.perCase?.starred === 1
@@ -201,6 +249,10 @@ export function useAnnotations() {
       const updated = await api.annotations.upsertPerCase(caseId, variantId, {
         starred: newStarred
       })
+      // Guard against db/case switch during await
+      const currentDbPath = getCurrentDbPath()
+      if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
+      if (lastCaseId !== caseId) return
       // Update cache with server response
       cacheSet(key, {
         global: current?.global ?? null,
@@ -228,6 +280,8 @@ export function useAnnotations() {
     variants: Array<{ chr: string; pos: number; ref: string; alt: string }>
   ): Promise<void> {
     if (!api) return
+    const dbPath = getCurrentDbPath()
+    ensureScopeOrClear(dbPath, caseId)
 
     // Capture generation at call time — used to detect stale results
     const currentGeneration = annotationGeneration
@@ -254,6 +308,12 @@ export function useAnnotations() {
       // Discard results if user navigated to a new page while this was in-flight
       if (currentGeneration !== annotationGeneration) return
 
+      // Discard results if db or case switched during the async call
+      const currentDbPath = getCurrentDbPath()
+      const currentCaseId = lastCaseId
+      if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
+      if (currentCaseId !== caseId) return
+
       for (const [key, value] of Object.entries(results)) {
         cacheSet(key, value as AnnotationCache)
       }
@@ -278,6 +338,8 @@ export function useAnnotations() {
     alt: string
   ): Promise<void> {
     if (!api) return
+    const dbPath = getCurrentDbPath()
+    ensureScopeOrClear(dbPath, null)
     const key = variantKey(chr, pos, ref, alt)
 
     // Skip if already cached or loading
@@ -288,6 +350,10 @@ export function useAnnotations() {
     setLoading(key, true)
     try {
       const global = await api.annotations.getGlobal(chr, pos, ref, alt)
+
+      // Guard against db switch during await
+      const currentDbPath = getCurrentDbPath()
+      if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
       cacheSet(key, { global, perCase: null })
     } catch (error) {
       logService.error(
@@ -305,6 +371,8 @@ export function useAnnotations() {
     variants: Array<{ chr: string; pos: number; ref: string; alt: string }>
   ): Promise<void> {
     if (!api) return
+    const dbPath = getCurrentDbPath()
+    ensureScopeOrClear(dbPath, null)
 
     // Filter out cached AND in-flight keys to prevent duplicate IPC calls
     const uncached = variants
@@ -324,6 +392,11 @@ export function useAnnotations() {
 
     try {
       const results = await api.annotations.batchGet(null, uncached)
+
+      // Discard results if db switched during the async call
+      const currentDbPath = getCurrentDbPath()
+      if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
+
       for (const [key, value] of Object.entries(results)) {
         cacheSet(key, value as AnnotationCache)
       }
@@ -348,6 +421,8 @@ export function useAnnotations() {
     alt: string
   ): Promise<void> {
     if (!api) return
+    const dbPath = getCurrentDbPath()
+    ensureScopeOrClear(dbPath, null)
     const key = variantKey(chr, pos, ref, alt)
     const current = annotationCache.value.get(key)
     const currentStarred = current?.global?.starred === 1
@@ -366,6 +441,9 @@ export function useAnnotations() {
       const updated = await api.annotations.upsertGlobal(chr, pos, ref, alt, {
         starred: newStarred
       })
+      // Guard against db switch during await
+      const currentDbPath = getCurrentDbPath()
+      if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
       // Update cache with server response
       cacheSet(key, {
         global: updated,
@@ -396,6 +474,8 @@ export function useAnnotations() {
     classification: AcmgClassification | null
   ): Promise<void> {
     if (!api) return
+    const dbPath = getCurrentDbPath()
+    ensureScopeOrClear(dbPath, null)
     const key = variantKey(chr, pos, ref, alt)
     const current = annotationCache.value.get(key)
     const previousClassification = current?.global?.acmg_classification ?? null
@@ -413,6 +493,9 @@ export function useAnnotations() {
       const updated = await api.annotations.upsertGlobal(chr, pos, ref, alt, {
         acmg_classification: classification
       })
+      // Guard against db switch during await
+      const currentDbPath = getCurrentDbPath()
+      if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
       // Update cache with server response
       cacheSet(key, {
         global: updated,
@@ -456,6 +539,8 @@ export function useAnnotations() {
     comment: string | null
   ): Promise<void> {
     if (!api) return
+    const dbPath = getCurrentDbPath()
+    ensureScopeOrClear(dbPath, null)
     const key = variantKey(chr, pos, ref, alt)
     const current = annotationCache.value.get(key)
     const previousComment = current?.global?.global_comment ?? null
@@ -473,6 +558,9 @@ export function useAnnotations() {
       const updated = await api.annotations.upsertGlobal(chr, pos, ref, alt, {
         global_comment: comment
       })
+      // Guard against db switch during await
+      const currentDbPath = getCurrentDbPath()
+      if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
       // Update cache with server response
       cacheSet(key, {
         global: updated,
@@ -506,6 +594,8 @@ export function useAnnotations() {
     comment: string | null
   ): Promise<void> {
     if (!api) return
+    const dbPath = getCurrentDbPath()
+    ensureScopeOrClear(dbPath, caseId)
     const key = variantKey(chr, pos, ref, alt)
     const current = annotationCache.value.get(key)
     const previousComment = current?.perCase?.per_case_comment ?? null
@@ -525,6 +615,10 @@ export function useAnnotations() {
       const updated = await api.annotations.upsertPerCase(caseId, variantId, {
         per_case_comment: comment
       })
+      // Guard against db/case switch during await
+      const currentDbPath = getCurrentDbPath()
+      if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
+      if (lastCaseId !== caseId) return
       // Update cache with server response
       cacheSet(key, {
         global: current?.global ?? null,
@@ -580,6 +674,8 @@ export function useAnnotations() {
     classification: AcmgClassification | null
   ): Promise<void> {
     if (!api) return
+    const dbPath = getCurrentDbPath()
+    ensureScopeOrClear(dbPath, caseId)
     const key = variantKey(chr, pos, ref, alt)
     const current = annotationCache.value.get(key)
     const previousClassification = current?.perCase?.acmg_classification ?? null
@@ -599,6 +695,10 @@ export function useAnnotations() {
       const updated = await api.annotations.upsertPerCase(caseId, variantId, {
         acmg_classification: classification
       })
+      // Guard against db/case switch during await
+      const currentDbPath = getCurrentDbPath()
+      if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
+      if (lastCaseId !== caseId) return
       // Update cache with server response
       cacheSet(key, {
         global: current?.global ?? null,
@@ -650,6 +750,8 @@ export function useAnnotations() {
     evidenceJson: string
   ): Promise<void> {
     if (!api) return
+    const dbPath = getCurrentDbPath()
+    ensureScopeOrClear(dbPath, caseId)
     const key = variantKey(chr, pos, ref, alt)
     const current = annotationCache.value.get(key)
 
@@ -674,6 +776,10 @@ export function useAnnotations() {
         acmg_evidence: evidenceJson,
         user_name: getUserName()
       })
+      // Guard against db/case switch during await
+      const currentDbPath = getCurrentDbPath()
+      if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
+      if (lastCaseId !== caseId) return
       cacheSet(key, {
         global: current?.global ?? null,
         perCase: updated
@@ -701,6 +807,8 @@ export function useAnnotations() {
     evidenceJson: string
   ): Promise<void> {
     if (!api) return
+    const dbPath = getCurrentDbPath()
+    ensureScopeOrClear(dbPath, null)
     const key = variantKey(chr, pos, ref, alt)
     const current = annotationCache.value.get(key)
 
@@ -723,6 +831,9 @@ export function useAnnotations() {
         acmg_evidence: evidenceJson,
         user_name: getUserName()
       })
+      // Guard against db switch during await
+      const currentDbPath = getCurrentDbPath()
+      if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
       cacheSet(key, {
         global: updated,
         perCase: current?.perCase ?? null
@@ -746,6 +857,8 @@ export function useAnnotations() {
     loadingStates.value.clear()
     triggerRef(annotationCache)
     triggerRef(loadingStates)
+    lastDbPath = null
+    lastCaseId = null
   }
 
   return {
@@ -790,6 +903,8 @@ export function _resetAnnotationsForTesting(): void {
   triggerRef(annotationCache)
   triggerRef(loadingStates)
   annotationGeneration = 0
+  lastDbPath = null
+  lastCaseId = null
 }
 
 export {

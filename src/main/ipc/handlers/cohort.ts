@@ -49,30 +49,40 @@ export function registerCohortHandlers({ ipcMain, getDb, getDbPool }: HandlerDep
         throw new Error('Invalid search parameters')
       }
 
-      // Compute panel intervals if active panels specified (DRY: shared helper)
       const cohortParams = { ...validated.data } as typeof validated.data & {
         panel_intervals?: Array<{ chr: string; start: number; end: number }>
-      }
-      if (cohortParams.active_panel_ids && cohortParams.active_panel_ids.length > 0) {
-        const dbRef = getDb()
-        const intervals = computePanelIntervals(
-          dbRef,
-          {
-            active_panel_ids: cohortParams.active_panel_ids,
-            panel_padding_bp: cohortParams.panel_padding_bp
-          },
-          undefined, // cohort mode: no specific case, sample any variant
-          'cohort'
-        )
-        if (intervals) {
-          cohortParams.panel_intervals = intervals
-        }
-        // Clean up IPC-only fields that shouldn't reach the service
-        delete cohortParams.active_panel_ids
-        delete cohortParams.panel_padding_bp
+        genome_build?: string
       }
 
       const pool = getDbPool?.()
+
+      if (cohortParams.active_panel_ids && cohortParams.active_panel_ids.length > 0) {
+        if (pool) {
+          // Pool path: let the worker resolve intervals off the main thread.
+          // Cohort mode defaults to GRCh38 (no per-case genome build).
+          cohortParams.genome_build = 'GRCh38'
+          // active_panel_ids and panel_padding_bp are forwarded as-is
+        } else {
+          // Fallback (no pool): compute panel intervals on the main thread
+          const dbRef = getDb()
+          const intervals = computePanelIntervals(
+            dbRef,
+            {
+              active_panel_ids: cohortParams.active_panel_ids,
+              panel_padding_bp: cohortParams.panel_padding_bp
+            },
+            undefined, // cohort mode: no specific case, sample any variant
+            'cohort'
+          )
+          if (intervals) {
+            cohortParams.panel_intervals = intervals
+          }
+          // Clean up IPC-only fields that shouldn't reach the service
+          delete cohortParams.active_panel_ids
+          delete cohortParams.panel_padding_bp
+        }
+      }
+
       let result: ReturnType<CohortService['getCohortVariants']>
       if (pool) {
         result = await pool.run({ type: 'cohort:variants', params: [cohortParams] })
@@ -80,34 +90,7 @@ export function registerCohortHandlers({ ipcMain, getDb, getDbPool }: HandlerDep
         const db = getDb()
         result = db.cohort.getCohortVariants(cohortParams)
       }
-      // Deep clone to plain object for IPC serialization
-      // better-sqlite3 can return objects with non-serializable properties
-      const plainData = result.data.map((v) => ({
-        chr: String(v.chr),
-        pos: Number(v.pos),
-        ref: String(v.ref),
-        alt: String(v.alt),
-        gene_symbol: v.gene_symbol ?? null,
-        cdna: v.cdna ?? null,
-        aa_change: v.aa_change ?? null,
-        carrier_count: Number(v.carrier_count),
-        total_cases: Number(v.total_cases),
-        cohort_frequency: Number(v.cohort_frequency),
-        het_count: Number(v.het_count),
-        hom_count: Number(v.hom_count),
-        variant_key: String(v.variant_key),
-        consequence: v.consequence ?? null,
-        func: v.func ?? null,
-        clinvar: v.clinvar ?? null,
-        gnomad_af: v.gnomad_af !== null ? Number(v.gnomad_af) : null,
-        cadd_phred: v.cadd_phred !== null ? Number(v.cadd_phred) : null,
-        transcript: v.transcript ?? null,
-        omim_id: v.omim_id ?? null
-      }))
-      return {
-        data: plainData,
-        total_count: Number(result.total_count)
-      }
+      return convertBigInts(result)
     })
   })
 

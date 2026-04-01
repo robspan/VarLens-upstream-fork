@@ -25,7 +25,8 @@ export const MAX_CACHE_SIZE = 5000
 
 // Cache annotations by variant key (chr:pos:ref:alt)
 // shallowRef avoids deep reactive proxies on 5000+ Map entries
-const annotationCache = shallowRef<Map<string, AnnotationCache>>(new Map())
+// Exported so useVariantRowViewModel can read it for precomputed row state
+export const annotationCache = shallowRef<Map<string, AnnotationCache>>(new Map())
 
 // Loading states per variant key
 const loadingStates = shallowRef<Map<string, boolean>>(new Map())
@@ -66,8 +67,16 @@ function setLoading(key: string, value: boolean): void {
   triggerRef(loadingStates)
 }
 
+// Generation counter — incremented on page/variant-set change so in-flight
+// batch results from a prior page are discarded when they resolve.
+let annotationGeneration = 0
+
 export function useAnnotations() {
   const { api } = useApiService()
+
+  function invalidateAnnotationGeneration(): void {
+    annotationGeneration++
+  }
 
   // Get current user name for audit trail
   function getUserName(): string | undefined {
@@ -223,6 +232,9 @@ export function useAnnotations() {
   ): Promise<void> {
     if (!api) return
 
+    // Capture generation at call time — used to detect stale results
+    const currentGeneration = annotationGeneration
+
     // Filter out cached AND in-flight keys to prevent duplicate IPC calls
     const uncached = variants
       .filter(
@@ -241,6 +253,10 @@ export function useAnnotations() {
 
     try {
       const results = await api.annotations.batchGet(caseId, uncached)
+
+      // Discard results if user navigated to a new page while this was in-flight
+      if (currentGeneration !== annotationGeneration) return
+
       for (const [key, value] of Object.entries(results)) {
         cacheSet(key, value as AnnotationCache)
       }
@@ -760,7 +776,8 @@ export function useAnnotations() {
     getAcmgEvidence,
     getGlobalAcmgEvidence,
     setAcmgClassificationWithEvidence,
-    setGlobalAcmgClassificationWithEvidence
+    setGlobalAcmgClassificationWithEvidence,
+    invalidateAnnotationGeneration
   }
 }
 
@@ -775,6 +792,7 @@ export function _resetAnnotationsForTesting(): void {
   loadingStates.value.clear()
   triggerRef(annotationCache)
   triggerRef(loadingStates)
+  annotationGeneration = 0
 }
 
 // ACMG classification values in display order

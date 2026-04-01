@@ -10,14 +10,9 @@ import Database from 'better-sqlite3-multiple-ciphers'
 import type { Database as DatabaseType } from 'better-sqlite3-multiple-ciphers'
 import { DATABASE_CONFIG } from '../../shared/config'
 import { createFTSTriggers } from '../database/schema'
-import { sqlPlaceholders } from '../database/sql-utils'
-import {
-  REBUILD_VARIANT_SUMMARY_SQL,
-  REBUILD_GENE_BURDEN_SQL,
-  UPDATE_META_SQL,
-  MARK_STALE_SQL,
-  CHECK_TABLE_EXISTS_SQL
-} from '../../shared/sql/cohort-summary-rebuild'
+import { MARK_STALE_SQL } from '../../shared/sql/cohort-summary-rebuild'
+import { rebuildFts, rebuildCohortSummary, DROP_FTS_TRIGGERS } from './worker-db'
+import { deleteAllCases, deleteCaseBatch } from './delete-operations'
 
 export interface DeleteWorkerRequest {
   type: 'deleteAll' | 'deleteBatch'
@@ -43,9 +38,7 @@ port.on('message', (msg: DeleteWorkerRequest) => {
     db = openDatabase(msg.dbPath, msg.encryptionKey)
 
     // Drop FTS triggers before bulk delete
-    db.exec('DROP TRIGGER IF EXISTS variants_fts_ai')
-    db.exec('DROP TRIGGER IF EXISTS variants_fts_ad')
-    db.exec('DROP TRIGGER IF EXISTS variants_fts_au')
+    db.exec(DROP_FTS_TRIGGERS)
 
     // Mark cohort summary as stale before delete
     try {
@@ -57,26 +50,19 @@ port.on('message', (msg: DeleteWorkerRequest) => {
     let deleted: number
 
     if (msg.type === 'deleteAll') {
-      const deleteAll = db.transaction(() => {
-        return db!.prepare('DELETE FROM cases').run().changes
-      })
-      deleted = deleteAll()
+      deleted = deleteAllCases(db)
     } else {
       const ids = msg.ids ?? []
       if (ids.length === 0) {
-        restoreFts(db)
+        rebuildFts(db)
         const response: DeleteWorkerResponse = { type: 'complete', deleted: 0 }
         port.postMessage(response)
         return
       }
-      const placeholders = sqlPlaceholders(ids.length)
-      const deleteBatch = db.transaction(() => {
-        return db!.prepare(`DELETE FROM cases WHERE id IN (${placeholders})`).run(...ids).changes
-      })
-      deleted = deleteBatch()
+      deleted = deleteCaseBatch(db, ids)
     }
 
-    restoreFts(db)
+    rebuildFts(db)
     rebuildCohortSummary(db)
 
     const response: DeleteWorkerResponse = { type: 'complete', deleted }
@@ -124,40 +110,4 @@ function openDatabase(dbPath: string, encryptionKey?: string): DatabaseType {
   db.pragma(`mmap_size = ${DATABASE_CONFIG.MMAP_SIZE_BYTES}`)
 
   return db
-}
-
-function restoreFts(db: DatabaseType): void {
-  try {
-    db.exec("INSERT INTO variants_fts(variants_fts) VALUES('rebuild')")
-  } catch {
-    // best effort
-  }
-  try {
-    db.exec(createFTSTriggers)
-  } catch {
-    // best effort
-  }
-  try {
-    db.exec('ANALYZE')
-  } catch {
-    // best effort
-  }
-}
-
-function rebuildCohortSummary(db: DatabaseType): void {
-  try {
-    const tableExists = db.prepare(CHECK_TABLE_EXISTS_SQL).get() as { c: number }
-    if (tableExists.c === 0) return
-
-    db.transaction(() => {
-      db.exec(REBUILD_VARIANT_SUMMARY_SQL)
-      db.exec(REBUILD_GENE_BURDEN_SQL)
-      db.exec(UPDATE_META_SQL)
-    })()
-
-    db.exec('ANALYZE cohort_variant_summary')
-    db.exec('ANALYZE gene_burden_summary')
-  } catch {
-    // best effort
-  }
 }

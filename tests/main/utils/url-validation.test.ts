@@ -3,7 +3,7 @@ import {
   isUrlSafeForExternal,
   isDomainAllowed,
   setUserDomains,
-  isValidHostname,
+  isValidHostname
 } from '../../../src/main/utils/url-validation'
 
 describe('isValidHostname', () => {

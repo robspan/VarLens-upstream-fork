@@ -334,7 +334,13 @@ export class CohortService {
   private buildBooleanSearchCondition(term: string, paramsArray: (string | number)[]): string {
     const tokens = tokenize(term)
     if (tokens.length === 0) return '1=1'
-    const ast = parse(tokens)
+    let ast
+    try {
+      ast = parse(tokens)
+    } catch {
+      // Malformed boolean expression — fall back to single-term search
+      return this.buildSingleTermCondition(term, paramsArray)
+    }
     const { sql, params } = emitCohortSearch(ast)
     paramsArray.push(...params)
     return sql

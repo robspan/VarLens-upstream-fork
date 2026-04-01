@@ -16,7 +16,7 @@ export function emitCohortSearch(ast: AstNode): { sql: string; params: (string |
       case 'or':
         return `(${emit(node.left)} OR ${emit(node.right)})`
       case 'not':
-        return `(NOT ${emit(node.operand)})`
+        return `(NOT (${emit(node.operand)}))`
     }
   }
 

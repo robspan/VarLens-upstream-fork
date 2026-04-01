@@ -29,7 +29,7 @@ describe('GT_DOSAGE_SQL cross-check with gtToDosage', () => {
     ['./.', null],
     ['.|.', null],
     ['.', null],
-    [null, null],
+    [null, null]
   ]
 
   for (const [gt, expected] of testCases) {

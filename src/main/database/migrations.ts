@@ -1328,22 +1328,30 @@ export function runMigrations(db: Database.Database): void {
   if (currentVersion < 24) {
     // Step 1: Normalize variant_annotations
     db.exec(`
+      UPDATE variant_annotations SET acmg_classification = 'Pathogenic'
+        WHERE acmg_classification = 'P';
       UPDATE variant_annotations SET acmg_classification = 'Likely pathogenic'
         WHERE acmg_classification IN ('Likely Pathogenic', 'LP');
       UPDATE variant_annotations SET acmg_classification = 'Uncertain significance'
         WHERE acmg_classification IN ('VUS', 'Uncertain Significance');
       UPDATE variant_annotations SET acmg_classification = 'Likely benign'
         WHERE acmg_classification IN ('Likely Benign', 'LB');
+      UPDATE variant_annotations SET acmg_classification = 'Benign'
+        WHERE acmg_classification = 'B';
     `)
 
     // Step 2: Normalize case_variant_annotations
     db.exec(`
+      UPDATE case_variant_annotations SET acmg_classification = 'Pathogenic'
+        WHERE acmg_classification = 'P';
       UPDATE case_variant_annotations SET acmg_classification = 'Likely pathogenic'
         WHERE acmg_classification IN ('Likely Pathogenic', 'LP');
       UPDATE case_variant_annotations SET acmg_classification = 'Uncertain significance'
         WHERE acmg_classification IN ('VUS', 'Uncertain Significance');
       UPDATE case_variant_annotations SET acmg_classification = 'Likely benign'
         WHERE acmg_classification IN ('Likely Benign', 'LB');
+      UPDATE case_variant_annotations SET acmg_classification = 'Benign'
+        WHERE acmg_classification = 'B';
     `)
 
     // Step 3: Recompute acmg_best in cohort_variant_summary

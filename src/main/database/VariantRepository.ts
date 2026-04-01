@@ -677,7 +677,13 @@ export class VariantRepository extends BaseRepository {
     // Parse boolean expression into AST and emit FTS5-compatible SQL
     const tokens = tokenize(term)
     if (tokens.length === 0) return query
-    const ast = parse(tokens)
+    let ast
+    try {
+      ast = parse(tokens)
+    } catch {
+      // Malformed boolean expression — fall back to single-term search
+      return this.applySingleSearchToken(query, term)
+    }
     const { sql: boolExpr, params } = emitFts5Search(ast)
 
     // Build a sql template literal with interpolated parameters

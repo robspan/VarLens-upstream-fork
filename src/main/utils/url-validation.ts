@@ -15,7 +15,7 @@ export function isValidHostname(h: string): boolean {
  * Invalid hostnames (bare TLDs, malformed) are filtered out.
  */
 export function setUserDomains(domains: string[]): void {
-  userDomains = domains.filter(isValidHostname)
+  userDomains = domains.filter(isValidHostname).map((d) => d.toLowerCase())
 }
 
 /**

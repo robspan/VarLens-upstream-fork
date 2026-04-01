@@ -1,8 +1,9 @@
 /**
  * Shared database utility module for worker threads.
  *
- * Provides common openDatabase, rebuildFts, and rebuildCohortSummary patterns
- * used across import-worker.ts, delete-worker.ts, and export-worker.ts.
+ * Provides common openWorkerDatabase, openWorkerDatabaseReadOnly, rebuildFts,
+ * and rebuildCohortSummary patterns used across import-worker.ts,
+ * delete-worker.ts, and export-worker.ts.
  */
 import Database from 'better-sqlite3-multiple-ciphers'
 import type { Database as DatabaseType } from 'better-sqlite3-multiple-ciphers'

@@ -6,6 +6,7 @@
  */
 
 import type Database from 'better-sqlite3-multiple-ciphers'
+import { mainLogger } from '../services/MainLogger'
 import {
   REBUILD_VARIANT_SUMMARY_SQL,
   REBUILD_GENE_BURDEN_SQL,
@@ -47,13 +48,19 @@ export class CohortSummaryService {
     // Update query planner statistics (outside transaction)
     try {
       this.db.exec('ANALYZE cohort_variant_summary')
-    } catch {
-      /* best effort */
+    } catch (e) {
+      mainLogger.warn(
+        'Failed to ANALYZE cohort_variant_summary: ' + (e instanceof Error ? e.message : String(e)),
+        'CohortSummaryService'
+      )
     }
     try {
       this.db.exec('ANALYZE gene_burden_summary')
-    } catch {
-      /* best effort */
+    } catch (e) {
+      mainLogger.warn(
+        'Failed to ANALYZE gene_burden_summary: ' + (e instanceof Error ? e.message : String(e)),
+        'CohortSummaryService'
+      )
     }
   }
 
@@ -71,8 +78,12 @@ export class CohortSummaryService {
 
     try {
       this.db.exec('ANALYZE cohort_variant_summary')
-    } catch {
-      /* best effort */
+    } catch (e) {
+      mainLogger.warn(
+        'Failed to ANALYZE cohort_variant_summary after incrementalAdd: ' +
+          (e instanceof Error ? e.message : String(e)),
+        'CohortSummaryService'
+      )
     }
   }
 
@@ -91,8 +102,12 @@ export class CohortSummaryService {
 
     try {
       this.db.exec('ANALYZE cohort_variant_summary')
-    } catch {
-      /* best effort */
+    } catch (e) {
+      mainLogger.warn(
+        'Failed to ANALYZE cohort_variant_summary after incrementalRemove: ' +
+          (e instanceof Error ? e.message : String(e)),
+        'CohortSummaryService'
+      )
     }
   }
 

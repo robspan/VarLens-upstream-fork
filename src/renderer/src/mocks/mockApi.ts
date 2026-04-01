@@ -98,6 +98,14 @@ export const mockApi: WindowAPI = {
         total_count: filtered.length
       }
     },
+    geneSymbols: async (caseId: number, query: string, limit = 50) => {
+      const queryLower = query.toLowerCase()
+      const symbols = variants
+        .filter((v) => v.case_id === caseId)
+        .map((v) => v.gene_symbol)
+        .filter((g): g is string => g != null && g.toLowerCase().includes(queryLower))
+      return [...new Set(symbols)].slice(0, limit)
+    },
     getFilterOptions: async () => mockFilterOptions,
     search: async (caseId, query, limit = 20) => {
       const searchLower = query.toLowerCase()
@@ -549,7 +557,15 @@ export const mockApi: WindowAPI = {
       last_rebuilt_at: Math.floor(Date.now() / 1000)
     }),
     rebuildSummary: async () => {},
-    onSummaryRebuilt: () => () => {}
+    onSummaryRebuilt: () => () => {},
+    runAssociation: async () => ({
+      results: [],
+      warnings: [],
+      elapsed_ms: 0,
+      primary_test: 'fisher'
+    }),
+    cancelAssociation: async () => {},
+    onAssociationProgress: () => () => {}
   },
 
   annotations: {

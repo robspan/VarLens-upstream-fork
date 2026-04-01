@@ -95,6 +95,7 @@ import AssociationConfigPanel from './AssociationConfigPanel.vue'
 import AssociationResultsTable from './AssociationResultsTable.vue'
 import VolcanoPlot from './VolcanoPlot.vue'
 import ManhattanPlot from './ManhattanPlot.vue'
+import { useAssociation } from '../../composables/useAssociation'
 
 interface CaseInfo {
   id: number
@@ -109,8 +110,44 @@ interface CohortGroup {
   name: string
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AssociationResultsData = any
+interface AssociationResult {
+  gene_symbol: string
+  n_variants: number
+  groupA_carriers: number
+  groupB_carriers: number
+  groupA_total: number
+  groupB_total: number
+  fisher: {
+    p_value: number | null
+    odds_ratio: number | null
+    ci_lower: number | null
+    ci_upper: number | null
+  }
+  logistic_burden: {
+    p_value: number | null
+    beta: number | null
+    se: number | null
+    ci_lower: number | null
+    ci_upper: number | null
+    used_firth: boolean
+    warning?: string
+  }
+  q_value: number | null
+}
+
+interface AssociationResultsData {
+  results: AssociationResult[]
+  warnings: string[]
+  elapsed_ms: number
+  primary_test: string
+}
+
+const {
+  runAssociation: apiRunAssociation,
+  cancelAssociation: apiCancelAssociation,
+  onAssociationProgress,
+  loadCasesWithMetadata
+} = useAssociation()
 
 const cases = ref<CaseInfo[]>([])
 const cohortGroups = ref<CohortGroup[]>([])
@@ -127,60 +164,22 @@ const progressPercent = computed(() =>
 )
 
 const significantCount = computed(
-  () =>
-    results.value?.results.filter(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (r: any) => r.q_value !== null && r.q_value < 0.05
-    ).length ?? 0
+  () => results.value?.results.filter((r) => r.q_value !== null && r.q_value < 0.05).length ?? 0
 )
 
 let cleanupProgress: (() => void) | null = null
 
 async function loadCases(): Promise<void> {
-  if (typeof window === 'undefined') return
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (typeof (window as any).api === 'undefined') return
-
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const caseList = await (window as any).api.cases.list()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const cohorts = await (window as any).api.caseMetadata.listCohorts()
-    cohortGroups.value = cohorts
-
-    // Load metadata for all cases in parallel
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const api = (window as any).api
-    const caseInfos = await Promise.all(
-      caseList.map(async (c: { id: number; name: string }) => {
-        try {
-          const fullMeta = await api.caseMetadata.getFullMetadata(c.id)
-          return {
-            id: c.id,
-            name: c.name,
-            status: fullMeta?.metadata?.affected_status ?? null,
-            sex: fullMeta?.metadata?.sex ?? null,
-            cohortIds: fullMeta?.cohorts?.map((co: CohortGroup) => co.id) ?? []
-          }
-        } catch {
-          return {
-            id: c.id,
-            name: c.name,
-            status: null,
-            sex: null,
-            cohortIds: []
-          }
-        }
-      })
-    )
-    cases.value = caseInfos
+    const data = await loadCasesWithMetadata()
+    cases.value = data.cases
+    cohortGroups.value = data.cohortGroups
   } catch (err) {
     error.value = `Failed to load cases: ${err instanceof Error ? err.message : String(err)}`
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function runAnalysis(config: any): Promise<void> {
+async function runAnalysis(config: unknown): Promise<void> {
   error.value = null
   results.value = null
   isRunning.value = true
@@ -188,26 +187,22 @@ async function runAnalysis(config: any): Promise<void> {
   progressTotal.value = 0
 
   // Listen for progress
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  cleanupProgress = (window as any).api.cohort.onAssociationProgress(
-    (progress: { completed: number; total: number }) => {
-      progressCompleted.value = progress.completed
-      progressTotal.value = progress.total
-    }
-  )
+  cleanupProgress = onAssociationProgress((progress: { completed: number; total: number }) => {
+    progressCompleted.value = progress.completed
+    progressTotal.value = progress.total
+  })
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await (window as any).api.cohort.runAssociation(config)
+    const result = await apiRunAssociation(config)
     if (result !== null && typeof result === 'object' && 'error' in result) {
-      throw new Error(String(result.error))
+      throw new Error(String((result as { error: unknown }).error))
     }
-    results.value = result
+    results.value = result as AssociationResultsData
   } catch (err) {
     error.value = `Analysis failed: ${err instanceof Error ? err.message : String(err)}`
   } finally {
     isRunning.value = false
-    if (cleanupProgress) {
+    if (cleanupProgress !== null) {
       cleanupProgress()
       cleanupProgress = null
     }
@@ -215,8 +210,7 @@ async function runAnalysis(config: any): Promise<void> {
 }
 
 function cancelAnalysis(): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ;(window as any).api.cohort.cancelAssociation()
+  apiCancelAssociation()
 }
 
 onMounted(loadCases)

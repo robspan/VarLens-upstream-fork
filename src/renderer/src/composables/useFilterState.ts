@@ -37,6 +37,7 @@ import { useFilterPresets } from './useFilterPresets'
 import { useFilterExport } from './useFilterExport'
 import { useFilterCore } from './useFilterCore'
 import { logService } from '../services/LogService'
+import { LruMap } from '../../../shared/utils/lru-map'
 
 // Re-export types so existing consumers (e.g. filterDrawerTypes.ts) continue to work
 export type { FilterState, ActiveFilter, ExportResult, UseFilterStateReturn } from './filter-types'
@@ -490,10 +491,13 @@ export function useFilterState(
     loadingSuggestions.value = true
     try {
       // Use optimized geneSymbols API - direct LIKE query instead of FTS5
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const results: string[] = await (api as any).variants.geneSymbols(caseIdRef.value, query, 50)
+      const results: string[] = await api!.variants.geneSymbols(caseIdRef.value, query, 50)
       geneSymbolSuggestions.value = results
-    } catch {
+    } catch (e) {
+      logService.warn(
+        'Gene symbol autocomplete failed: ' + (e instanceof Error ? e.message : String(e)),
+        'filters'
+      )
       geneSymbolSuggestions.value = []
     } finally {
       loadingSuggestions.value = false
@@ -539,19 +543,13 @@ export function useFilterState(
 
   // LRU cache for filter options per case
   const FILTER_OPTIONS_CACHE_MAX = 20
-  const filterOptionsCache = new Map<number, FilterOptions>()
+  const filterOptionsCache = new LruMap<number, FilterOptions>(FILTER_OPTIONS_CACHE_MAX)
 
   /**
-   * Store options in the LRU cache (delete+re-insert moves to end; evict from front)
+   * Store options in the LRU cache (LruMap handles promotion and eviction)
    */
   const cacheFilterOptions = (caseId: number, options: FilterOptions): void => {
-    if (filterOptionsCache.has(caseId)) filterOptionsCache.delete(caseId)
     filterOptionsCache.set(caseId, options)
-    while (filterOptionsCache.size > FILTER_OPTIONS_CACHE_MAX) {
-      const oldestKey = filterOptionsCache.keys().next().value
-      if (oldestKey === undefined) break
-      filterOptionsCache.delete(oldestKey)
-    }
   }
 
   /**
@@ -571,8 +569,7 @@ export function useFilterState(
     }
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const options = await (api as any).variants.getFilterOptions(caseId)
+      const options = await api!.variants.getFilterOptions(caseId)
       filterOptions.value = options
       cacheFilterOptions(caseId, options)
     } catch (error) {
@@ -647,11 +644,7 @@ export function useFilterState(
 
     try {
       // Load filter options and tags in parallel
-      const [options] = await Promise.all([
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (api as any).variants.getFilterOptions(caseId),
-        loadTags()
-      ])
+      const [options] = await Promise.all([api!.variants.getFilterOptions(caseId), loadTags()])
       filterOptions.value = options
       cacheFilterOptions(caseId, options)
     } catch (error) {

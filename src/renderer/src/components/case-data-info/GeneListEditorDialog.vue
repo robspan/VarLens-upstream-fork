@@ -70,6 +70,7 @@
 import { ref, computed, watch } from 'vue'
 import { useApiService } from '../../composables/useApiService'
 import { mdiClose } from '@mdi/js'
+import { logService } from '../../services/LogService'
 
 interface GeneListItem {
   id: number
@@ -120,8 +121,7 @@ watch(
         geneListName.value = gl.name
         geneListDescription.value = ''
         if (api) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          ;(api as any).geneLists.getGenes(gl.id).then((genes: string[]) => {
+          api.geneLists.getGenes(gl.id).then((genes: string[]) => {
             geneListGenesText.value = genes.join('\n')
           })
         }
@@ -140,8 +140,7 @@ async function saveGeneList(): Promise<void> {
   if (name === '' || !api) return
   savingGeneList.value = true
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const geneListsApi = (api as any).geneLists
+    const geneListsApi = api.geneLists
     let listId: number
     if (editingGeneList.value != null) {
       listId = editingGeneList.value
@@ -155,8 +154,11 @@ async function saveGeneList(): Promise<void> {
     const updatedLists = await geneListsApi.list()
     emit('saved', { listId, geneLists: updatedLists })
     emit('update:modelValue', false)
-  } catch {
-    // Silently fail
+  } catch (e) {
+    logService.error(
+      'Failed to save gene list: ' + (e instanceof Error ? e.message : String(e)),
+      'gene-list'
+    )
   } finally {
     savingGeneList.value = false
   }
@@ -165,14 +167,15 @@ async function saveGeneList(): Promise<void> {
 async function deleteCurrentGeneList(): Promise<void> {
   if (editingGeneList.value == null || !api) return
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (api as any).geneLists.delete(editingGeneList.value)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const updatedLists = await (api as any).geneLists.list()
+    await api.geneLists.delete(editingGeneList.value)
+    const updatedLists = await api.geneLists.list()
     emit('deleted', { geneLists: updatedLists })
     emit('update:modelValue', false)
-  } catch {
-    // Silently fail
+  } catch (e) {
+    logService.error(
+      'Failed to delete gene list: ' + (e instanceof Error ? e.message : String(e)),
+      'gene-list'
+    )
   }
 }
 </script>

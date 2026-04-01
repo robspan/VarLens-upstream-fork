@@ -137,8 +137,12 @@ export class SpliceAIApiClient {
             }
           }
         }
-      } catch {
-        mainLogger.warn(`Corrupted SpliceAI cache entry for ${cacheKey}`, 'api')
+      } catch (e) {
+        mainLogger.warn(
+          `Corrupted SpliceAI cache entry for ${cacheKey}: ` +
+            (e instanceof Error ? e.message : String(e)),
+          'api'
+        )
       }
     }
 
@@ -258,7 +262,14 @@ export class SpliceAIApiClient {
     try {
       const data = SpliceAIResponseSchema.parse(JSON.parse(cached.data))
       return { data, createdAt: cached.createdAt }
-    } catch {
+    } catch (e) {
+      mainLogger.warn(
+        'Corrupted SpliceAI cache entry for ' +
+          cacheKey +
+          ': ' +
+          (e instanceof Error ? e.message : String(e)),
+        'api'
+      )
       return null
     }
   }

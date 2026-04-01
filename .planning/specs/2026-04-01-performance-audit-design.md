@@ -1,7 +1,7 @@
 # VarLens Performance & Maintainability Audit — Implementation Design
 
 Date: 2026-04-01
-Status: Approved
+Status: Draft
 Approach: Sequential depth-first (Phase 1 → 2 → 3), single branch
 
 ## Context
@@ -34,8 +34,13 @@ Metrics are informational only — no benchmark tooling is included in this spec
 2. `BatchAccumulator`'s flush uses `insertBatch()` (insert-only, no finalization)
 3. Strategy calls `finishBulkInsert()` once after the pipeline completes
 
+**Failure/cancellation contract:** The `beginBulkInsert()` → pipeline → `finishBulkInsert()` sequence MUST use `try/finally` semantics. `finishBulkInsert()` runs in the `finally` block regardless of whether the pipeline throws or is cancelled. This ensures FTS triggers are restored and `ANALYZE` runs even on partial imports. On partial import (pipeline error or cancellation after some batches inserted):
+- `finishBulkInsert()` still runs — FTS is rebuilt for whatever rows were inserted, triggers are restored
+- The case's `variant_count` reflects the actual number of rows inserted (not the expected total)
+- The import result is reported as `failed` with the inserted count and error message, so the user can decide whether to keep or delete the partial case
+
 **Files:**
-- `src/main/import/strategies/ColumnarStrategy.ts`: wrap pipeline in begin/finish bulk insert calls, pass `insertBatch` as flush function
+- `src/main/import/strategies/ColumnarStrategy.ts`: wrap pipeline in try/finally with begin/finish bulk insert, pass `insertBatch` as flush function
 - `src/main/import/strategies/ObjectStrategy.ts`: same pattern
 - `src/main/import/transforms/BatchAccumulator.ts`: flush function signature may need adjustment if it currently assumes `insertVariantsBatch`
 
@@ -45,15 +50,17 @@ Metrics are informational only — no benchmark tooling is included in this spec
 
 **Problem:** `useCohortData.ts` registers a live summary listener that continues firing when the cohort route is cached but not visible (via `<keep-alive>`). Hidden views burn IPC and DB work.
 
-**Change:** Gate listener registration and data fetching behind `onActivated`/`onDeactivated`:
-- On deactivation: pause summary listener, skip any pending fetches
-- On activation: re-register listener, refresh if stale
+**Change:** Two surfaces need gating:
+1. **Summary listener** (in `useCohortData.ts` ~line 124): the `onSummaryRebuilt` listener fires regardless of route visibility. Gate registration behind `onActivated`/`onDeactivated` — unregister on deactivation, re-register on activation.
+2. **Page fetching** (driven from `CohortTable.vue` ~line 229 via `useOffsetPagination`): pagination's `fetchPage` callback can fire if reactive dependencies update while the route is cached. Guard the fetch callback with an `isActive` ref that `onDeactivated` sets to false, causing fetches to short-circuit.
+
+On activation: re-register summary listener, check staleness, and reload the current page if data may have changed while deactivated.
 
 **Files:**
-- `src/renderer/src/composables/useCohortData.ts`: add activation state tracking, gate listener setup and data refresh
-- `src/renderer/src/components/CohortTable.vue`: may need to pass activation state if the composable can't detect it internally
+- `src/renderer/src/composables/useCohortData.ts`: gate summary listener registration
+- `src/renderer/src/components/CohortTable.vue`: gate fetchPage callback with activation state, wire `onActivated`/`onDeactivated`
 
-**Scope:** 1-2 files. Moderate change to composable lifecycle management.
+**Scope:** 2 files. Moderate change to composable and component lifecycle management.
 
 ### 1.4 VariantTable Precomputed Row State (Finding #1)
 
@@ -108,16 +115,19 @@ interface RowViewModel {
 **Change:**
 - Use `.iterate()` (better-sqlite3 row iterator) to stream rows
 - Add CSV export path: write rows directly to a write stream with no in-memory accumulation
-- Keep XLSX for smaller exports; default to CSV for exports exceeding 10,000 rows
-- Add cancellation support: check a cancel flag between row iterations
-- Add `format` field to export worker message types
+- Keep XLSX for smaller exports via the existing `aoa_to_sheet` path (iterated, not `.all()`)
+
+**Format selection contract:** The user chooses the format via the save dialog file extension (`.xlsx` or `.csv`). The renderer infers format from the chosen path and passes `format: 'xlsx' | 'csv'` in the export worker message. No automatic switching — the user decides. The save dialog defaults to `.xlsx` but offers `.csv` as a second filter option.
+
+**Cancellation contract:** The current approach (main thread terminates the worker) is retained. The worker is short-lived and single-purpose; cooperative cancellation adds complexity without meaningful benefit since the worker holds no shared state that needs graceful cleanup. The main thread can call `worker.terminate()` and report cancellation to the user.
 
 **Files:**
-- `src/main/workers/export-worker.ts`: complete rewrite (currently 140 lines)
-- `src/shared/types/export-worker.ts`: add `format: 'xlsx' | 'csv'` to message type
-- Export IPC handler: pass format choice through
+- `src/main/workers/export-worker.ts`: rewrite to use `.iterate()` for both formats; CSV path writes to a stream, XLSX path accumulates in memory (acceptable since user explicitly chose XLSX)
+- `src/shared/types/export-worker.ts`: add `format: 'xlsx' | 'csv'` to start message type
+- Export IPC handler / renderer: pass format derived from file extension
+- Save dialog: add `.csv` as a second file filter option
 
-**Scope:** Moderate — the file is small and self-contained.
+**Scope:** Moderate — the worker is small (140 lines) and self-contained. Save dialog change is minimal.
 
 ### 2.3 Panel Interval Computation Off Main Thread (Finding #9)
 
@@ -134,10 +144,12 @@ interface RowViewModel {
 - `src/main/ipc/handlers/variants.ts`: stop pre-computing intervals, pass raw params to pool
 - `src/main/ipc/handlers/cohort.ts`: same
 - `src/main/database/DbPool.ts` or worker task handlers: import and call `computePanelIntervals`
+- DB pool task type definitions (e.g., `shared/types/` or pool task union): extend task params to include `active_panel_ids` and `panel_padding_bp` so the worker can resolve intervals itself
+- Worker dispatch logic: accept panel params and call `computePanelIntervals` before building the SQL query
 
 **Prerequisite check:** Verify that the gene reference DB (`geneReferenceLoader.ts`) is accessible from the worker thread. If it opens a separate SQLite connection, it should work. If it relies on main-thread state, the loader needs to be initialized in the worker.
 
-**Scope:** Moderate structural change across 4-5 files. No API change to IPC consumers.
+**Scope:** Moderate structural change across 5-6 files. No API change to IPC consumers (renderer still sends `active_panel_ids`).
 
 ---
 
@@ -148,9 +160,11 @@ interface RowViewModel {
 **Problem:** Overlapping filter state and request-shaping logic across `useFilterState.ts` (case view) and `useFilters.ts` (cohort view), plus inline filter building in `CohortTable.vue` and `useCohortData.ts`.
 
 **Change (approved scope):**
-- Extract shared filter primitives (state shape, active-filter tracking, clear/reset logic) into a thin shared layer
+- Extract shared filter primitives into a thin shared layer limited to: generic state reset, active-filter derivation (count and list), and common numeric/preset logic (gnomAD AF, CADD, cohort frequency thresholds)
 - `useFilterState.ts` and `useFilters.ts` remain as thin adapters for case vs cohort views
 - Shared layer handles state management; adapters handle IPC serialization differences
+
+**What stays in the adapters (not shared):** Tags, gene autocomplete, export, annotation scope, `searchQuery` vs `searchTerm` semantics, and view-specific filter shapes. These diverge materially between case and cohort views and should not be forced into a common interface.
 
 **What this does NOT do:** Does not unify case and cohort into one filter system. They have legitimately different IPC parameter shapes.
 
@@ -200,13 +214,17 @@ interface RowViewModel {
 
 **Problem:** `useVariantData.ts` fires a separate `variants.query(... limit 1 ...)` to get the unfiltered count on case change, adding latency before the table can settle.
 
-**Change:** Include `unfiltered_count` in the first page response when a case changes, eliminating the extra round-trip.
+**Change:** Add an explicit `include_unfiltered_count: boolean` flag to the variant query request. When true, the backend runs a second `SELECT COUNT(*)` without filter conditions and returns `unfiltered_count` alongside `total_count` in the response. The frontend sets this flag on the first page load after a case change, and omits it on subsequent page/sort/filter requests.
+
+This avoids the backend needing to infer "case changed" from a stateless call — the flag is deterministic.
 
 **Files:**
-- Backend variant query handler/repository: add optional `unfiltered_count` to response
-- `src/renderer/src/components/variant-table/useVariantData.ts`: read `unfiltered_count` from first page response, remove separate query
+- Variant query params type (`shared/types/`): add optional `include_unfiltered_count?: boolean`
+- Backend variant query handler/repository: when flag is set, run unfiltered count query and include in response
+- Variant query response type: add optional `unfiltered_count?: number`
+- `src/renderer/src/components/variant-table/useVariantData.ts`: set flag on first load after case change, read `unfiltered_count` from response, remove separate query
 
-**Scope:** Small, 2-3 files.
+**Scope:** Small, 3-4 files.
 
 ### 3.5 Annotation Stale-Request Guard (Finding #8)
 

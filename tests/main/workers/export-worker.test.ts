@@ -16,7 +16,7 @@ import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import Database from 'better-sqlite3-multiple-ciphers'
 import * as XLSX from 'xlsx'
-import { formatCellValue, csvEscape } from '../../../src/main/workers/export-worker'
+import { formatCellValue, csvEscape } from '../../../src/main/workers/export-renderer'
 import { DatabaseService } from '../../../src/main/database/DatabaseService'
 import type { ExportMainMessage } from '../../../src/shared/types/export-worker'
 

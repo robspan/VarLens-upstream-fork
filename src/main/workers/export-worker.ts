@@ -1,8 +1,10 @@
 import { parentPort } from 'worker_threads'
 import { createWriteStream } from 'node:fs'
-import Database from 'better-sqlite3-multiple-ciphers'
 import * as XLSX from 'xlsx'
+import type { Database as DatabaseType } from 'better-sqlite3-multiple-ciphers'
 import type { ExportMainMessage, ExportWorkerMessage } from '../../shared/types/export-worker'
+import { formatCellValue, csvEscape } from './export-renderer'
+import { openWorkerDatabaseReadOnly } from './worker-db'
 
 const EXPORT_COLUMNS: { key: string; header: string }[] = [
   { key: 'chr', header: 'Chromosome' },
@@ -28,50 +30,11 @@ function postMsg(msg: ExportWorkerMessage): void {
   parentPort?.postMessage(msg)
 }
 
-/** Format a cell value — applies numeric formatting for specific columns. */
-export function formatCellValue(key: string, value: unknown): string | number | null {
-  if (value === null || value === undefined) return ''
-  if (key === 'gnomad_af' && typeof value === 'number') {
-    return value.toExponential(2)
-  }
-  if (key === 'cadd' && typeof value === 'number') {
-    return value.toFixed(2)
-  }
-  if (key === 'hpo_sim_score' && typeof value === 'number') {
-    return value.toFixed(4)
-  }
-  return value as string | number | null
-}
-
-/**
- * Escape a value for RFC 4180 CSV.
- * Wraps in double-quotes if the value contains a comma, double-quote, or newline.
- * Internal double-quotes are escaped by doubling them.
- */
-export function csvEscape(value: string | number | null): string {
-  if (value === null || value === undefined) return ''
-  const str = String(value)
-  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
-    return '"' + str.replace(/"/g, '""') + '"'
-  }
-  return str
-}
-
-function openDb(msg: ExportMainMessage & { type: 'start' }): Database.Database {
-  const db = new Database(msg.dbPath, { readonly: true })
-  if (msg.encryptionKey !== undefined && msg.encryptionKey !== '') {
-    const escapedKey = msg.encryptionKey.replace(/'/g, "''")
-    db.pragma(`key='${escapedKey}'`)
-  }
-  db.pragma('journal_mode = WAL')
-  return db
-}
-
 async function runCsv(msg: ExportMainMessage & { type: 'start' }): Promise<void> {
-  let db: Database.Database | null = null
+  let db: DatabaseType | null = null
 
   try {
-    db = openDb(msg)
+    db = openWorkerDatabaseReadOnly(msg.dbPath, msg.encryptionKey)
 
     const stmt = db.prepare(msg.compiledSql)
     const iterator = stmt.iterate(...msg.compiledParams) as IterableIterator<
@@ -125,10 +88,10 @@ async function runCsv(msg: ExportMainMessage & { type: 'start' }): Promise<void>
 }
 
 function runXlsx(msg: ExportMainMessage & { type: 'start' }): void {
-  let db: Database.Database | null = null
+  let db: DatabaseType | null = null
 
   try {
-    db = openDb(msg)
+    db = openWorkerDatabaseReadOnly(msg.dbPath, msg.encryptionKey)
 
     const stmt = db.prepare(msg.compiledSql)
     const iterator = stmt.iterate(...msg.compiledParams) as IterableIterator<

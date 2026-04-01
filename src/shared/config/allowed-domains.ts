@@ -15,5 +15,5 @@ export const ALLOWED_DOMAINS = [
   'deciphergenomics.org', // DECIPHER
   'clinicalgenome.org', // ClinGen
   'ensembl.org', // Ensembl
-  'grch37.ensembl.org', // Ensembl GRCh37 subdomain
+  'grch37.ensembl.org' // Ensembl GRCh37 subdomain
 ] as const

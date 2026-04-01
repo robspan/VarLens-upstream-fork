@@ -24,9 +24,7 @@ export function setUserDomains(domains: string[]): void {
  */
 export function isDomainAllowed(hostname: string): boolean {
   const allDomains = [...ALLOWED_DOMAINS, ...userDomains]
-  return allDomains.some(
-    (domain) => hostname === domain || hostname.endsWith(`.${domain}`)
-  )
+  return allDomains.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`))
 }
 
 /**

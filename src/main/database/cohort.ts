@@ -17,6 +17,8 @@ import type {
 } from '../../shared/types/cohort'
 import type { ColumnFilterMeta } from '../../shared/types/column-filters'
 import { sqlPlaceholders } from './sql-utils'
+import { tokenize, parse } from '../../shared/utils/boolean-search'
+import { emitCohortSearch } from './search/cohort-search-emitter'
 
 /**
  * Sortable columns for cohort queries
@@ -330,25 +332,12 @@ export class CohortService {
    * Build a SQL boolean expression from a search string containing AND/OR/NOT.
    */
   private buildBooleanSearchCondition(term: string, paramsArray: (string | number)[]): string {
-    const parts = term
-      .split(/\b(AND|OR|NOT)\b/)
-      .map((p) => p.trim())
-      .filter((p) => p !== '')
-
-    const sqlParts: string[] = []
-    for (const part of parts) {
-      if (part === 'AND') {
-        sqlParts.push('AND')
-      } else if (part === 'OR') {
-        sqlParts.push('OR')
-      } else if (part === 'NOT') {
-        sqlParts.push('AND NOT')
-      } else {
-        sqlParts.push(this.buildSingleTermCondition(part, paramsArray))
-      }
-    }
-
-    return `(${sqlParts.join(' ')})`
+    const tokens = tokenize(term)
+    if (tokens.length === 0) return '1=1'
+    const ast = parse(tokens)
+    const { sql, params } = emitCohortSearch(ast)
+    paramsArray.push(...params)
+    return sql
   }
 
   /**

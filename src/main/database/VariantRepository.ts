@@ -11,6 +11,8 @@ import { createFTSTriggers } from './schema'
 import { mainLogger } from '../services/MainLogger'
 
 import { DATABASE_CONFIG } from '../../shared/config'
+import { tokenize, parse } from '../../shared/utils/boolean-search'
+import { emitFts5Search } from './search/fts5-search-emitter'
 
 /**
  * Kysely query builder type for variant queries.
@@ -672,46 +674,14 @@ export class VariantRepository extends BaseRepository {
       return this.applySingleSearchToken(query, term)
     }
 
-    // For complex boolean queries, build raw SQL since Kysely
-    // can't compose FTS5 MATCH with boolean logic natively
-    const parts = term
-      .split(/\b(AND|OR|NOT)\b/)
-      .map((p) => p.trim())
-      .filter((p) => p !== '')
-
-    const sqlParts: string[] = []
-    const params: (string | number)[] = []
-
-    for (const part of parts) {
-      if (part === 'AND') {
-        sqlParts.push('AND')
-      } else if (part === 'OR') {
-        sqlParts.push('OR')
-      } else if (part === 'NOT') {
-        // Use 'NOT' when at start or after another operator; 'AND NOT' otherwise
-        const lastPart = sqlParts[sqlParts.length - 1]
-        const isAfterOperator =
-          sqlParts.length === 0 ||
-          lastPart === 'AND' ||
-          lastPart === 'OR' ||
-          lastPart === 'NOT' ||
-          lastPart === 'AND NOT'
-        sqlParts.push(isAfterOperator ? 'NOT' : 'AND NOT')
-      } else {
-        const hgvsPattern = /^[cp]\./
-        if (hgvsPattern.test(part)) {
-          sqlParts.push('(cdna LIKE ? OR aa_change LIKE ?)')
-          params.push(`%${part}%`, `%${part}%`)
-        } else {
-          const ftsQuery = `"${part.replace(/"/g, '""')}"*`
-          sqlParts.push('id IN (SELECT rowid FROM variants_fts WHERE variants_fts MATCH ?)')
-          params.push(ftsQuery)
-        }
-      }
-    }
+    // Parse boolean expression into AST and emit FTS5-compatible SQL
+    const tokens = tokenize(term)
+    if (tokens.length === 0) return query
+    const ast = parse(tokens)
+    const { sql: boolExpr, params } = emitFts5Search(ast)
 
     // Build a sql template literal with interpolated parameters
-    const fullExpr = `(${sqlParts.join(' ')})`
+    const fullExpr = `(${boolExpr})`
     const segments = fullExpr.split('?')
     let paramIdx = 0
 

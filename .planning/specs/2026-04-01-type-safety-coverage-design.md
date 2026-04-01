@@ -180,15 +180,15 @@ Add two rules to ESLint config:
   files: ['src/renderer/**'],
   excludedFiles: ['src/renderer/src/composables/useApiService.ts', 'src/renderer/src/services/LogService.ts'],
   rules: {
-    'no-restricted-globals': ['error', {
-      name: 'window',
+    'no-restricted-syntax': ['error', {
+      selector: "MemberExpression[object.property.name='api'][object.object.name='window']",
       message: 'Use useApiService() for API access. Direct window.api usage is not allowed.'
     }]
   }
 }
 ```
 
-Note: The `window` restriction may need refinement (window is used for non-api purposes too). Alternative: use a custom ESLint rule or `no-restricted-syntax` targeting `window.api` specifically. The implementation plan will determine the best lint approach.
+Uses AST-level `no-restricted-syntax` to target `window.api` specifically without blocking other `window.*` usage (e.g., `window.addEventListener`, `requestIdleCallback`).
 
 ---
 
@@ -328,24 +328,31 @@ coverage: {
     'src/renderer/src/plugins/**'
   ],
   thresholds: {
+    autoUpdate: true,  // Ratchet thresholds upward automatically when coverage improves
     // Global floor (from measured actuals, ~2% below)
     lines: 0,       // placeholder — set from measurement
     functions: 0,    // placeholder — set from measurement
     branches: 0,     // placeholder — set from measurement
     statements: 0,   // placeholder — set from measurement
-    // Per-directory (from measured actuals, ~2% below)
-    'src/shared/': { statements: 0, branches: 0, functions: 0, lines: 0 },
-    'src/main/database/': { statements: 0, branches: 0, functions: 0, lines: 0 },
-    'src/main/import/': { statements: 0, branches: 0, functions: 0, lines: 0 },
-    'src/main/workers/': { statements: 0, branches: 0, functions: 0, lines: 0 },
-    'src/main/ipc/': { statements: 0, branches: 0, functions: 0, lines: 0 },
+    // Per-glob (from measured actuals, ~2% below)
+    // Vitest uses glob patterns, not directory paths
+    'src/shared/**.ts': { statements: 0, branches: 0, functions: 0, lines: 0 },
+    'src/main/database/**.ts': { statements: 0, branches: 0, functions: 0, lines: 0 },
+    'src/main/import/**.ts': { statements: 0, branches: 0, functions: 0, lines: 0 },
+    'src/main/workers/**.ts': { statements: 0, branches: 0, functions: 0, lines: 0 },
+    'src/main/ipc/**.ts': { statements: 0, branches: 0, functions: 0, lines: 0 },
   },
   reporter: ['text', 'json-summary', 'html'],
   reportsDirectory: 'coverage'
 }
 ```
 
-All `0` placeholders are replaced with measured values during implementation.
+All `0` placeholders are replaced with measured values during implementation. The `autoUpdate: true` flag means Vitest rewrites thresholds in the config file whenever coverage improves, creating a one-way ratchet that prevents regression without manual updates.
+
+**Important Vitest coverage notes** (from docs):
+- Glob-specific thresholds do NOT inherit from global — they must be fully specified
+- Global thresholds count ALL files including glob-matched ones
+- `autoUpdate` rewrites the config file itself, so the ratcheted values are committed to git
 
 ### 4.2 CI Build Workflow
 

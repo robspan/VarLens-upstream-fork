@@ -314,7 +314,8 @@ const exportToExcel = async (): Promise<void> => {
         timeout: 3000,
         actionText: 'Open folder',
         actionCallback: () => {
-          if (result.filePath) api.shell.showItemInFolder(result.filePath)
+          if (result.filePath != null && result.filePath !== '')
+              api.shell.showItemInFolder(result.filePath)
         }
       }
     }

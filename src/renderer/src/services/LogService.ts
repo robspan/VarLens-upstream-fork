@@ -38,7 +38,6 @@ export class LogService {
 
     // Subscribe to main process logs via IPC
 
-    // eslint-disable-next-line no-restricted-syntax -- LogService bootstraps before Vue mount; useApiService() unavailable
     this.cleanup = window.api.logs.onMessage((logMessage: LogMessage) => {
       this.log(logMessage.level, logMessage.message, logMessage.source)
     })

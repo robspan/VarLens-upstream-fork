@@ -236,9 +236,7 @@ export interface ExportAPI {
     filters: Omit<VariantFilter, 'case_id'>,
     caseName: string
   ) => Promise<ExportResult | SerializableError>
-  cohort: (
-    params: CohortSearchParams
-  ) => Promise<ExportResult | SerializableError>
+  cohort: (params: CohortSearchParams) => Promise<ExportResult | SerializableError>
 }
 
 export interface DatabaseInfo {

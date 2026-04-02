@@ -8,8 +8,9 @@
 
 import { computed, type Ref, type ComputedRef } from 'vue'
 import type { FilterState, ActiveFilter } from '../../../shared/types/filters'
+import { resetAdapterFields } from './filter-types'
 import type { Tag } from '../../../shared/types/database-entities'
-import type { useFilterCore } from './useFilterCore'
+import type { FilterCoreReturn } from './useFilterCore'
 
 /**
  * Options for useFilterComputed
@@ -22,7 +23,7 @@ export interface UseFilterComputedOptions {
   /** Available tags for label resolution */
   availableTags: ComputedRef<Tag[]>
   /** Core filter composable (for clearFilter and reset) */
-  core: ReturnType<typeof useFilterCore>
+  core: FilterCoreReturn
   /** Sync core state back to filters ref */
   syncCoreToFilters: () => void
   /** Reset presets to defaults */
@@ -366,17 +367,7 @@ export function useFilterComputed(options: UseFilterComputedOptions): UseFilterC
     syncCoreToFilters()
 
     // Reset adapter-specific fields
-    filters.value.searchQuery = ''
-    filters.value.geneSymbol = ''
-    filters.value.tagIds = []
-    filters.value.starredOnly = false
-    filters.value.hasCommentOnly = false
-    filters.value.annotationScope = 'case'
-    filters.value.activePanelIds = []
-    filters.value.panelPaddingBp = 5000
-    filters.value.inheritanceModes = []
-    filters.value.analysisGroupId = null
-    filters.value.considerPhasing = false
+    resetAdapterFields(filters)
     resetPresets()
     // Also reset sort order in parent
     onResetSort()

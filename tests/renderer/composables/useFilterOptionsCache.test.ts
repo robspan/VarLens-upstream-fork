@@ -28,11 +28,12 @@ function makeFilterOptions(overrides: Partial<FilterOptions> = {}): FilterOption
   }
 }
 
-function makeMockApi(getFilterOptionsFn?: (...args: unknown[]) => Promise<FilterOptions>): WindowAPI {
+function makeMockApi(
+  getFilterOptionsFn?: (...args: unknown[]) => Promise<FilterOptions>
+): WindowAPI {
   return {
     variants: {
-      getFilterOptions:
-        getFilterOptionsFn ?? vi.fn().mockResolvedValue(makeFilterOptions()),
+      getFilterOptions: getFilterOptionsFn ?? vi.fn().mockResolvedValue(makeFilterOptions()),
       query: vi.fn(),
       search: vi.fn(),
       geneSymbols: vi.fn()
@@ -93,10 +94,7 @@ describe('useFilterOptionsCache', () => {
   it('caches different cases separately', async () => {
     const opts1 = makeFilterOptions({ consequences: ['HIGH'] })
     const opts2 = makeFilterOptions({ consequences: ['LOW'] })
-    const getFilterOptionsFn = vi
-      .fn()
-      .mockResolvedValueOnce(opts1)
-      .mockResolvedValueOnce(opts2)
+    const getFilterOptionsFn = vi.fn().mockResolvedValueOnce(opts1).mockResolvedValueOnce(opts2)
     const api = makeMockApi(getFilterOptionsFn)
 
     const [result, appInstance] = withSetup(() => useFilterOptionsCache(api))
@@ -149,10 +147,7 @@ describe('useFilterOptionsCache', () => {
 
     await result.loadFilterOptions(1)
 
-    expect(logService.error).toHaveBeenCalledWith(
-      expect.stringContaining('DB error'),
-      'filters'
-    )
+    expect(logService.error).toHaveBeenCalledWith(expect.stringContaining('DB error'), 'filters')
   })
 
   describe('loadFilterOptionsAndTags', () => {

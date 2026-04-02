@@ -71,6 +71,26 @@ export interface UseFilterStateReturn {
 }
 
 /**
+ * Reset adapter-specific fields on a FilterState ref to their defaults.
+ *
+ * Shared by useFilterComputed (clearAllFilters) and useFilterLifecycle
+ * (resetForCaseSwitch) to avoid duplicating the field-by-field reset.
+ */
+export function resetAdapterFields(filters: Ref<FilterState>): void {
+  filters.value.searchQuery = ''
+  filters.value.geneSymbol = ''
+  filters.value.tagIds = []
+  filters.value.starredOnly = false
+  filters.value.hasCommentOnly = false
+  filters.value.annotationScope = 'case'
+  filters.value.activePanelIds = []
+  filters.value.panelPaddingBp = 5000
+  filters.value.inheritanceModes = []
+  filters.value.analysisGroupId = null
+  filters.value.considerPhasing = false
+}
+
+/**
  * Build a VariantFilter object (without case_id) from filter state and impact presets.
  * Shared between emitFilters and exportToExcel to eliminate duplication.
  */

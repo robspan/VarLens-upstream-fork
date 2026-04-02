@@ -4,7 +4,7 @@
  */
 
 import type { TranscriptAnnotation } from '../../../shared/types/transcript'
-import type { VepTranscriptConsequence } from '../../../main/services/api/schemas/vep-response'
+import type { VepTranscriptConsequence } from '../../../shared/types/vep'
 
 /** Where a transcript row came from */
 export type TranscriptSource = 'imported' | 'vep' | 'both'

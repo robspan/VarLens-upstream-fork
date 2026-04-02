@@ -8,7 +8,8 @@
 import { watch, type Ref, type ComputedRef } from 'vue'
 import type { VariantFilter } from '../../../shared/types/api'
 import type { FilterState } from '../../../shared/types/filters'
-import type { useFilterCore } from './useFilterCore'
+import { resetAdapterFields } from './filter-types'
+import type { FilterCoreReturn } from './useFilterCore'
 
 /**
  * Options for useFilterLifecycle
@@ -19,7 +20,7 @@ export interface UseFilterLifecycleOptions {
   /** Reactive filter state */
   filters: Ref<FilterState>
   /** Core filter composable (for reset) */
-  core: ReturnType<typeof useFilterCore>
+  core: FilterCoreReturn
   /** Sync core state back to filters ref */
   syncCoreToFilters: () => void
   /** Reset presets to defaults */
@@ -71,17 +72,7 @@ export function useFilterLifecycle(options: UseFilterLifecycleOptions): UseFilte
     syncCoreToFilters()
 
     // Reset adapter-specific fields
-    filters.value.searchQuery = ''
-    filters.value.geneSymbol = ''
-    filters.value.tagIds = []
-    filters.value.starredOnly = false
-    filters.value.hasCommentOnly = false
-    filters.value.annotationScope = 'case'
-    filters.value.activePanelIds = []
-    filters.value.panelPaddingBp = 5000
-    filters.value.inheritanceModes = []
-    filters.value.analysisGroupId = null
-    filters.value.considerPhasing = false
+    resetAdapterFields(filters)
     resetPresets()
   }
 

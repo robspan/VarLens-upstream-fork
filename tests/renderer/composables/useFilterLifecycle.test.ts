@@ -5,7 +5,7 @@
  * case ID change watcher behavior.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ref, nextTick } from 'vue'
 import { withSetup, flushPromises } from '../../utils/test-helpers'
 import { useFilterLifecycle } from '@renderer/composables/useFilterLifecycle'

@@ -76,8 +76,7 @@ export default [
           patterns: [
             {
               group: ['**/main/**'],
-              message:
-                'Renderer must not import from main process. Use src/shared/ re-exports.'
+              message: 'Renderer must not import from main process. Use src/shared/ re-exports.'
             }
           ]
         }
@@ -97,10 +96,8 @@ export default [
       'no-restricted-syntax': [
         'error',
         {
-          selector:
-            "MemberExpression[object.property.name='api'][object.object.name='window']",
-          message:
-            'Use useApiService() for API access. Direct window.api usage is not allowed.'
+          selector: "MemberExpression[object.property.name='api'][object.object.name='window']",
+          message: 'Use useApiService() for API access. Direct window.api usage is not allowed.'
         }
       ]
     }

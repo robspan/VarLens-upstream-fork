@@ -61,7 +61,7 @@ function extractPreloadApiKeys(): string[] {
     // Top-level keys are at depth === 1 (inside the outer object)
     // They look like: `  someName: {` or `  someName: (`
     if (depth === 1) {
-      const match = line.match(/^\s+(\w+)\s*:\s*[\{(]/)
+      const match = line.match(/^\s+(\w+)\s*:\s*[{(]/)
       if (match) {
         keys.push(match[1])
       }

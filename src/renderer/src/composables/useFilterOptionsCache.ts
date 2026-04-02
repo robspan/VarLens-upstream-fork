@@ -75,7 +75,7 @@ export function useFilterOptionsCache(api: WindowAPI | undefined): UseFilterOpti
     }
 
     try {
-      const options = await api!.variants.getFilterOptions(caseId)
+      const options = await api.variants.getFilterOptions(caseId)
       filterOptions.value = options
       cacheFilterOptions(caseId, options)
     } catch (error) {
@@ -112,7 +112,7 @@ export function useFilterOptionsCache(api: WindowAPI | undefined): UseFilterOpti
 
     try {
       // Load filter options and tags in parallel
-      const [options] = await Promise.all([api!.variants.getFilterOptions(caseId), loadTags()])
+      const [options] = await Promise.all([api.variants.getFilterOptions(caseId), loadTags()])
       filterOptions.value = options
       cacheFilterOptions(caseId, options)
     } catch (error) {

@@ -6,9 +6,9 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { ref, nextTick } from 'vue'
+import { ref } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
-import { withSetup, flushPromises } from '../../utils/test-helpers'
+import { withSetup } from '../../utils/test-helpers'
 import { createMockApi } from '../../utils/mock-api'
 import { useFilterState } from '@renderer/composables/useFilterState'
 import type { UseFilterStateReturn } from '@renderer/composables/filter-types'
@@ -156,9 +156,7 @@ describe('useFilterState (integration)', () => {
     result.filters.value.searchQuery = 'BRCA1'
     result.emitFilters()
 
-    expect(onFiltersUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ search_query: 'BRCA1' })
-    )
+    expect(onFiltersUpdate).toHaveBeenCalledWith(expect.objectContaining({ search_query: 'BRCA1' }))
   })
 
   // -------------------------------------------------------------------------

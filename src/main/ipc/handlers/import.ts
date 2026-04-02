@@ -4,11 +4,7 @@ import { wrapHandler } from '../errorHandler'
 import type { HandlerDependencies } from '../types'
 import { safeEmit } from '../utils/safeEmit'
 import { loadSettings, saveSettings } from '../utils/settings-io'
-import {
-  startImport,
-  cancelImport,
-  getVcfPreview
-} from './import-logic'
+import { startImport, cancelImport, getVcfPreview } from './import-logic'
 import type { ImportCallbacks } from './import-logic'
 
 /** Shared callbacks that wire logic-layer events to renderer via safeEmit. */

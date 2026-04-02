@@ -32,10 +32,7 @@ export function listPanels(getDb: () => DatabaseService): unknown {
   return db.panels.listPanels()
 }
 
-export function getPanel(
-  id: number,
-  getDb: () => DatabaseService
-): unknown {
+export function getPanel(id: number, getDb: () => DatabaseService): unknown {
   const db = getDb()
   const panel = db.panels.getPanel(id)
   if (!panel) return null
@@ -77,11 +74,7 @@ export function deletePanel(
   return { success: true }
 }
 
-export function duplicatePanel(
-  id: number,
-  newName: string,
-  getDb: () => DatabaseService
-): unknown {
+export function duplicatePanel(id: number, newName: string, getDb: () => DatabaseService): unknown {
   const db = getDb()
   return db.panels.duplicatePanel(id, newName)
 }
@@ -102,10 +95,7 @@ export function setGenes(
   return { success: true }
 }
 
-export function getGenes(
-  panelId: number,
-  getDb: () => DatabaseService
-): unknown {
+export function getGenes(panelId: number, getDb: () => DatabaseService): unknown {
   const db = getDb()
   return db.panels.getGenes(panelId)
 }
@@ -135,10 +125,7 @@ export function deactivatePanel(
   return { success: true }
 }
 
-export function getActivePanelsForCase(
-  caseId: number,
-  getDb: () => DatabaseService
-): unknown {
+export function getActivePanelsForCase(caseId: number, getDb: () => DatabaseService): unknown {
   const db = getDb()
   return db.panels.getActivePanelsForCase(caseId)
 }
@@ -147,18 +134,11 @@ export function getActivePanelsForCase(
 // Gene Reference Queries
 // ============================================================
 
-export function validateSymbols(
-  symbols: string[],
-  geneRef: GeneReferenceDb
-): unknown {
+export function validateSymbols(symbols: string[], geneRef: GeneReferenceDb): unknown {
   return geneRef.validateSymbols(symbols)
 }
 
-export function autocomplete(
-  query: string,
-  limit: number,
-  geneRef: GeneReferenceDb
-): unknown {
+export function autocomplete(query: string, limit: number, geneRef: GeneReferenceDb): unknown {
   return geneRef.autocomplete(query, limit)
 }
 
@@ -406,9 +386,7 @@ export function generateBedContent(
     const coords = coordsMap.get(gene.hgnc_id)
     if (!coords) continue
 
-    const chr = coords.chromosome.startsWith('chr')
-      ? coords.chromosome
-      : `chr${coords.chromosome}`
+    const chr = coords.chromosome.startsWith('chr') ? coords.chromosome : `chr${coords.chromosome}`
     const bedStart = Math.max(0, coords.start_pos - 1 - paddingBp)
     const bedEnd = coords.end_pos + paddingBp
 

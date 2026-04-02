@@ -104,11 +104,8 @@ export function registerCohortHandlers({ ipcMain, getDb, getDbPool }: HandlerDep
         throw new Error('Invalid association analysis parameters')
       }
 
-      return runGeneBurdenCompare(
-        validated.data,
-        getDb,
-        getDbPool,
-        (data) => event.sender.send('cohort:geneBurdenProgress', data)
+      return runGeneBurdenCompare(validated.data, getDb, getDbPool, (data) =>
+        event.sender.send('cohort:geneBurdenProgress', data)
       )
     })
   })

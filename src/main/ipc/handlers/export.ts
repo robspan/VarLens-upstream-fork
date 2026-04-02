@@ -9,7 +9,7 @@ import {
   CohortSearchParamsSchema
 } from '../../../shared/types/ipc-schemas'
 import { safeEmit } from '../utils/safeEmit'
-import { exportVariants, exportCohort } from './export-logic'
+import { prepareVariantExport, exportVariants, exportCohort } from './export-logic'
 import type { ExportCallbacks } from './export-logic'
 
 /** Schema for variant export parameters */
@@ -44,6 +44,18 @@ export function registerExportHandlers({ ipcMain, getDb }: HandlerDependencies):
           `Export handler called with caseId=${validated.data.caseId}, caseName=${validated.data.caseName}`,
           'export'
         )
+
+        // Pre-check count/limit BEFORE showing save dialog to avoid
+        // the user picking a file path only to be told the export is too large.
+        const preparation = prepareVariantExport(
+          getDb,
+          validated.data.caseId,
+          validated.data.filters
+        )
+        if ('success' in preparation) {
+          return preparation
+        }
+
         const mainWindow = BrowserWindow.getAllWindows()[0]
 
         if (mainWindow === undefined || mainWindow.isDestroyed()) {
@@ -76,7 +88,7 @@ export function registerExportHandlers({ ipcMain, getDb }: HandlerDependencies):
 
         return exportVariants(
           getDb,
-          validated.data.caseId,
+          preparation.compiled,
           validated.data.filters,
           validated.data.caseName,
           result.filePath,

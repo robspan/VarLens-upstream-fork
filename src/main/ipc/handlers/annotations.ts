@@ -212,7 +212,12 @@ export function registerAnnotationHandlers({
           throw new Error('Invalid variant coordinates')
         }
 
-        return getAnnotationsForVariant(validatedCaseId.data, validatedCoords.data, getDb, getDbPool)
+        return getAnnotationsForVariant(
+          validatedCaseId.data,
+          validatedCoords.data,
+          getDb,
+          getDbPool
+        )
       })
     }
   )

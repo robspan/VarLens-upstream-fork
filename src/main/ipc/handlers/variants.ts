@@ -183,7 +183,13 @@ export function registerVariantHandlers({ ipcMain, getDb, getDbPool }: HandlerDe
           validatedLimit = limitResult.data
         }
 
-        return searchVariants(validatedCaseId.data, validatedQuery.data, validatedLimit, getDb, getDbPool)
+        return searchVariants(
+          validatedCaseId.data,
+          validatedQuery.data,
+          validatedLimit,
+          getDb,
+          getDbPool
+        )
       })
     }
   )
@@ -223,7 +229,13 @@ export function registerVariantHandlers({ ipcMain, getDb, getDbPool }: HandlerDe
           }
         }
 
-        return getGeneSymbols(validatedCaseId.data, validatedQuery.data, validatedLimit, getDb, getDbPool)
+        return getGeneSymbols(
+          validatedCaseId.data,
+          validatedQuery.data,
+          validatedLimit,
+          getDb,
+          getDbPool
+        )
       })
     }
   )

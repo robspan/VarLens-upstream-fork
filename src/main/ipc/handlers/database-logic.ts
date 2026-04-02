@@ -142,9 +142,7 @@ export function getDatabaseInfo(
   return manager.getCurrentInfo()
 }
 
-export function getRecentDatabases(
-  getDbManager: () => DatabaseManager
-): unknown {
+export function getRecentDatabases(getDbManager: () => DatabaseManager): unknown {
   const manager = getDbManager()
   return manager.getRecentDatabases()
 }

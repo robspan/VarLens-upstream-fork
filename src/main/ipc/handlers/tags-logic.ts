@@ -29,11 +29,7 @@ export async function listTags(
 /**
  * Create a new tag.
  */
-export function createTag(
-  name: string,
-  color: string,
-  getDb: () => DatabaseService
-): unknown {
+export function createTag(name: string, color: string, getDb: () => DatabaseService): unknown {
   const db = getDb()
   return db.tags.createTag(name, color)
 }
@@ -53,10 +49,7 @@ export function updateTag(
 /**
  * Delete a tag.
  */
-export function deleteTag(
-  id: number,
-  getDb: () => DatabaseService
-): void {
+export function deleteTag(id: number, getDb: () => DatabaseService): void {
   const db = getDb()
   db.tags.deleteTag(id)
 }

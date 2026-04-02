@@ -59,10 +59,12 @@ export function prepareVariantExport(
   getDb: () => DatabaseService,
   caseId: number,
   filters: Partial<VariantFilter>
-): {
-  compiled: { sql: string; parameters: readonly unknown[] }
-  count: number
-} | ExportResult {
+):
+  | {
+      compiled: { sql: string; parameters: readonly unknown[] }
+      count: number
+    }
+  | ExportResult {
   const db = getDb()
   const fullFilter: VariantFilter = {
     ...filters,
@@ -84,9 +86,7 @@ export function prepareVariantExport(
 /**
  * Build filter summary for metadata sheet from variant filters.
  */
-export function buildFilterSummary(
-  filters: Partial<VariantFilter>
-): ExportFilterSummary {
+export function buildFilterSummary(filters: Partial<VariantFilter>): ExportFilterSummary {
   return {
     ...(filters.gene_symbol !== undefined && filters.gene_symbol !== ''
       ? { gene_symbol: filters.gene_symbol }
@@ -94,38 +94,31 @@ export function buildFilterSummary(
     ...(filters.consequences !== undefined && filters.consequences.length > 0
       ? { consequences: filters.consequences }
       : {}),
-    ...(filters.funcs !== undefined && filters.funcs.length > 0
-      ? { funcs: filters.funcs }
-      : {}),
+    ...(filters.funcs !== undefined && filters.funcs.length > 0 ? { funcs: filters.funcs } : {}),
     ...(filters.clinvars !== undefined && filters.clinvars.length > 0
       ? { clinvars: filters.clinvars }
       : {}),
-    ...(filters.gnomad_af_max !== undefined
-      ? { gnomad_af_max: filters.gnomad_af_max }
-      : {}),
+    ...(filters.gnomad_af_max !== undefined ? { gnomad_af_max: filters.gnomad_af_max } : {}),
     ...(filters.cadd_min !== undefined ? { cadd_min: filters.cadd_min } : {})
   }
 }
 
 /**
  * Export variants to XLSX via worker thread.
+ *
+ * Callers must run {@link prepareVariantExport} first (before showing any
+ * save-dialog) and pass the resulting `compiled` query here. This avoids a
+ * redundant count query and, more importantly, ensures users are never asked
+ * to pick a file path only to be told the export exceeds the hard limit.
  */
 export function exportVariants(
   getDb: () => DatabaseService,
-  caseId: number,
+  compiled: { sql: string; parameters: readonly unknown[] },
   filters: Partial<VariantFilter>,
   caseName: string,
   outputFilePath: string,
   callbacks: ExportCallbacks
 ): Promise<ExportResult> {
-  const preparation = prepareVariantExport(getDb, caseId, filters)
-
-  // If it's an ExportResult (error), return immediately
-  if ('success' in preparation) {
-    return Promise.resolve(preparation)
-  }
-
-  const { compiled } = preparation
   const db = getDb()
   const filterSummary = buildFilterSummary(filters)
 
@@ -228,9 +221,7 @@ export async function exportCohort(
     ...(params.clinvars !== undefined && params.clinvars.length > 0
       ? [['ClinVar', params.clinvars.join(', ')]]
       : []),
-    ...(params.gnomad_af_max !== undefined
-      ? [['Max gnomAD AF', params.gnomad_af_max]]
-      : []),
+    ...(params.gnomad_af_max !== undefined ? [['Max gnomAD AF', params.gnomad_af_max]] : []),
     ...(params.cadd_min !== undefined ? [['Min CADD', params.cadd_min]] : []),
     ...(params.max_internal_af !== undefined
       ? [['Max Internal Frequency', `${(params.max_internal_af * 100).toFixed(1)}%`]]

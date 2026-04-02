@@ -35,7 +35,10 @@ export function checkDuplicateFiles(
   getDb: () => DatabaseService,
   filePaths: string[],
   stripText?: string
-): { files: Array<{ filePath: string; fileName: string; caseName: string; isDuplicate: boolean }>; duplicateCount: number } {
+): {
+  files: Array<{ filePath: string; fileName: string; caseName: string; isDuplicate: boolean }>
+  duplicateCount: number
+} {
   try {
     const db = getDb()
     const result = checkDuplicates(db, filePaths, stripText)
@@ -135,10 +138,7 @@ export async function startBatchImport(
               }
             }
           } catch (freqError) {
-            mainLogger.warn(
-              `Failed to update variant frequencies: ${freqError}`,
-              'batch-import'
-            )
+            mainLogger.warn(`Failed to update variant frequencies: ${freqError}`, 'batch-import')
           }
 
           // Send final progress
@@ -214,10 +214,7 @@ export function cancelBatchImport(): void {
 /**
  * Test a ZIP file password.
  */
-export function testZipPassword(
-  zipPath: string,
-  password: string
-): { success: boolean } {
+export function testZipPassword(zipPath: string, password: string): { success: boolean } {
   try {
     const success = zipExtractor.testPassword(zipPath, password)
     return { success }

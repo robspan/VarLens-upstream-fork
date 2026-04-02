@@ -94,10 +94,7 @@ export async function listCohorts(
 /**
  * Create a new cohort group.
  */
-export function createCohort(
-  params: CohortCreateParams,
-  getDb: () => DatabaseService
-): unknown {
+export function createCohort(params: CohortCreateParams, getDb: () => DatabaseService): unknown {
   const db = getDb()
   return db.metadata.createCohortGroup(params.name, params.description)
 }
@@ -117,10 +114,7 @@ export function updateCohort(
 /**
  * Delete a cohort group.
  */
-export function deleteCohort(
-  cohortId: number,
-  getDb: () => DatabaseService
-): void {
+export function deleteCohort(cohortId: number, getDb: () => DatabaseService): void {
   const db = getDb()
   db.metadata.deleteCohortGroup(cohortId)
 }
@@ -164,11 +158,7 @@ export async function getCaseCohorts(
 /**
  * Assign a case to a cohort.
  */
-export function assignCohort(
-  caseId: number,
-  cohortId: number,
-  getDb: () => DatabaseService
-): void {
+export function assignCohort(caseId: number, cohortId: number, getDb: () => DatabaseService): void {
   const db = getDb()
   db.metadata.assignCaseCohort(caseId, cohortId)
 }
@@ -176,11 +166,7 @@ export function assignCohort(
 /**
  * Remove a case from a cohort.
  */
-export function removeCohort(
-  caseId: number,
-  cohortId: number,
-  getDb: () => DatabaseService
-): void {
+export function removeCohort(caseId: number, cohortId: number, getDb: () => DatabaseService): void {
   const db = getDb()
   db.metadata.removeCaseCohort(caseId, cohortId)
 }
@@ -233,11 +219,7 @@ export function assignHpoTerm(
 /**
  * Remove HPO term from case.
  */
-export function removeHpoTerm(
-  caseId: number,
-  hpoId: string,
-  getDb: () => DatabaseService
-): void {
+export function removeHpoTerm(caseId: number, hpoId: string, getDb: () => DatabaseService): void {
   const db = getDb()
   db.metadata.removeCaseHpoTerm(caseId, hpoId)
 }

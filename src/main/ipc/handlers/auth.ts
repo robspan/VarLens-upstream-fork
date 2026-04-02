@@ -120,10 +120,7 @@ export function registerAuthHandlers({ ipcMain, getDb }: HandlerDependencies): v
       return wrapHandler(async () => {
         const validated = ChangePasswordSchema.safeParse({ oldPassword, newPassword })
         if (!validated.success) {
-          mainLogger.error(
-            `Invalid auth:changePassword params: ${validated.error.message}`,
-            'auth'
-          )
+          mainLogger.error(`Invalid auth:changePassword params: ${validated.error.message}`, 'auth')
           throw new Error('Invalid password parameters')
         }
         await changePassword(validated.data.oldPassword, validated.data.newPassword, getDb)

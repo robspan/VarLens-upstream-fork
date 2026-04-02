@@ -12,12 +12,7 @@ import type { DatabaseService } from '../../database/DatabaseService'
 
 /** Callbacks for emitting events to the renderer during import operations. */
 export interface ImportCallbacks {
-  onProgress?: (data: {
-    phase: string
-    count: number
-    elapsed: number
-    skipped: number
-  }) => void
+  onProgress?: (data: { phase: string; count: number; elapsed: number; skipped: number }) => void
 }
 
 /** Result of a successful import. */

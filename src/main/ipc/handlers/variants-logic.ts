@@ -89,7 +89,14 @@ export async function queryVariants(
   }
 
   const db = getDb()
-  return db.variants.getVariants(fullFilter, limit, offset, sortBy, skipCount, includeUnfilteredCount)
+  return db.variants.getVariants(
+    fullFilter,
+    limit,
+    offset,
+    sortBy,
+    skipCount,
+    includeUnfilteredCount
+  )
 }
 
 /**

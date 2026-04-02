@@ -7,7 +7,11 @@
  */
 import type { DatabaseService } from '../../database/DatabaseService'
 import type { DbPool } from '../../database/DbPool'
-import type { VariantAnnotation, CaseVariantAnnotation, AcmgClassification } from '../../database/types'
+import type {
+  VariantAnnotation,
+  CaseVariantAnnotation,
+  AcmgClassification
+} from '../../database/types'
 
 /** Validated variant coordinates. */
 export interface VariantCoords {
@@ -146,10 +150,7 @@ export function upsertGlobalAnnotation(
 /**
  * Delete global annotation for a variant.
  */
-export function deleteGlobalAnnotation(
-  coords: VariantCoords,
-  getDb: () => DatabaseService
-): void {
+export function deleteGlobalAnnotation(coords: VariantCoords, getDb: () => DatabaseService): void {
   const db = getDb()
   db.annotations.deleteGlobalAnnotation(coords.chr, coords.pos, coords.ref, coords.alt)
 }

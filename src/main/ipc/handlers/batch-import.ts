@@ -114,7 +114,13 @@ export function registerBatchImportHandlers({ ipcMain, getDb }: HandlerDependenc
     'batch-import:start',
     async (_event, filePaths: string[], duplicateStrategy: DuplicateChoice, stripText?: string) => {
       return wrapHandler(async () => {
-        return startBatchImport(getDb, filePaths, duplicateStrategy, stripText, batchImportCallbacks)
+        return startBatchImport(
+          getDb,
+          filePaths,
+          duplicateStrategy,
+          stripText,
+          batchImportCallbacks
+        )
       })
     }
   )

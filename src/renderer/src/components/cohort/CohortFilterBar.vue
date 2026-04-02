@@ -153,6 +153,7 @@ import {
 } from '../../utils/filters'
 import { cloneForIpc } from '../../utils/cloneForIpc'
 import { logService } from '../../services/LogService'
+import { isIpcError } from '../../../../shared/types/errors'
 
 interface Props {
   totalCount: number | null
@@ -274,7 +275,7 @@ async function handleSavePreset(data: { name: string; description: string | null
       filterJson: plainFilters
     })
     // Check if IPC returned a serializable error
-    if (result !== null && typeof result === 'object' && 'code' in result) {
+    if (isIpcError(result)) {
       return
     }
     showSavePresetDialog.value = false
@@ -417,7 +418,7 @@ const searchGeneSymbols = async (query: string) => {
       limit: 100
     })
 
-    if (result !== null && result !== undefined && 'code' in result) {
+    if (isIpcError(result)) {
       geneSymbolSuggestions.value = []
       return
     }

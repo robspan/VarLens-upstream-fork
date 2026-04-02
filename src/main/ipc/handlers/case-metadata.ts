@@ -3,6 +3,31 @@ import { wrapHandler } from '../errorHandler'
 import type { HandlerDependencies } from '../types'
 import { CaseIdSchema } from '../../../shared/types/ipc-schemas'
 import { mainLogger } from '../../services/MainLogger'
+import {
+  getMetadata,
+  upsertMetadata,
+  listCohorts,
+  createCohort,
+  updateCohort,
+  deleteCohort,
+  getCohortByName,
+  getCaseCohorts,
+  assignCohort,
+  removeCohort,
+  setCohorts,
+  getHpoTerms,
+  assignHpoTerm,
+  removeHpoTerm,
+  getDataInfo,
+  upsertDataInfo,
+  listExternalIds,
+  upsertExternalId,
+  deleteExternalId,
+  distinctHpoTerms,
+  distinctPlatforms,
+  distinctExternalIdTypes,
+  getFullMetadata
+} from './case-metadata-logic'
 
 // ============================================================
 // Inline Zod Schemas for Case Metadata
@@ -90,12 +115,8 @@ export function registerCaseMetadataHandlers({
   // Case Metadata Handlers
   // ============================================================
 
-  /**
-   * Get case metadata
-   */
   ipcMain.handle('case-metadata:get', async (_event, caseId: unknown) => {
     return wrapHandler(async () => {
-      // ANTI-07: Runtime validation at IPC boundary
       const validated = CaseIdSchema.safeParse(caseId)
       if (!validated.success) {
         mainLogger.error(
@@ -104,23 +125,12 @@ export function registerCaseMetadataHandlers({
         )
         throw new Error('Invalid parameters')
       }
-
-      const pool = getDbPool?.()
-      if (pool) {
-        return await pool.run({ type: 'case-metadata:get', params: [validated.data] })
-      }
-
-      const db = getDb()
-      return db.metadata.getCaseMetadata(validated.data)
+      return getMetadata(validated.data, getDb, getDbPool)
     })
   })
 
-  /**
-   * Upsert case metadata
-   */
   ipcMain.handle('case-metadata:upsert', async (_event, caseId: unknown, updates: unknown) => {
     return wrapHandler(async () => {
-      // ANTI-07: Runtime validation at IPC boundary
       const validatedId = CaseIdSchema.safeParse(caseId)
       if (!validatedId.success) {
         mainLogger.error(
@@ -139,8 +149,7 @@ export function registerCaseMetadataHandlers({
         throw new Error('Invalid parameters')
       }
 
-      const db = getDb()
-      return db.metadata.upsertCaseMetadata(validatedId.data, validatedUpdates.data)
+      return upsertMetadata(validatedId.data, validatedUpdates.data, getDb)
     })
   })
 
@@ -148,29 +157,16 @@ export function registerCaseMetadataHandlers({
   // Cohort Group Handlers
   // ============================================================
 
-  /**
-   * List all cohort groups
-   */
   ipcMain.handle('case-metadata:listCohorts', async () => {
     return wrapHandler(async () => {
-      const pool = getDbPool?.()
-      if (pool) {
-        return await pool.run({ type: 'case-metadata:listCohorts', params: [] })
-      }
-
-      const db = getDb()
-      return db.metadata.listCohortGroups()
+      return listCohorts(getDb, getDbPool)
     })
   })
 
-  /**
-   * Create a new cohort group
-   */
   ipcMain.handle(
     'case-metadata:createCohort',
     async (_event, name: unknown, description?: unknown) => {
       return wrapHandler(async () => {
-        // ANTI-07: Runtime validation at IPC boundary
         const validated = CohortCreateSchema.safeParse({ name, description })
         if (!validated.success) {
           mainLogger.error(
@@ -179,21 +175,15 @@ export function registerCaseMetadataHandlers({
           )
           throw new Error('Invalid parameters')
         }
-
-        const db = getDb()
-        return db.metadata.createCohortGroup(validated.data.name, validated.data.description)
+        return createCohort(validated.data, getDb)
       })
     }
   )
 
-  /**
-   * Update a cohort group
-   */
   ipcMain.handle(
     'case-metadata:updateCohort',
     async (_event, cohortId: unknown, updates: unknown) => {
       return wrapHandler(async () => {
-        // ANTI-07: Runtime validation at IPC boundary
         const validatedId = CohortIdSchema.safeParse(cohortId)
         if (!validatedId.success) {
           mainLogger.error(
@@ -212,18 +202,13 @@ export function registerCaseMetadataHandlers({
           throw new Error('Invalid parameters')
         }
 
-        const db = getDb()
-        return db.metadata.updateCohortGroup(validatedId.data, validatedUpdates.data)
+        return updateCohort(validatedId.data, validatedUpdates.data, getDb)
       })
     }
   )
 
-  /**
-   * Delete a cohort group
-   */
   ipcMain.handle('case-metadata:deleteCohort', async (_event, cohortId: unknown) => {
     return wrapHandler(async () => {
-      // ANTI-07: Runtime validation at IPC boundary
       const validatedId = CohortIdSchema.safeParse(cohortId)
       if (!validatedId.success) {
         mainLogger.error(
@@ -233,18 +218,13 @@ export function registerCaseMetadataHandlers({
         throw new Error('Invalid parameters')
       }
 
-      const db = getDb()
-      db.metadata.deleteCohortGroup(validatedId.data)
+      deleteCohort(validatedId.data, getDb)
       return undefined
     })
   })
 
-  /**
-   * Get cohort group by name
-   */
   ipcMain.handle('case-metadata:getCohortByName', async (_event, name: unknown) => {
     return wrapHandler(async () => {
-      // ANTI-07: Runtime validation at IPC boundary
       const validated = CohortNameSchema.safeParse(name)
       if (!validated.success) {
         mainLogger.error(
@@ -253,14 +233,7 @@ export function registerCaseMetadataHandlers({
         )
         throw new Error('Invalid parameters')
       }
-
-      const pool = getDbPool?.()
-      if (pool) {
-        return await pool.run({ type: 'case-metadata:getCohortByName', params: [validated.data] })
-      }
-
-      const db = getDb()
-      return db.metadata.getCohortGroupByName(validated.data)
+      return getCohortByName(validated.data, getDb, getDbPool)
     })
   })
 
@@ -268,12 +241,8 @@ export function registerCaseMetadataHandlers({
   // Case-Cohort Link Handlers
   // ============================================================
 
-  /**
-   * Get all cohorts for a case
-   */
   ipcMain.handle('case-metadata:getCaseCohorts', async (_event, caseId: unknown) => {
     return wrapHandler(async () => {
-      // ANTI-07: Runtime validation at IPC boundary
       const validated = CaseIdSchema.safeParse(caseId)
       if (!validated.success) {
         mainLogger.error(
@@ -282,25 +251,14 @@ export function registerCaseMetadataHandlers({
         )
         throw new Error('Invalid parameters')
       }
-
-      const pool = getDbPool?.()
-      if (pool) {
-        return await pool.run({ type: 'case-metadata:getCaseCohorts', params: [validated.data] })
-      }
-
-      const db = getDb()
-      return db.metadata.getCaseCohorts(validated.data)
+      return getCaseCohorts(validated.data, getDb, getDbPool)
     })
   })
 
-  /**
-   * Assign a case to a cohort
-   */
   ipcMain.handle(
     'case-metadata:assignCohort',
     async (_event, caseId: unknown, cohortId: unknown) => {
       return wrapHandler(async () => {
-        // ANTI-07: Runtime validation at IPC boundary
         const validated = CaseCohortAssignSchema.safeParse({ caseId, cohortId })
         if (!validated.success) {
           mainLogger.error(
@@ -310,21 +268,16 @@ export function registerCaseMetadataHandlers({
           throw new Error('Invalid parameters')
         }
 
-        const db = getDb()
-        db.metadata.assignCaseCohort(validated.data.caseId, validated.data.cohortId)
+        assignCohort(validated.data.caseId, validated.data.cohortId, getDb)
         return undefined
       })
     }
   )
 
-  /**
-   * Remove a case from a cohort
-   */
   ipcMain.handle(
     'case-metadata:removeCohort',
     async (_event, caseId: unknown, cohortId: unknown) => {
       return wrapHandler(async () => {
-        // ANTI-07: Runtime validation at IPC boundary
         const validated = CaseCohortAssignSchema.safeParse({ caseId, cohortId })
         if (!validated.success) {
           mainLogger.error(
@@ -334,21 +287,16 @@ export function registerCaseMetadataHandlers({
           throw new Error('Invalid parameters')
         }
 
-        const db = getDb()
-        db.metadata.removeCaseCohort(validated.data.caseId, validated.data.cohortId)
+        removeCohort(validated.data.caseId, validated.data.cohortId, getDb)
         return undefined
       })
     }
   )
 
-  /**
-   * Replace all cohort assignments for a case
-   */
   ipcMain.handle(
     'case-metadata:setCohorts',
     async (_event, caseId: unknown, cohortIds: unknown) => {
       return wrapHandler(async () => {
-        // ANTI-07: Runtime validation at IPC boundary
         const validated = CaseSetCohortsSchema.safeParse({ caseId, cohortIds })
         if (!validated.success) {
           mainLogger.error(
@@ -358,8 +306,7 @@ export function registerCaseMetadataHandlers({
           throw new Error('Invalid parameters')
         }
 
-        const db = getDb()
-        db.metadata.setCaseCohorts(validated.data.caseId, validated.data.cohortIds)
+        setCohorts(validated.data.caseId, validated.data.cohortIds, getDb)
         return undefined
       })
     }
@@ -369,12 +316,8 @@ export function registerCaseMetadataHandlers({
   // HPO Term Handlers
   // ============================================================
 
-  /**
-   * Get all HPO terms for a case
-   */
   ipcMain.handle('case-metadata:getHpoTerms', async (_event, caseId: unknown) => {
     return wrapHandler(async () => {
-      // ANTI-07: Runtime validation at IPC boundary
       const validated = CaseIdSchema.safeParse(caseId)
       if (!validated.success) {
         mainLogger.error(
@@ -383,25 +326,14 @@ export function registerCaseMetadataHandlers({
         )
         throw new Error('Invalid parameters')
       }
-
-      const pool = getDbPool?.()
-      if (pool) {
-        return await pool.run({ type: 'case-metadata:getHpoTerms', params: [validated.data] })
-      }
-
-      const db = getDb()
-      return db.metadata.getCaseHpoTerms(validated.data)
+      return getHpoTerms(validated.data, getDb, getDbPool)
     })
   })
 
-  /**
-   * Assign HPO term to case
-   */
   ipcMain.handle(
     'case-metadata:assignHpoTerm',
     async (_event, caseId: unknown, hpoId: unknown, hpoLabel: unknown) => {
       return wrapHandler(async () => {
-        // ANTI-07: Runtime validation at IPC boundary
         const validated = HpoTermAssignSchema.safeParse({ caseId, hpoId, hpoLabel })
         if (!validated.success) {
           mainLogger.error(
@@ -411,22 +343,18 @@ export function registerCaseMetadataHandlers({
           throw new Error('Invalid parameters')
         }
 
-        const db = getDb()
-        return db.metadata.assignCaseHpoTerm(
+        return assignHpoTerm(
           validated.data.caseId,
           validated.data.hpoId,
-          validated.data.hpoLabel
+          validated.data.hpoLabel,
+          getDb
         )
       })
     }
   )
 
-  /**
-   * Remove HPO term from case
-   */
   ipcMain.handle('case-metadata:removeHpoTerm', async (_event, caseId: unknown, hpoId: unknown) => {
     return wrapHandler(async () => {
-      // ANTI-07: Runtime validation at IPC boundary
       const validated = HpoTermRemoveSchema.safeParse({ caseId, hpoId })
       if (!validated.success) {
         mainLogger.error(
@@ -436,8 +364,7 @@ export function registerCaseMetadataHandlers({
         throw new Error('Invalid parameters')
       }
 
-      const db = getDb()
-      db.metadata.removeCaseHpoTerm(validated.data.caseId, validated.data.hpoId)
+      removeHpoTerm(validated.data.caseId, validated.data.hpoId, getDb)
       return undefined
     })
   })
@@ -446,12 +373,8 @@ export function registerCaseMetadataHandlers({
   // Case Data Info Handlers
   // ============================================================
 
-  /**
-   * Get case data info (import provenance, platform, pre-filtering)
-   */
   ipcMain.handle('case-metadata:getDataInfo', async (_event, caseId: unknown) => {
     return wrapHandler(async () => {
-      // ANTI-07: Runtime validation at IPC boundary
       const validated = CaseIdSchema.safeParse(caseId)
       if (!validated.success) {
         mainLogger.error(
@@ -460,25 +383,14 @@ export function registerCaseMetadataHandlers({
         )
         throw new Error('Invalid parameters')
       }
-
-      const pool = getDbPool?.()
-      if (pool) {
-        return await pool.run({ type: 'case-metadata:getDataInfo', params: [validated.data] })
-      }
-
-      const db = getDb()
-      return db.metadata.getCaseDataInfo(validated.data)
+      return getDataInfo(validated.data, getDb, getDbPool)
     })
   })
 
-  /**
-   * Upsert case data info
-   */
   ipcMain.handle(
     'case-metadata:upsertDataInfo',
     async (_event, caseId: unknown, updates: unknown) => {
       return wrapHandler(async () => {
-        // ANTI-07: Runtime validation at IPC boundary
         const validatedId = CaseIdSchema.safeParse(caseId)
         if (!validatedId.success) {
           mainLogger.error(
@@ -497,8 +409,7 @@ export function registerCaseMetadataHandlers({
           throw new Error('Invalid parameters')
         }
 
-        const db = getDb()
-        return db.metadata.upsertCaseDataInfo(validatedId.data, validatedUpdates.data)
+        return upsertDataInfo(validatedId.data, validatedUpdates.data, getDb)
       })
     }
   )
@@ -509,7 +420,6 @@ export function registerCaseMetadataHandlers({
 
   ipcMain.handle('case-metadata:listExternalIds', async (_event, caseId: unknown) => {
     return wrapHandler(async () => {
-      // ANTI-07: Runtime validation at IPC boundary
       const validated = CaseIdSchema.safeParse(caseId)
       if (!validated.success) {
         mainLogger.error(
@@ -518,14 +428,7 @@ export function registerCaseMetadataHandlers({
         )
         throw new Error('Invalid parameters')
       }
-
-      const pool = getDbPool?.()
-      if (pool) {
-        return await pool.run({ type: 'case-metadata:listExternalIds', params: [validated.data] })
-      }
-
-      const db = getDb()
-      return db.metadata.listCaseExternalIds(validated.data)
+      return listExternalIds(validated.data, getDb, getDbPool)
     })
   })
 
@@ -533,7 +436,6 @@ export function registerCaseMetadataHandlers({
     'case-metadata:upsertExternalId',
     async (_event, caseId: unknown, idType: unknown, idValue: unknown) => {
       return wrapHandler(async () => {
-        // ANTI-07: Runtime validation at IPC boundary
         const validated = ExternalIdUpsertSchema.safeParse({ caseId, idType, idValue })
         if (!validated.success) {
           mainLogger.error(
@@ -543,57 +445,20 @@ export function registerCaseMetadataHandlers({
           throw new Error('Invalid parameters')
         }
 
-        const db = getDb()
-        return db.metadata.upsertCaseExternalId(
+        return upsertExternalId(
           validated.data.caseId,
           validated.data.idType,
-          validated.data.idValue
+          validated.data.idValue,
+          getDb
         )
       })
     }
   )
 
-  ipcMain.handle('case-metadata:distinctHpoTerms', async () => {
-    return wrapHandler(async () => {
-      const pool = getDbPool?.()
-      if (pool) {
-        return await pool.run({ type: 'case-metadata:distinctHpoTerms', params: [] })
-      }
-
-      const db = getDb()
-      return db.metadata.getDistinctHpoTerms()
-    })
-  })
-
-  ipcMain.handle('case-metadata:distinctPlatforms', async () => {
-    return wrapHandler(async () => {
-      const pool = getDbPool?.()
-      if (pool) {
-        return await pool.run({ type: 'case-metadata:distinctPlatforms', params: [] })
-      }
-
-      const db = getDb()
-      return db.metadata.getDistinctPlatforms()
-    })
-  })
-
-  ipcMain.handle('case-metadata:distinctExternalIdTypes', async () => {
-    return wrapHandler(async () => {
-      const pool = getDbPool?.()
-      if (pool) {
-        return await pool.run({ type: 'case-metadata:distinctExternalIdTypes', params: [] })
-      }
-
-      const db = getDb()
-      return db.metadata.getDistinctExternalIdTypes()
-    })
-  })
-
   ipcMain.handle(
     'case-metadata:deleteExternalId',
     async (_event, caseId: unknown, idType: unknown) => {
       return wrapHandler(async () => {
-        // ANTI-07: Runtime validation at IPC boundary
         const validated = ExternalIdDeleteSchema.safeParse({ caseId, idType })
         if (!validated.success) {
           mainLogger.error(
@@ -603,23 +468,40 @@ export function registerCaseMetadataHandlers({
           throw new Error('Invalid parameters')
         }
 
-        const db = getDb()
-        db.metadata.deleteCaseExternalId(validated.data.caseId, validated.data.idType)
+        deleteExternalId(validated.data.caseId, validated.data.idType, getDb)
         return undefined
       })
     }
   )
 
   // ============================================================
+  // Distinct Lookups
+  // ============================================================
+
+  ipcMain.handle('case-metadata:distinctHpoTerms', async () => {
+    return wrapHandler(async () => {
+      return distinctHpoTerms(getDb, getDbPool)
+    })
+  })
+
+  ipcMain.handle('case-metadata:distinctPlatforms', async () => {
+    return wrapHandler(async () => {
+      return distinctPlatforms(getDb, getDbPool)
+    })
+  })
+
+  ipcMain.handle('case-metadata:distinctExternalIdTypes', async () => {
+    return wrapHandler(async () => {
+      return distinctExternalIdTypes(getDb, getDbPool)
+    })
+  })
+
+  // ============================================================
   // Convenience Handlers
   // ============================================================
 
-  /**
-   * Get full metadata for a case (metadata + cohorts + HPO terms)
-   */
   ipcMain.handle('case-metadata:getFullMetadata', async (_event, caseId: unknown) => {
     return wrapHandler(async () => {
-      // ANTI-07: Runtime validation at IPC boundary
       const validated = CaseIdSchema.safeParse(caseId)
       if (!validated.success) {
         mainLogger.error(
@@ -628,14 +510,7 @@ export function registerCaseMetadataHandlers({
         )
         throw new Error('Invalid parameters')
       }
-
-      const pool = getDbPool?.()
-      if (pool) {
-        return await pool.run({ type: 'case-metadata:getFullMetadata', params: [validated.data] })
-      }
-
-      const db = getDb()
-      return db.metadata.getFullCaseMetadata(validated.data)
+      return getFullMetadata(validated.data, getDb, getDbPool)
     })
   })
 }

@@ -83,7 +83,7 @@ export default [
       ]
     }
   },
-  // Ban raw window.api access (enforce useApiService)
+  // Ban raw window.api access (enforce useApiService) and ad-hoc IPC error checks
   {
     files: ['src/renderer/**/*.{ts,tsx,vue}'],
     ignores: [
@@ -98,6 +98,11 @@ export default [
         {
           selector: "MemberExpression[object.property.name='api'][object.object.name='window']",
           message: 'Use useApiService() for API access. Direct window.api usage is not allowed.'
+        },
+        {
+          selector: "BinaryExpression[operator='in'][left.value='error'][right.type='Identifier']",
+          message:
+            "Use isIpcError() from shared/types/errors instead of ad-hoc 'error' in result checks."
         }
       ]
     }

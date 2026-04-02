@@ -1,7 +1,6 @@
 import { z } from 'zod'
 import { wrapHandler } from '../errorHandler'
 import type { HandlerDependencies } from '../types'
-import type { VariantAnnotation, CaseVariantAnnotation } from '../../database/types'
 import {
   VariantCoordsSchema,
   GlobalAnnotationUpdatesSchema,
@@ -10,6 +9,16 @@ import {
   CaseIdSchema
 } from '../../../shared/types/ipc-schemas'
 import { mainLogger } from '../../services/MainLogger'
+import {
+  getGlobalAnnotation,
+  upsertGlobalAnnotation,
+  deleteGlobalAnnotation,
+  getPerCaseAnnotation,
+  upsertPerCaseAnnotation,
+  deletePerCaseAnnotation,
+  getAnnotationsForVariant,
+  batchGetAnnotations
+} from './annotations-logic'
 
 /**
  * Annotations IPC handlers
@@ -39,21 +48,7 @@ export function registerAnnotationHandlers({
           throw new Error('Invalid variant coordinates')
         }
 
-        const pool = getDbPool?.()
-        if (pool) {
-          return await pool.run({
-            type: 'annotations:getGlobal',
-            params: [validated.data.chr, validated.data.pos, validated.data.ref, validated.data.alt]
-          })
-        }
-
-        const db = getDb()
-        return db.annotations.getGlobalAnnotation(
-          validated.data.chr,
-          validated.data.pos,
-          validated.data.ref,
-          validated.data.alt
-        )
+        return getGlobalAnnotation(validated.data, getDb, getDbPool)
       })
     }
   )
@@ -84,78 +79,7 @@ export function registerAnnotationHandlers({
           throw new Error('Invalid annotation updates')
         }
 
-        const db = getDb()
-        const { chr: vChr, pos: vPos, ref: vRef, alt: vAlt } = validatedCoords.data
-
-        // Extract user_name before building db updates
-        const { user_name, ...annotationUpdates } = validatedUpdates.data
-
-        // Read current state before upsert for audit trail
-        const oldAnnotation = db.annotations.getGlobalAnnotation(vChr, vPos, vRef, vAlt)
-
-        // Build dbUpdates only with keys actually provided
-        const dbUpdates: Partial<
-          Pick<
-            VariantAnnotation,
-            'global_comment' | 'starred' | 'acmg_classification' | 'acmg_evidence'
-          >
-        > = {}
-
-        if ('global_comment' in annotationUpdates) {
-          dbUpdates.global_comment = annotationUpdates.global_comment
-        }
-        if ('acmg_classification' in annotationUpdates) {
-          dbUpdates.acmg_classification = annotationUpdates.acmg_classification
-        }
-        if ('acmg_evidence' in annotationUpdates) {
-          dbUpdates.acmg_evidence = annotationUpdates.acmg_evidence
-        }
-        if (annotationUpdates.starred !== undefined) {
-          dbUpdates.starred = annotationUpdates.starred ? 1 : 0
-        }
-
-        const result = db.annotations.upsertGlobalAnnotation(vChr, vPos, vRef, vAlt, dbUpdates)
-
-        // Audit logging
-        const entityKey = `${vChr}:${vPos}:${vRef}:${vAlt}`
-        if (annotationUpdates.acmg_classification !== undefined) {
-          db.auditLog.appendEntry({
-            action_type: 'acmg_classify',
-            entity_type: 'variant_annotation',
-            entity_key: entityKey,
-            old_value: oldAnnotation
-              ? JSON.stringify({ acmg_classification: oldAnnotation.acmg_classification })
-              : null,
-            new_value: JSON.stringify({
-              acmg_classification: annotationUpdates.acmg_classification
-            }),
-            user_name: user_name ?? null
-          })
-        }
-        if (annotationUpdates.acmg_evidence !== undefined) {
-          db.auditLog.appendEntry({
-            action_type: 'acmg_evidence_update',
-            entity_type: 'variant_annotation',
-            entity_key: entityKey,
-            old_value: oldAnnotation
-              ? JSON.stringify({ acmg_evidence: oldAnnotation.acmg_evidence })
-              : null,
-            new_value: JSON.stringify({ acmg_evidence: annotationUpdates.acmg_evidence }),
-            user_name: user_name ?? null
-          })
-        }
-        if (annotationUpdates.starred !== undefined) {
-          db.auditLog.appendEntry({
-            action_type: annotationUpdates.starred ? 'star' : 'unstar',
-            entity_type: 'variant_annotation',
-            entity_key: entityKey,
-            old_value: oldAnnotation ? JSON.stringify({ starred: oldAnnotation.starred }) : null,
-            new_value: JSON.stringify({ starred: annotationUpdates.starred ? 1 : 0 }),
-            user_name: user_name ?? null
-          })
-        }
-
-        return result
+        return upsertGlobalAnnotation(validatedCoords.data, validatedUpdates.data, getDb)
       })
     }
   )
@@ -177,13 +101,7 @@ export function registerAnnotationHandlers({
           throw new Error('Invalid variant coordinates')
         }
 
-        const db = getDb()
-        db.annotations.deleteGlobalAnnotation(
-          validated.data.chr,
-          validated.data.pos,
-          validated.data.ref,
-          validated.data.alt
-        )
+        deleteGlobalAnnotation(validated.data, getDb)
         return undefined
       })
     }
@@ -204,16 +122,7 @@ export function registerAnnotationHandlers({
         throw new Error('Invalid case/variant ID')
       }
 
-      const pool = getDbPool?.()
-      if (pool) {
-        return await pool.run({
-          type: 'annotations:getPerCase',
-          params: [validated.data.caseId, validated.data.variantId]
-        })
-      }
-
-      const db = getDb()
-      return db.annotations.getPerCaseAnnotation(validated.data.caseId, validated.data.variantId)
+      return getPerCaseAnnotation(validated.data.caseId, validated.data.variantId, getDb, getDbPool)
     })
   })
 
@@ -244,79 +153,12 @@ export function registerAnnotationHandlers({
           throw new Error('Invalid annotation updates')
         }
 
-        const db = getDb()
-        const vCaseId = validatedIds.data.caseId
-        const vVariantId = validatedIds.data.variantId
-
-        // Extract user_name before building db updates
-        const { user_name, ...annotationUpdates } = validatedUpdates.data
-
-        // Read current state before upsert for audit trail
-        const oldAnnotation = db.annotations.getPerCaseAnnotation(vCaseId, vVariantId)
-
-        // Build dbUpdates only with keys actually provided
-        const dbUpdates: Partial<
-          Pick<
-            CaseVariantAnnotation,
-            'per_case_comment' | 'starred' | 'acmg_classification' | 'acmg_evidence'
-          >
-        > = {}
-
-        if ('per_case_comment' in annotationUpdates) {
-          dbUpdates.per_case_comment = annotationUpdates.per_case_comment
-        }
-        if ('acmg_classification' in annotationUpdates) {
-          dbUpdates.acmg_classification = annotationUpdates.acmg_classification
-        }
-        if ('acmg_evidence' in annotationUpdates) {
-          dbUpdates.acmg_evidence = annotationUpdates.acmg_evidence
-        }
-        if (annotationUpdates.starred !== undefined) {
-          dbUpdates.starred = annotationUpdates.starred ? 1 : 0
-        }
-
-        const result = db.annotations.upsertPerCaseAnnotation(vCaseId, vVariantId, dbUpdates)
-
-        // Audit logging
-        const entityKey = `case:${vCaseId}:variant:${vVariantId}`
-        if (annotationUpdates.acmg_classification !== undefined) {
-          db.auditLog.appendEntry({
-            action_type: 'acmg_classify',
-            entity_type: 'case_variant_annotation',
-            entity_key: entityKey,
-            old_value: oldAnnotation
-              ? JSON.stringify({ acmg_classification: oldAnnotation.acmg_classification })
-              : null,
-            new_value: JSON.stringify({
-              acmg_classification: annotationUpdates.acmg_classification
-            }),
-            user_name: user_name ?? null
-          })
-        }
-        if (annotationUpdates.acmg_evidence !== undefined) {
-          db.auditLog.appendEntry({
-            action_type: 'acmg_evidence_update',
-            entity_type: 'case_variant_annotation',
-            entity_key: entityKey,
-            old_value: oldAnnotation
-              ? JSON.stringify({ acmg_evidence: oldAnnotation.acmg_evidence })
-              : null,
-            new_value: JSON.stringify({ acmg_evidence: annotationUpdates.acmg_evidence }),
-            user_name: user_name ?? null
-          })
-        }
-        if (annotationUpdates.starred !== undefined) {
-          db.auditLog.appendEntry({
-            action_type: annotationUpdates.starred ? 'star' : 'unstar',
-            entity_type: 'case_variant_annotation',
-            entity_key: entityKey,
-            old_value: oldAnnotation ? JSON.stringify({ starred: oldAnnotation.starred }) : null,
-            new_value: JSON.stringify({ starred: annotationUpdates.starred ? 1 : 0 }),
-            user_name: user_name ?? null
-          })
-        }
-
-        return result
+        return upsertPerCaseAnnotation(
+          validatedIds.data.caseId,
+          validatedIds.data.variantId,
+          validatedUpdates.data,
+          getDb
+        )
       })
     }
   )
@@ -338,8 +180,7 @@ export function registerAnnotationHandlers({
           throw new Error('Invalid case/variant ID')
         }
 
-        const db = getDb()
-        db.annotations.deletePerCaseAnnotation(validated.data.caseId, validated.data.variantId)
+        deletePerCaseAnnotation(validated.data.caseId, validated.data.variantId, getDb)
         return undefined
       })
     }
@@ -371,27 +212,11 @@ export function registerAnnotationHandlers({
           throw new Error('Invalid variant coordinates')
         }
 
-        const pool = getDbPool?.()
-        if (pool) {
-          return await pool.run({
-            type: 'annotations:getForVariant',
-            params: [
-              validatedCaseId.data,
-              validatedCoords.data.chr,
-              validatedCoords.data.pos,
-              validatedCoords.data.ref,
-              validatedCoords.data.alt
-            ]
-          })
-        }
-
-        const db = getDb()
-        return db.annotations.getAnnotationsForVariant(
+        return getAnnotationsForVariant(
           validatedCaseId.data,
-          validatedCoords.data.chr,
-          validatedCoords.data.pos,
-          validatedCoords.data.ref,
-          validatedCoords.data.alt
+          validatedCoords.data,
+          getDb,
+          getDbPool
         )
       })
     }
@@ -407,7 +232,7 @@ export function registerAnnotationHandlers({
     })
   )
 
-  // Batch read — single round-trip for N variants (pool-dispatched)
+  // Batch read -- single round-trip for N variants (pool-dispatched)
   ipcMain.handle('annotations:batchGet', async (_event, caseId: unknown, variantKeys: unknown) => {
     return wrapHandler(async () => {
       const validatedCaseId = z.number().int().positive().nullable().safeParse(caseId)
@@ -420,15 +245,7 @@ export function registerAnnotationHandlers({
         throw new Error('Invalid variantKeys parameter')
       }
 
-      const pool = getDbPool?.()
-      if (pool) {
-        return await pool.run({
-          type: 'annotations:batchGet' as const,
-          params: [validatedCaseId.data, validatedKeys.data]
-        })
-      }
-      const db = getDb()
-      return db.annotations.getBatch(validatedCaseId.data, validatedKeys.data)
+      return batchGetAnnotations(validatedCaseId.data, validatedKeys.data, getDb, getDbPool)
     })
   })
 }

@@ -29,3 +29,15 @@ export function isIpcError(result: unknown): result is SerializableError {
     'userMessage' in result
   )
 }
+
+/**
+ * Unwrap an IPC result, throwing if it is a SerializableError.
+ * Use in renderer code where the caller wants the success value
+ * and can let an error propagate to a catch handler.
+ */
+export function unwrapIpcResult<T>(result: IpcResult<T>): T {
+  if (isIpcError(result)) {
+    throw result
+  }
+  return result
+}

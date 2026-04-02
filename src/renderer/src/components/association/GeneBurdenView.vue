@@ -96,6 +96,7 @@ import AssociationResultsTable from './AssociationResultsTable.vue'
 import VolcanoPlot from './VolcanoPlot.vue'
 import ManhattanPlot from './ManhattanPlot.vue'
 import { useAssociation } from '../../composables/useAssociation'
+import { isIpcError } from '../../../../shared/types/errors'
 
 interface CaseInfo {
   id: number
@@ -194,8 +195,8 @@ async function runAnalysis(config: unknown): Promise<void> {
 
   try {
     const result = await apiRunAssociation(config)
-    if (result !== null && typeof result === 'object' && 'error' in result) {
-      throw new Error(String((result as { error: unknown }).error))
+    if (isIpcError(result)) {
+      throw new Error(result.userMessage)
     }
     results.value = result as AssociationResultsData
   } catch (err) {

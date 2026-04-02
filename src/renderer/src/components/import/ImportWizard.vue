@@ -197,6 +197,7 @@ import type { VcfPreviewResult } from '../../../../shared/types/vcf'
 import { useApiService } from '../../composables/useApiService'
 import { useImportStatusStore } from '../../stores/importStatusStore'
 import { logService } from '../../services/LogService'
+import { isIpcError } from '../../../../shared/types/errors'
 import BatchReviewPhase from '../batch-import/BatchReviewPhase.vue'
 import BatchProgressPhase from '../batch-import/BatchProgressPhase.vue'
 import BatchSummaryPhase from '../batch-import/BatchSummaryPhase.vue'
@@ -387,9 +388,9 @@ async function checkDuplicatesAndAdvance(filePaths: string[]): Promise<void> {
   const result = await api!.batchImport.checkDuplicates(filePaths, stripText.value || undefined)
 
   // Guard against error responses from wrapHandler (returns SerializableError on failure)
-  if (!Array.isArray((result as unknown as Record<string, unknown>).files)) {
-    logService.error('checkDuplicates returned invalid result', 'ImportWizard')
-    importStore.importError('Failed to check files. Please try again.')
+  if (isIpcError(result)) {
+    logService.error('checkDuplicates returned error: ' + result.userMessage, 'ImportWizard')
+    importStore.importError(result.userMessage ?? 'Failed to check files. Please try again.')
     return
   }
 
@@ -473,16 +474,15 @@ async function startVcfImport(): Promise<void> {
           selectedSample: sample,
           genomeBuild: vcfGenomeBuild.value ?? undefined
         })
-        const resultObj = result as unknown as Record<string, unknown>
 
-        if ('userMessage' in resultObj) {
+        if (isIpcError(result)) {
           results.failed++
           results.details.push({
             filePath: vcfFilePath.value,
             fileName: caseName,
             caseName,
             status: 'failed' as const,
-            error: String(resultObj.userMessage)
+            error: result.userMessage
           })
         } else {
           results.succeeded++
@@ -560,11 +560,8 @@ async function startImport(): Promise<void> {
     )
 
     // Guard against error responses from wrapHandler (returns SerializableError on failure)
-    if (!Array.isArray((result as unknown as Record<string, unknown>).details)) {
-      const errorMsg =
-        'userMessage' in (result as unknown as Record<string, unknown>)
-          ? (result as unknown as { userMessage: string }).userMessage
-          : 'Import failed unexpectedly'
+    if (isIpcError(result)) {
+      const errorMsg = result.userMessage
       logService.error(`Import returned error: ${JSON.stringify(result)}`, 'ImportWizard')
       summary.value = {
         succeeded: 0,

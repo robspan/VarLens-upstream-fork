@@ -125,6 +125,7 @@ import type { CohortVariant } from '../../../shared/types/cohort'
 import type { CohortQueryParams } from '../composables/useCohortData'
 import type { ColumnFiltersParam } from '../../../shared/types/column-filters'
 import { mdiDatabaseSync, mdiRefresh } from '@mdi/js'
+import { isIpcError } from '../../../shared/types/errors'
 
 // Emit for navigation and row click
 const emit = defineEmits<{
@@ -297,10 +298,10 @@ const exportToExcel = async (): Promise<void> => {
     }
     const result = await api.export.cohort(plainParams)
 
-    if (result !== null && result !== undefined && 'code' in result) {
+    if (isIpcError(result)) {
       snackbar.value = {
         visible: true,
-        message: `Export failed: ${result.message ?? result.userMessage ?? 'Unknown error'}`,
+        message: `Export failed: ${result.userMessage ?? result.message ?? 'Unknown error'}`,
         color: 'error',
         timeout: -1,
         actionText: null,

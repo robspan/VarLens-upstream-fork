@@ -171,6 +171,7 @@ import type { ActiveFilter } from '../../../shared/types/filters'
 import type { FilterDrawerState } from './filterDrawerTypes'
 import { ACMG_FILTER_OPTIONS, applyPresetStateToFilters, isPresetDiverged } from '../utils/filters'
 import { cloneForIpc } from '../utils/cloneForIpc'
+import { isIpcError } from '../../../shared/types/errors'
 import { useResponsiveLayout } from '../composables/useResponsiveLayout'
 import {
   mdiCommentText,
@@ -379,7 +380,7 @@ async function handleSavePreset(data: { name: string; description: string | null
       filterJson: plainFilters
     })
     // Check if IPC returned a serializable error
-    if (result !== null && typeof result === 'object' && 'code' in result) {
+    if (isIpcError(result)) {
       return
     }
     showSavePresetDialog.value = false

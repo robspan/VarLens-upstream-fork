@@ -52,10 +52,10 @@ export default defineConfig({
       thresholds: {
         autoUpdate: true,
         // Global floor -- calibrated from measured actuals (~2% below)
-        lines: 32,
-        functions: 20,
-        branches: 26,
-        statements: 31
+        lines: 33.5,
+        functions: 21.2,
+        branches: 27.5,
+        statements: 32.9
       },
       reporter: ['text', 'json-summary', 'html'],
       reportsDirectory: 'coverage'

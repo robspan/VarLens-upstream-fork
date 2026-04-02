@@ -2,6 +2,7 @@ import { type Ref } from 'vue'
 import { useApiService } from './useApiService'
 import { buildFilterFromState, type FilterState, type ExportResult } from './filter-types'
 import { logService } from '../services/LogService'
+import { isIpcError } from '../../../shared/types/errors'
 
 /**
  * Composable for variant export functionality.
@@ -30,10 +31,10 @@ export function useFilterExport(
         caseName !== '' ? caseName : `case_${caseId}`
       )
 
-      if (result !== null && result !== undefined && 'code' in result) {
+      if (isIpcError(result)) {
         return {
           success: false,
-          error: result.message ?? result.userMessage ?? 'Unknown error'
+          error: result.userMessage ?? result.message ?? 'Unknown error'
         }
       }
 

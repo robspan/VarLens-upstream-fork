@@ -9,6 +9,17 @@ import {
   CaseVariantIdSchema
 } from '../../../shared/types/ipc-schemas'
 import { mainLogger } from '../../services/MainLogger'
+import {
+  listTags,
+  createTag,
+  updateTag,
+  deleteTag,
+  getUsageCount,
+  getVariantTags,
+  assignVariantTag,
+  removeVariantTag,
+  setVariantTags
+} from './tags-logic'
 
 /**
  * Tags IPC handlers
@@ -21,96 +32,57 @@ export function registerTagHandlers({ ipcMain, getDb, getDbPool }: HandlerDepend
   // Tag CRUD Handlers
   // ============================================================
 
-  /**
-   * List all tags
-   */
   ipcMain.handle('tags:list', async () => {
-    return wrapHandler(async () => {
-      const pool = getDbPool?.()
-      if (pool) {
-        return await pool.run({ type: 'tags:list' as const, params: [] })
-      }
-      const db = getDb()
-      return db.tags.listTags()
-    })
+    return wrapHandler(() => listTags(getDb, getDbPool))
   })
 
-  /**
-   * Create a new tag
-   */
   ipcMain.handle('tags:create', async (_event, name: unknown, color: unknown) => {
     return wrapHandler(async () => {
-      // ANTI-07: Runtime validation at IPC boundary
       const validated = TagCreateSchema.safeParse({ name, color })
       if (!validated.success) {
         mainLogger.error(`Invalid tags:create params: ${validated.error.message}`, 'tags')
         throw new Error('Invalid tag parameters')
       }
-
-      const db = getDb()
-      return db.tags.createTag(validated.data.name, validated.data.color)
+      return createTag(validated.data.name, validated.data.color, getDb)
     })
   })
 
-  /**
-   * Update a tag
-   */
   ipcMain.handle('tags:update', async (_event, id: unknown, updates: unknown) => {
     return wrapHandler(async () => {
-      // ANTI-07: Runtime validation at IPC boundary
       const validatedId = TagIdSchema.safeParse(id)
       if (!validatedId.success) {
         mainLogger.error(`Invalid tags:update id: ${validatedId.error.message}`, 'tags')
         throw new Error('Invalid tag ID')
       }
-
       const validatedUpdates = TagUpdateSchema.safeParse(updates)
       if (!validatedUpdates.success) {
         mainLogger.error(`Invalid tags:update updates: ${validatedUpdates.error.message}`, 'tags')
         throw new Error('Invalid tag update parameters')
       }
-
-      const db = getDb()
-      return db.tags.updateTag(validatedId.data, validatedUpdates.data)
+      return updateTag(validatedId.data, validatedUpdates.data, getDb)
     })
   })
 
-  /**
-   * Delete a tag
-   */
   ipcMain.handle('tags:delete', async (_event, id: unknown) => {
     return wrapHandler(async () => {
-      // ANTI-07: Runtime validation at IPC boundary
       const validatedId = TagIdSchema.safeParse(id)
       if (!validatedId.success) {
         mainLogger.error(`Invalid tags:delete id: ${validatedId.error.message}`, 'tags')
         throw new Error('Invalid tag ID')
       }
-
-      const db = getDb()
-      db.tags.deleteTag(validatedId.data)
+      deleteTag(validatedId.data, getDb)
       return undefined
     })
   })
 
-  /**
-   * Get tag usage count
-   */
   ipcMain.handle('tags:getUsageCount', async (_event, tagId: unknown) => {
     return wrapHandler(async () => {
-      // ANTI-07: Runtime validation at IPC boundary
       const validatedId = TagIdSchema.safeParse(tagId)
       if (!validatedId.success) {
         mainLogger.error(`Invalid tags:getUsageCount id: ${validatedId.error.message}`, 'tags')
         throw new Error('Invalid tag ID')
       }
-
-      const pool = getDbPool?.()
-      if (pool) {
-        return await pool.run({ type: 'tags:getUsageCount' as const, params: [validatedId.data] })
-      }
-      const db = getDb()
-      return db.tags.getTagUsageCount(validatedId.data)
+      return getUsageCount(validatedId.data, getDb, getDbPool)
     })
   })
 
@@ -118,38 +90,21 @@ export function registerTagHandlers({ ipcMain, getDb, getDbPool }: HandlerDepend
   // Variant Tag Assignment Handlers
   // ============================================================
 
-  /**
-   * Get all tags for a case-variant pair
-   */
   ipcMain.handle('tags:getVariantTags', async (_event, caseId: unknown, variantId: unknown) => {
     return wrapHandler(async () => {
-      // ANTI-07: Runtime validation at IPC boundary
       const validated = CaseVariantIdSchema.safeParse({ caseId, variantId })
       if (!validated.success) {
         mainLogger.error(`Invalid tags:getVariantTags params: ${validated.error.message}`, 'tags')
         throw new Error('Invalid case/variant ID')
       }
-
-      const pool = getDbPool?.()
-      if (pool) {
-        return await pool.run({
-          type: 'tags:getVariantTags' as const,
-          params: [validated.data.caseId, validated.data.variantId]
-        })
-      }
-      const db = getDb()
-      return db.tags.getVariantTags(validated.data.caseId, validated.data.variantId)
+      return getVariantTags(validated.data.caseId, validated.data.variantId, getDb, getDbPool)
     })
   })
 
-  /**
-   * Assign a tag to a case-variant pair
-   */
   ipcMain.handle(
     'tags:assignVariantTag',
     async (_event, caseId: unknown, variantId: unknown, tagId: unknown) => {
       return wrapHandler(async () => {
-        // ANTI-07: Runtime validation at IPC boundary
         const validated = VariantTagAssignSchema.safeParse({ caseId, variantId, tagId })
         if (!validated.success) {
           mainLogger.error(
@@ -158,26 +113,21 @@ export function registerTagHandlers({ ipcMain, getDb, getDbPool }: HandlerDepend
           )
           throw new Error('Invalid tag assignment parameters')
         }
-
-        const db = getDb()
-        db.tags.assignVariantTag(
+        assignVariantTag(
           validated.data.caseId,
           validated.data.variantId,
-          validated.data.tagId
+          validated.data.tagId,
+          getDb
         )
         return undefined
       })
     }
   )
 
-  /**
-   * Remove a tag from a case-variant pair
-   */
   ipcMain.handle(
     'tags:removeVariantTag',
     async (_event, caseId: unknown, variantId: unknown, tagId: unknown) => {
       return wrapHandler(async () => {
-        // ANTI-07: Runtime validation at IPC boundary
         const validated = VariantTagAssignSchema.safeParse({ caseId, variantId, tagId })
         if (!validated.success) {
           mainLogger.error(
@@ -186,37 +136,31 @@ export function registerTagHandlers({ ipcMain, getDb, getDbPool }: HandlerDepend
           )
           throw new Error('Invalid tag removal parameters')
         }
-
-        const db = getDb()
-        db.tags.removeVariantTag(
+        removeVariantTag(
           validated.data.caseId,
           validated.data.variantId,
-          validated.data.tagId
+          validated.data.tagId,
+          getDb
         )
         return undefined
       })
     }
   )
 
-  /**
-   * Replace all tag assignments for a case-variant pair
-   */
   ipcMain.handle(
     'tags:setVariantTags',
     async (_event, caseId: unknown, variantId: unknown, tagIds: unknown) => {
       return wrapHandler(async () => {
-        // ANTI-07: Runtime validation at IPC boundary
         const validated = VariantTagSetSchema.safeParse({ caseId, variantId, tagIds })
         if (!validated.success) {
           mainLogger.error(`Invalid tags:setVariantTags params: ${validated.error.message}`, 'tags')
           throw new Error('Invalid tag set parameters')
         }
-
-        const db = getDb()
-        db.tags.setVariantTags(
+        setVariantTags(
           validated.data.caseId,
           validated.data.variantId,
-          validated.data.tagIds
+          validated.data.tagIds,
+          getDb
         )
         return undefined
       })

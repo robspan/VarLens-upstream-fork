@@ -115,7 +115,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useApiService } from '../../composables/useApiService'
 import { logService } from '../../services/LogService'
-import type { VcfPreviewResult } from '../../../../main/import/vcf/types'
+import type { VcfPreviewResult } from '../../../../shared/types/vcf'
 
 const props = defineProps<{
   filePath: string

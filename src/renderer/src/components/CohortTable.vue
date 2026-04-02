@@ -248,8 +248,7 @@ const {
     }
 
     const plainParams = buildIpcParams(params)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await (api as any).cohort.getVariants(plainParams)
+    const result = await api.cohort.getVariants(plainParams)
 
     return {
       data: result.data ?? [],
@@ -296,8 +295,7 @@ const exportToExcel = async (): Promise<void> => {
       cadd_min: filters.value.minCadd ?? undefined,
       max_internal_af: filters.value.maxInternalAf ?? undefined
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await (api as any).export.cohort(plainParams)
+    const result = await api.export.cohort(plainParams)
 
     if (result !== null && result !== undefined && 'code' in result) {
       snackbar.value = {
@@ -316,8 +314,8 @@ const exportToExcel = async (): Promise<void> => {
         timeout: 3000,
         actionText: 'Open folder',
         actionCallback: () => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          ;(api as any).shell.showItemInFolder(result.filePath)
+          if (result.filePath != null && result.filePath !== '')
+            api.shell.showItemInFolder(result.filePath)
         }
       }
     }

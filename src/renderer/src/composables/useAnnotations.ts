@@ -7,7 +7,10 @@
 
 import { shallowRef, triggerRef } from 'vue'
 import { logService } from '../services/LogService'
-import type { VariantAnnotation, CaseVariantAnnotation } from '../../../main/database/types'
+import type {
+  VariantAnnotation,
+  CaseVariantAnnotation
+} from '../../../shared/types/database-entities'
 import type { AcmgClassification } from '../../../shared/config/domain.config'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useDatabaseStore } from '../stores/databaseStore'

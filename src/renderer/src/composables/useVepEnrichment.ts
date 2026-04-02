@@ -17,10 +17,7 @@ import type {
   MyVariantScores,
   SpliceAIScores
 } from '../../../shared/types/api-enrichment'
-import type {
-  VepTranscriptConsequence,
-  VepColocatedVariant
-} from '../../../main/services/api/schemas/vep-response'
+import type { VepTranscriptConsequence, VepColocatedVariant } from '../../../shared/types/vep'
 import { useApiService } from './useApiService'
 
 export function useVepEnrichment() {

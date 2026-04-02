@@ -1,4 +1,5 @@
 import { ref, computed } from 'vue'
+import { useApiService } from './useApiService'
 import { logService } from '../services/LogService'
 
 interface AnalysisGroupOption {
@@ -11,10 +12,13 @@ const groups = ref<AnalysisGroupOption[]>([])
 const loading = ref(false)
 
 export function useAnalysisGroups() {
+  const { api } = useApiService()
+
   async function loadGroups(): Promise<void> {
+    if (!api) return
     loading.value = true
     try {
-      groups.value = (await window.api.analysisGroups.list()) as AnalysisGroupOption[]
+      groups.value = (await api.analysisGroups.list()) as AnalysisGroupOption[]
     } catch (error) {
       logService.error(`Failed to load analysis groups: ${error}`, 'useAnalysisGroups')
       groups.value = []

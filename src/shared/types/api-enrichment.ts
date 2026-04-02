@@ -4,10 +4,7 @@
  * Used for VEP and HPO API responses in IPC communication
  */
 
-import type {
-  VepResponse,
-  VepTranscriptConsequence
-} from '../../main/services/api/schemas/vep-response'
+import type { VepResponse, VepTranscriptConsequence } from './vep'
 import type { HpoTerm } from '../../main/services/api/schemas/hpo-response'
 
 /**

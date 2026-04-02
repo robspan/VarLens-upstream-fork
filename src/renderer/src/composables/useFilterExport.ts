@@ -24,9 +24,7 @@ export function useFilterExport(
     try {
       const exportFilters = buildFilterFromState(filters.value, selectedImpactPresets.value)
 
-      // Note: the `as any` cast will be resolved by Phase 2 M-06
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await (api as any).export.variants(
+      const result = await api.export.variants(
         caseId,
         exportFilters,
         caseName !== '' ? caseName : `case_${caseId}`

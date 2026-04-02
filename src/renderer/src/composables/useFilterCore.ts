@@ -34,6 +34,9 @@ export interface CoreActiveFilter {
  * Both useFilterState (case view) and createFilters (cohort view) call this
  * and delegate their shared refs to the returned values.
  */
+/** Return type of useFilterCore for use in dependent composable signatures */
+export type FilterCoreReturn = ReturnType<typeof useFilterCore>
+
 export function useFilterCore() {
   // -------------------------------------------------------------------------
   // Shared reactive state

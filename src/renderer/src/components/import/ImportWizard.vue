@@ -193,7 +193,7 @@ import type {
   BatchResult,
   BatchProgress
 } from '../../../../shared/types/api'
-import type { VcfPreviewResult } from '../../../../main/import/vcf/types'
+import type { VcfPreviewResult } from '../../../../shared/types/vcf'
 import { useApiService } from '../../composables/useApiService'
 import { useImportStatusStore } from '../../stores/importStatusStore'
 import { logService } from '../../services/LogService'

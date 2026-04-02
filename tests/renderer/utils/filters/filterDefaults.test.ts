@@ -18,6 +18,7 @@ describe('FILTER_DEFAULTS', () => {
     expect(FILTER_DEFAULTS.funcs).toEqual([])
     expect(FILTER_DEFAULTS.clinvars).toEqual([])
     expect(FILTER_DEFAULTS.acmgClassifications).toEqual([])
+    expect(FILTER_DEFAULTS.tagIds).toEqual([])
     expect(FILTER_DEFAULTS.activePanelIds).toEqual([])
     expect(FILTER_DEFAULTS.inheritanceModes).toEqual([])
   })
@@ -54,6 +55,8 @@ describe('FILTER_DEFAULTS', () => {
       'starredOnly',
       'hasCommentOnly',
       'acmgClassifications',
+      'tagIds',
+      'annotationScope',
       'activePanelIds',
       'panelPaddingBp',
       'maxInternalAf',

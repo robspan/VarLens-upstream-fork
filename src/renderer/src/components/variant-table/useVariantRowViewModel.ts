@@ -10,7 +10,8 @@
  */
 
 import { computed, type Ref, type ShallowRef } from 'vue'
-import type { AcmgClassification, Variant } from '../../../../main/database/types'
+import type { AcmgClassification } from '../../../../shared/config/domain.config'
+import type { Variant } from '../../../../shared/types/api'
 
 export interface RowViewModel {
   links: Record<string, string | null>

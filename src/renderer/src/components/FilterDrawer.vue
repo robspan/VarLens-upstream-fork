@@ -527,7 +527,7 @@ import { consequenceGroups, clinvarGroups } from '../config/filterGroups'
 import { ACMG_FILTER_OPTIONS_LONG } from '../utils/filters'
 import { INHERITANCE_MODE_META, SOLO_MODES, TRIO_MODES } from '../../../shared/types/inheritance'
 import { useAnalysisGroups } from '../composables/useAnalysisGroups'
-import type { Tag } from '../../../shared/types/api'
+import type { Tag } from '../../../shared/types/database-entities'
 import type { FilterDrawerState } from './filterDrawerTypes'
 import {
   mdiAlertCircle,

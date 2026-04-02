@@ -173,7 +173,7 @@
  */
 
 import type { CohortVariant } from '../../../../shared/types/cohort'
-import type { AcmgClassification } from '../../../../main/database/types'
+import type { AcmgClassification } from '../../../../shared/config/domain.config'
 import AcmgMenu from '../AcmgMenu.vue'
 import { ACMG_COLORS, ACMG_ABBREV } from '../../composables/useAnnotations'
 import { mdiComment, mdiCommentOutline, mdiStar, mdiStarOutline, mdiTagOutline } from '@mdi/js'

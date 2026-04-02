@@ -1,4 +1,4 @@
-import type { Case } from '../../../../main/database/types'
+import type { Case } from '../../../../shared/types/api'
 
 export const mockCases: Case[] = [
   {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, toRef, watch } from 'vue'
-import type { VepTranscriptConsequence } from '../../../main/services/api/schemas/vep-response'
+import type { VepTranscriptConsequence } from '../../../shared/types/vep'
 import type { TranscriptInsertRow } from '../../../shared/types/transcript'
 import { useTranscripts } from '../composables/useTranscripts'
 import {

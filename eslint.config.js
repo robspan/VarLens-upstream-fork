@@ -65,5 +65,41 @@ export default [
       '@typescript-eslint/no-unsafe-return': 'off',
       '@typescript-eslint/no-unsafe-argument': 'off'
     }
+  },
+  // Ban renderer -> main process imports
+  {
+    files: ['src/renderer/**/*.{ts,tsx,vue}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/main/**'],
+              message: 'Renderer must not import from main process. Use src/shared/ re-exports.'
+            }
+          ]
+        }
+      ]
+    }
+  },
+  // Ban raw window.api access (enforce useApiService)
+  {
+    files: ['src/renderer/**/*.{ts,tsx,vue}'],
+    ignores: [
+      'src/renderer/src/composables/useApiService.ts',
+      'src/renderer/src/services/LogService.ts',
+      'src/renderer/src/stores/externalLinksStore.ts',
+      'src/renderer/src/stores/databaseStore.ts'
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "MemberExpression[object.property.name='api'][object.object.name='window']",
+          message: 'Use useApiService() for API access. Direct window.api usage is not allowed.'
+        }
+      ]
+    }
   }
 ]

@@ -1,38 +1,10 @@
 import type { Ref, ComputedRef } from 'vue'
-import type { VariantFilter, Tag, FilterOptions } from '../../../shared/types/api'
+import type { VariantFilter, FilterOptions } from '../../../shared/types/api'
+import type { Tag } from '../../../shared/types/database-entities'
+import type { FilterState, ActiveFilter } from '../../../shared/types/filters'
 
-/**
- * Core filter state structure for variant filtering
- */
-export interface FilterState {
-  searchQuery: string
-  geneSymbol: string
-  consequences: string[]
-  funcs: string[]
-  clinvars: string[]
-  maxGnomadAf: number | null
-  minCadd: number | null
-  tagIds: number[]
-  starredOnly: boolean
-  hasCommentOnly: boolean
-  acmgClassifications: string[]
-  annotationScope: 'case' | 'all'
-  activePanelIds: number[]
-  panelPaddingBp: number
-  maxInternalAf: number | null
-  inheritanceModes: string[]
-  analysisGroupId: number | null
-  considerPhasing: boolean
-}
-
-/**
- * Active filter chip data for summary bar display
- */
-export interface ActiveFilter {
-  id: string
-  label: string
-  value: string
-}
+// Re-export for existing consumers
+export type { FilterState, ActiveFilter } from '../../../shared/types/filters'
 
 /**
  * Options for configuring the useFilterState composable
@@ -96,6 +68,26 @@ export interface UseFilterStateReturn {
   resetForCaseSwitch: () => void
   setInitialSearch: (search: string) => void
   exportToExcel: (caseId: number, caseName: string) => Promise<ExportResult | null>
+}
+
+/**
+ * Reset adapter-specific fields on a FilterState ref to their defaults.
+ *
+ * Shared by useFilterComputed (clearAllFilters) and useFilterLifecycle
+ * (resetForCaseSwitch) to avoid duplicating the field-by-field reset.
+ */
+export function resetAdapterFields(filters: Ref<FilterState>): void {
+  filters.value.searchQuery = ''
+  filters.value.geneSymbol = ''
+  filters.value.tagIds = []
+  filters.value.starredOnly = false
+  filters.value.hasCommentOnly = false
+  filters.value.annotationScope = 'case'
+  filters.value.activePanelIds = []
+  filters.value.panelPaddingBp = 5000
+  filters.value.inheritanceModes = []
+  filters.value.analysisGroupId = null
+  filters.value.considerPhasing = false
 }
 
 /**

@@ -52,6 +52,10 @@ export interface FilterState {
   hasCommentOnly: boolean
   /** Filter by ACMG classifications */
   acmgClassifications: string[]
+  /** Filter by tag IDs */
+  tagIds: number[]
+  /** Annotation scope: case-level or all */
+  annotationScope: 'case' | 'all'
   /** Active gene panel IDs for region-based filtering */
   activePanelIds: number[]
   /** Padding in base pairs around panel gene regions */

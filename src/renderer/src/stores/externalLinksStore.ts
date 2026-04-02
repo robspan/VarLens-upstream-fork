@@ -284,7 +284,7 @@ export const useExternalLinksStore = defineStore('externalLinks', () => {
   }
 
   function syncDomains(): void {
-    if (typeof window.api === 'undefined') return
+    if (typeof window === 'undefined' || typeof window.api === 'undefined') return
     const domains = configuredDomains.value
     window.api.shell.updateDomains(domains)
   }

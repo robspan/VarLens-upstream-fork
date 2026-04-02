@@ -170,8 +170,10 @@ export interface VariantsAPI {
     filters: Omit<VariantFilter, 'case_id'>,
     offset?: number,
     limit?: number,
-    sortBy?: SortItem[]
-  ) => Promise<PaginatedResult<Variant>>
+    sortBy?: SortItem[],
+    skipCount?: boolean,
+    includeUnfilteredCount?: boolean
+  ) => Promise<PaginatedResult<Variant> & { unfiltered_count?: number }>
   getFilterOptions: (caseId: number) => Promise<FilterOptions>
   search: (caseId: number, query: string, limit?: number) => Promise<Variant[]>
   geneSymbols: (caseId: number, query: string, limit?: number) => Promise<string[]>
@@ -217,7 +219,15 @@ export interface ShellOpenExternalResult {
 
 export interface ShellAPI {
   openExternal: (url: string) => Promise<ShellOpenExternalResult>
+  showItemInFolder: (filePath: string) => Promise<void>
   updateDomains: (domains: string[]) => Promise<void>
+}
+
+/** Successful export result */
+export interface ExportResult {
+  success: boolean
+  filePath?: string
+  error?: string
 }
 
 export interface ExportAPI {
@@ -225,10 +235,8 @@ export interface ExportAPI {
     caseId: number,
     filters: Omit<VariantFilter, 'case_id'>,
     caseName: string
-  ) => Promise<{ success: boolean; filePath?: string; error?: string }>
-  cohort: (
-    params: CohortSearchParams
-  ) => Promise<{ success: boolean; filePath?: string; error?: string }>
+  ) => Promise<ExportResult | SerializableError>
+  cohort: (params: CohortSearchParams) => Promise<ExportResult | SerializableError>
 }
 
 export interface DatabaseInfo {

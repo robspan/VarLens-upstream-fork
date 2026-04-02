@@ -29,7 +29,7 @@
 </template>
 
 <script setup lang="ts">
-import type { AcmgClassification } from '../../../main/database/types'
+import type { AcmgClassification } from '../../../shared/config/domain.config'
 import { ACMG_COLORS, ACMG_ABBREV, ACMG_CLASSIFICATIONS } from '../composables/useAnnotations'
 
 const emit = defineEmits<{

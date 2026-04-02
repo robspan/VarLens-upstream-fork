@@ -30,6 +30,8 @@ export const FILTER_DEFAULTS: Readonly<FilterState> = Object.freeze({
   starredOnly: false,
   hasCommentOnly: false,
   acmgClassifications: [],
+  tagIds: [],
+  annotationScope: 'case',
   activePanelIds: [],
   panelPaddingBp: 5000,
   maxInternalAf: null,

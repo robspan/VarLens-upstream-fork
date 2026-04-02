@@ -177,7 +177,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { AcmgClassification } from '../../../../main/database/types'
+import type { AcmgClassification } from '../../../../shared/config/domain.config'
 import type { AnnotationScope } from '../../../../shared/types/annotations'
 import { ACMG_COLORS, ACMG_ABBREV, ACMG_CLASSIFICATIONS } from '../../composables/useAnnotations'
 import {

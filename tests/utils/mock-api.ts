@@ -170,6 +170,69 @@ export type MockApi = {
   logs: {
     onMessage: ReturnType<typeof vi.fn>
   }
+  caseComments: {
+    list: ReturnType<typeof vi.fn>
+    create: ReturnType<typeof vi.fn>
+    update: ReturnType<typeof vi.fn>
+    delete: ReturnType<typeof vi.fn>
+  }
+  caseMetrics: {
+    listDefinitions: ReturnType<typeof vi.fn>
+    createDefinition: ReturnType<typeof vi.fn>
+    listForCase: ReturnType<typeof vi.fn>
+    upsert: ReturnType<typeof vi.fn>
+    delete: ReturnType<typeof vi.fn>
+  }
+  transcripts: {
+    list: ReturnType<typeof vi.fn>
+    switch: ReturnType<typeof vi.fn>
+    insertAndSwitch: ReturnType<typeof vi.fn>
+  }
+  geneLists: {
+    list: ReturnType<typeof vi.fn>
+    create: ReturnType<typeof vi.fn>
+    delete: ReturnType<typeof vi.fn>
+    getGenes: ReturnType<typeof vi.fn>
+    setGenes: ReturnType<typeof vi.fn>
+  }
+  regionFiles: {
+    list: ReturnType<typeof vi.fn>
+    create: ReturnType<typeof vi.fn>
+    delete: ReturnType<typeof vi.fn>
+    importBed: ReturnType<typeof vi.fn>
+  }
+  updater: {
+    checkForUpdate: ReturnType<typeof vi.fn>
+    downloadUpdate: ReturnType<typeof vi.fn>
+    installUpdate: ReturnType<typeof vi.fn>
+    getStatus: ReturnType<typeof vi.fn>
+    onStatusChange: ReturnType<typeof vi.fn>
+  }
+  audit: {
+    getByEntity: ReturnType<typeof vi.fn>
+    query: ReturnType<typeof vi.fn>
+  }
+  auth: {
+    login: ReturnType<typeof vi.fn>
+    logout: ReturnType<typeof vi.fn>
+    currentUser: ReturnType<typeof vi.fn>
+    isAccountsEnabled: ReturnType<typeof vi.fn>
+    createUser: ReturnType<typeof vi.fn>
+    listUsers: ReturnType<typeof vi.fn>
+    deactivateUser: ReturnType<typeof vi.fn>
+    resetPassword: ReturnType<typeof vi.fn>
+    changePassword: ReturnType<typeof vi.fn>
+  }
+  analysisGroups: {
+    list: ReturnType<typeof vi.fn>
+    get: ReturnType<typeof vi.fn>
+    create: ReturnType<typeof vi.fn>
+    update: ReturnType<typeof vi.fn>
+    delete: ReturnType<typeof vi.fn>
+    addMember: ReturnType<typeof vi.fn>
+    removeMember: ReturnType<typeof vi.fn>
+    getForCase: ReturnType<typeof vi.fn>
+  }
 }
 
 /**
@@ -371,6 +434,78 @@ export function createMockApi(): MockApi {
 
     logs: {
       onMessage: vi.fn(() => vi.fn()) // Returns cleanup function
+    },
+
+    caseComments: {
+      list: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockResolvedValue({ id: 1 }),
+      update: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined)
+    },
+
+    caseMetrics: {
+      listDefinitions: vi.fn().mockResolvedValue([]),
+      createDefinition: vi.fn().mockResolvedValue({ id: 1 }),
+      listForCase: vi.fn().mockResolvedValue([]),
+      upsert: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined)
+    },
+
+    transcripts: {
+      list: vi.fn().mockResolvedValue([]),
+      switch: vi.fn().mockResolvedValue(undefined),
+      insertAndSwitch: vi.fn().mockResolvedValue(undefined)
+    },
+
+    geneLists: {
+      list: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockResolvedValue({ id: 1 }),
+      delete: vi.fn().mockResolvedValue(undefined),
+      getGenes: vi.fn().mockResolvedValue([]),
+      setGenes: vi.fn().mockResolvedValue(undefined)
+    },
+
+    regionFiles: {
+      list: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockResolvedValue({ id: 1 }),
+      delete: vi.fn().mockResolvedValue(undefined),
+      importBed: vi.fn().mockResolvedValue({ success: true })
+    },
+
+    updater: {
+      checkForUpdate: vi.fn().mockResolvedValue(undefined),
+      downloadUpdate: vi.fn().mockResolvedValue(undefined),
+      installUpdate: vi.fn().mockResolvedValue(undefined),
+      getStatus: vi.fn().mockResolvedValue({ state: 'idle' }),
+      onStatusChange: vi.fn(() => vi.fn()) // Returns cleanup function
+    },
+
+    audit: {
+      getByEntity: vi.fn().mockResolvedValue([]),
+      query: vi.fn().mockResolvedValue([])
+    },
+
+    auth: {
+      login: vi.fn().mockResolvedValue({ success: true }),
+      logout: vi.fn().mockResolvedValue(undefined),
+      currentUser: vi.fn().mockResolvedValue(null),
+      isAccountsEnabled: vi.fn().mockResolvedValue(false),
+      createUser: vi.fn().mockResolvedValue(undefined),
+      listUsers: vi.fn().mockResolvedValue([]),
+      deactivateUser: vi.fn().mockResolvedValue(undefined),
+      resetPassword: vi.fn().mockResolvedValue(undefined),
+      changePassword: vi.fn().mockResolvedValue(undefined)
+    },
+
+    analysisGroups: {
+      list: vi.fn().mockResolvedValue([]),
+      get: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({ id: 1 }),
+      update: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+      addMember: vi.fn().mockResolvedValue(undefined),
+      removeMember: vi.fn().mockResolvedValue(undefined),
+      getForCase: vi.fn().mockResolvedValue([])
     }
   }
 }

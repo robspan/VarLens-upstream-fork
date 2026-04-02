@@ -88,8 +88,7 @@ const loadGeneBurden = async (): Promise<void> => {
 
   loading.value = true
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await (api as any).cohort.getGeneBurden()
+    const result = await api.cohort.getGeneBurden()
     geneBurden.value = result
   } catch (error) {
     logService.error(

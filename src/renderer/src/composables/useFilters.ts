@@ -52,43 +52,9 @@ const FILTER_RANGES = {
   cadd: { min: 0, max: 60 }
 } as const
 
-/**
- * Core filter state structure
- */
-export interface FilterState {
-  /** Gene symbol filter */
-  geneSymbol: string
-  /** Impact consequences to include */
-  consequences: string[]
-  /** Functional consequence types to include */
-  funcs: string[]
-  /** ClinVar classifications to include */
-  clinvars: string[]
-  /** Maximum gnomAD allele frequency (decimal, 0-1) */
-  maxGnomadAf: number | null
-  /** Minimum CADD phred score */
-  minCadd: number | null
-  /** Minimum carrier count */
-  minCarriers: number | null
-  /** Show only starred variants */
-  starredOnly: boolean
-  /** Show only variants with comments */
-  hasCommentOnly: boolean
-  /** Filter by ACMG classifications */
-  acmgClassifications: string[]
-  /** Active gene panel IDs for region-based filtering */
-  activePanelIds: number[]
-  /** Padding in base pairs around panel gene regions */
-  panelPaddingBp: number
-  /** Maximum internal database allele frequency (0-1) */
-  maxInternalAf: number | null
-  /** Selected inheritance mode filters (multi-select) */
-  inheritanceModes: string[]
-  /** Active analysis group ID for trio filtering */
-  analysisGroupId: number | null
-  /** Consider phasing information for compound het */
-  considerPhasing: boolean
-}
+// Use shared FilterState — single source of truth (DRY-06)
+import type { FilterState } from '../../../shared/types/filters'
+export type { FilterState }
 
 /**
  * Return type for useFilters composable
@@ -129,6 +95,7 @@ export const FiltersKey: InjectionKey<UseFiltersReturn> = Symbol('filters')
 function createInitialFilterState(): FilterState {
   return {
     geneSymbol: '',
+    searchQuery: '',
     consequences: [],
     funcs: [],
     clinvars: [],
@@ -139,6 +106,8 @@ function createInitialFilterState(): FilterState {
     starredOnly: false,
     hasCommentOnly: false,
     acmgClassifications: [],
+    tagIds: [],
+    annotationScope: 'case',
     activePanelIds: [],
     panelPaddingBp: 5000,
     inheritanceModes: [],

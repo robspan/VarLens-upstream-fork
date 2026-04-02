@@ -192,7 +192,7 @@ import { logService } from '../../services/LogService'
 import { useTableKeyboardNav } from '../../composables/useTableKeyboardNav'
 import { onKeyStroke } from '@vueuse/core'
 import type { CohortVariant } from '../../../../shared/types/cohort'
-import type { AcmgClassification } from '../../../../main/database/types'
+import type { AcmgClassification } from '../../../../shared/config/domain.config'
 import type { SortItem } from '../../composables/useOffsetPagination'
 import { useApiService } from '../../composables/useApiService'
 import { useTableScroll } from '../../composables/useTableScroll'
@@ -590,6 +590,8 @@ const columnActiveFilters = computed<ActiveFilter[]>(() => {
       starredOnly: false,
       hasCommentOnly: false,
       acmgClassifications: [],
+      tagIds: [],
+      annotationScope: 'case',
       activePanelIds: [],
       panelPaddingBp: 5000,
       inheritanceModes: [],

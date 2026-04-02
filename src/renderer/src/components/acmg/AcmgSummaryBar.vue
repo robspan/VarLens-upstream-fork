@@ -95,7 +95,7 @@
 </template>
 
 <script setup lang="ts">
-import type { AcmgClassification } from '../../../../main/database/types'
+import type { AcmgClassification } from '../../../../shared/config/domain.config'
 import { ACMG_COLORS, ACMG_CLASSIFICATIONS } from '../../composables/useAnnotations'
 import { mdiAlert, mdiCircle, mdiInformationOutline, mdiLightbulbOn, mdiPencil } from '@mdi/js'
 

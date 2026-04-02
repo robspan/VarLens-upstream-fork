@@ -77,7 +77,7 @@ import { computed } from 'vue'
 import { useClipboard } from '../composables/useClipboard'
 import type { Variant } from '../../../shared/types/api'
 import type { CohortVariant } from '../../../shared/types/cohort'
-import type { VepColocatedVariant } from '../../../main/services/api/schemas/vep-response'
+import type { VepColocatedVariant } from '../../../shared/types/vep'
 import { mdiCheck, mdiContentCopy, mdiDna } from '@mdi/js'
 
 interface Props {

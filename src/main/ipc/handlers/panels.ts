@@ -1,5 +1,4 @@
 import { wrapHandler } from '../errorHandler'
-import { clearPanelIntervalCache } from './variants'
 import type { HandlerDependencies } from '../types'
 import {
   PanelCreateSchema,
@@ -21,14 +20,34 @@ import { mainLogger } from '../../services/MainLogger'
 import { getGeneReferenceDb } from '../../database/geneReferenceLoader'
 import { PanelAppClient } from '../../services/api/PanelAppClient'
 import { StringDbClient } from '../../services/api/StringDbClient'
+import { clearPanelIntervalCache } from './variants'
 import { dialog } from 'electron'
 import { writeFile } from 'fs/promises'
+import {
+  listPanels,
+  getPanel,
+  createPanel,
+  updatePanel,
+  deletePanel,
+  duplicatePanel,
+  setGenes,
+  getGenes,
+  activatePanel,
+  deactivatePanel,
+  getActivePanelsForCase,
+  validateSymbols,
+  autocomplete,
+  searchPanelApp,
+  importPanelApp,
+  generateStringDb,
+  generateBedContent
+} from './panels-logic'
+import type { PanelCacheCallbacks } from './panels-logic'
 
-/** Confidence levels considered "green" (high confidence) */
-const GREEN_LEVELS = new Set(['3', '4', 'green'])
-
-/** Confidence levels considered "green + amber" (medium-high confidence) */
-const GREEN_AMBER_LEVELS = new Set(['2', '3', '4', 'green', 'amber'])
+/** Shared cache-clearing callback wired to the variant module's interval cache. */
+const cacheCallbacks: PanelCacheCallbacks = {
+  clearPanelIntervalCache: () => clearPanelIntervalCache()
+}
 
 /**
  * Panel and gene reference IPC handlers
@@ -40,8 +59,7 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
 
   ipcMain.handle('panels:list', async () => {
     return wrapHandler(async () => {
-      const db = getDb()
-      return db.panels.listPanels()
+      return listPanels(getDb)
     })
   })
 
@@ -52,13 +70,7 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
         mainLogger.error(`Invalid panels:get id: ${validated.error.message}`, 'panels')
         throw new Error('Invalid panel ID')
       }
-
-      const db = getDb()
-      const panel = db.panels.getPanel(validated.data)
-      if (!panel) return null
-
-      const genes = db.panels.getGenes(validated.data)
-      return { ...panel, genes }
+      return getPanel(validated.data, getDb)
     })
   })
 
@@ -69,11 +81,7 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
         mainLogger.error(`Invalid panels:create params: ${validated.error.message}`, 'panels')
         throw new Error('Invalid panel parameters')
       }
-
-      const db = getDb()
-      const result = db.panels.createPanel(validated.data)
-      clearPanelIntervalCache()
-      return result
+      return createPanel(validated.data, getDb, cacheCallbacks)
     })
   })
 
@@ -84,12 +92,7 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
         mainLogger.error(`Invalid panels:update params: ${validated.error.message}`, 'panels')
         throw new Error('Invalid panel update parameters')
       }
-
-      const { id, ...updates } = validated.data
-      const db = getDb()
-      const result = db.panels.updatePanel(id, updates)
-      clearPanelIntervalCache()
-      return result
+      return updatePanel(validated.data, getDb, cacheCallbacks)
     })
   })
 
@@ -100,11 +103,7 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
         mainLogger.error(`Invalid panels:delete id: ${validated.error.message}`, 'panels')
         throw new Error('Invalid panel ID')
       }
-
-      const db = getDb()
-      db.panels.deletePanel(validated.data)
-      clearPanelIntervalCache()
-      return { success: true }
+      return deletePanel(validated.data, getDb, cacheCallbacks)
     })
   })
 
@@ -115,9 +114,7 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
         mainLogger.error(`Invalid panels:duplicate params: ${validated.error.message}`, 'panels')
         throw new Error('Invalid panel duplicate parameters')
       }
-
-      const db = getDb()
-      return db.panels.duplicatePanel(validated.data.id, validated.data.newName)
+      return duplicatePanel(validated.data.id, validated.data.newName, getDb)
     })
   })
 
@@ -132,11 +129,7 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
         mainLogger.error(`Invalid panels:setGenes params: ${validated.error.message}`, 'panels')
         throw new Error('Invalid panel genes parameters')
       }
-
-      const db = getDb()
-      db.panels.setGenes(validated.data.panelId, validated.data.genes)
-      clearPanelIntervalCache()
-      return { success: true }
+      return setGenes(validated.data.panelId, validated.data.genes, getDb, cacheCallbacks)
     })
   })
 
@@ -147,9 +140,7 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
         mainLogger.error(`Invalid panels:getGenes panelId: ${validated.error.message}`, 'panels')
         throw new Error('Invalid panel ID')
       }
-
-      const db = getDb()
-      return db.panels.getGenes(validated.data)
+      return getGenes(validated.data, getDb)
     })
   })
 
@@ -164,14 +155,12 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
         mainLogger.error(`Invalid panels:activate params: ${validated.error.message}`, 'panels')
         throw new Error('Invalid panel activation parameters')
       }
-
-      const db = getDb()
-      db.panels.activatePanel(
+      return activatePanel(
         validated.data.caseId,
         validated.data.panelId,
-        validated.data.paddingBp
+        validated.data.paddingBp,
+        getDb
       )
-      return { success: true }
     })
   })
 
@@ -182,10 +171,7 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
         mainLogger.error(`Invalid panels:deactivate params: ${validated.error.message}`, 'panels')
         throw new Error('Invalid panel deactivation parameters')
       }
-
-      const db = getDb()
-      db.panels.deactivatePanel(validated.data.caseId, validated.data.panelId)
-      return { success: true }
+      return deactivatePanel(validated.data.caseId, validated.data.panelId, getDb)
     })
   })
 
@@ -199,9 +185,7 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
         )
         throw new Error('Invalid case ID')
       }
-
-      const db = getDb()
-      return db.panels.getActivePanelsForCase(validated.data)
+      return getActivePanelsForCase(validated.data, getDb)
     })
   })
 
@@ -219,9 +203,8 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
         )
         throw new Error('Invalid symbol validation parameters')
       }
-
       const geneRef = getGeneReferenceDb()
-      return geneRef.validateSymbols(validated.data.symbols)
+      return validateSymbols(validated.data.symbols, geneRef)
     })
   })
 
@@ -232,9 +215,8 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
         mainLogger.error(`Invalid panels:autocomplete params: ${validated.error.message}`, 'panels')
         throw new Error('Invalid autocomplete parameters')
       }
-
       const geneRef = getGeneReferenceDb()
-      return geneRef.autocomplete(validated.data.query, validated.data.limit)
+      return autocomplete(validated.data.query, validated.data.limit, geneRef)
     })
   })
 
@@ -252,9 +234,8 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
         )
         throw new Error('Invalid PanelApp search parameters')
       }
-
       const client = new PanelAppClient()
-      return client.searchPanels(validated.data.keyword, validated.data.region)
+      return searchPanelApp(validated.data.keyword, validated.data.region, client)
     })
   })
 
@@ -268,77 +249,9 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
         )
         throw new Error('Invalid PanelApp import parameters')
       }
-
-      const { panelId, region, confidenceThreshold, name } = validated.data
-
-      // 1. Fetch full panel from PanelApp
       const client = new PanelAppClient()
-      const panel = await client.getPanel(panelId, region)
-
-      // 2. Filter genes by confidence level
-      const confidenceSet =
-        confidenceThreshold === 'green'
-          ? GREEN_LEVELS
-          : confidenceThreshold === 'green_amber'
-            ? GREEN_AMBER_LEVELS
-            : null // 'all' = no filter
-
-      const filteredGenes = confidenceSet
-        ? panel.genes.filter((g) => confidenceSet.has(g.confidence_level))
-        : panel.genes
-
-      // 3. Validate gene symbols against gene reference DB
       const geneRef = getGeneReferenceDb()
-      const symbols = filteredGenes.map((g) => g.gene_data.gene_symbol)
-      const validationResults = geneRef.validateSymbols(symbols)
-
-      // Build genes array with resolved symbols and HGNC IDs
-      const resolvedGenes: Array<{ hgncId: string; symbol: string }> = []
-      for (const result of validationResults) {
-        if (
-          result.status === 'approved' &&
-          result.hgncId !== undefined &&
-          result.symbol !== undefined
-        ) {
-          resolvedGenes.push({ hgncId: result.hgncId, symbol: result.symbol })
-        } else if (
-          result.status === 'alias' &&
-          result.hgncId !== undefined &&
-          result.currentSymbol !== undefined
-        ) {
-          // Use the current approved symbol for aliases
-          resolvedGenes.push({ hgncId: result.hgncId, symbol: result.currentSymbol })
-        }
-        // Skip 'ambiguous' and 'unknown' genes
-      }
-
-      // 4. Create panel in DB
-      const db = getDb()
-      const source = region === 'uk' ? 'panelapp_uk' : 'panelapp_aus'
-      const createdPanel = db.panels.createPanel({
-        name: name ?? `${panel.name} (PanelApp ${region.toUpperCase()})`,
-        description: `Imported from PanelApp ${region.toUpperCase()} v${panel.version}`,
-        version: panel.version,
-        source,
-        sourceId: String(panelId),
-        sourceMetadata: {
-          confidence_threshold: confidenceThreshold,
-          total_genes: panel.genes.length,
-          filtered_genes: filteredGenes.length,
-          resolved_genes: resolvedGenes.length,
-          panel_version: panel.version
-        }
-      })
-
-      // 5. Set genes
-      if (resolvedGenes.length > 0) {
-        db.panels.setGenes(createdPanel.id, resolvedGenes)
-      }
-
-      // Return panel with gene count
-      const genes = db.panels.getGenes(createdPanel.id)
-      clearPanelIntervalCache()
-      return { ...createdPanel, genes }
+      return importPanelApp(validated.data, getDb, geneRef, client, cacheCallbacks)
     })
   })
 
@@ -352,75 +265,9 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
         )
         throw new Error('Invalid StringDB generation parameters')
       }
-
-      const { seedGenes, requiredScore, networkType, name } = validated.data
-
-      // 1. Query StringDB for interaction partners
       const client = new StringDbClient()
-      const partners = await client.getInteractionPartners(seedGenes, {
-        requiredScore,
-        networkType
-      })
-
-      // 2. Validate all genes (seed + partners) against gene reference DB
       const geneRef = getGeneReferenceDb()
-      const allSymbols = [...seedGenes, ...partners.map((p) => p.symbol)]
-      const validationResults = geneRef.validateSymbols(allSymbols)
-
-      // Build resolved genes
-      const resolvedGenes: Array<{ hgncId: string; symbol: string }> = []
-      const seenHgnc = new Set<string>()
-
-      for (const result of validationResults) {
-        let hgncId: string | undefined
-        let symbol: string | undefined
-
-        if (
-          result.status === 'approved' &&
-          result.hgncId !== undefined &&
-          result.symbol !== undefined
-        ) {
-          hgncId = result.hgncId
-          symbol = result.symbol
-        } else if (
-          result.status === 'alias' &&
-          result.hgncId !== undefined &&
-          result.currentSymbol !== undefined
-        ) {
-          hgncId = result.hgncId
-          symbol = result.currentSymbol
-        }
-
-        if (hgncId !== undefined && symbol !== undefined && !seenHgnc.has(hgncId)) {
-          seenHgnc.add(hgncId)
-          resolvedGenes.push({ hgncId, symbol })
-        }
-      }
-
-      // 3. Create panel
-      const db = getDb()
-      const createdPanel = db.panels.createPanel({
-        name:
-          name ??
-          `StringDB Network (${seedGenes.slice(0, 3).join(', ')}${seedGenes.length > 3 ? '...' : ''})`,
-        description: `Generated from StringDB ${networkType} network (score >= ${requiredScore})`,
-        source: 'stringdb',
-        sourceMetadata: {
-          seed_genes: seedGenes,
-          score_threshold: requiredScore,
-          network_type: networkType,
-          partners_found: partners.length
-        }
-      })
-
-      // 4. Set genes
-      if (resolvedGenes.length > 0) {
-        db.panels.setGenes(createdPanel.id, resolvedGenes)
-      }
-
-      const genes = db.panels.getGenes(createdPanel.id)
-      clearPanelIntervalCache()
-      return { ...createdPanel, genes }
+      return generateStringDb(validated.data, getDb, geneRef, client, cacheCallbacks)
     })
   })
 
@@ -438,49 +285,14 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
 
       const { panelId, assembly, paddingBp } = validated.data
 
-      // 1. Get panel genes
-      const db = getDb()
-      const panel = db.panels.getPanel(panelId)
-      if (!panel) throw new Error(`Panel ${panelId} not found`)
-
-      const genes = db.panels.getGenes(panelId)
-      if (genes.length === 0) {
-        throw new Error('Panel has no genes to export')
-      }
-
-      // 2. Get coordinates from gene reference DB
+      // Generate BED content (pure logic)
       const geneRef = getGeneReferenceDb()
-      const hgncIds = genes.map((g) => g.hgnc_id)
-      const coordsMap = geneRef.getCoordinatesForGenes(hgncIds, assembly)
+      const bed = generateBedContent(panelId, assembly, paddingBp, getDb, geneRef)
 
-      if (coordsMap.size === 0) {
-        throw new Error(`No coordinates found for assembly ${assembly}`)
-      }
-
-      // 3. Build BED lines (0-based half-open format)
-      const bedLines: string[] = []
-
-      // Add BED track header
-      bedLines.push(`track name="${panel.name}" description="Gene panel: ${panel.name}"`)
-
-      for (const gene of genes) {
-        const coords = coordsMap.get(gene.hgnc_id)
-        if (!coords) continue
-
-        // BED is 0-based half-open: start = gene_start - 1 - padding (min 0), end = gene_end + padding
-        const chr = coords.chromosome.startsWith('chr')
-          ? coords.chromosome
-          : `chr${coords.chromosome}`
-        const bedStart = Math.max(0, coords.start_pos - 1 - paddingBp)
-        const bedEnd = coords.end_pos + paddingBp
-
-        bedLines.push(`${chr}\t${bedStart}\t${bedEnd}\t${gene.symbol}`)
-      }
-
-      // 4. Show save dialog
+      // Show save dialog (Electron-specific, stays in handler)
       const { canceled, filePath } = await dialog.showSaveDialog({
         title: 'Export BED File',
-        defaultPath: `${panel.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_${assembly}.bed`,
+        defaultPath: `${bed.panelName.replace(/[^a-zA-Z0-9_-]/g, '_')}_${assembly}.bed`,
         filters: [
           { name: 'BED files', extensions: ['bed'] },
           { name: 'All files', extensions: ['*'] }
@@ -491,11 +303,11 @@ export function registerPanelHandlers({ ipcMain, getDb }: HandlerDependencies): 
         return { success: false, path: undefined }
       }
 
-      // 5. Write BED file
-      await writeFile(filePath, bedLines.join('\n') + '\n', 'utf-8')
+      // Write BED file (I/O stays in handler)
+      await writeFile(filePath, bed.lines.join('\n') + '\n', 'utf-8')
 
       mainLogger.info(
-        `Exported BED file for panel "${panel.name}" (${coordsMap.size} genes) to ${filePath}`,
+        `Exported BED file for panel "${bed.panelName}" (${bed.geneCount} genes) to ${filePath}`,
         'panels'
       )
 

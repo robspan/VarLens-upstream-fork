@@ -85,6 +85,12 @@ jobs:
       - name: Rebuild native modules for Node.js
         run: npm run rebuild:node
 
+      - name: Run linter
+        run: npm run lint:check
+
+      - name: Run type check
+        run: npm run typecheck
+
       - name: Run tests
         run: npm run test
 
@@ -130,6 +136,12 @@ jobs:
 
       - name: Rebuild native modules for Node.js
         run: npm run rebuild:node
+
+      - name: Run linter
+        run: npm run lint:check
+
+      - name: Run type check
+        run: npm run typecheck
 
       - name: Run tests
         run: npm run test
@@ -177,6 +189,12 @@ jobs:
 
       - name: Rebuild native modules for Node.js
         run: npm run rebuild:node
+
+      - name: Run linter
+        run: npm run lint:check
+
+      - name: Run type check
+        run: npm run typecheck
 
       - name: Run tests
         run: npm run test

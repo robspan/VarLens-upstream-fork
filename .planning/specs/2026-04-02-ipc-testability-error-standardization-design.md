@@ -43,13 +43,14 @@ Some handlers intentionally return `{ success: boolean, error?: string }` as par
 
 For Track 2 channels, renderer code checking `result.success` or `result.error` is correct behavior. The spec does NOT propose changing these to `SerializableError`.
 
-**New shared type** in `src/shared/types/api.ts`:
+`IpcResult<T>` already exists in `src/shared/types/errors.ts:20` and is re-exported via `src/shared/types/index.ts`. The work here is to **apply it consistently through `src/shared/types/api.ts`** — updating return types of `wrapHandler`-backed API methods from bare `T` to `IpcResult<T>` so the renderer type system forces callers to handle the error branch.
+
 ```typescript
-/** Result type for wrapHandler-backed IPC channels */
+// Already defined in src/shared/types/errors.ts:
 export type IpcResult<T> = T | SerializableError
 ```
 
-This makes the contract explicit: renderer callers of `wrapHandler`-backed channels always handle `IpcResult<T>` and use `isIpcError()` to discriminate.
+This makes the contract explicit: renderer callers of `wrapHandler`-backed channels always see `IpcResult<T>` and must use `isIpcError()` to discriminate.
 
 ### B. Pure Function Extraction (orchestration-heavy handlers only)
 
@@ -71,26 +72,25 @@ Not every handler warrants a companion `-logic.ts` file. The extraction targets 
 | `auth.ts` | User management, password hashing, admin checks |
 | `tags.ts` | Tag CRUD + variant-tag associations |
 
-**Tier 2 — Leave as-is** (thin wrappers, extraction adds churn not value):
-| Handler | Why thin enough |
-|---------|-----------------|
-| `shell.ts` | 2 handlers, each <5 lines |
-| `system.ts` | Config reads, no logic |
+**Tier 2 — Leave as-is** (lower extraction value relative to churn):
+| Handler | Why Tier 2 |
+|---------|------------|
+| `shell.ts` | 3 handlers with URL validation/policy, but logic is thin and well-contained |
+| `system.ts` | Config reads, no orchestration |
 | `updater.ts` | Electron autoUpdater delegation |
 | `hpo.ts` | External API proxy |
-| `vep.ts` | External API proxy |
-| `myvariant.ts` | External API proxy |
+| `vep.ts` | External API proxy with Zod validation |
+| `myvariant.ts` | External API proxy with result mapping |
 | `spliceai.ts` | External API proxy |
 | `gnomad.ts` | External API proxy |
-| `protein.ts` | External API proxy |
-| `gene-ref.ts` | Simple DB lookups |
-| `transcripts.ts` | Simple DB lookups |
-| `case-comments.ts` | Simple CRUD |
-| `case-metrics.ts` | Simple CRUD |
-| `filter-presets.ts` | Simple CRUD |
-| `gene-lists.ts` | Simple CRUD |
-| `region-files.ts` | Simple CRUD |
-| `analysis-groups.ts` | Simple CRUD |
+| `protein.ts` | External API proxy with PDB/UniProt mapping (non-trivial but self-contained) |
+| `gene-ref.ts` | DB lookups with result mapping |
+| `transcripts.ts` | DB lookups |
+| `case-comments.ts` | CRUD with category handling |
+| `case-metrics.ts` | CRUD |
+| `filter-presets.ts` | CRUD |
+| `gene-lists.ts` | Mixes gene list CRUD, region file management, pool branching, and BED import — more complex than typical CRUD but currently well-contained in one module |
+| `analysis-groups.ts` | CRUD |
 | `audit-log.ts` | Read-only queries |
 
 **Pattern:**
@@ -250,14 +250,14 @@ This replaces ad-hoc checks at call sites and makes misuse harder. ESLint enforc
 | 19 | `myvariant.ts` | 2 | No | No |
 | 20 | `panels.ts` | 1 | No | Yes |
 | 21 | `protein.ts` | 2 | No | No |
-| 22 | `region-files.ts` | 2 | No | No |
-| 23 | `shell.ts` | 2 | No | No |
-| 24 | `spliceai.ts` | 2 | No | No |
-| 25 | `system.ts` | 2 | No | No |
-| 26 | `tags.ts` | 1 | No | Yes |
-| 27 | `transcripts.ts` | 2 | No | No |
-| 28 | `updater.ts` | 2 | No | No |
-| 29 | `variants.ts` | 1 | No | Yes |
+| 22 | `shell.ts` | 2 | No | No |
+| 23 | `spliceai.ts` | 2 | No | No |
+| 24 | `system.ts` | 2 | No | No |
+| 25 | `tags.ts` | 1 | No | Yes |
+| 26 | `transcripts.ts` | 2 | No | No |
+| 27 | `updater.ts` | 2 | No | No |
+| 28 | `variants.ts` | 1 | No | Yes |
+| 29 | `vep.ts` | 2 | No | No |
 | — | `panelIntervalHelper.ts` | — | No | N/A (helper) |
 
 **Tier 1 (extract): 12 handlers**
@@ -282,7 +282,7 @@ This replaces ad-hoc checks at call sites and makes misuse harder. ESLint enforc
 |------|--------|
 | 12 Tier 1 handler files | Thin wrapper: delegate to `-logic.ts` |
 | 5 handler files with safeEmit | Replace local definition/direct send with shared import |
-| `src/shared/types/api.ts` | Add `IpcResult<T>` type alias |
+| `src/shared/types/api.ts` | Apply `IpcResult<T>` (from errors.ts) to wrapHandler-backed return types |
 | `eslint.config.js` | Add `no-restricted-syntax` for ad-hoc error checks (secondary control) |
 | `vitest.config.ts` | Add per-glob threshold for handler logic |
 | ~8 renderer files | Replace ad-hoc error checks with `isIpcError()` or `unwrapIpcResult()` |
@@ -297,7 +297,7 @@ This replaces ad-hoc checks at call sites and makes misuse harder. ESLint enforc
 
 ### Wave 1 — Infrastructure
 - Create `src/main/ipc/utils/safeEmit.ts`
-- Add `IpcResult<T>` type to `src/shared/types/api.ts`
+- Apply existing `IpcResult<T>` through `src/shared/types/api.ts` return types for wrapHandler-backed channels
 - Create `src/renderer/src/utils/ipc-result.ts` with `unwrapIpcResult()`
 - Add ESLint rule as secondary control
 

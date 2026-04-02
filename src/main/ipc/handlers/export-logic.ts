@@ -53,7 +53,7 @@ export interface ExportResult {
 
 /**
  * Pre-check variant count and compile export query.
- * Returns null if count exceeds hard limit.
+ * If the count exceeds the hard limit, returns an ExportResult with success: false.
  */
 export function prepareVariantExport(
   getDb: () => DatabaseService,

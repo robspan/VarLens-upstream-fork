@@ -100,9 +100,9 @@ describe('auth-logic', () => {
 
   describe('createUser (admin check)', () => {
     it('throws when not authenticated', async () => {
-      await expect(
-        authLogic.createUser('newuser', 'New User', 'temp123', getDb)
-      ).rejects.toThrow('Only admins can create users')
+      await expect(authLogic.createUser('newuser', 'New User', 'temp123', getDb)).rejects.toThrow(
+        'Only admins can create users'
+      )
     })
 
     it('throws when authenticated as non-admin', async () => {
@@ -112,9 +112,9 @@ describe('auth-logic', () => {
       authLogic.logout(getDb)
       await authLogic.login('regularuser', 'temp123', getDb)
 
-      await expect(
-        authLogic.createUser('another', 'Another', 'temp456', getDb)
-      ).rejects.toThrow('Only admins can create users')
+      await expect(authLogic.createUser('another', 'Another', 'temp456', getDb)).rejects.toThrow(
+        'Only admins can create users'
+      )
     })
 
     it('succeeds when authenticated as admin', async () => {
@@ -190,7 +190,9 @@ describe('auth-logic', () => {
       await db.auth.createFirstUser('admin', 'Admin User', 'password123')
       await authLogic.login('admin', 'password123', getDb)
 
-      await expect(authLogic.changePassword('password123', 'newpass456', getDb)).resolves.not.toThrow()
+      await expect(
+        authLogic.changePassword('password123', 'newpass456', getDb)
+      ).resolves.not.toThrow()
     })
   })
 })

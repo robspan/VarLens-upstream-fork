@@ -78,11 +78,7 @@ describe('annotations-logic', () => {
     })
 
     it('updates an existing global annotation', () => {
-      annotationsLogic.upsertGlobalAnnotation(
-        coords,
-        { global_comment: 'Initial' },
-        getDb
-      )
+      annotationsLogic.upsertGlobalAnnotation(coords, { global_comment: 'Initial' }, getDb)
 
       const result = annotationsLogic.upsertGlobalAnnotation(
         coords,
@@ -127,11 +123,7 @@ describe('annotations-logic', () => {
     })
 
     it('creates audit trail for ACMG evidence update', () => {
-      annotationsLogic.upsertGlobalAnnotation(
-        coords,
-        { acmg_evidence: 'PS1,PM2' },
-        getDb
-      )
+      annotationsLogic.upsertGlobalAnnotation(coords, { acmg_evidence: 'PS1,PM2' }, getDb)
 
       const entries = db.database
         .prepare("SELECT * FROM audit_log WHERE action_type = 'acmg_evidence_update'")
@@ -142,11 +134,7 @@ describe('annotations-logic', () => {
 
   describe('deleteGlobalAnnotation', () => {
     it('deletes an existing global annotation', async () => {
-      annotationsLogic.upsertGlobalAnnotation(
-        coords,
-        { global_comment: 'To delete' },
-        getDb
-      )
+      annotationsLogic.upsertGlobalAnnotation(coords, { global_comment: 'To delete' }, getDb)
 
       annotationsLogic.deleteGlobalAnnotation(coords, getDb)
 
@@ -206,22 +194,17 @@ describe('annotations-logic', () => {
 
   describe('getAnnotationsForVariant', () => {
     it('returns null global and perCase when none exist (no pool)', async () => {
-      const result = (await annotationsLogic.getAnnotationsForVariant(
-        caseId,
-        coords,
-        getDb
-      )) as { global: unknown; perCase: unknown }
+      const result = (await annotationsLogic.getAnnotationsForVariant(caseId, coords, getDb)) as {
+        global: unknown
+        perCase: unknown
+      }
 
       expect(result.global).toBeNull()
       expect(result.perCase).toBeNull()
     })
 
     it('returns both global and per-case annotations', async () => {
-      annotationsLogic.upsertGlobalAnnotation(
-        coords,
-        { global_comment: 'Global note' },
-        getDb
-      )
+      annotationsLogic.upsertGlobalAnnotation(coords, { global_comment: 'Global note' }, getDb)
       annotationsLogic.upsertPerCaseAnnotation(
         caseId,
         variantId,
@@ -229,11 +212,7 @@ describe('annotations-logic', () => {
         getDb
       )
 
-      const result = (await annotationsLogic.getAnnotationsForVariant(
-        caseId,
-        coords,
-        getDb
-      )) as {
+      const result = (await annotationsLogic.getAnnotationsForVariant(caseId, coords, getDb)) as {
         global: { global_comment: string }
         perCase: { per_case_comment: string }
       }

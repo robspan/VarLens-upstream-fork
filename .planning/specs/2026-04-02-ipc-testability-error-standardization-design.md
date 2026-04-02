@@ -1,35 +1,110 @@
 # IPC Handler Testability & Error Standardization — Design Spec
 
-**Date:** 2026-04-02
+**Date:** 2026-04-02 (revised)
 **Version:** 0.52.0
 **Branch:** `refactor/ipc-testability` (off `main`)
-**Goal:** Extract testable logic from all IPC handlers, centralize `safeEmit`, and standardize renderer error handling — raising handler coverage from ~5.7% to >30%.
+**Goal:** Extract testable logic from orchestration-heavy IPC handlers, centralize `safeEmit`, standardize renderer error handling with the real `isIpcError()` guard, and fix an active bug in GeneBurdenView — raising handler coverage from ~5.7% to >30%.
 
 ---
 
 ## Problem Statement
 
-The IPC handler layer (`src/main/ipc/handlers/`) contains the highest coordination complexity in VarLens but has only 5.7% test coverage. Business logic is interleaved with Electron IPC plumbing, making it untestable without mocking `ipcMain`. Meanwhile, renderer callers use 3+ inconsistent patterns to check IPC errors, and `safeEmit` is duplicated across handler files.
+The IPC handler layer (`src/main/ipc/handlers/`, 30 files, 29 handler modules) contains the highest coordination complexity in VarLens but has only 5.7% test coverage. Business logic is interleaved with Electron IPC plumbing, making it untestable without mocking `ipcMain`.
+
+Three additional problems compound this:
+
+1. **`safeEmit` is duplicated** in 4 handler files (`cases.ts`, `cohort.ts`, `import.ts`, `batch-import.ts`) plus a direct `webContents.send` in `export.ts`.
+2. **Renderer error checking is inconsistent.** The canonical `isIpcError()` guard exists in `src/shared/types/errors.ts` but is never imported or used in renderer code. Instead, callers use 4+ ad-hoc patterns: `'error' in result`, `'code' in result`, `'userMessage' in result`, and `.error` property access.
+3. **Two error contracts coexist.** `wrapHandler` wraps thrown errors as `SerializableError` (`{ code, message, userMessage }`), but many handlers also return domain result objects like `{ success: boolean, error?: string }` as normal return values. These are intentional domain unions, not bugs — but the renderer must handle both correctly.
+
+---
+
+## Immediate Bug Fix (independent of refactor)
+
+**`src/renderer/src/components/association/GeneBurdenView.vue:197`** checks `'error' in result` to detect IPC failures. But `cohort:geneBurdenCompare` is wrapped by `wrapHandler`, so failures arrive as `SerializableError` with properties `code`, `message`, `userMessage` — not `error`. This means errors are silently miscast as success data.
+
+**Fix:** Replace the ad-hoc check with `isIpcError(result)`. This fix ships as the first commit, independent of the larger refactor.
 
 ---
 
 ## Approach
 
-### A. Pure Function Extraction
+### A. Two Error Contract Tracks
 
-Every handler file gets a companion `-logic.ts` module containing all business logic as pure, independently testable functions.
+The codebase has two legitimate error patterns:
 
-**Handler file (thin wrapper):**
+**Track 1: `wrapHandler`-backed channels (SerializableError contract)**
+When a handler throws, `wrapHandler` catches it and returns `SerializableError`. The correct renderer guard is `isIpcError(result)`.
+
+Affected renderer patterns: `'error' in result`, `'code' in result`, `'userMessage' in result` — all should become `isIpcError(result)`.
+
+**Track 2: Domain result channels ({ success, error? } contract)**
+Some handlers intentionally return `{ success: boolean, error?: string }` as part of their normal API (export, shell, database, gene-ref, etc.). These are not bugs — they represent domain-level outcomes, not IPC transport failures.
+
+For Track 2 channels, renderer code checking `result.success` or `result.error` is correct behavior. The spec does NOT propose changing these to `SerializableError`.
+
+**New shared type** in `src/shared/types/api.ts`:
 ```typescript
-// cases.ts
+/** Result type for wrapHandler-backed IPC channels */
+export type IpcResult<T> = T | SerializableError
+```
+
+This makes the contract explicit: renderer callers of `wrapHandler`-backed channels always handle `IpcResult<T>` and use `isIpcError()` to discriminate.
+
+### B. Pure Function Extraction (orchestration-heavy handlers only)
+
+Not every handler warrants a companion `-logic.ts` file. The extraction targets handlers with significant business logic worth testing independently.
+
+**Tier 1 — Extract now** (complex orchestration, high value):
+| Handler | Why |
+|---------|-----|
+| `cases.ts` | CRUD + search + pagination + progress events |
+| `variants.ts` | Query building, filter application, gene symbols |
+| `cohort.ts` | Summary computation, variant aggregation, gene burden |
+| `import.ts` | Import orchestration with progress callbacks |
+| `batch-import.ts` | Multi-file import with progress |
+| `export.ts` | Excel/CSV generation with progress |
+| `annotations.ts` | CRUD + ACMG + starring + scope logic |
+| `case-metadata.ts` | Complex metadata CRUD |
+| `panels.ts` | Panel interval computation + offloading |
+| `database.ts` | Open/create/rekey/migration logic |
+| `auth.ts` | User management, password hashing, admin checks |
+| `tags.ts` | Tag CRUD + variant-tag associations |
+
+**Tier 2 — Leave as-is** (thin wrappers, extraction adds churn not value):
+| Handler | Why thin enough |
+|---------|-----------------|
+| `shell.ts` | 2 handlers, each <5 lines |
+| `system.ts` | Config reads, no logic |
+| `updater.ts` | Electron autoUpdater delegation |
+| `hpo.ts` | External API proxy |
+| `vep.ts` | External API proxy |
+| `myvariant.ts` | External API proxy |
+| `spliceai.ts` | External API proxy |
+| `gnomad.ts` | External API proxy |
+| `protein.ts` | External API proxy |
+| `gene-ref.ts` | Simple DB lookups |
+| `transcripts.ts` | Simple DB lookups |
+| `case-comments.ts` | Simple CRUD |
+| `case-metrics.ts` | Simple CRUD |
+| `filter-presets.ts` | Simple CRUD |
+| `gene-lists.ts` | Simple CRUD |
+| `region-files.ts` | Simple CRUD |
+| `analysis-groups.ts` | Simple CRUD |
+| `audit-log.ts` | Read-only queries |
+
+**Pattern:**
+```typescript
+// cases.ts (thin wrapper)
+import * as casesLogic from './cases-logic'
+
 ipcMain.handle('cases:list', (_e, params) =>
   wrapHandler(() => casesLogic.listCases(getDb(), params))
 )
 ```
 
-**Logic module (pure, testable):**
 ```typescript
-// cases-logic.ts
+// cases-logic.ts (pure, testable)
 export function listCases(db: Database, params: CaseSearchParams): PaginatedResult<Case> {
   // all business logic here
 }
@@ -39,11 +114,10 @@ export function listCases(db: Database, params: CaseSearchParams): PaginatedResu
 - Logic functions take explicit dependencies (db, logger) as parameters — no globals
 - Logic functions return plain values, never touch IPC/Electron APIs
 - Handler files only do: arg parsing (Zod), call logic, wrap in `wrapHandler`
-- Existing handler tests migrate to test the logic module directly
 
-### B. Centralized `safeEmit`
+### C. Centralized `safeEmit`
 
-One shared utility replaces all local `safeEmit` definitions:
+One shared utility replaces 4 local definitions + 1 direct `webContents.send`:
 
 **File:** `src/main/ipc/utils/safeEmit.ts`
 ```typescript
@@ -56,7 +130,14 @@ export function safeEmit(channel: string, data: unknown): void {
 }
 ```
 
-Logic modules never call `safeEmit` directly. For progress-reporting handlers (import, batch-import, cohort summary), the handler passes an `onProgress` callback that the handler wires to `safeEmit`:
+**Sources to replace:**
+- `cases.ts:18` — local `safeEmit`
+- `cohort.ts:18` — local `safeEmit`
+- `import.ts:12` — local `safeEmit`
+- `batch-import.ts:21` — local `safeEmit`
+- `export.ts:77` — direct `webContents.send`
+
+Logic modules never call `safeEmit`. Progress-emitting handlers pass an `onProgress` callback:
 
 ```typescript
 // handler (thin)
@@ -72,38 +153,115 @@ export async function runImport(
   args: ImportArgs,
   callbacks: { onProgress: (p: ProgressUpdate) => void }
 ): Promise<ImportResult> {
-  // calls callbacks.onProgress(...) — easily mocked in tests
+  // calls callbacks.onProgress(...) — vi.fn() in tests
 }
 ```
 
-### C. Standardized `isIpcError` Guard
+### D. Renderer Error Standardization
 
-Replace all ad-hoc renderer error checks with the canonical `isIpcError()` type guard:
+**Actual `isIpcError()` guard** (already in `src/shared/types/errors.ts:23`):
+```typescript
+export function isIpcError(result: unknown): result is SerializableError {
+  return (
+    typeof result === 'object' &&
+    result !== null &&
+    'code' in result &&
+    'message' in result &&
+    'userMessage' in result
+  )
+}
+```
+
+**Actual `SerializableError` shape** (`src/shared/types/errors.ts:12`):
+```typescript
+export interface SerializableError {
+  code: ErrorCode
+  message: string
+  userMessage: string
+  details?: Record<string, unknown>
+}
+```
+
+**Ad-hoc patterns to replace with `isIpcError()`:**
+
+| File | Line | Current pattern | Fix |
+|------|------|----------------|-----|
+| `GeneBurdenView.vue` | 197 | `'error' in result` | `isIpcError(result)` |
+| `CohortFilterBar.vue` | 277, 420 | `'code' in result` | `isIpcError(result)` |
+| `useFilterExport.ts` | 33 | `'code' in result` | `isIpcError(result)` |
+| `CohortTable.vue` | 300 | `'code' in result` | `isIpcError(result)` |
+| `FilterToolbar.vue` | 382 | `'code' in result` | `isIpcError(result)` |
+| `ImportWizard.vue` | 478, 565 | `'userMessage' in result` | `isIpcError(result)` |
+
+**Patterns to leave alone** (Track 2 domain results):
+- `result.success`, `result.error` in export/shell/database callers — these check domain union results, not `SerializableError`
+
+### E. Renderer-Side `unwrapIpcResult<T>()` Helper
+
+Instead of a brittle ESLint AST selector, introduce a typed helper that makes the correct pattern easy and the wrong pattern unnecessary:
 
 ```typescript
-// src/shared/types/errors.ts (already exists)
-export function isIpcError(value: unknown): value is SerializableError {
-  return value != null && typeof value === 'object' && 'code' in value && 'error' in value
-}
-```
+// src/renderer/src/utils/ipc-result.ts
+import { isIpcError, type SerializableError } from '../../../shared/types/errors'
+import { logService } from '../services/LogService'
 
-**Banned patterns** (enforced via ESLint):
-- `'error' in result`
-- `result.error` without `isIpcError()` guard
-- `typeof result.error === 'string'`
-
-**ESLint rule:**
-```javascript
-{
-  files: ['src/renderer/**/*.{ts,tsx,vue}'],
-  rules: {
-    'no-restricted-syntax': ['error', {
-      selector: "BinaryExpression[operator='in'][left.value='error'][right.type='Identifier']",
-      message: "Use isIpcError() from shared/types/errors instead of 'error' in result"
-    }]
+/**
+ * Unwrap an IPC result, logging and returning null on error.
+ * Use for wrapHandler-backed channels only.
+ */
+export function unwrapIpcResult<T>(
+  result: T | SerializableError,
+  context: string
+): T | null {
+  if (isIpcError(result)) {
+    logService.error(`${context}: ${result.userMessage}`, context)
+    return null
   }
+  return result
 }
 ```
+
+This replaces ad-hoc checks at call sites and makes misuse harder. ESLint enforcement is a secondary safety net, not the primary control.
+
+---
+
+## Complete Handler Surface (29 modules)
+
+| # | Handler file | Tier | safeEmit? | Extract? |
+|---|-------------|------|-----------|----------|
+| 1 | `analysis-groups.ts` | 2 | No | No |
+| 2 | `annotations.ts` | 1 | No | Yes |
+| 3 | `audit-log.ts` | 2 | No | No |
+| 4 | `auth.ts` | 1 | No | Yes |
+| 5 | `batch-import.ts` | 1 | Yes | Yes |
+| 6 | `case-comments.ts` | 2 | No | No |
+| 7 | `case-metadata.ts` | 1 | No | Yes |
+| 8 | `case-metrics.ts` | 2 | No | No |
+| 9 | `cases.ts` | 1 | Yes | Yes |
+| 10 | `cohort.ts` | 1 | Yes | Yes |
+| 11 | `database.ts` | 1 | No | Yes |
+| 12 | `export.ts` | 1 | Yes (direct) | Yes |
+| 13 | `filter-presets.ts` | 2 | No | No |
+| 14 | `gene-lists.ts` | 2 | No | No |
+| 15 | `gene-ref.ts` | 2 | No | No |
+| 16 | `gnomad.ts` | 2 | No | No |
+| 17 | `hpo.ts` | 2 | No | No |
+| 18 | `import.ts` | 1 | Yes | Yes |
+| 19 | `myvariant.ts` | 2 | No | No |
+| 20 | `panels.ts` | 1 | No | Yes |
+| 21 | `protein.ts` | 2 | No | No |
+| 22 | `region-files.ts` | 2 | No | No |
+| 23 | `shell.ts` | 2 | No | No |
+| 24 | `spliceai.ts` | 2 | No | No |
+| 25 | `system.ts` | 2 | No | No |
+| 26 | `tags.ts` | 1 | No | Yes |
+| 27 | `transcripts.ts` | 2 | No | No |
+| 28 | `updater.ts` | 2 | No | No |
+| 29 | `variants.ts` | 1 | No | Yes |
+| — | `panelIntervalHelper.ts` | — | No | N/A (helper) |
+
+**Tier 1 (extract): 12 handlers**
+**Tier 2 (leave as-is): 17 handlers**
 
 ---
 
@@ -114,91 +272,79 @@ export function isIpcError(value: unknown): value is SerializableError {
 | File | Purpose |
 |------|---------|
 | `src/main/ipc/utils/safeEmit.ts` | Shared safe window emit utility |
-| `src/main/ipc/handlers/analysis-groups-logic.ts` | Pure logic for analysis groups |
-| `src/main/ipc/handlers/annotations-logic.ts` | Pure logic for annotations |
-| `src/main/ipc/handlers/auth-logic.ts` | Pure logic for auth |
-| `src/main/ipc/handlers/batch-import-logic.ts` | Pure logic for batch import |
-| `src/main/ipc/handlers/case-comments-logic.ts` | Pure logic for case comments |
-| `src/main/ipc/handlers/case-metadata-logic.ts` | Pure logic for case metadata |
-| `src/main/ipc/handlers/cases-logic.ts` | Pure logic for cases |
-| `src/main/ipc/handlers/cohort-logic.ts` | Pure logic for cohort |
-| `src/main/ipc/handlers/database-logic.ts` | Pure logic for database ops |
-| `src/main/ipc/handlers/export-logic.ts` | Pure logic for export |
-| `src/main/ipc/handlers/gene-lists-logic.ts` | Pure logic for gene lists |
-| `src/main/ipc/handlers/import-logic.ts` | Pure logic for import |
-| `src/main/ipc/handlers/panels-logic.ts` | Pure logic for panels |
-| `src/main/ipc/handlers/presets-logic.ts` | Pure logic for presets |
-| `src/main/ipc/handlers/region-files-logic.ts` | Pure logic for region files |
-| `src/main/ipc/handlers/system-logic.ts` | Pure logic for system |
-| `src/main/ipc/handlers/tags-logic.ts` | Pure logic for tags |
-| `src/main/ipc/handlers/transcripts-logic.ts` | Pure logic for transcripts |
-| `src/main/ipc/handlers/variants-logic.ts` | Pure logic for variants |
-| `tests/main/handlers/*-logic.test.ts` | 19 test files (one per logic module) |
+| `src/main/ipc/handlers/*-logic.ts` (12 files) | Pure logic for Tier 1 handlers |
+| `src/renderer/src/utils/ipc-result.ts` | `unwrapIpcResult<T>()` helper |
+| `tests/main/handlers/*-logic.test.ts` (12 files) | Tests for extracted logic |
 
 ### Modified Files
 
 | File | Change |
 |------|--------|
-| All 19 `src/main/ipc/handlers/*.ts` | Thin wrapper: delegate to `-logic.ts` |
-| `eslint.config.js` | Add `no-restricted-syntax` rule for ad-hoc error checks |
+| 12 Tier 1 handler files | Thin wrapper: delegate to `-logic.ts` |
+| 5 handler files with safeEmit | Replace local definition/direct send with shared import |
+| `src/shared/types/api.ts` | Add `IpcResult<T>` type alias |
+| `eslint.config.js` | Add `no-restricted-syntax` for ad-hoc error checks (secondary control) |
 | `vitest.config.ts` | Add per-glob threshold for handler logic |
-| Renderer files using ad-hoc error checks | Replace with `isIpcError()` |
-
-### Deleted Files
-
-| File | Reason |
-|------|--------|
-| Local `safeEmit` definitions in handler files | Replaced by shared utility |
+| ~8 renderer files | Replace ad-hoc error checks with `isIpcError()` or `unwrapIpcResult()` |
 
 ---
 
 ## Execution Waves
 
+### Wave 0 — Immediate Bug Fix
+- Fix `GeneBurdenView.vue:197` — replace `'error' in result` with `isIpcError(result)`
+- Commit independently, can ship before the rest
+
 ### Wave 1 — Infrastructure
 - Create `src/main/ipc/utils/safeEmit.ts`
-- Ensure `isIpcError` is properly exported from shared
-- Add ESLint rule banning ad-hoc error checks
+- Add `IpcResult<T>` type to `src/shared/types/api.ts`
+- Create `src/renderer/src/utils/ipc-result.ts` with `unwrapIpcResult()`
+- Add ESLint rule as secondary control
 
-### Wave 2 — Handler Extraction
-- Extract logic from all 19 handler files into companion `-logic.ts` modules
-- Replace local `safeEmit` with shared import
+### Wave 2 — Handler Extraction (Tier 1 only)
+- Extract logic from 12 orchestration-heavy handlers into `-logic.ts` modules
+- Replace 4 local `safeEmit` + 1 direct `webContents.send` with shared import
 - Progress-emitting handlers get callback pattern
 
 ### Wave 3 — Renderer Standardization
-- Audit all renderer IPC call sites
-- Replace ad-hoc error checks with `isIpcError()`
-- Verify ESLint rule catches all violations
+- Replace ~8 ad-hoc error check sites with `isIpcError()` or `unwrapIpcResult()`
+- Leave Track 2 domain result checks (`result.success`) untouched
+- Verify ESLint rule catches violations
 
 ### Wave 4 — Tests & Coverage
-- Write tests for all 19 logic modules
-- Migrate existing handler tests to call logic directly
-- Add per-glob coverage thresholds
-- Run full verification (lint, typecheck, tests, coverage)
+- Write tests for 12 Tier 1 logic modules
+- Keep existing handler tests (wrapper + logic) — do not migrate to logic-only
+- Add per-glob coverage thresholds for `*-logic.ts` files
+- Run full verification
 
 ---
 
 ## Test Strategy
 
-**Pattern:** Each test creates a real in-memory SQLite database (existing project pattern), calls the pure logic function, and asserts results. No mocking of `ipcMain`, `BrowserWindow`, or Electron APIs.
+**New logic tests:** Each test creates a real in-memory SQLite database (existing project pattern), calls the pure logic function, asserts results. No mocking of `ipcMain`, `BrowserWindow`, or Electron APIs.
 
 **Progress-emitting logic:** Pass `vi.fn()` as `onProgress` callback, assert call count and arguments.
 
-**Coverage targets:**
-- `src/main/ipc/handlers/*-logic.ts`: 70% lines, 60% branches
-- Global thresholds stay with `autoUpdate` ratcheting
+**Existing handler tests:** Keep as-is. They cover wrapper-specific behavior (Zod validation, `wrapHandler` error wrapping, IPC registration) that pure logic tests would not. The two test layers are complementary.
 
-**Existing handler tests:** Migrate to call logic modules directly, removing IPC mock complexity.
+**Coverage targets:**
+- New `*-logic.ts` files: 70% lines, 60% branches (per-glob threshold)
+- Aggregate handler directory: target >30% (up from 5.7%)
+- Global thresholds stay with `autoUpdate` ratcheting
+- No `perFile` enforcement initially — too aggressive
 
 ---
 
 ## Success Criteria
 
+- GeneBurdenView bug fixed immediately
 - Handler layer coverage rises from ~5.7% to >30%
-- Zero ad-hoc error checks in renderer (`isIpcError()` everywhere)
+- Zero ad-hoc `SerializableError` checks in renderer (all use `isIpcError()`)
+- Track 2 domain result checks left intentionally untouched
 - Zero duplicate `safeEmit` definitions
-- All handler files become thin wrappers (<20 lines of logic each)
-- ESLint rule prevents regression of both error check patterns and raw `safeEmit`
-- All existing tests continue to pass
+- Tier 1 handler files become thin wrappers
+- Existing handler tests preserved and passing
+- `unwrapIpcResult()` available as the recommended renderer pattern
 - `npm run lint:check && npm run typecheck && npm run test` clean
 
 ---
@@ -206,5 +352,6 @@ export function isIpcError(value: unknown): value is SerializableError {
 ## Research References
 
 - Electron IPC has no built-in way to query registered handlers ([electron#38560](https://github.com/electron/electron/issues/38560)) — pure function extraction is the recommended test pattern
+- Electron documents that `ipcMain.handle` error serialization is lossy ([Electron IPC tutorial](https://www.electronjs.org/docs/latest/tutorial/ipc)) — supports explicit `SerializableError` contract
 - Vitest supports per-glob coverage thresholds with `autoUpdate` ratcheting ([vitest PR #4442](https://github.com/vitest-dev/vitest/pull/4442))
-- Thin worker entry + extracted logic is the established pattern for testable Electron workers ([vitest#3419](https://github.com/vitest-dev/vitest/discussions/3419))
+- ESLint `no-restricted-syntax` can enforce AST patterns but should be a secondary control, not primary ([ESLint blog](https://eslint.org/blog/2017/03/eslint-v3.18.0-released/))

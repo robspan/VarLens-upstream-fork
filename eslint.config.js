@@ -101,5 +101,20 @@ export default [
         }
       ]
     }
+  },
+  // Ban ad-hoc IPC error checks in renderer (use isIpcError() instead)
+  {
+    files: ['src/renderer/**/*.{ts,tsx,vue}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "BinaryExpression[operator='in'][left.value='error'][right.type='Identifier']",
+          message:
+            "Use isIpcError() from shared/types/errors instead of ad-hoc 'error' in result checks."
+        }
+      ]
+    }
   }
 ]

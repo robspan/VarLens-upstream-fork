@@ -61,9 +61,8 @@ import type {
   GeneList,
   GeneListWithCount,
   RegionFile
-} from '../../main/database/types'
-import type { ProgressUpdate, ImportResult } from '../../main/import/types'
-import type { VcfPreviewResult } from '../../main/import/vcf/types'
+} from './database'
+import type { ProgressUpdate, ImportResult, VcfPreviewResult } from './import'
 import type { SerializableError } from './errors'
 import type {
   CohortVariant,
@@ -90,14 +89,14 @@ import type {
   GeneAutocompleteResult,
   GeneRefInfo,
   AssemblyInfo
-} from '../../main/database/GeneReferenceDb'
+} from './gene-reference'
 import type {
   PanelRow,
   PanelWithCount,
   PanelGeneRow,
-  ActivePanelRow
-} from '../../main/database/PanelRepository'
-import type { PanelAppSearchResult } from '../../main/services/api/PanelAppClient'
+  ActivePanelRow,
+  PanelAppSearchResult
+} from './panels'
 import type {
   ProteinMappingResult,
   ProteinDomainResult,
@@ -703,6 +702,10 @@ export interface GnomadAPI {
   ) => Promise<ClinVarFetchResult | ProteinApiError>
 }
 
+export interface PerfAPI {
+  reportInteractive: () => void
+}
+
 export interface WindowAPI {
   cases: CasesAPI
   variants: VariantsAPI
@@ -735,6 +738,7 @@ export interface WindowAPI {
   analysisGroups: AnalysisGroupsAPI
   protein: ProteinAPI
   gnomad: GnomadAPI
+  perf: PerfAPI
 }
 
 export interface PresetsAPI {

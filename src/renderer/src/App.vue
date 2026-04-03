@@ -102,7 +102,6 @@ const KeyboardShortcutsDialog = defineAsyncComponent(
 const ViewTransitionOverlay = defineAsyncComponent(
   () => import('./components/ViewTransitionOverlay.vue')
 )
-
 const router = useRouter()
 const { api } = useApiService()
 const importStore = useImportStatusStore()
@@ -347,6 +346,11 @@ onMounted(() => {
       'app'
     )
   })
+
+  // Report to main process that renderer is interactive
+  if (import.meta.env.DEV) {
+    api?.perf?.reportInteractive()
+  }
 
   if (api) {
     cleanupImportComplete = api.batchImport.onComplete((result) => {

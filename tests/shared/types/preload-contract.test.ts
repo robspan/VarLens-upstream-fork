@@ -121,6 +121,69 @@ function extractMockApiKeys(): string[] {
   return keys.sort()
 }
 
+/**
+ * Extract method keys for a specific API sub-interface from api.ts.
+ * Uses brace-depth tracking to handle nested object types in return signatures
+ * (e.g., `Promise<{ data: T[]; total_count: number }>`).
+ */
+function extractSubInterfaceKeys(interfaceName: string): string[] {
+  const content = readFileSync(resolve(ROOT, 'src/shared/types/api.ts'), 'utf-8')
+
+  // Find the start of the interface
+  const startMarker = `export interface ${interfaceName}`
+  const startIdx = content.indexOf(startMarker)
+  if (startIdx === -1) return []
+
+  // Track brace depth to find the matching closing brace
+  const lines = content.slice(startIdx).split('\n')
+  let depth = 0
+  let inBlock = false
+  const keys: string[] = []
+
+  for (const line of lines) {
+    // Top-level properties are at depth === 1 (inside the outer interface brace)
+    if (depth === 1) {
+      const m = line.match(/^\s+(\w+)\s*:/)
+      if (m) keys.push(m[1])
+    }
+
+    for (const ch of line) {
+      if (ch === '{') {
+        depth++
+        inBlock = true
+      }
+      if (ch === '}') depth--
+    }
+
+    if (inBlock && depth === 0) break
+  }
+
+  return keys.sort()
+}
+
+describe('Preload contract — per-module method alignment', () => {
+  const apiContent = readFileSync(resolve(ROOT, 'src/shared/types/api.ts'), 'utf-8')
+
+  // Extract module→interface mapping from WindowAPI
+  const windowApiBlock = apiContent.match(/export interface WindowAPI\s*\{([^}]+)\}/)
+  if (!windowApiBlock) throw new Error('Cannot find WindowAPI')
+
+  const moduleEntries: Array<{ key: string; interfaceName: string }> = []
+  for (const line of windowApiBlock[1].split('\n')) {
+    const match = line.match(/^\s+(\w+)\s*:\s*(\w+)/)
+    if (match) {
+      moduleEntries.push({ key: match[1], interfaceName: match[2] })
+    }
+  }
+
+  for (const { key, interfaceName } of moduleEntries) {
+    it(`${key} (${interfaceName}) has methods defined`, () => {
+      const methods = extractSubInterfaceKeys(interfaceName)
+      expect(methods.length).toBeGreaterThan(0)
+    })
+  }
+})
+
 describe('Preload contract alignment', () => {
   const windowApiKeys = extractWindowApiKeys()
   const preloadKeys = extractPreloadApiKeys()

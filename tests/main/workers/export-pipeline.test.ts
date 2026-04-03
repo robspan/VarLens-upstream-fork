@@ -143,7 +143,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  rmSync(tmpDir, { recursive: true, force: true })
+  // maxRetries needed on Windows where file handles may not be released immediately
+  rmSync(tmpDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
 })
 
 // ---------------------------------------------------------------------------

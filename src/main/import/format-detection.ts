@@ -1,9 +1,9 @@
 import { createReadStream } from 'node:fs'
 import { createGunzip } from 'node:zlib'
 import { createInterface } from 'node:readline'
-import { parser } from 'stream-json'
-import { pick } from 'stream-json/filters/Pick'
-import { streamArray } from 'stream-json/streamers/StreamArray'
+import parser from 'stream-json'
+import { pick } from 'stream-json/filters/pick.js'
+import { streamArray } from 'stream-json/streamers/stream-array.js'
 import type { Readable } from 'node:stream'
 import type { FileFormat, FormatInfo } from './strategies/ImportStrategy'
 import { createDecompressedStream, isGzipped } from './stream-utils'
@@ -278,16 +278,16 @@ export async function createDataPipeline(filePath: string): Promise<{
     case 'simple':
       stream = decompressed
         .pipe(jsonParser)
-        .pipe(pick({ filter: 'variants' }))
-        .pipe(streamArray())
+        .pipe(pick.asStream({ filter: 'variants' }))
+        .pipe(streamArray.asStream())
       break
 
     case 'object': {
       const samplePath = `samples.${formatInfo.caseKey}.variants`
       stream = decompressed
         .pipe(jsonParser)
-        .pipe(pick({ filter: samplePath }))
-        .pipe(streamArray())
+        .pipe(pick.asStream({ filter: samplePath }))
+        .pipe(streamArray.asStream())
       break
     }
 
@@ -296,8 +296,8 @@ export async function createDataPipeline(filePath: string): Promise<{
       const dataPath = wrapped ? `${formatInfo.caseKey}.data` : 'data'
       stream = decompressed
         .pipe(jsonParser)
-        .pipe(pick({ filter: dataPath }))
-        .pipe(streamArray())
+        .pipe(pick.asStream({ filter: dataPath }))
+        .pipe(streamArray.asStream())
       break
     }
 

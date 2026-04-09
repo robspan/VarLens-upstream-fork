@@ -9,9 +9,9 @@ import { createReadStream } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { createGunzip } from 'node:zlib'
 import type { Readable } from 'node:stream'
-import { parser } from 'stream-json'
-import { pick } from 'stream-json/filters/Pick'
-import { streamArray } from 'stream-json/streamers/StreamArray'
+import parser from 'stream-json'
+import { pick } from 'stream-json/filters/pick.js'
+import { streamArray } from 'stream-json/streamers/stream-array.js'
 
 import type { DataDictionaries } from '../import/types'
 import type { FormatInfo } from '../import/strategies/ImportStrategy'
@@ -359,8 +359,8 @@ export async function createMapperPipeline(
     case 'simple': {
       const stream = createDecompressedStream(filePath)
         .pipe(parser())
-        .pipe(pick({ filter: 'variants' }))
-        .pipe(streamArray())
+        .pipe(pick.asStream({ filter: 'variants' }))
+        .pipe(streamArray.asStream())
         .pipe(createObjectFormatMapper())
       return stream
     }
@@ -369,8 +369,8 @@ export async function createMapperPipeline(
       const samplePath = `samples.${formatInfo.caseKey}.variants`
       const stream = createDecompressedStream(filePath)
         .pipe(parser())
-        .pipe(pick({ filter: samplePath }))
-        .pipe(streamArray())
+        .pipe(pick.asStream({ filter: samplePath }))
+        .pipe(streamArray.asStream())
         .pipe(createObjectFormatMapper())
       return stream
     }
@@ -385,8 +385,8 @@ export async function createMapperPipeline(
 
       const stream = createDecompressedStream(filePath)
         .pipe(parser())
-        .pipe(pick({ filter: dataPath }))
-        .pipe(streamArray())
+        .pipe(pick.asStream({ filter: dataPath }))
+        .pipe(streamArray.asStream())
         .pipe(fieldMapper)
       return stream
     }
@@ -420,8 +420,8 @@ export async function parseHeader(
 
     const stream = createDecompressedStream(filePath)
       .pipe(parser())
-      .pipe(pick({ filter: headerPath }))
-      .pipe(streamArray())
+      .pipe(pick.asStream({ filter: headerPath }))
+      .pipe(streamArray.asStream())
 
     const cleanup = (): void => {
       stream.removeAllListeners()

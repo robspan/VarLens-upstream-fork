@@ -19,9 +19,9 @@ import { resolve } from 'node:path'
 import { createReadStream } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { createGunzip } from 'node:zlib'
-import { parser } from 'stream-json'
-import { pick } from 'stream-json/filters/Pick'
-import { streamArray } from 'stream-json/streamers/StreamArray'
+import parser from 'stream-json'
+import { pick } from 'stream-json/filters/pick.js'
+import { streamArray } from 'stream-json/streamers/stream-array.js'
 import { DatabaseService } from '../../../src/main/database/DatabaseService'
 import { createObjectFormatMapper } from '../../../src/main/import/transforms/ObjectFormatMapper'
 import { createDecompressedStream, isGzipped } from '../../../src/main/import/stream-utils'
@@ -187,15 +187,15 @@ async function streamInsertJson(
   if (formatInfo.format === 'simple') {
     mapperStream = createDecompressedStream(filePath)
       .pipe(parser())
-      .pipe(pick({ filter: 'variants' }))
-      .pipe(streamArray())
+      .pipe(pick.asStream({ filter: 'variants' }))
+      .pipe(streamArray.asStream())
       .pipe(createObjectFormatMapper())
   } else if (formatInfo.format === 'object') {
     const samplePath = `samples.${formatInfo.caseKey}.variants`
     mapperStream = createDecompressedStream(filePath)
       .pipe(parser())
-      .pipe(pick({ filter: samplePath }))
-      .pipe(streamArray())
+      .pipe(pick.asStream({ filter: samplePath }))
+      .pipe(streamArray.asStream())
       .pipe(createObjectFormatMapper())
   } else {
     throw new Error(`Format ${formatInfo.format} not handled in this test helper`)

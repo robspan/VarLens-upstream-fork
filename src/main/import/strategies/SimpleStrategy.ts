@@ -1,7 +1,7 @@
 import { pipeline } from 'node:stream/promises'
-import { parser } from 'stream-json'
-import { pick } from 'stream-json/filters/Pick'
-import { streamArray } from 'stream-json/streamers/StreamArray'
+import parser from 'stream-json'
+import { pick } from 'stream-json/filters/pick.js'
+import { streamArray } from 'stream-json/streamers/stream-array.js'
 import { createObjectFormatMapper } from '../transforms/ObjectFormatMapper'
 import { createBatchAccumulator } from '../transforms/BatchAccumulator'
 import type { ImportOptions, ImportResult } from '../types'
@@ -49,8 +49,8 @@ export class SimpleStrategy implements ImportStrategy {
     await pipeline(
       createDecompressedStream(filePath),
       parser(),
-      pick({ filter: 'variants' }),
-      streamArray(),
+      pick.asStream({ filter: 'variants' }),
+      streamArray.asStream(),
       objectMapper,
       batchAccumulator
     )

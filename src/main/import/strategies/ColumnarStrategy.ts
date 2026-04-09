@@ -1,7 +1,7 @@
 import { pipeline } from 'node:stream/promises'
-import { parser } from 'stream-json'
-import { pick } from 'stream-json/filters/Pick'
-import { streamArray } from 'stream-json/streamers/StreamArray'
+import parser from 'stream-json'
+import { pick } from 'stream-json/filters/pick.js'
+import { streamArray } from 'stream-json/streamers/stream-array.js'
 import { createFieldMapper } from '../transforms/FieldMapper'
 import { createBatchAccumulator } from '../transforms/BatchAccumulator'
 import { resolveColumnIndices, type ColumnIndices } from '../config/fieldMapping'
@@ -73,8 +73,8 @@ export class ColumnarStrategy implements ImportStrategy {
       await pipeline(
         createDecompressedStream(filePath),
         parser(),
-        pick({ filter: dataPath }),
-        streamArray(),
+        pick.asStream({ filter: dataPath }),
+        streamArray.asStream(),
         fieldMapper,
         batchAccumulator
       )
@@ -118,8 +118,8 @@ export class ColumnarStrategy implements ImportStrategy {
 
       const stream = createDecompressedStream(filePath)
         .pipe(parser())
-        .pipe(pick({ filter: headerPath }))
-        .pipe(streamArray())
+        .pipe(pick.asStream({ filter: headerPath }))
+        .pipe(streamArray.asStream())
 
       const cleanup = (): void => {
         stream.removeAllListeners()

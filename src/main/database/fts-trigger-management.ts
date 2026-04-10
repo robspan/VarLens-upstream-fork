@@ -29,9 +29,8 @@ export function tearDownFtsTriggers(db: DatabaseType): TriggerSnapshot {
   const present = detectPresentFtsTables(db)
   const snapshot: TriggerSnapshot = {}
   for (const ftsTable of present) {
-    const base = ftsTable.replace(/_fts$/, '')
     for (const suffix of ['_ai', '_au', '_ad']) {
-      const triggerName = `${base}${suffix}`
+      const triggerName = `${ftsTable}${suffix}`
       const row = db
         .prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?")
         .get(triggerName) as { sql: string } | undefined

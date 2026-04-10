@@ -95,3 +95,68 @@ describe('buildBaseWhere', () => {
     expect(result.params).toEqual([0.01, 20, 'missense_variant'])
   })
 })
+
+describe('translateColumnFilter branches', () => {
+  it('column_filter operator=in produces IN clause', () => {
+    const result = buildBaseWhere(
+      { column_filters: { gene_symbol: { operator: 'in', value: ['BRCA1', 'BRCA2'] } } },
+      { baseAlias: 'v', scope: 'case' }
+    )
+    expect(result.sql).toContain('v.gene_symbol IN (?, ?)')
+    expect(result.params).toEqual(['BRCA1', 'BRCA2'])
+  })
+
+  it('column_filter operator=in with empty array is dropped', () => {
+    const result = buildBaseWhere(
+      { column_filters: { gene_symbol: { operator: 'in', value: [] } } },
+      { baseAlias: 'v', scope: 'case' }
+    )
+    expect(result.sql).toBe('')
+    expect(result.params).toEqual([])
+  })
+
+  it('column_filter operator=like produces LIKE with NOCASE', () => {
+    const result = buildBaseWhere(
+      { column_filters: { gene_symbol: { operator: 'like', value: 'brca' } } },
+      { baseAlias: 'v', scope: 'case' }
+    )
+    expect(result.sql).toContain('v.gene_symbol LIKE ? COLLATE NOCASE')
+    expect(result.params).toEqual(['%brca%'])
+  })
+
+  it('column_filter operator=like with whitespace is dropped', () => {
+    const result = buildBaseWhere(
+      { column_filters: { gene_symbol: { operator: 'like', value: '  ' } } },
+      { baseAlias: 'v', scope: 'case' }
+    )
+    expect(result.sql).toBe('')
+    expect(result.params).toEqual([])
+  })
+
+  it('column_filter operator= produces equality clause', () => {
+    const result = buildBaseWhere(
+      { column_filters: { variant_type: { operator: '=', value: 'snv' } } },
+      { baseAlias: 'v', scope: 'case' }
+    )
+    expect(result.sql).toContain('v.variant_type = ?')
+    expect(result.params).toEqual(['snv'])
+  })
+
+  it('column_filter operator!= produces not-equal clause', () => {
+    const result = buildBaseWhere(
+      { column_filters: { variant_type: { operator: '!=', value: 'sv' } } },
+      { baseAlias: 'v', scope: 'case' }
+    )
+    expect(result.sql).toContain('v.variant_type != ?')
+    expect(result.params).toEqual(['sv'])
+  })
+
+  it('rejects non-identifier column_filter keys (SQL identifier safety)', () => {
+    const result = buildBaseWhere(
+      { column_filters: { 'x; DROP TABLE cases; --': { operator: '=', value: 1 } } },
+      { baseAlias: 'v', scope: 'case' }
+    )
+    expect(result.sql).toBe('')
+    expect(result.params).toEqual([])
+  })
+})

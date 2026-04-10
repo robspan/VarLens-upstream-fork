@@ -18,17 +18,17 @@ describe('fts-trigger-management', () => {
         gene_symbol, consequence, omim_mim_number,
         content='variants', content_rowid='id'
       );
-      CREATE TRIGGER variants_ai AFTER INSERT ON variants BEGIN
+      CREATE TRIGGER variants_fts_ai AFTER INSERT ON variants BEGIN
         INSERT INTO variants_fts(rowid, gene_symbol, consequence, omim_mim_number)
         VALUES (new.id, new.gene_symbol, new.consequence, new.omim_mim_number);
       END;
-      CREATE TRIGGER variants_au AFTER UPDATE ON variants BEGIN
+      CREATE TRIGGER variants_fts_au AFTER UPDATE ON variants BEGIN
         INSERT INTO variants_fts(variants_fts, rowid, gene_symbol, consequence, omim_mim_number)
           VALUES('delete', old.id, old.gene_symbol, old.consequence, old.omim_mim_number);
         INSERT INTO variants_fts(rowid, gene_symbol, consequence, omim_mim_number)
           VALUES (new.id, new.gene_symbol, new.consequence, new.omim_mim_number);
       END;
-      CREATE TRIGGER variants_ad AFTER DELETE ON variants BEGIN
+      CREATE TRIGGER variants_fts_ad AFTER DELETE ON variants BEGIN
         INSERT INTO variants_fts(variants_fts, rowid, gene_symbol, consequence, omim_mim_number)
           VALUES('delete', old.id, old.gene_symbol, old.consequence, old.omim_mim_number);
       END;
@@ -51,7 +51,11 @@ describe('fts-trigger-management', () => {
 
   it('tearDownFtsTriggers drops all present FTS triggers and captures snapshot', () => {
     const snapshot = tearDownFtsTriggers(db)
-    expect(Object.keys(snapshot).sort()).toEqual(['variants_ad', 'variants_ai', 'variants_au'])
+    expect(Object.keys(snapshot).sort()).toEqual([
+      'variants_fts_ad',
+      'variants_fts_ai',
+      'variants_fts_au'
+    ])
     const remaining = db
       .prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'variants_%'")
       .all()
@@ -68,7 +72,16 @@ describe('fts-trigger-management', () => {
     )
       .map((r) => r.name)
       .sort()
-    expect(restored).toEqual(['variants_ad', 'variants_ai', 'variants_au'])
+    expect(restored).toEqual(['variants_fts_ad', 'variants_fts_ai', 'variants_fts_au'])
+  })
+
+  it('derives trigger names with _fts infix (matches production naming from schema.ts)', () => {
+    const snapshot = tearDownFtsTriggers(db)
+    // Production triggers are variants_fts_ai/au/ad, not variants_ai/au/ad
+    expect(Object.keys(snapshot)).toContain('variants_fts_ai')
+    expect(Object.keys(snapshot)).toContain('variants_fts_au')
+    expect(Object.keys(snapshot)).toContain('variants_fts_ad')
+    expect(Object.keys(snapshot)).not.toContain('variants_ai')
   })
 
   it('teardown + restore is idempotent', () => {

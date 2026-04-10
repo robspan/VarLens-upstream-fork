@@ -129,12 +129,15 @@ export function buildBaseWhere(
   return { sql: conditions.join(' AND '), params }
 }
 
+const IDENTIFIER_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/
+
 function translateColumnFilter(
   column: string,
   filter: ColumnFilter,
   baseAlias: string,
   params: (string | number)[]
 ): string | null {
+  if (!IDENTIFIER_RE.test(column)) return null
   const col = `${baseAlias}.${column}`
   const { operator, value, includeEmpty } = filter
   const nullBranch = includeEmpty !== false

@@ -113,6 +113,7 @@ function deriveFtsTables(): ExtensionFtsTableEntry[] {
     [ExtensionTypeKey, VariantExtensionDef]
   >) {
     if (!def.hasFts) continue
+    if (def.variantTypeValue === 'cnv') continue // defensive: should already be filtered by hasFts
     const ftsColumns = Object.entries(def.columns)
       .filter(([, col]) => col.fts)
       .map(([name]) => name)
@@ -121,7 +122,7 @@ function deriveFtsTables(): ExtensionFtsTableEntry[] {
       typeKey,
       ftsTable: `${def.table}_fts`,
       sourceTable: def.table,
-      variantTypeValue: def.variantTypeValue as 'sv' | 'str',
+      variantTypeValue: def.variantTypeValue, // TS narrows to 'sv' | 'str' via the guard above
       ftsColumns
     })
   }

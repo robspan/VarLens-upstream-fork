@@ -12,7 +12,12 @@ import type {
   CnvExtensionRow,
   StrExtensionRow
 } from '../import/vcf/extension-parsers'
-import { createFTSTriggers } from './schema'
+import {
+  tearDownFtsTriggers,
+  restoreFtsTriggers,
+  rebuildAllFtsIndexes,
+  type TriggerSnapshot
+} from './fts-trigger-management'
 import { mainLogger } from '../services/MainLogger'
 
 /** Extended variant fields for multi-type import (SV/CNV/STR) */
@@ -44,6 +49,7 @@ export class VariantRepository extends BaseRepository {
   private readonly filterBuilder: VariantFilterBuilder
   private readonly searchService: VariantSearchService
   private readonly frequencyService: VariantFrequencyService
+  private ftsSnapshot: TriggerSnapshot = {}
 
   constructor(db: DatabaseType, kysely: Kysely<VarlensDatabase>, cases: CaseRepository) {
     super(db, kysely)
@@ -58,11 +64,7 @@ export class VariantRepository extends BaseRepository {
    * Must be paired with a subsequent call to `finishBulkInsert()`.
    */
   beginBulkInsert(): void {
-    this.db.exec(`
-      DROP TRIGGER IF EXISTS variants_fts_ai;
-      DROP TRIGGER IF EXISTS variants_fts_ad;
-      DROP TRIGGER IF EXISTS variants_fts_au;
-    `)
+    this.ftsSnapshot = tearDownFtsTriggers(this.db)
   }
 
   /**
@@ -180,13 +182,14 @@ export class VariantRepository extends BaseRepository {
   finishBulkInsertNoCount(): void {
     // Always rebuild FTS and restore triggers, even if a step fails
     try {
-      this.db.exec("INSERT INTO variants_fts(variants_fts) VALUES('rebuild')")
+      rebuildAllFtsIndexes(this.db)
     } catch (error) {
       mainLogger.error(`Failed to rebuild FTS index: ${error}`, 'VariantRepository')
     }
 
     try {
-      this.db.exec(createFTSTriggers)
+      restoreFtsTriggers(this.db, this.ftsSnapshot)
+      this.ftsSnapshot = {}
     } catch (error) {
       mainLogger.error(`Failed to recreate FTS triggers: ${error}`, 'VariantRepository')
     }

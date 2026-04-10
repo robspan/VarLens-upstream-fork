@@ -9,6 +9,7 @@ import Database from 'better-sqlite3-multiple-ciphers'
 import type { Database as DatabaseType } from 'better-sqlite3-multiple-ciphers'
 import { DATABASE_CONFIG } from '../../shared/config'
 import { createFTSTriggers } from '../database/schema'
+import { rebuildAllFtsIndexes } from '../database/fts-trigger-management'
 import {
   REBUILD_VARIANT_SUMMARY_SQL,
   REBUILD_GENE_BURDEN_SQL,
@@ -16,6 +17,10 @@ import {
   CHECK_TABLE_EXISTS_SQL
 } from '../../shared/sql/cohort-summary-rebuild'
 
+// TODO(Task 2.1): `import-pipeline.ts` re-exports and uses this const alongside
+// its own inline teardown/restore copy of the FTS trigger logic. A follow-up
+// commit should migrate that third copy to `fts-trigger-management` and then
+// remove this constant. Kept in place for now to keep Task 2 scope contained.
 export const DROP_FTS_TRIGGERS = `
   DROP TRIGGER IF EXISTS variants_fts_ai;
   DROP TRIGGER IF EXISTS variants_fts_ad;
@@ -62,10 +67,18 @@ export function openWorkerDatabaseReadOnly(dbPath: string, encryptionKey?: strin
 /**
  * Rebuild the FTS index, recreate triggers, run ANALYZE, and optimize the index.
  * All steps are best-effort — failures are silently ignored.
+ *
+ * The rebuild step delegates to `rebuildAllFtsIndexes` from the shared
+ * `fts-trigger-management` module so every present FTS table (variants_fts
+ * plus any v26 extension FTS tables) is rebuilt. The trigger creation step
+ * uses `createFTSTriggers` directly — this function is called from paths
+ * (delete-worker) that did not first tear down triggers via a capture, so
+ * there is no snapshot to restore from and we fall back to the
+ * "ensure triggers exist" semantics.
  */
 export function rebuildFts(db: DatabaseType): void {
   try {
-    db.exec("INSERT INTO variants_fts(variants_fts) VALUES('rebuild')")
+    rebuildAllFtsIndexes(db)
   } catch (e) {
     console.warn(
       '[worker-db] Failed to rebuild FTS index:',

@@ -111,14 +111,19 @@ export default defineConfig({
       thresholds: {
         autoUpdate: true,
         // Global floor -- calibrated from CI actuals (~0.5% below to account for platform variance).
-        // Recalibrated 2026-04-10 after adding multi-variant-type import plumbing
-        // (migration v25, multi-file session housekeeping, genome-build lock,
-        // new wizard IPC surface). The added production code is not yet
-        // unit-covered, which drops the ratios below.
-        lines: 33.9,
-        functions: 21.1,
-        branches: 28.0,
-        statements: 33.3
+        // Recalibrated 2026-04-10 twice:
+        //   1. After adding multi-variant-type import plumbing (migration v25,
+        //      multi-file session housekeeping, genome-build lock, new wizard IPC).
+        //   2. After the multi-variant filter/sort/search plan (Tasks 1-13 added
+        //      variant-where-builder, column-meta IPC, search-clause-emitter,
+        //      FilterState.columnFilters, ExtensionColumnFilters component, and
+        //      the Path-3 AssociationDataBuilder refactor). Coverage rose because
+        //      many of the new modules ship with dedicated unit tests.
+        // Auto-updated via `COVERAGE=1 vitest run --coverage` (autoUpdate: true).
+        lines: 35.52,
+        functions: 22.04,
+        branches: 31.42,
+        statements: 34.74
       },
       // On CI we only need the JSON summary to gate the thresholds and
       // upload as an artifact. Skipping `text` and `html` reporters saves

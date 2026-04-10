@@ -280,6 +280,112 @@ export function buildExtensionJoinClauses(
   }
 }
 
+// ── Extension filter → EXISTS subquery builder (cohort-listing path) ──
+
+/**
+ * Result of translating column_filters into EXISTS subquery clauses.
+ *
+ * Used by Path 2 (CohortService) to wire extension-table filters into the
+ * cohort-listing query. Cohort queries run against the pre-computed
+ * `cohort_variant_summary` table, which has no `variant_id` column, so we
+ * cannot JOIN the extension table directly. Instead, we emit an EXISTS
+ * subquery that correlates on `(chr, pos, ref, alt, variant_type)` back to
+ * `variants` + the extension table.
+ */
+export interface BuildExtensionExistsResult {
+  /**
+   * Raw SQL fragment containing a single-type `cvs.variant_type = '…'`
+   * narrowing (when all filters target one type) plus one EXISTS block per
+   * distinct extension type, joined by ` AND `. Empty string when no
+   * extension filters were present.
+   */
+  whereClause: string
+  /** Ordered placeholder values matching each `?` in `whereClause`. */
+  params: (string | number)[]
+  /**
+   * When all extension filters target a single type, reports that type so
+   * callers can fold it into higher-level narrowing. `null` when filters
+   * span multiple extension types (cross-type).
+   */
+  implicitTypeNarrowing: ExtensionTypeKey | null
+}
+
+/**
+ * Translate a `column_filters` map into EXISTS subquery clauses against
+ * `cohort_variant_summary`.
+ *
+ * Groups filters by extension type (so two CNV filters share one EXISTS
+ * block). For each type, emits:
+ * ```
+ * EXISTS (
+ *   SELECT 1 FROM variants v
+ *   JOIN <ext_table> <alias> ON <alias>.variant_id = v.id
+ *   WHERE v.chr = cvs.chr AND v.pos = cvs.pos AND v.ref = cvs.ref
+ *     AND v.alt = cvs.alt AND v.variant_type = cvs.variant_type
+ *     AND <inner conditions>
+ * )
+ * ```
+ *
+ * When all filters target a single extension type, a leading
+ * `<cvsAlias>.variant_type = '<type>'` narrowing is prepended to help the
+ * query planner. Operator semantics match `buildExtensionJoinClauses` exactly
+ * because both paths share the `translateExtensionFilter` primitive.
+ */
+export function buildExtensionExistsClauses(
+  columnFilters: ColumnFiltersParam,
+  cvsAlias: string
+): BuildExtensionExistsResult {
+  const byType = new Map<ExtensionTypeKey, Array<{ column: string; filter: ColumnFilter }>>()
+  for (const [key, filter] of Object.entries(columnFilters)) {
+    const resolved = resolveExtensionColumnKey(key)
+    if (resolved === null) continue
+    if (!byType.has(resolved.typeKey)) byType.set(resolved.typeKey, [])
+    byType.get(resolved.typeKey)!.push({ column: resolved.column, filter })
+  }
+
+  if (byType.size === 0) {
+    return { whereClause: '', params: [], implicitTypeNarrowing: null }
+  }
+
+  const fragments: string[] = []
+  const params: (string | number)[] = []
+
+  let implicit: ExtensionTypeKey | null = null
+  if (byType.size === 1) {
+    const only = [...byType.keys()][0]
+    implicit = only
+    fragments.push(
+      `${cvsAlias}.variant_type = '${VARIANT_EXTENSION_REGISTRY[only].variantTypeValue}'`
+    )
+  }
+
+  for (const [typeKey, filters] of byType) {
+    const def = VARIANT_EXTENSION_REGISTRY[typeKey]
+    const alias = def.joinAlias
+    const innerConditions: string[] = []
+    for (const { column, filter } of filters) {
+      const col = `${alias}.${column}`
+      const clause = translateExtensionFilter(col, filter, params)
+      if (clause !== null) innerConditions.push(clause)
+    }
+    if (innerConditions.length === 0) continue
+    fragments.push(
+      `EXISTS (
+        SELECT 1 FROM variants v
+        JOIN ${def.table} ${alias} ON ${alias}.${def.variantIdColumn} = v.id
+        WHERE v.chr = ${cvsAlias}.chr
+          AND v.pos = ${cvsAlias}.pos
+          AND v.ref = ${cvsAlias}.ref
+          AND v.alt = ${cvsAlias}.alt
+          AND v.variant_type = ${cvsAlias}.variant_type
+          AND ${innerConditions.join(' AND ')}
+      )`
+    )
+  }
+
+  return { whereClause: fragments.join(' AND '), params, implicitTypeNarrowing: implicit }
+}
+
 /**
  * Translate a single extension ColumnFilter into a parameterized SQL fragment.
  *

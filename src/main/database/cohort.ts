@@ -20,6 +20,7 @@ import type { ColumnFilterMeta, ColumnFiltersParam } from '../../shared/types/co
 import { tokenize, parse } from '../../shared/utils/boolean-search'
 import { emitCohortSearch } from './search/cohort-search-emitter'
 import { buildBaseWhere, type BaseFilterInput } from './variant-where-builder'
+import { buildExtensionExistsClauses } from './variant-extension-registry'
 
 /**
  * Sortable columns for cohort queries
@@ -159,6 +160,19 @@ export class CohortService {
     if (base.sql !== '') {
       whereConditions.push(base.sql)
       paramsArray.push(...base.params)
+    }
+
+    // Extension filter via EXISTS subquery (cvs has no variant_id, so we
+    // correlate on chr/pos/ref/alt/variant_type back to variants + extension).
+    // Uses params.column_filters (NOT the remapped version — extension keys
+    // are dotted like 'cnv.copy_number' and don't need SORTABLE_COLUMNS
+    // remapping; the remap would silently drop them).
+    if (params.column_filters !== undefined) {
+      const ext = buildExtensionExistsClauses(params.column_filters, 'cvs')
+      if (ext.whereClause !== '') {
+        whereConditions.push(ext.whereClause)
+        paramsArray.push(...ext.params)
+      }
     }
 
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : ''

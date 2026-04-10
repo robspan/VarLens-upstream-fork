@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { buildExtensionJoinClauses } from '../../../src/main/database/variant-extension-registry'
+import {
+  buildExtensionJoinClauses,
+  buildExtensionExistsClauses
+} from '../../../src/main/database/variant-extension-registry'
 
 describe('buildExtensionJoinClauses (direct JOIN mode)', () => {
   it('returns empty result for no column filters', () => {
@@ -166,5 +169,68 @@ describe('buildExtensionJoinClauses (direct JOIN mode)', () => {
     )
     expect(result.joins).toContain('cnv.variant_id = variants.id')
     expect(result.whereClause).toContain("variants.variant_type = 'cnv'")
+  })
+})
+
+describe('buildExtensionExistsClauses (EXISTS subquery mode)', () => {
+  it('empty column_filters → empty result', () => {
+    const result = buildExtensionExistsClauses({}, 'cvs')
+    expect(result.whereClause).toBe('')
+    expect(result.params).toEqual([])
+    expect(result.implicitTypeNarrowing).toBeNull()
+  })
+
+  it('cnv.copy_number >= 3 emits cvs.variant_type narrowing + EXISTS', () => {
+    const result = buildExtensionExistsClauses(
+      { 'cnv.copy_number': { operator: '>=', value: 3 } },
+      'cvs'
+    )
+    expect(result.whereClause).toContain("cvs.variant_type = 'cnv'")
+    expect(result.whereClause).toContain('EXISTS (')
+    expect(result.whereClause).toContain('FROM variants v')
+    expect(result.whereClause).toContain('JOIN variant_cnv cnv ON cnv.variant_id = v.id')
+    expect(result.whereClause).toContain('v.chr = cvs.chr')
+    expect(result.whereClause).toContain('v.pos = cvs.pos')
+    expect(result.whereClause).toContain('v.variant_type = cvs.variant_type')
+    expect(result.whereClause).toContain('cnv.copy_number >= ?')
+    expect(result.params).toEqual([3])
+    expect(result.implicitTypeNarrowing).toBe('cnv')
+  })
+
+  it('str.repeat_unit LIKE emits STR narrowing + EXISTS', () => {
+    const result = buildExtensionExistsClauses(
+      { 'str.repeat_unit': { operator: 'like', value: 'CAG' } },
+      'cvs'
+    )
+    expect(result.whereClause).toContain("cvs.variant_type = 'str'")
+    expect(result.whereClause).toContain('str.repeat_unit LIKE ?')
+    expect(result.params[0]).toBe('%CAG%')
+  })
+
+  it('two filters on same type share one EXISTS block', () => {
+    const result = buildExtensionExistsClauses(
+      {
+        'cnv.copy_number': { operator: '>=', value: 3 },
+        'cnv.copy_number_quality': { operator: '>=', value: 20 }
+      },
+      'cvs'
+    )
+    const existsCount = (result.whereClause.match(/EXISTS/g) ?? []).length
+    expect(existsCount).toBe(1)
+    expect(result.whereClause).toContain('cnv.copy_number >= ?')
+    expect(result.whereClause).toContain('cnv.copy_number_quality >= ?')
+  })
+
+  it('two different extension types produce 2 EXISTS blocks + null narrowing', () => {
+    const result = buildExtensionExistsClauses(
+      {
+        'cnv.copy_number': { operator: '>=', value: 3 },
+        'sv.support': { operator: '>=', value: 10 }
+      },
+      'cvs'
+    )
+    expect(result.implicitTypeNarrowing).toBeNull()
+    const existsCount = (result.whereClause.match(/EXISTS/g) ?? []).length
+    expect(existsCount).toBe(2)
   })
 })

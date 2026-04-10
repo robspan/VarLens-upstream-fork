@@ -874,4 +874,114 @@ describe('CohortService', () => {
       expect(result2.total_count).toBe(2)
     })
   })
+
+  describe('CohortService — extension filter via EXISTS (Path 2)', () => {
+    it('cnv.copy_number >= 3 narrows cohort results', () => {
+      const caseId = insertCase('Case CNV')
+
+      // Insert a CNV variant with copy_number=5 (should match >= 3)
+      db.prepare(
+        "INSERT INTO variants (case_id, chr, pos, ref, alt, variant_type, gene_symbol) VALUES (?, 'chr22', 100, 'N', '<CNV>', 'cnv', 'GENE1')"
+      ).run(caseId)
+      const matchingRowid = (
+        db
+          .prepare(
+            "SELECT id FROM variants WHERE case_id = ? AND chr = 'chr22' AND pos = 100"
+          )
+          .get(caseId) as { id: number }
+      ).id
+      db.prepare('INSERT INTO variant_cnv (variant_id, copy_number) VALUES (?, 5)').run(
+        matchingRowid
+      )
+
+      // Insert a CNV variant with copy_number=1 (should NOT match >= 3)
+      db.prepare(
+        "INSERT INTO variants (case_id, chr, pos, ref, alt, variant_type, gene_symbol) VALUES (?, 'chr22', 200, 'N', '<CNV>', 'cnv', 'GENE2')"
+      ).run(caseId)
+      const nonMatchingRowid = (
+        db
+          .prepare(
+            "SELECT id FROM variants WHERE case_id = ? AND chr = 'chr22' AND pos = 200"
+          )
+          .get(caseId) as { id: number }
+      ).id
+      db.prepare('INSERT INTO variant_cnv (variant_id, copy_number) VALUES (?, 1)').run(
+        nonMatchingRowid
+      )
+
+      rebuildSummary()
+
+      const result = cohortService.getCohortVariants({
+        column_filters: { 'cnv.copy_number': { operator: '>=', value: 3 } },
+        variant_type: 'cnv'
+      })
+
+      expect(result.data.some((r) => r.pos === 100)).toBe(true)
+      expect(result.data.some((r) => r.pos === 200)).toBe(false)
+    })
+
+    it('no extension filter returns all cohort rows (no EXISTS subquery)', () => {
+      const caseId = insertCase('Case empty')
+      insertVariant(caseId, 'chr1', 1000, 'A', 'T', { gene_symbol: 'BRCA1' })
+      rebuildSummary()
+
+      const result = cohortService.getCohortVariants({})
+
+      expect(result.data.length).toBeGreaterThan(0)
+    })
+
+    it('str.repeat_unit filter narrows to STR variants only', () => {
+      const caseId = insertCase('Case STR')
+
+      // Insert a matching STR
+      db.prepare(
+        "INSERT INTO variants (case_id, chr, pos, ref, alt, variant_type, gene_symbol) VALUES (?, 'chr4', 3074876, 'C', '<STR>', 'str', 'HTT')"
+      ).run(caseId)
+      const strId = (
+        db
+          .prepare("SELECT id FROM variants WHERE case_id = ? AND chr = 'chr4'")
+          .get(caseId) as { id: number }
+      ).id
+      db.prepare(
+        "INSERT INTO variant_str (variant_id, repeat_id, repeat_unit) VALUES (?, 'HTT', 'CAG')"
+      ).run(strId)
+
+      rebuildSummary()
+
+      const result = cohortService.getCohortVariants({
+        column_filters: { 'str.repeat_unit': { operator: 'like', value: 'CAG' } },
+        variant_type: 'str'
+      })
+
+      expect(result.data.some((r) => r.pos === 3074876)).toBe(true)
+    })
+
+    it('implicit type narrowing applies when variant_type is not explicitly set', () => {
+      const caseId = insertCase('Case implicit')
+
+      // Insert a CNV with copy_number=4
+      db.prepare(
+        "INSERT INTO variants (case_id, chr, pos, ref, alt, variant_type, gene_symbol) VALUES (?, 'chr22', 300, 'N', '<CNV>', 'cnv', 'GENE3')"
+      ).run(caseId)
+      const cnvId = (
+        db
+          .prepare("SELECT id FROM variants WHERE case_id = ? AND pos = 300")
+          .get(caseId) as { id: number }
+      ).id
+      db.prepare('INSERT INTO variant_cnv (variant_id, copy_number) VALUES (?, 4)').run(cnvId)
+
+      // Insert an SNV (should NOT match because of implicit cvs.variant_type = 'cnv' narrowing)
+      insertVariant(caseId, 'chr22', 400, 'A', 'T', { gene_symbol: 'GENE4' })
+
+      rebuildSummary()
+
+      const result = cohortService.getCohortVariants({
+        column_filters: { 'cnv.copy_number': { operator: '>=', value: 3 } }
+        // No explicit variant_type — rely on implicit narrowing
+      })
+
+      expect(result.data.some((r) => r.pos === 300)).toBe(true)
+      expect(result.data.some((r) => r.pos === 400)).toBe(false)
+    })
+  })
 })

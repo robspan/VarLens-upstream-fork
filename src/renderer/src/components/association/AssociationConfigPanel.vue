@@ -341,18 +341,33 @@ const impactToConsequences: Record<string, string[]> = {
 
 const selectedImpactPresets = ref<number[]>([])
 
-// Impact preset chips → union into shared filters.consequences.
-// We merge (Set union) rather than replace so the user can layer chips
-// together with any manual consequence selections from the GroupedMultiSelect.
+// Impact preset chips → shared filters.consequences.
+// Rebuild the preset-derived portion from the currently-selected chips on
+// every change: we strip every consequence that belongs to ANY impact
+// preset, then add back consequences for the currently-selected presets.
+// This preserves manual consequence selections (from GroupedMultiSelect)
+// that don't overlap any preset, while correctly handling deselection —
+// clicking HIGH off after HIGH+MOD now leaves only MOD consequences in
+// place, and deselecting all chips removes all preset-derived consequences.
+const allPresetConsequences = (() => {
+  const set = new Set<string>()
+  for (const preset of impactPresets) {
+    for (const v of impactToConsequences[preset.value] ?? []) set.add(v)
+  }
+  return set
+})()
 watch(selectedImpactPresets, (indices) => {
-  if (indices.length === 0) return
-  const consequences = new Set<string>(filters.value.consequences)
+  // Start from current consequences minus anything that belongs to a preset
+  // (preserves non-preset manual selections)
+  const next = new Set<string>(
+    filters.value.consequences.filter((c) => !allPresetConsequences.has(c))
+  )
+  // Add back consequences for currently-selected presets
   for (const idx of indices) {
     const preset = impactPresets[idx]
-    const vals = impactToConsequences[preset.value] ?? []
-    for (const v of vals) consequences.add(v)
+    for (const v of impactToConsequences[preset.value] ?? []) next.add(v)
   }
-  filters.value.consequences = [...consequences]
+  filters.value.consequences = [...next]
 })
 
 // gnomAD AF presets
@@ -364,10 +379,15 @@ const afPresets = [
 
 const selectedAfPreset = ref<number | undefined>(undefined)
 
-// AF preset chip → shared filters.maxGnomadAf
+// AF preset chip → shared filters.maxGnomadAf.
+// Deselecting a chip clears the filter (null) so presets behave as a
+// single-select mode switch. Users who want to keep a manual value
+// should not toggle a preset chip afterwards.
 watch(selectedAfPreset, (idx) => {
   if (idx !== undefined && idx >= 0 && idx < afPresets.length) {
     filters.value.maxGnomadAf = afPresets[idx].value
+  } else {
+    filters.value.maxGnomadAf = null
   }
 })
 
@@ -380,10 +400,13 @@ const caddPresets = [
 
 const selectedCaddPreset = ref<number | undefined>(undefined)
 
-// CADD preset chip → shared filters.minCadd
+// CADD preset chip → shared filters.minCadd.
+// Same deselect-clears semantic as the AF preset watcher above.
 watch(selectedCaddPreset, (idx) => {
   if (idx !== undefined && idx >= 0 && idx < caddPresets.length) {
     filters.value.minCadd = caddPresets[idx].value
+  } else {
+    filters.value.minCadd = null
   }
 })
 

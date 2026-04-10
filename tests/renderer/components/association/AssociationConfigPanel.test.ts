@@ -243,4 +243,76 @@ describe('AssociationConfigPanel (post-migration to shared FilterState)', () => 
     // Consequences should now be non-empty (truncating group has entries)
     expect(vm.filters.consequences.length).toBeGreaterThan(0)
   })
+
+  it('impact preset deselection removes preset-derived consequences', async () => {
+    const wrapper = mountPanel()
+    const vm = wrapper.vm as unknown as PanelVm
+    const chipGroups = wrapper.findAllComponents({ name: 'VChipGroup' })
+
+    // Select HIGH → consequences populate with truncating group
+    await chipGroups[0]!.vm.$emit('update:modelValue', [0])
+    await wrapper.vm.$nextTick()
+    const afterSelect = vm.filters.consequences.length
+    expect(afterSelect).toBeGreaterThan(0)
+
+    // Deselect all → consequences should be EMPTY (preset-derived entries
+    // stripped, no manual non-preset entries exist in this scenario)
+    await chipGroups[0]!.vm.$emit('update:modelValue', [])
+    await wrapper.vm.$nextTick()
+    expect(vm.filters.consequences).toEqual([])
+  })
+
+  it('impact preset preserves manually-added non-preset consequences on deselect', async () => {
+    const wrapper = mountPanel()
+    const vm = wrapper.vm as unknown as PanelVm
+
+    // Seed the consequences with a non-preset value (simulating a manual
+    // GroupedMultiSelect choice the user made before touching presets)
+    vm.filters.consequences = ['synonymous_variant_manual_test_sentinel']
+    await wrapper.vm.$nextTick()
+
+    const chipGroups = wrapper.findAllComponents({ name: 'VChipGroup' })
+    // Select HIGH → adds preset consequences but keeps the sentinel
+    await chipGroups[0]!.vm.$emit('update:modelValue', [0])
+    await wrapper.vm.$nextTick()
+    expect(vm.filters.consequences).toContain('synonymous_variant_manual_test_sentinel')
+
+    // Deselect HIGH → strips preset consequences but keeps the sentinel
+    await chipGroups[0]!.vm.$emit('update:modelValue', [])
+    await wrapper.vm.$nextTick()
+    expect(vm.filters.consequences).toEqual(['synonymous_variant_manual_test_sentinel'])
+  })
+
+  it('AF preset deselection clears filters.maxGnomadAf', async () => {
+    const wrapper = mountPanel()
+    const vm = wrapper.vm as unknown as PanelVm
+    const chipGroups = wrapper.findAllComponents({ name: 'VChipGroup' })
+
+    // chipGroups[1] is the AF preset group (impact presets are [0])
+    // Select the first AF preset (1% → 0.01)
+    await chipGroups[1]!.vm.$emit('update:modelValue', 0)
+    await wrapper.vm.$nextTick()
+    expect(vm.filters.maxGnomadAf).toBe(0.01)
+
+    // Deselect (undefined) → should clear to null
+    await chipGroups[1]!.vm.$emit('update:modelValue', undefined)
+    await wrapper.vm.$nextTick()
+    expect(vm.filters.maxGnomadAf).toBeNull()
+  })
+
+  it('CADD preset deselection clears filters.minCadd', async () => {
+    const wrapper = mountPanel()
+    const vm = wrapper.vm as unknown as PanelVm
+    const chipGroups = wrapper.findAllComponents({ name: 'VChipGroup' })
+
+    // chipGroups[2] is the CADD preset group
+    await chipGroups[2]!.vm.$emit('update:modelValue', 1) // '20' preset
+    await wrapper.vm.$nextTick()
+    expect(vm.filters.minCadd).toBe(20)
+
+    // Deselect → clears to null
+    await chipGroups[2]!.vm.$emit('update:modelValue', undefined)
+    await wrapper.vm.$nextTick()
+    expect(vm.filters.minCadd).toBeNull()
+  })
 })

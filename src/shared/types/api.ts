@@ -179,6 +179,23 @@ export interface VariantsAPI {
   geneSymbols: (caseId: number, query: string, limit?: number) => Promise<string[]>
   /** Get variant type counts per case for tab badges (snv/indel/sv/cnv/str) */
   typeCounts: (caseId: number) => Promise<Record<string, number>>
+  /**
+   * Get per-column metadata for a single column (single-case or cohort scope).
+   * Used by the filter UI to lazy-load metadata on demand instead of bulk
+   * fetching every column via `getFilterOptions`. Either `caseId` or a
+   * non-empty `caseIds` array must be provided.
+   */
+  columnMeta: (payload: {
+    caseId?: number
+    caseIds?: number[]
+    columnKey: string
+  }) => Promise<ColumnFilterMeta>
+  /**
+   * Get distinct variant types present for a single case or cohort. Used by
+   * the renderer to auto-hide variant-type tabs with no data. Either `caseId`
+   * or a non-empty `caseIds` array must be provided.
+   */
+  typesPresent: (payload: { caseId?: number; caseIds?: number[] }) => Promise<string[]>
 }
 
 export interface FilterOptions {

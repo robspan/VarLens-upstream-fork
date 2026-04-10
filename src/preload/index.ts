@@ -69,7 +69,23 @@ const api = {
       ipcRenderer.invoke('variants:geneSymbols', caseId, query, limit ?? 50),
 
     /** Get variant type counts per case for tab badges (snv/indel/sv/cnv/str) */
-    typeCounts: (caseId: number) => ipcRenderer.invoke('variants:typeCounts', caseId)
+    typeCounts: (caseId: number) => ipcRenderer.invoke('variants:typeCounts', caseId),
+
+    /**
+     * Get per-column metadata for a single column (single-case or cohort scope).
+     * Used by the filter UI to lazy-load column metadata on demand.
+     * Payload must provide either caseId (single case) or caseIds (cohort).
+     */
+    columnMeta: (payload: { caseId?: number; caseIds?: number[]; columnKey: string }) =>
+      ipcRenderer.invoke('variants:columnMeta', payload),
+
+    /**
+     * Get distinct variant types present for a single case or cohort.
+     * Used by the renderer to auto-hide variant-type tabs with no data.
+     * Payload must provide either caseId (single case) or caseIds (cohort).
+     */
+    typesPresent: (payload: { caseId?: number; caseIds?: number[] }) =>
+      ipcRenderer.invoke('variants:typesPresent', payload)
   },
 
   import: {

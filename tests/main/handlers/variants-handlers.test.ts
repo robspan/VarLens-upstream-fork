@@ -8,6 +8,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { DatabaseService } from '../../../src/main/database/DatabaseService'
 import type { VariantFilter } from '../../../src/main/database/types'
+import {
+  getColumnMetaForKey,
+  getVariantTypesPresent
+} from '../../../src/main/ipc/handlers/variants-logic'
 
 describe('variant IPC handlers', () => {
   let db: DatabaseService
@@ -310,6 +314,82 @@ describe('variant IPC handlers', () => {
       const result = db.variants.searchVariants(caseId, 'GENE', 3)
 
       expect(result.length).toBe(3)
+    })
+  })
+
+  describe('variants:columnMeta + variants:typesPresent logic', () => {
+    it('getColumnMetaForKey returns base column meta for gnomad_af', async () => {
+      insertVariant(caseId, '1', 1000, 'A', 'T', { gene_symbol: 'BRCA1', gnomad_af: 0.001 })
+      insertVariant(caseId, '1', 2000, 'G', 'C', { gene_symbol: 'TP53', gnomad_af: 0.05 })
+
+      const meta = await getColumnMetaForKey({ caseId }, 'gnomad_af', () => db)
+
+      expect(meta.key).toBe('gnomad_af')
+      expect(meta.dataType).toBe('numeric')
+      expect(meta.min).toBeCloseTo(0.001, 4)
+      expect(meta.max).toBeCloseTo(0.05, 4)
+    })
+
+    it('getColumnMetaForKey returns extension column meta for cnv.copy_number', async () => {
+      db.database
+        .prepare(
+          "INSERT INTO variants (case_id, chr, pos, ref, alt, variant_type) VALUES (?, '1', 3000, 'N', '<CNV>', 'cnv')"
+        )
+        .run(caseId)
+      const varRow = db.database
+        .prepare("SELECT id FROM variants WHERE case_id = ? AND chr = '1' AND pos = 3000")
+        .get(caseId) as { id: number }
+      db.database
+        .prepare('INSERT INTO variant_cnv (variant_id, copy_number) VALUES (?, 4)')
+        .run(varRow.id)
+
+      const meta = await getColumnMetaForKey({ caseId }, 'cnv.copy_number', () => db)
+
+      expect(meta.key).toBe('cnv.copy_number')
+      expect(meta.dataType).toBe('numeric')
+      expect(meta.min).toBe(4)
+      expect(meta.max).toBe(4)
+    })
+
+    it('getVariantTypesPresent returns distinct types for a case', async () => {
+      // insertVariant uses the default variant_type ('snv') from the schema
+      insertVariant(caseId, '1', 1000, 'A', 'T', { gene_symbol: 'BRCA1' })
+      db.database
+        .prepare(
+          "INSERT INTO variants (case_id, chr, pos, ref, alt, variant_type) VALUES (?, '2', 2000, 'N', '<CNV>', 'cnv')"
+        )
+        .run(caseId)
+
+      const types = await getVariantTypesPresent({ caseId }, () => db)
+
+      expect(types).toContain('snv')
+      expect(types).toContain('cnv')
+      expect(types.length).toBe(2)
+    })
+
+    it('getVariantTypesPresent returns empty array for a case with no variants', async () => {
+      const emptyCaseId = insertCase('Empty Case')
+
+      const types = await getVariantTypesPresent({ caseId: emptyCaseId }, () => db)
+
+      expect(types).toEqual([])
+    })
+
+    it('getColumnMetaForKey accepts cohort scope (caseIds array)', async () => {
+      const case2 = insertCase('Case 2')
+      insertVariant(caseId, '1', 1000, 'A', 'T', { gnomad_af: 0.001 })
+      insertVariant(case2, '1', 2000, 'A', 'T', { gnomad_af: 0.05 })
+
+      const meta = await getColumnMetaForKey(
+        { caseIds: [caseId, case2] },
+        'gnomad_af',
+        () => db
+      )
+
+      expect(meta.key).toBe('gnomad_af')
+      expect(meta.dataType).toBe('numeric')
+      expect(meta.min).toBeCloseTo(0.001, 4)
+      expect(meta.max).toBeCloseTo(0.05, 4)
     })
   })
 })

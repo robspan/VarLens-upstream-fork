@@ -332,6 +332,35 @@ export const CaseIdSchema = z.number().int().positive()
  */
 export const LimitSchema = z.number().int().positive().max(1000)
 
+/**
+ * Payload for variants:columnMeta IPC channel.
+ * Either caseId (single case) OR caseIds (cohort) must be provided.
+ */
+export const ColumnMetaPayloadSchema = z
+  .object({
+    caseId: z.number().int().positive().optional(),
+    caseIds: z.array(z.number().int().positive()).optional(),
+    columnKey: z.string().min(1)
+  })
+  .refine(
+    (p) => p.caseId !== undefined || (p.caseIds !== undefined && p.caseIds.length > 0),
+    { message: 'Either caseId or caseIds must be provided' }
+  )
+
+/**
+ * Payload for variants:typesPresent IPC channel.
+ * Either caseId (single case) OR caseIds (cohort) must be provided.
+ */
+export const TypesPresentPayloadSchema = z
+  .object({
+    caseId: z.number().int().positive().optional(),
+    caseIds: z.array(z.number().int().positive()).optional()
+  })
+  .refine(
+    (p) => p.caseId !== undefined || (p.caseIds !== undefined && p.caseIds.length > 0),
+    { message: 'Either caseId or caseIds must be provided' }
+  )
+
 // ============================================================
 // Tag Schemas
 // ============================================================

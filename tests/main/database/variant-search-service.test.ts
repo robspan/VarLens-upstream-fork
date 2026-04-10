@@ -234,3 +234,109 @@ describe('VariantSearchService', () => {
     })
   })
 })
+
+// ── UNION-backed FTS search across SV/STR extension tables ───────────
+//
+// Uses its own describe block with a fresh :memory: DB so we don't collide
+// with the outer fixture's pre-inserted SNV variants. Verifies that FTS
+// term leaves actually reach variant_sv_fts and variant_str_fts via the
+// UNION subquery path and that HGVS + FTS can be mixed in a single query.
+
+describe('VariantSearchService — applySearchFilter with UNION-backed FTS', () => {
+  let db: DatabaseType
+  let kysely: Kysely<VarlensDatabase>
+  let service: VariantSearchService
+
+  beforeEach(() => {
+    db = new Database(':memory:')
+    initializeSchema(db)
+    runMigrations(db)
+    kysely = createKysely(db)
+    service = new VariantSearchService(db, kysely)
+
+    const now = Date.now()
+    db.prepare(
+      "INSERT INTO cases (id, name, file_path, file_size, variant_count, created_at) VALUES (1, 'c1', '/t', 100, 0, ?)"
+    ).run(now)
+    db.prepare(
+      "INSERT INTO variants (id, case_id, chr, pos, ref, alt, gene_symbol, consequence, variant_type) VALUES (1, 1, 'chr17', 43000000, 'A', 'G', 'BRCA1', 'missense_variant', 'snv')"
+    ).run()
+    db.prepare(
+      "INSERT INTO variants (id, case_id, chr, pos, ref, alt, variant_type) VALUES (2, 1, 'chr4', 3074876, 'C', '<STR>', 'str')"
+    ).run()
+    db.prepare(
+      "INSERT INTO variant_str (variant_id, repeat_id, repeat_unit, disease) VALUES (2, 'HTT', 'CAG', 'Huntington disease')"
+    ).run()
+    db.prepare(
+      "INSERT INTO variants (id, case_id, chr, pos, ref, alt, variant_type) VALUES (3, 1, 'chr1', 1000000, 'N', '<BND>', 'sv')"
+    ).run()
+    db.prepare(
+      "INSERT INTO variant_sv (variant_id, event_id, mate_id) VALUES (3, 'MANTA_EVENT_001', 'MATE_001')"
+    ).run()
+    // Rebuild base FTS because direct inserts into variants skip triggers
+    // (extension FTS triggers fire on INSERT into variant_sv / variant_str).
+    db.exec("INSERT INTO variants_fts(variants_fts) VALUES('rebuild')")
+  })
+
+  afterEach(() => {
+    kysely.destroy()
+    db.close()
+  })
+
+  it('searches variants_fts for gene_symbol (searchVariants direct path)', () => {
+    const result = service.searchVariants(1, 'BRCA1', 10)
+    expect(result.some((v) => v.id === 1)).toBe(true)
+  })
+
+  it('searches variant_str_fts for repeat_unit via UNION', () => {
+    const builder = kysely.selectFrom('variants').selectAll('variants').where('case_id', '=', 1)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const withSearch = service.applySearchFilter(builder as any, 'CAG')
+    const compiled = withSearch.compile()
+    const rows = db.prepare(compiled.sql).all(...compiled.parameters) as Record<string, unknown>[]
+    expect(rows.some((r) => r.id === 2)).toBe(true)
+  })
+
+  it('searches variant_str_fts for disease via UNION', () => {
+    const builder = kysely.selectFrom('variants').selectAll('variants').where('case_id', '=', 1)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const withSearch = service.applySearchFilter(builder as any, 'Huntington')
+    const compiled = withSearch.compile()
+    const rows = db.prepare(compiled.sql).all(...compiled.parameters) as Record<string, unknown>[]
+    expect(rows.some((r) => r.id === 2)).toBe(true)
+  })
+
+  it('searches variant_sv_fts for event_id via UNION', () => {
+    const builder = kysely.selectFrom('variants').selectAll('variants').where('case_id', '=', 1)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const withSearch = service.applySearchFilter(builder as any, 'MANTA_EVENT_001')
+    const compiled = withSearch.compile()
+    const rows = db.prepare(compiled.sql).all(...compiled.parameters) as Record<string, unknown>[]
+    expect(rows.some((r) => r.id === 3)).toBe(true)
+  })
+
+  it('HGVS token falls back to base-table LIKE (no UNION)', () => {
+    db.prepare("UPDATE variants SET cdna = 'c.76A>T' WHERE id = 1").run()
+    const builder = kysely.selectFrom('variants').selectAll('variants').where('case_id', '=', 1)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const withSearch = service.applySearchFilter(builder as any, 'c.76A>T')
+    const compiled = withSearch.compile()
+    expect(compiled.sql).not.toContain('UNION')
+    const rows = db.prepare(compiled.sql).all(...compiled.parameters) as Record<string, unknown>[]
+    expect(rows.some((r) => r.id === 1)).toBe(true)
+  })
+
+  it('BRCA1 AND c.76A>T mixes FTS union + base LIKE', () => {
+    db.prepare("UPDATE variants SET cdna = 'c.76A>T' WHERE id = 1").run()
+    const builder = kysely.selectFrom('variants').selectAll('variants').where('case_id', '=', 1)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const withSearch = service.applySearchFilter(builder as any, 'BRCA1 AND c.76A>T')
+    const compiled = withSearch.compile()
+    expect(compiled.sql).toContain('UNION')
+    expect(compiled.sql).toContain('cdna LIKE')
+    const rows = db.prepare(compiled.sql).all(...compiled.parameters) as Record<string, unknown>[]
+    expect(rows.some((r) => r.id === 1)).toBe(true)
+    // Must NOT match the STR row — the HGVS branch filters it out
+    expect(rows.some((r) => r.id === 2)).toBe(false)
+  })
+})

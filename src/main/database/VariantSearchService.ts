@@ -5,7 +5,12 @@ import type { VarlensDatabase } from '../../shared/types/database-schema'
 import type { Variant } from './types'
 import type { VariantQueryBuilder } from './VariantFilterBuilder'
 import { tokenize, parse } from '../../shared/utils/boolean-search'
-import { emitFts5Search } from './search/fts5-search-emitter'
+import {
+  classifySearchAst,
+  composeSearchClauses,
+  type SearchClause
+} from './search/search-clause-emitter'
+import { EXTENSION_FTS_TABLES } from './variant-extension-registry'
 import { mainLogger } from '../services/MainLogger'
 
 /**
@@ -23,16 +28,22 @@ export class VariantSearchService {
   /**
    * Apply FTS5 search filter to a Kysely query.
    * Handles boolean operators (AND/OR/NOT) and HGVS pattern matching.
+   *
+   * Routes through the classify-then-compose path so FTS term leaves
+   * expand into a UNION subquery across `variants_fts` plus every
+   * extension FTS table (`variant_sv_fts`, `variant_str_fts`, ...).
    */
   applySearchFilter(query: VariantQueryBuilder, searchQuery: string): VariantQueryBuilder {
     const term = searchQuery.trim()
+    if (term === '') return query
+
     const hasBooleanOps = /\b(AND|OR|NOT)\b/.test(term)
 
     if (!hasBooleanOps) {
       return this.applySingleSearchToken(query, term)
     }
 
-    // Parse boolean expression into AST and emit FTS5-compatible SQL
+    // Parse boolean expression into AST, classify, and compose SQL
     const tokens = tokenize(term)
     if (tokens.length === 0) return query
     let ast
@@ -47,35 +58,44 @@ export class VariantSearchService {
       )
       return this.applySingleSearchToken(query, term)
     }
-    const { sql: boolExpr, params } = emitFts5Search(ast)
-
-    // Build a sql template literal with interpolated parameters
-    const fullExpr = `(${boolExpr})`
-    const segments = fullExpr.split('?')
-    let paramIdx = 0
-
-    // Start from the first segment
-    let rawExpr = sql<boolean>`${sql.raw(segments[0])}`
-    for (let i = 1; i < segments.length; i++) {
-      rawExpr = sql<boolean>`${rawExpr}${params[paramIdx++]}${sql.raw(segments[i])}`
-    }
-    return query.where(rawExpr)
+    const clause = classifySearchAst(ast)
+    return this.applyComposedSearchClause(query, clause)
   }
 
   /**
-   * Apply a single search token (FTS5 or HGVS pattern).
+   * Apply a single search token (FTS5 UNION or HGVS pattern).
+   *
+   * Routes through the same composer as the boolean AST path so HGVS
+   * tokens become base-table LIKE and FTS tokens become the UNION of
+   * `variants_fts` plus every extension FTS table.
    */
   applySingleSearchToken(query: VariantQueryBuilder, token: string): VariantQueryBuilder {
-    const hgvsPattern = /^[cp]\./
-    if (hgvsPattern.test(token)) {
-      return query.where(({ or, eb }) =>
-        or([eb('cdna', 'like', `%${token}%`), eb('aa_change', 'like', `%${token}%`)])
-      )
+    const clause: SearchClause = /^[cp]\./.test(token)
+      ? { type: 'hgvs', term: token }
+      : { type: 'fts', term: token }
+    return this.applyComposedSearchClause(query, clause)
+  }
+
+  /**
+   * Compose a SearchClause into SQL + params and interpolate into a Kysely
+   * query via the same sql template pattern used by extension filters.
+   * Shared by applySearchFilter (boolean AST path) and applySingleSearchToken
+   * (single-term shortcut).
+   */
+  private applyComposedSearchClause(
+    query: VariantQueryBuilder,
+    clause: SearchClause
+  ): VariantQueryBuilder {
+    const { sql: composedSql, params } = composeSearchClauses(clause, {
+      baseFts: 'variants_fts',
+      extensionFts: EXTENSION_FTS_TABLES
+    })
+    const segments = composedSql.split('?')
+    let rawExpr = sql<boolean>`${sql.raw(segments[0])}`
+    for (let i = 0; i < params.length; i++) {
+      rawExpr = sql<boolean>`${rawExpr}${params[i]}${sql.raw(segments[i + 1])}`
     }
-    const ftsQuery = `"${token.replace(/"/g, '""')}"*`
-    return query.where(
-      sql<boolean>`id IN (SELECT rowid FROM variants_fts WHERE variants_fts MATCH ${ftsQuery})`
-    )
+    return query.where(rawExpr)
   }
 
   /**

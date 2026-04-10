@@ -62,7 +62,8 @@ describe('FILTER_DEFAULTS', () => {
       'maxInternalAf',
       'inheritanceModes',
       'analysisGroupId',
-      'considerPhasing'
+      'considerPhasing',
+      'columnFilters'
     ].sort()
     expect(Object.keys(FILTER_DEFAULTS).sort()).toEqual(expectedKeys)
   })

@@ -36,7 +36,8 @@ function makeFilters(): FilterState {
     panelPaddingBp: 5000,
     inheritanceModes: [],
     analysisGroupId: null,
-    considerPhasing: false
+    considerPhasing: false,
+    columnFilters: {}
   }
 }
 

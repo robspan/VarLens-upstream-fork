@@ -596,7 +596,8 @@ const columnActiveFilters = computed<ActiveFilter[]>(() => {
       panelPaddingBp: 5000,
       inheritanceModes: [],
       analysisGroupId: null,
-      considerPhasing: false
+      considerPhasing: false,
+      columnFilters: {}
     },
     [],
     colFilters

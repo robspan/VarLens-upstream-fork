@@ -10,6 +10,8 @@
  * - CohortTable.vue, FilterToolbar.vue
  */
 
+import type { ColumnFiltersParam } from './column-filters'
+
 // TODO: The renderer has local copies of FilterState in composables/filter-types.ts
 // and composables/useFilters.ts that must be kept in sync. Consider consolidating.
 
@@ -68,6 +70,8 @@ export interface FilterState {
   analysisGroupId: number | null
   /** Consider phasing information for compound het */
   considerPhasing: boolean
+  /** Column filters for extension tables and base columns via flexible map */
+  columnFilters: ColumnFiltersParam
 }
 
 /**
@@ -92,4 +96,5 @@ export interface FilterIpcParams {
   inheritance_modes?: string[]
   analysis_group_id?: number
   consider_phasing?: boolean
+  column_filters?: ColumnFiltersParam
 }

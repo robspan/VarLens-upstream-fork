@@ -103,5 +103,12 @@ export function buildIpcParams(filters: FilterState): FilterIpcParams {
     params.acmg_classifications = [...filters.acmgClassifications]
   }
 
+  // Column filters map — only include when non-empty. Keys look like
+  // 'sv.length' / 'cnv.copy_number' / 'str.repeat_count' plus base columns;
+  // the main-side query builders dispatch via ColumnKeyResolver.
+  if (filters.columnFilters !== undefined && Object.keys(filters.columnFilters).length > 0) {
+    params.column_filters = { ...filters.columnFilters }
+  }
+
   return params
 }

@@ -10,6 +10,7 @@ import type { Tag } from '../../../shared/types/database-entities'
 import type { FilterPreset } from '../../../shared/types/filter-presets'
 import type { Suggestion } from '../dsl/autocomplete'
 import type { DslParseError } from '../dsl/types'
+import type { ColumnFiltersParam } from '../../../shared/types/column-filters'
 
 /**
  * Shape of the object provided by FilterToolbar under the 'filterDrawerState' key.
@@ -62,4 +63,11 @@ export interface FilterDrawerState {
   onDslApply?: () => void
   onDslClear?: () => void
   onDslSuggestionSelect?: (suggestion: Suggestion) => void
+
+  // Extension column filter scope (case view uses a single caseId)
+  caseId: ComputedRef<number>
+
+  // Extension column filter mutation handlers
+  onColumnFiltersUpdate: (value: ColumnFiltersParam) => void
+  onClearTypeFilter: (typeKey: string) => void
 }

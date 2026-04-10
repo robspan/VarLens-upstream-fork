@@ -8,7 +8,7 @@ import type { Ref, ComputedRef } from 'vue'
 import type { FilterPreset } from '../../../../shared/types/filter-presets'
 import type { Suggestion } from '../../dsl/autocomplete'
 import type { DslParseError } from '../../dsl/types'
-import type { ColumnFilter } from '../../../../shared/types/column-filters'
+import type { ColumnFilter, ColumnFiltersParam } from '../../../../shared/types/column-filters'
 
 /**
  * Active filter representation for chip display
@@ -87,4 +87,10 @@ export interface CohortFilterDrawerState {
   onDslClear?: () => void
   onDslSuggestionSelect?: (suggestion: Suggestion) => void
   dslColumnFilters?: Ref<Record<string, ColumnFilter>>
+
+  // Extension column filters (Task 12) — cohort scope uses all cases
+  columnFilters: Ref<ColumnFiltersParam>
+  cohortCaseIds: Ref<number[]>
+  onColumnFiltersUpdate: (value: ColumnFiltersParam) => void
+  onClearTypeFilter: (typeKey: string) => void
 }

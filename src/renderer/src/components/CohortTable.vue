@@ -215,9 +215,11 @@ const buildCohortQueryParams = (): Omit<
       : undefined,
   column_filters:
     cohortColumnFilters.value != null ||
-    Object.keys(cohortFilterBarRef.value?.dslColumnFilters ?? {}).length > 0
+    Object.keys(cohortFilterBarRef.value?.dslColumnFilters ?? {}).length > 0 ||
+    Object.keys(filters.value.columnFilters).length > 0
       ? {
           ...(cohortColumnFilters.value ?? {}),
+          ...filters.value.columnFilters,
           ...(cohortFilterBarRef.value?.dslColumnFilters ?? {})
         }
       : undefined,

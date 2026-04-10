@@ -12,15 +12,18 @@ function makeDefaultFilters(overrides: Partial<FilterState> = {}): FilterState {
     maxGnomadAf: null,
     minCadd: null,
     minCarriers: null,
+    tagIds: [],
     starredOnly: false,
     hasCommentOnly: false,
     acmgClassifications: [],
+    annotationScope: 'case',
     activePanelIds: [],
     panelPaddingBp: 5000,
     maxInternalAf: null,
     inheritanceModes: [],
     analysisGroupId: null,
     considerPhasing: false,
+    columnFilters: {},
     ...overrides
   }
 }

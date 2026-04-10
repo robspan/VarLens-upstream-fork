@@ -144,15 +144,12 @@ describe('AssociationDataBuilder — Path 3 parity (shared helpers)', () => {
     expect(brca1!.groupB_non_carrier_count).toBe(3)
   })
 
-  it('accepts new parity fields (clinvars, funcs) without error', () => {
-    // NOTE: acmg_classifications + max_internal_af map to columns
-    // (acmg_best, cohort_frequency) that exist on cohort_variant_summary
-    // but NOT on the base variants table. The type contract accepts them
-    // (parity with Paths 1/2), but burden-scope SQL would fail at runtime
-    // if either is set. A follow-up task should either denormalize these
-    // columns onto variants or have buildBaseWhere skip them under
-    // scope='cohort-burden'. For now the test only exercises fields that
-    // resolve against the base table.
+  it('accepts all new parity fields without error (cohort-summary-only fields are silently dropped)', () => {
+    // acmg_classifications + max_internal_af map to columns (acmg_best,
+    // cohort_frequency) that exist on cohort_variant_summary but NOT on the
+    // base variants table. buildBaseWhere with scope='cohort-burden' silently
+    // drops these fields, preserving type parity with Paths 1/2 while
+    // avoiding runtime SQL errors against the variants table.
     const builder = new AssociationDataBuilder(db)
     expect(() =>
       builder.build(
@@ -160,11 +157,32 @@ describe('AssociationDataBuilder — Path 3 parity (shared helpers)', () => {
         [4, 5, 6],
         {
           clinvars: ['Pathogenic'],
-          funcs: ['missense_variant']
+          funcs: ['missense_variant'],
+          acmg_classifications: ['Pathogenic'],
+          max_internal_af: 0.1
         },
         []
       )
     ).not.toThrow()
+  })
+
+  it('silently drops cohort-summary-only fields for burden scope (no runtime error, no filter effect)', () => {
+    // Setting acmg_classifications=['Benign'] must NOT filter BRCA1 out —
+    // the field is dropped before reaching SQL. Only clinvars (which lives
+    // on variants) should actually filter.
+    const builder = new AssociationDataBuilder(db)
+    const genes = builder.build(
+      [1, 2, 3],
+      [4, 5, 6],
+      {
+        acmg_classifications: ['Benign'], // dropped
+        max_internal_af: 0.0001, // dropped
+        clinvars: ['Pathogenic'] // applied
+      },
+      []
+    )
+    // BRCA1 should still match because the dropped fields don't filter it out
+    expect(genes.find((g) => g.gene_symbol === 'BRCA1')).toBeDefined()
   })
 
   it('applies clinvars + funcs filter through shared helper', () => {

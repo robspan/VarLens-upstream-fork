@@ -160,3 +160,133 @@ describe('translateColumnFilter branches', () => {
     expect(result.params).toEqual([])
   })
 })
+
+describe('cohort-summary-only field gating', () => {
+  // These fields reference columns that only exist on cohort_variant_summary
+  // (cohort_frequency, carrier_count, has_star, has_comment, acmg_best) and
+  // must be silently dropped for case + cohort-burden scopes that query the
+  // raw variants table.
+
+  it('drops max_internal_af for case scope', () => {
+    const result = buildBaseWhere(
+      { max_internal_af: 0.05 },
+      { baseAlias: 'v', scope: 'case' }
+    )
+    expect(result.sql).not.toContain('cohort_frequency')
+    expect(result.sql).toBe('')
+    expect(result.params).toEqual([])
+  })
+
+  it('drops max_internal_af for cohort-burden scope', () => {
+    const result = buildBaseWhere(
+      { max_internal_af: 0.05 },
+      { baseAlias: 'v', scope: 'cohort-burden' }
+    )
+    expect(result.sql).not.toContain('cohort_frequency')
+    // cohort-burden adds gene_symbol invariants, so params should only reflect those
+    expect(result.params).toEqual([])
+  })
+
+  it('keeps max_internal_af for cohort-listing scope', () => {
+    const result = buildBaseWhere(
+      { max_internal_af: 0.05 },
+      { baseAlias: 'cvs', scope: 'cohort-listing' }
+    )
+    expect(result.sql).toContain('cvs.cohort_frequency')
+    expect(result.params).toEqual([0.05])
+  })
+
+  it('drops carrier_count_min for case + cohort-burden scopes', () => {
+    const caseResult = buildBaseWhere(
+      { carrier_count_min: 3 },
+      { baseAlias: 'v', scope: 'case' }
+    )
+    expect(caseResult.sql).not.toContain('carrier_count')
+
+    const burdenResult = buildBaseWhere(
+      { carrier_count_min: 3 },
+      { baseAlias: 'v', scope: 'cohort-burden' }
+    )
+    expect(burdenResult.sql).not.toContain('carrier_count')
+  })
+
+  it('keeps carrier_count_min for cohort-listing scope', () => {
+    const result = buildBaseWhere(
+      { carrier_count_min: 3 },
+      { baseAlias: 'cvs', scope: 'cohort-listing' }
+    )
+    expect(result.sql).toContain('cvs.carrier_count >= ?')
+    expect(result.params).toEqual([3])
+  })
+
+  it('drops acmg_classifications for case + cohort-burden scopes', () => {
+    const caseResult = buildBaseWhere(
+      { acmg_classifications: ['Pathogenic'] },
+      { baseAlias: 'v', scope: 'case' }
+    )
+    expect(caseResult.sql).not.toContain('acmg_best')
+
+    const burdenResult = buildBaseWhere(
+      { acmg_classifications: ['Pathogenic'] },
+      { baseAlias: 'v', scope: 'cohort-burden' }
+    )
+    expect(burdenResult.sql).not.toContain('acmg_best')
+  })
+
+  it('keeps acmg_classifications for cohort-listing scope', () => {
+    const result = buildBaseWhere(
+      { acmg_classifications: ['Pathogenic', 'Likely pathogenic'] },
+      { baseAlias: 'cvs', scope: 'cohort-listing' }
+    )
+    expect(result.sql).toContain('cvs.acmg_best IN (?, ?)')
+    expect(result.params).toEqual(['Pathogenic', 'Likely pathogenic'])
+  })
+
+  it('drops starred_only + has_comment for case + cohort-burden scopes', () => {
+    const caseResult = buildBaseWhere(
+      { starred_only: true, has_comment: true },
+      { baseAlias: 'v', scope: 'case' }
+    )
+    expect(caseResult.sql).not.toContain('has_star')
+    expect(caseResult.sql).not.toContain('has_comment')
+
+    const burdenResult = buildBaseWhere(
+      { starred_only: true, has_comment: true },
+      { baseAlias: 'v', scope: 'cohort-burden' }
+    )
+    expect(burdenResult.sql).not.toContain('has_star')
+    expect(burdenResult.sql).not.toContain('has_comment')
+  })
+
+  it('keeps starred_only + has_comment for cohort-listing scope', () => {
+    const result = buildBaseWhere(
+      { starred_only: true, has_comment: true },
+      { baseAlias: 'cvs', scope: 'cohort-listing' }
+    )
+    expect(result.sql).toContain('cvs.has_star = 1')
+    expect(result.sql).toContain('cvs.has_comment = 1')
+  })
+
+  it('cohort-burden with only cohort-summary-only fields still emits invariants', () => {
+    // Even when all filter fields are dropped, cohort-burden scope still
+    // emits gene_symbol IS NOT NULL + gene_symbol != '' invariants.
+    const result = buildBaseWhere(
+      {
+        max_internal_af: 0.05,
+        carrier_count_min: 3,
+        acmg_classifications: ['Pathogenic'],
+        starred_only: true,
+        has_comment: true
+      },
+      { baseAlias: 'v', scope: 'cohort-burden' }
+    )
+    expect(result.sql).toContain('v.gene_symbol IS NOT NULL')
+    expect(result.sql).toContain("v.gene_symbol != ''")
+    expect(result.sql).not.toContain('cohort_frequency')
+    expect(result.sql).not.toContain('carrier_count')
+    expect(result.sql).not.toContain('acmg_best')
+    expect(result.sql).not.toContain('has_star')
+    expect(result.sql).not.toContain('has_comment')
+    expect(result.params).toEqual([])
+  })
+})

@@ -61,6 +61,15 @@ export function buildBaseWhere(
     params.push(filters.genome_build)
   }
 
+  // Cohort-summary-only fields (cohort_frequency, carrier_count, has_star,
+  // has_comment, acmg_best) live on cohort_variant_summary, not on the
+  // base variants table. They must be silently dropped for scopes that
+  // query variants directly (case, cohort-burden) to avoid emitting
+  // SQL that references non-existent columns. Callers needing these
+  // semantics in a non-cohort-listing scope must JOIN to the appropriate
+  // annotation table themselves.
+  const isCohortSummaryScope = scope === 'cohort-listing'
+
   // Typed stable fields (NULL-inclusive for numeric thresholds)
   if (filters.gnomad_af_max !== undefined) {
     conditions.push(`(${q('gnomad_af')} IS NULL OR ${q('gnomad_af')} <= ?)`)
@@ -70,11 +79,19 @@ export function buildBaseWhere(
     conditions.push(`(${q('cadd')} IS NULL OR ${q('cadd')} >= ?)`)
     params.push(filters.cadd_min)
   }
-  if (filters.max_internal_af !== undefined && filters.max_internal_af > 0) {
+  if (
+    isCohortSummaryScope &&
+    filters.max_internal_af !== undefined &&
+    filters.max_internal_af > 0
+  ) {
     conditions.push(`(${q('cohort_frequency')} IS NULL OR ${q('cohort_frequency')} <= ?)`)
     params.push(filters.max_internal_af)
   }
-  if (filters.carrier_count_min !== undefined && filters.carrier_count_min > 0) {
+  if (
+    isCohortSummaryScope &&
+    filters.carrier_count_min !== undefined &&
+    filters.carrier_count_min > 0
+  ) {
     conditions.push(`${q('carrier_count')} >= ?`)
     params.push(filters.carrier_count_min)
   }
@@ -94,7 +111,11 @@ export function buildBaseWhere(
     conditions.push(`${q('clinvar')} IN (${ph})`)
     params.push(...filters.clinvars)
   }
-  if (filters.acmg_classifications !== undefined && filters.acmg_classifications.length > 0) {
+  if (
+    isCohortSummaryScope &&
+    filters.acmg_classifications !== undefined &&
+    filters.acmg_classifications.length > 0
+  ) {
     const ph = filters.acmg_classifications.map(() => '?').join(', ')
     conditions.push(`${q('acmg_best')} IN (${ph})`)
     params.push(...filters.acmg_classifications)
@@ -110,10 +131,10 @@ export function buildBaseWhere(
     params.push(...filters.gene_list)
   }
 
-  if (filters.starred_only === true) {
+  if (isCohortSummaryScope && filters.starred_only === true) {
     conditions.push(`${q('has_star')} = 1`)
   }
-  if (filters.has_comment === true) {
+  if (isCohortSummaryScope && filters.has_comment === true) {
     conditions.push(`${q('has_comment')} = 1`)
   }
 

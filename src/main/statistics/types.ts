@@ -2,6 +2,8 @@
  * Types for gene burden association analysis.
  */
 
+import type { ColumnFiltersParam } from '../../shared/types/column-filters'
+
 /** Weighting scheme for burden collapse */
 export type WeightScheme = 'uniform' | 'beta_maf' | 'beta_maf_cadd'
 
@@ -19,12 +21,28 @@ export interface AssociationConfig {
   max_threads: number
 }
 
-/** Variant-level filters applied before association */
+/**
+ * Variant-level filters applied before association.
+ *
+ * Mirrors the FilterIpcParams contract for the subset of fields relevant
+ * to burden analysis so that Path 3 reaches cohort parity with Paths 1
+ * and 2. The extended fields flow through association:build DbPool
+ * dispatch without touching AssociationEngine.run() or the statistical
+ * WorkerRequest (which carries pre-built GeneContingencyData[], not filters).
+ */
 export interface VariantFilters {
   gnomad_af_max?: number
   cadd_min?: number
   consequences?: string[]
   gene_list?: string[]
+  // Parity fields with Paths 1/2
+  clinvars?: string[]
+  funcs?: string[]
+  acmg_classifications?: string[]
+  max_internal_af?: number
+  // Flexible column filter map — dotted keys (e.g. 'cnv.copy_number') route
+  // through the shared extension helpers.
+  column_filters?: ColumnFiltersParam
 }
 
 /** Per-gene data passed to worker threads */

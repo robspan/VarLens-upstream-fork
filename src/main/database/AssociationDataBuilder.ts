@@ -2,6 +2,8 @@ import type Database from 'better-sqlite3-multiple-ciphers'
 import type { GeneContingencyData, SampleBurdenData, VariantFilters } from '../statistics/types'
 import { GT_DOSAGE_SQL } from '../../shared/sql/genotype-dosage'
 import { sqlPlaceholders } from './sql-utils'
+import { buildBaseWhere, type BaseFilterInput } from './variant-where-builder'
+import { buildExtensionJoinClauses } from './variant-extension-registry'
 
 export class AssociationDataBuilder {
   private db: Database.Database
@@ -21,50 +23,58 @@ export class AssociationDataBuilder {
 
     const groupASet = new Set(groupA_ids)
 
-    // Build WHERE clauses for variant filters
-    const conditions: string[] = ['gene_symbol IS NOT NULL', "gene_symbol != ''"]
-    const params: (string | number)[] = []
+    const baseAlias = 'v'
 
-    // Case ID filter - use parameterized IN clause
+    // Delegate base-field + bare-key column_filters to the shared helper.
+    // scope='cohort-burden' emits the gene_symbol IS NOT NULL + != ''
+    // invariants so we don't have to hand-roll them.
+    const baseInput: BaseFilterInput = {
+      gnomad_af_max: filters.gnomad_af_max,
+      cadd_min: filters.cadd_min,
+      consequences: filters.consequences,
+      clinvars: filters.clinvars,
+      funcs: filters.funcs,
+      gene_list: filters.gene_list,
+      acmg_classifications: filters.acmg_classifications,
+      max_internal_af: filters.max_internal_af,
+      column_filters: filters.column_filters
+    }
+    const { sql: baseWhere, params: baseParams } = buildBaseWhere(baseInput, {
+      baseAlias,
+      scope: 'cohort-burden'
+    })
+
+    // Extension (dotted) column_filters — direct JOIN mode (same as VariantFilterBuilder).
+    const {
+      joins: extJoins,
+      whereClause: extWhere,
+      params: extParams
+    } = buildExtensionJoinClauses(filters.column_filters ?? {}, baseAlias)
+
+    // Case ID filter stays hand-rolled — not a BaseFilterInput field.
     const placeholders = sqlPlaceholders(allIds.length)
-    conditions.push(`case_id IN (${placeholders})`)
-    params.push(...allIds)
-
-    if (filters.gnomad_af_max !== undefined) {
-      conditions.push('(gnomad_af IS NULL OR gnomad_af <= ?)')
-      params.push(filters.gnomad_af_max)
-    }
-    if (filters.cadd_min !== undefined) {
-      conditions.push('(cadd IS NULL OR cadd >= ?)')
-      params.push(filters.cadd_min)
-    }
-    if (filters.consequences && filters.consequences.length > 0) {
-      const cPlaceholders = sqlPlaceholders(filters.consequences.length)
-      conditions.push(`consequence IN (${cPlaceholders})`)
-      params.push(...filters.consequences)
-    }
-    if (filters.gene_list && filters.gene_list.length > 0) {
-      const gPlaceholders = sqlPlaceholders(filters.gene_list.length)
-      conditions.push(`gene_symbol IN (${gPlaceholders})`)
-      params.push(...filters.gene_list)
-    }
-
-    const whereClause = conditions.join(' AND ')
+    const whereParts: string[] = [`${baseAlias}.case_id IN (${placeholders})`]
+    if (baseWhere !== '') whereParts.push(baseWhere)
+    if (extWhere !== '') whereParts.push(extWhere)
+    const whereClause = whereParts.join(' AND ')
 
     // Step 1: Get all qualifying variants grouped by gene and case
     const variantRows = this.db
       .prepare(
         `
-      SELECT gene_symbol, case_id,
-             chr || ':' || pos || ':' || ref || ':' || alt AS variant_key,
+      SELECT ${baseAlias}.gene_symbol,
+             ${baseAlias}.case_id,
+             ${baseAlias}.chr || ':' || ${baseAlias}.pos || ':' || ${baseAlias}.ref || ':' || ${baseAlias}.alt AS variant_key,
              ${GT_DOSAGE_SQL} AS dosage,
-             gnomad_af, cadd
-      FROM variants
+             ${baseAlias}.gnomad_af,
+             ${baseAlias}.cadd
+      FROM variants ${baseAlias}
+      ${extJoins}
       WHERE ${whereClause}
-      ORDER BY gene_symbol, variant_key, case_id
+      ORDER BY ${baseAlias}.gene_symbol, variant_key, ${baseAlias}.case_id
     `
       )
-      .all(...params) as Array<{
+      .all(...allIds, ...baseParams, ...extParams) as Array<{
       gene_symbol: string
       case_id: number
       variant_key: string

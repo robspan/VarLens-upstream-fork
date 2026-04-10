@@ -2,6 +2,8 @@
  * Single source of truth for variant extension tables.
  * Verified against v25 schema in migrations.ts:1431-1473.
  */
+import type { ColumnFilter, ColumnFiltersParam } from '../../shared/types/column-filters'
+
 export type FilterKind = 'number' | 'text' | 'enum'
 
 export interface ExtensionColumnDef {
@@ -169,4 +171,153 @@ export function resolveExtensionColumnKey(key: string): ExtensionColumnResolutio
   const columnDef = def.columns[column]
   if (columnDef === undefined) return null
   return { typeKey, def, column, columnDef }
+}
+
+// ── Extension filter → JOIN + WHERE clause builder ────────────
+
+/**
+ * Result of translating column_filters into extension JOIN + WHERE clauses.
+ *
+ * Used by Path 1 (VariantFilterBuilder) to wire extension-table filters into
+ * the case-scoped variant query. Path 2 (CohortSearch EXISTS) uses a separate
+ * `buildExtensionExistsClauses` helper that wraps the same primitives.
+ */
+export interface BuildExtensionJoinResult {
+  /**
+   * Raw SQL fragment containing `LEFT JOIN` clauses for every distinct
+   * extension table referenced by the filters. One line per table. Empty
+   * string when no extension filters were present. Intended to be included
+   * verbatim in the FROM clause of a compiled query.
+   */
+  joins: string
+  /**
+   * Raw SQL fragment for the WHERE clause, joined by ` AND `. Parameter
+   * placeholders use `?`. When a single extension type is referenced, an
+   * implicit `<base>.variant_type = 'sv|cnv|str'` narrowing is prepended so
+   * the query planner can use `idx_variants_type_case`.
+   */
+  whereClause: string
+  /** Ordered placeholder values matching each `?` in `whereClause`. */
+  params: (string | number)[]
+  /**
+   * When all extension filters target a single type, reports that type so
+   * callers can fold it into higher-level narrowing (e.g. skip the LEFT
+   * JOIN when the variant_type filter already added an INNER JOIN). `null`
+   * when filters span multiple extension types (cross-type), in which case
+   * the caller should NOT emit a single-type narrowing elsewhere.
+   */
+  implicitTypeNarrowing: ExtensionTypeKey | null
+  /**
+   * Set of extension type keys whose JOIN is required. Callers can use this
+   * to skip adding duplicate joins when another code path already added the
+   * same alias (e.g. `filter.variant_type === 'sv'` → `sv` join already
+   * present).
+   */
+  requiredJoinAliases: Set<ExtensionTypeKey>
+}
+
+/**
+ * Translate a `column_filters` map into an extension JOIN + WHERE plan.
+ *
+ * Scans every key for dotted extension keys (e.g. `cnv.copy_number`) and:
+ * 1. Resolves each to its extension registry entry.
+ * 2. Collects required LEFT JOINs (one per distinct extension type).
+ * 3. Emits per-filter WHERE clauses using the extension join alias.
+ * 4. Emits a single-type narrowing clause when only one extension type is
+ *    referenced, so the query planner can use `idx_variants_type_case`.
+ *
+ * Bare keys (base columns like `gnomad_af`) and unknown dotted keys are
+ * silently ignored — the base filter builder handles bare keys and unknown
+ * keys are dropped defensively.
+ *
+ * NULL semantics: extension numeric range filters default to **exclude** NULL
+ * (no extension row = variant not of that type → should not be returned),
+ * unlike base filters which default to include. Callers can override via
+ * `ColumnFilter.includeEmpty = true` on individual filters.
+ */
+export function buildExtensionJoinClauses(
+  columnFilters: ColumnFiltersParam,
+  baseVariantAlias: string
+): BuildExtensionJoinResult {
+  const params: (string | number)[] = []
+  const whereFragments: string[] = []
+  const joinSet = new Set<ExtensionTypeKey>()
+  const typesSeen = new Set<ExtensionTypeKey>()
+
+  for (const [key, filter] of Object.entries(columnFilters)) {
+    const resolved = resolveExtensionColumnKey(key)
+    if (resolved === null) continue
+    joinSet.add(resolved.typeKey)
+    typesSeen.add(resolved.typeKey)
+    const col = `${resolved.def.joinAlias}.${resolved.column}`
+    const clause = translateExtensionFilter(col, filter, params)
+    if (clause !== null) whereFragments.push(clause)
+  }
+
+  let implicit: ExtensionTypeKey | null = null
+  if (typesSeen.size === 1) {
+    const only = [...typesSeen][0]
+    implicit = only
+    // Prepend the single-type narrowing so query planner uses idx_variants_type_case
+    whereFragments.unshift(
+      `${baseVariantAlias}.variant_type = '${VARIANT_EXTENSION_REGISTRY[only].variantTypeValue}'`
+    )
+  }
+
+  const joins = [...joinSet]
+    .map((typeKey) => {
+      const def = VARIANT_EXTENSION_REGISTRY[typeKey]
+      return `LEFT JOIN ${def.table} ${def.joinAlias} ON ${def.joinAlias}.${def.variantIdColumn} = ${baseVariantAlias}.id`
+    })
+    .join('\n')
+
+  return {
+    joins,
+    whereClause: whereFragments.join(' AND '),
+    params,
+    implicitTypeNarrowing: implicit,
+    requiredJoinAliases: joinSet
+  }
+}
+
+/**
+ * Translate a single extension ColumnFilter into a parameterized SQL fragment.
+ *
+ * Pushes parameter values into the shared `params` array. Returns the SQL
+ * fragment or `null` when the filter should be dropped (empty IN, whitespace
+ * LIKE, unsupported operator).
+ *
+ * NULL semantics for numeric ranges default to EXCLUDE NULLs (opposite of the
+ * base-column path) because an extension row missing implies "variant is not
+ * of this type". Callers can override via `includeEmpty: true`.
+ */
+function translateExtensionFilter(
+  col: string,
+  filter: ColumnFilter,
+  params: (string | number)[]
+): string | null {
+  const { operator, value, includeEmpty } = filter
+  // Extensions default to EXCLUDE NULLs (opposite of base filters).
+  const nullBranch = includeEmpty === true
+
+  if (operator === 'in' && Array.isArray(value)) {
+    if (value.length === 0) return null
+    const ph = value.map(() => '?').join(', ')
+    params.push(...value)
+    return `${col} IN (${ph})`
+  }
+  if (operator === 'like' && typeof value === 'string') {
+    if (value.trim() === '') return null
+    params.push(`%${value}%`)
+    return `${col} LIKE ? COLLATE NOCASE`
+  }
+  if ((operator === '=' || operator === '!=') && !Array.isArray(value)) {
+    params.push(value)
+    return `${col} ${operator} ?`
+  }
+  if (['<', '>', '<=', '>='].includes(operator) && !Array.isArray(value)) {
+    params.push(value)
+    return nullBranch ? `(${col} IS NULL OR ${col} ${operator} ?)` : `${col} ${operator} ?`
+  }
+  return null
 }

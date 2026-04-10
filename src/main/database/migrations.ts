@@ -39,6 +39,7 @@ import { BUILT_IN_PRESETS } from './built-in-presets'
  * - 23: VCF import columns on variants + cases (#42)
  * - 24: Normalize ACMG classification labels to ClinVar sentence case
  * - 25: Multi-variant type support (SV/CNV/STR extension tables, case_import_files)
+ * - 26: v0.55.0 FTS5 virtual tables for variant_sv + variant_str (multi-variant filter/sort/search)
  *
  * @param db - better-sqlite3-multiple-ciphers Database instance
  */
@@ -1576,5 +1577,95 @@ export function runMigrations(db: Database.Database): void {
     }
 
     db.exec('PRAGMA user_version = 25')
+  }
+
+  // ── v26: FTS5 virtual tables for variant_sv + variant_str ──
+  //
+  // Adds two new FTS5 external-content virtual tables so the renderer can
+  // search over structural-variant breakend identifiers (event_id, mate_id)
+  // and short-tandem-repeat metadata (repeat_id, variant_catalog_id,
+  // repeat_unit, display_repeat_unit, str_status, disease).
+  //
+  // variant_cnv is intentionally excluded — its v25 schema is entirely
+  // numeric (copy_number, copy_number_quality, homozygosity_ref/alt, sm,
+  // bin_count) and has nothing worth tokenizing.
+  //
+  // Trigger names follow the `${source_table}_fts_${ai|au|ad}` convention
+  // used by variants_fts_* triggers in schema.ts — this is the convention
+  // the shared fts-trigger-management helper expects when tearing down
+  // triggers during bulk inserts via its `${ftsTable}${suffix}` derivation.
+  //
+  // Backfill runs BEFORE trigger creation so the triggers don't fire
+  // during the initial population.
+  if (currentVersion < 26) {
+    // variant_sv_fts (2 indexed text columns)
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS variant_sv_fts USING fts5(
+        event_id, mate_id,
+        content='variant_sv',
+        content_rowid='variant_id',
+        tokenize='unicode61 remove_diacritics 2'
+      )
+    `)
+    db.exec(`
+      INSERT INTO variant_sv_fts(rowid, event_id, mate_id)
+      SELECT variant_id, event_id, mate_id FROM variant_sv
+    `)
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS variant_sv_fts_ai AFTER INSERT ON variant_sv BEGIN
+        INSERT INTO variant_sv_fts(rowid, event_id, mate_id)
+          VALUES (new.variant_id, new.event_id, new.mate_id);
+      END
+    `)
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS variant_sv_fts_au AFTER UPDATE ON variant_sv BEGIN
+        INSERT INTO variant_sv_fts(variant_sv_fts, rowid, event_id, mate_id)
+          VALUES('delete', old.variant_id, old.event_id, old.mate_id);
+        INSERT INTO variant_sv_fts(rowid, event_id, mate_id)
+          VALUES (new.variant_id, new.event_id, new.mate_id);
+      END
+    `)
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS variant_sv_fts_ad AFTER DELETE ON variant_sv BEGIN
+        INSERT INTO variant_sv_fts(variant_sv_fts, rowid, event_id, mate_id)
+          VALUES('delete', old.variant_id, old.event_id, old.mate_id);
+      END
+    `)
+
+    // variant_str_fts (6 indexed text columns)
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS variant_str_fts USING fts5(
+        repeat_id, variant_catalog_id, repeat_unit, display_repeat_unit, str_status, disease,
+        content='variant_str',
+        content_rowid='variant_id',
+        tokenize='unicode61 remove_diacritics 2'
+      )
+    `)
+    db.exec(`
+      INSERT INTO variant_str_fts(rowid, repeat_id, variant_catalog_id, repeat_unit, display_repeat_unit, str_status, disease)
+      SELECT variant_id, repeat_id, variant_catalog_id, repeat_unit, display_repeat_unit, str_status, disease FROM variant_str
+    `)
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS variant_str_fts_ai AFTER INSERT ON variant_str BEGIN
+        INSERT INTO variant_str_fts(rowid, repeat_id, variant_catalog_id, repeat_unit, display_repeat_unit, str_status, disease)
+          VALUES (new.variant_id, new.repeat_id, new.variant_catalog_id, new.repeat_unit, new.display_repeat_unit, new.str_status, new.disease);
+      END
+    `)
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS variant_str_fts_au AFTER UPDATE ON variant_str BEGIN
+        INSERT INTO variant_str_fts(variant_str_fts, rowid, repeat_id, variant_catalog_id, repeat_unit, display_repeat_unit, str_status, disease)
+          VALUES('delete', old.variant_id, old.repeat_id, old.variant_catalog_id, old.repeat_unit, old.display_repeat_unit, old.str_status, old.disease);
+        INSERT INTO variant_str_fts(rowid, repeat_id, variant_catalog_id, repeat_unit, display_repeat_unit, str_status, disease)
+          VALUES (new.variant_id, new.repeat_id, new.variant_catalog_id, new.repeat_unit, new.display_repeat_unit, new.str_status, new.disease);
+      END
+    `)
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS variant_str_fts_ad AFTER DELETE ON variant_str BEGIN
+        INSERT INTO variant_str_fts(variant_str_fts, rowid, repeat_id, variant_catalog_id, repeat_unit, display_repeat_unit, str_status, disease)
+          VALUES('delete', old.variant_id, old.repeat_id, old.variant_catalog_id, old.repeat_unit, old.display_repeat_unit, old.str_status, old.disease);
+      END
+    `)
+
+    db.exec('PRAGMA user_version = 26')
   }
 }

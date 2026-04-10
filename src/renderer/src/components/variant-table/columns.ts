@@ -11,6 +11,16 @@ export interface ColumnDef {
   sortable: boolean
   width?: string
   align?: 'start' | 'end' | 'center'
+  /**
+   * Optional value getter. When set, Vuetify reads this function instead of
+   * `item[key]` for cell content. Required for extension columns where the
+   * sort key (dotted, e.g. `sv.support`) differs from the row property name
+   * (the SELECT projection alias, e.g. `_sv_support`). Vuetify 3 treats a
+   * dotted `key` string as a nested path accessor via `getObjectValueByPath`
+   * — without this getter, `item['sv']['support']` resolves to undefined and
+   * the cell renders empty.
+   */
+  value?: (item: Record<string, unknown>) => unknown
 }
 
 /**

@@ -3,12 +3,15 @@ import type { ColumnDef } from './columns'
 /**
  * Column definitions for SV (structural variant) variant tables.
  *
- * NOTE: Extension-table columns prefixed `_sv_*` live on the joined
- * `variant_sv` table and are deliberately marked `sortable: false` because
- * `VariantFilterBuilder.SORTABLE_COLUMNS` only contains columns from the
- * `variants` table itself. Extending sort support to joined-table columns
- * requires a dedicated sort path (future work) — attempting to sort on
- * them today would silently fall back to default ordering.
+ * Scalar extension columns (`sv.support`, `sv.vaf`, `sv.sv_is_precise`) are
+ * sortable per the Task 1 registry and use dotted keys so Vuetify's sort-by
+ * event routes through the backend's `resolveSortColumn` extension sort
+ * path. Each has a `value` getter reading the stable SELECT alias
+ * (`_sv_support` etc.) since Vuetify 3 would otherwise interpret a dotted
+ * key as a nested path accessor.
+ *
+ * `DR/DV` remains non-sortable because it's a composite display concat of
+ * two registry columns (`sv.dr` + `sv.dv`) — no single sort target exists.
  */
 export const svHeaders: ColumnDef[] = [
   { title: '', key: 'annotations', sortable: false, width: '100px', align: 'center' },
@@ -19,10 +22,28 @@ export const svHeaders: ColumnDef[] = [
   { title: 'Length', key: 'sv_length', sortable: true, align: 'end' },
   { title: 'Gene', key: 'gene_symbol', sortable: true },
   { title: 'Consequence', key: 'consequence', sortable: true },
-  { title: 'Support', key: '_sv_support', sortable: false, align: 'end' },
+  {
+    title: 'Support',
+    key: 'sv.support',
+    sortable: true,
+    align: 'end',
+    value: (item) => (item as { _sv_support?: number | null })._sv_support ?? null
+  },
   { title: 'DR/DV', key: '_sv_dr_dv', sortable: false, align: 'end' },
-  { title: 'VAF', key: '_sv_vaf', sortable: false, align: 'end' },
-  { title: 'Precise', key: '_sv_is_precise', sortable: false, align: 'center' },
+  {
+    title: 'VAF',
+    key: 'sv.vaf',
+    sortable: true,
+    align: 'end',
+    value: (item) => (item as { _sv_vaf?: number | null })._sv_vaf ?? null
+  },
+  {
+    title: 'Precise',
+    key: 'sv.sv_is_precise',
+    sortable: true,
+    align: 'center',
+    value: (item) => (item as { _sv_is_precise?: number | null })._sv_is_precise ?? null
+  },
   { title: 'GT', key: 'gt_num', sortable: true },
   { title: 'QUAL', key: 'qual', sortable: true, align: 'end' },
   { title: 'Filter', key: 'filter', sortable: true },

@@ -1511,20 +1511,47 @@ Identify the full method body (approximately lines 87-270 per the spec).
 
 ### Step 4.2: Refactor
 
-- [ ] **Step 4.2a:** Add import at the top of `src/main/database/cohort.ts`:
+- [ ] **Step 4.2a:** Add imports at the top of `src/main/database/cohort.ts`:
 
 ```typescript
 import { buildBaseWhere, type BaseFilterInput } from './variant-where-builder'
+import type { ColumnFiltersParam } from '../../shared/types/column-filters'
 ```
+
+Also **remove the `sqlPlaceholders` import** — after the refactor its only callers (the inline IN-clause loops) are gone.
 
 - [ ] **Step 4.2b:** KEEP the search term handling at the top (`buildSingleTermCondition` / `buildBooleanSearchCondition` calls) — this path does NOT use FTS5. KEEP the panel_intervals block — it's cohort-specific.
 
-- [ ] **Step 4.2c:** DELETE the typed-field conditions (gnomad_af_max, cadd_min, consequences, funcs, clinvars, starred_only, has_comment, acmg_classifications, carrier_count_min, variant_type, genome_build, gene_symbol) AND the bare-key `column_filters` loop at lines 208-235. Replace with a single call:
+- [ ] **Step 4.2c:** DELETE the typed-field conditions (gnomad_af_max, cadd_min, consequences, funcs, clinvars, starred_only, has_comment, acmg_classifications, carrier_count_min, variant_type, genome_build, gene_symbol) AND the bare-key `column_filters` loop at lines 208-235. DELETE the hand-written SNV/indel collapse (`variant_type === 'snv'` → `IN ('snv', 'indel')`) — `buildBaseWhere` with `scope: 'cohort-listing'` handles it. Replace all of it with:
 
 ```typescript
+// Remap + whitelist column_filters keys through SORTABLE_COLUMNS.
+// This preserves the existing alias mapping (e.g. 'cadd_phred' → 'cadd')
+// and the whitelist behaviour. buildBaseWhere emits ${baseAlias}.${column}
+// directly, so without this remap, keys like 'cadd_phred' would produce
+// SQL referencing columns that do not exist on cohort_variant_summary.
+let remappedColumnFilters: ColumnFiltersParam | undefined
+if (params.column_filters !== undefined) {
+  remappedColumnFilters = {}
+  for (const [key, filter] of Object.entries(params.column_filters)) {
+    const sqlColumn = SORTABLE_COLUMNS[key]
+    if (sqlColumn === undefined) continue // drop unknown / extension dotted keys (Task 6 routes those elsewhere)
+    remappedColumnFilters[sqlColumn] = filter
+  }
+}
+
+// Delegate base-field + bare-key column_filters translation to the shared
+// helper. Preserve the legacy `> 0` / `>= 0` guards on gnomad_af_max and
+// cadd_min at the call site — buildBaseWhere does not apply these because
+// they're caller-specific legacy semantics (existing cohort tests rely on
+// 0 being treated as "no filter" for gnomad_af_max).
 const baseInput: BaseFilterInput = {
-  gnomad_af_max: params.gnomad_af_max,
-  cadd_min: params.cadd_min,
+  gnomad_af_max:
+    params.gnomad_af_max !== undefined && params.gnomad_af_max > 0
+      ? params.gnomad_af_max
+      : undefined,
+  cadd_min:
+    params.cadd_min !== undefined && params.cadd_min >= 0 ? params.cadd_min : undefined,
   consequences: params.consequences,
   clinvars: params.clinvars,
   funcs: params.funcs,
@@ -1536,7 +1563,7 @@ const baseInput: BaseFilterInput = {
   carrier_count_min: params.carrier_count_min,
   variant_type: params.variant_type,
   genome_build: params.genome_build,
-  column_filters: params.column_filters
+  column_filters: remappedColumnFilters
 }
 const base = buildBaseWhere(baseInput, { baseAlias: 'cvs', scope: 'cohort-listing' })
 if (base.sql !== '') {

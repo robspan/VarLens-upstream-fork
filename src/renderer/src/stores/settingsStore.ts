@@ -9,18 +9,39 @@ import { logService } from '../services/LogService'
 
 const STORAGE_KEY = 'varlens_user_settings_v1'
 
+/**
+ * Which tab should be active by default when a CaseView mounts on a
+ * non-empty case:
+ *
+ *   'shortlist' — land on the algorithmic ranked Shortlist view.
+ *                 Default; best when the shortlist heuristic matches
+ *                 your workflow.
+ *   'snv'       — land on the first present per-type tab (SNV/indel
+ *                 if the case has them, otherwise the first available
+ *                 non-SNV type). Best for users who prefer to start
+ *                 from the raw variant table.
+ *
+ * The preference is enforced by `CaseView.loadTypeCounts`. The
+ * Shortlist tab itself is still always shown when at least one
+ * variant type is present — this only controls which tab is
+ * default-active.
+ */
+export type DefaultCaseTab = 'shortlist' | 'snv'
+
 interface PersistedSettings {
   itemsPerPage: number
   userName: string
   workerThreads: number // 0 = auto (cpus - 1)
   prefetchEnabled: boolean
+  defaultCaseTab: DefaultCaseTab
 }
 
 const DEFAULTS: PersistedSettings = {
   itemsPerPage: 25,
   userName: '',
   workerThreads: 0,
-  prefetchEnabled: true
+  prefetchEnabled: true,
+  defaultCaseTab: 'shortlist'
 }
 
 function load(): PersistedSettings {
@@ -50,14 +71,16 @@ export const useSettingsStore = defineStore('settings', () => {
   const userName = ref(persisted.userName)
   const workerThreads = ref(persisted.workerThreads)
   const prefetchEnabled = ref(persisted.prefetchEnabled)
+  const defaultCaseTab = ref<DefaultCaseTab>(persisted.defaultCaseTab)
 
   // Auto-persist on change
-  watch([itemsPerPage, userName, workerThreads, prefetchEnabled], () => {
+  watch([itemsPerPage, userName, workerThreads, prefetchEnabled, defaultCaseTab], () => {
     save({
       itemsPerPage: itemsPerPage.value,
       userName: userName.value,
       workerThreads: workerThreads.value,
-      prefetchEnabled: prefetchEnabled.value
+      prefetchEnabled: prefetchEnabled.value,
+      defaultCaseTab: defaultCaseTab.value
     })
   })
 
@@ -65,6 +88,7 @@ export const useSettingsStore = defineStore('settings', () => {
     itemsPerPage,
     userName,
     workerThreads,
-    prefetchEnabled
+    prefetchEnabled,
+    defaultCaseTab
   }
 })

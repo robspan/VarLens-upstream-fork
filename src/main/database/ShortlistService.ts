@@ -90,6 +90,35 @@ function toError(value: unknown): Error {
   return new Error(typeof value === 'string' ? value : JSON.stringify(value))
 }
 
+/**
+ * Convert a dotted extension sort key (`sv.vaf`, `cnv.copy_number`,
+ * `str.disease`, `str.str_status`) into the flat column alias that
+ * `queryVariantsByType` projects onto `ShortlistCandidate` rows
+ * (`sv_vaf`, `cnv_copy_number`, `str_disease`, `str_status`).
+ *
+ * Called on the resolved tieBreakers regardless of whether they came
+ * from the `adHocConfig` branch or a stored `presetId` shortlist, so
+ * both paths produce the same comparator behavior. Stage-2 scoring
+ * compares keys via direct property lookup on the flat row shape — a
+ * dotted key would silently no-op without this normalization.
+ *
+ * Rule: given `<type>.<col>`, if `<col>` already starts with `<type>_`
+ * use `<col>` verbatim (e.g. `str.str_status` → `str_status`);
+ * otherwise prefix with `<type>_` (e.g. `sv.vaf` → `sv_vaf`). Matches
+ * the aliases defined in `buildExtensionColumnProjection()` inside
+ * `shortlist-query.ts`.
+ *
+ * Exported for use by the IPC handler's allowlist-then-normalize path.
+ */
+export function normalizeTieBreakerKey(key: string): string {
+  const match = /^(sv|cnv|str)\.(.+)$/.exec(key)
+  if (match === null) return key
+  const typeKey = match[1]
+  const column = match[2]
+  if (column.startsWith(`${typeKey}_`)) return column
+  return `${typeKey}_${column}`
+}
+
 export class ShortlistService {
   constructor(
     private readonly db: DatabaseType,
@@ -102,7 +131,27 @@ export class ShortlistService {
    */
   getShortlist(params: GetShortlistParams): ShortlistResult {
     const started = Date.now()
-    const { config, presetUsed } = this.resolveConfig(params)
+    const { config: resolvedConfig, presetUsed } = this.resolveConfig(params)
+
+    // Normalize dotted extension tieBreakers (e.g. `sv.vaf` → `sv_vaf`)
+    // for BOTH `presetId` and `adHocConfig` branches. Without this step,
+    // a preset that stores tieBreakers in the dotted form used by
+    // `SortItem` elsewhere in the app would silently no-op because the
+    // Stage-2 comparator does direct property lookups on the flat
+    // `ShortlistCandidate` row shape. Applying the normalization here —
+    // after `resolveConfig` — guarantees identical behavior regardless
+    // of where the config came from.
+    const config: ShortlistConfig =
+      resolvedConfig.tieBreakers != null && resolvedConfig.tieBreakers.length > 0
+        ? {
+            ...resolvedConfig,
+            tieBreakers: resolvedConfig.tieBreakers.map((tb) => ({
+              ...tb,
+              key: normalizeTieBreakerKey(tb.key)
+            }))
+          }
+        : resolvedConfig
+
     const scope = config.variantTypeScope ?? this.detectPresentTypes(params.caseId)
 
     // ── Stage 1: candidate generation ────────────────────────────

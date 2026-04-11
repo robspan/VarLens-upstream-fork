@@ -20,6 +20,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { defineComponent, h, ref } from 'vue'
 import { createVuetify } from 'vuetify'
+import { setActivePinia, createPinia } from 'pinia'
 import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
 
@@ -152,6 +153,14 @@ function mountCaseView(initialCaseId: number | null = 1) {
 describe('CaseView — Shortlist tab integration', () => {
   beforeEach(() => {
     typeCountsMock.mockReset()
+    // `useSettingsStore` persists to localStorage — clear it between
+    // tests so the `defaultCaseTab` preference set by one test does
+    // not leak into the next via localStorage → load() on fresh Pinia
+    // creation.
+    localStorage.clear()
+    // CaseView now consumes `useSettingsStore` (Pinia) for the
+    // `defaultCaseTab` preference — tests need a fresh active Pinia.
+    setActivePinia(createPinia())
   })
 
   it('shows Shortlist tab even on single-type cases (algorithmic ranking view)', async () => {
@@ -200,6 +209,45 @@ describe('CaseView — Shortlist tab integration', () => {
       lastNonShortlistType: string
     }
     expect(vm.selectedVariantType).toBe('shortlist')
+    expect(vm.lastNonShortlistType).toBe('sv')
+  })
+
+  it('honors settings.defaultCaseTab = "snv" by landing on the first per-type tab', async () => {
+    // User preference via gear-menu → Application Preferences → Case View
+    // → Default active tab → "SNV/Indel (per-type table)".
+    const { useSettingsStore } = await import('../../../src/renderer/src/stores/settingsStore')
+    const settings = useSettingsStore()
+    settings.defaultCaseTab = 'snv'
+
+    typeCountsMock.mockResolvedValue({ snv: 10, sv: 3 })
+    const { wrapper } = mountCaseView(1)
+    await flushPromises()
+    const vm = wrapper.vm as unknown as {
+      selectedVariantType: string
+      lastNonShortlistType: string
+    }
+    // Preference says "per-type first" → lands on the first present type.
+    expect(vm.selectedVariantType).toBe('snv')
+    // `lastNonShortlistType` still seeds to the first present type so
+    // toggling between Shortlist and per-type works without a stale bind.
+    expect(vm.lastNonShortlistType).toBe('snv')
+  })
+
+  it('honors settings.defaultCaseTab = "snv" on an SV-only case by landing on SV', async () => {
+    // SV-only case, preference is "per-type first" → lands on SV (the
+    // first present type) rather than Shortlist.
+    const { useSettingsStore } = await import('../../../src/renderer/src/stores/settingsStore')
+    const settings = useSettingsStore()
+    settings.defaultCaseTab = 'snv'
+
+    typeCountsMock.mockResolvedValue({ snv: 0, sv: 5, cnv: 0, str: 0 })
+    const { wrapper } = mountCaseView(1)
+    await flushPromises()
+    const vm = wrapper.vm as unknown as {
+      selectedVariantType: string
+      lastNonShortlistType: string
+    }
+    expect(vm.selectedVariantType).toBe('sv')
     expect(vm.lastNonShortlistType).toBe('sv')
   })
 

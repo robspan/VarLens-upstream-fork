@@ -13,6 +13,7 @@ import type { VariantFilter, Variant } from '../../../shared/types/api'
 import { APP_CONFIG } from '../../../shared/config/app.config'
 import { logService } from '../services/LogService'
 import { useApiService } from '../composables/useApiService'
+import { useSettingsStore } from '../stores/settingsStore'
 
 const {
   selectedCaseId,
@@ -33,6 +34,7 @@ const {
 } = useAppState()
 
 const { api } = useApiService()
+const settingsStore = useSettingsStore()
 const hasCases = computed(() => caseCount.value > 0)
 
 // ── Variant type tabs ─────────────────────────────────────────
@@ -124,22 +126,32 @@ async function loadTypeCounts(caseId: number | null): Promise<void> {
 
   // Default-selection rule: if the caller hasn't explicitly picked a
   // tab yet (`selectedVariantType.value === 'snv'` is the reset sentinel
-  // set by the case watcher below), land on whichever tab best
-  // represents the case:
+  // set by the case watcher below), consult the user preference
+  // `settingsStore.defaultCaseTab`:
   //
-  //   • any case with >= 1 variant type → land on Shortlist AND seed
+  //   • 'shortlist' (default) → land on Shortlist AND seed
   //     `lastNonShortlistType` to the first present real type so the
   //     hidden VariantTable preloads with meaningful data (not a stale
-  //     'snv' bind on a cnv+str or sv-only case). Shortlist is valuable
-  //     for single-type cases too because reason (2) — algorithmic
-  //     ranking — applies regardless of how many types are present.
-  //   • empty case (no variants) → leave the sentinel `'snv'` default.
+  //     'snv' bind on a cnv+str or sv-only case).
+  //   • 'snv' → land on the first present per-type tab. When the case
+  //     has no SNV/indel we land on whichever type IS present, which
+  //     preserves the "open the non-empty tab" behavior the app had
+  //     before the Shortlist feature.
+  //
+  // Empty case (no variants) → leave the sentinel `'snv'` default.
   const presentTypes = getPresentTabTypes(typeCounts.value)
 
-  if (selectedVariantType.value === 'snv') {
-    if (presentTypes.length >= 1) {
-      lastNonShortlistType.value = presentTypes[0]
+  if (selectedVariantType.value === 'snv' && presentTypes.length >= 1) {
+    // Always seed `lastNonShortlistType` regardless of preference so
+    // toggling Shortlist → per-type → Shortlist works without a stale
+    // VariantTable bind on sv-only / cnv+str cases.
+    lastNonShortlistType.value = presentTypes[0]
+
+    if (settingsStore.defaultCaseTab === 'shortlist') {
       selectedVariantType.value = 'shortlist'
+    } else {
+      // 'snv' preference: land on the first present real type.
+      selectedVariantType.value = presentTypes[0]
     }
   }
 }

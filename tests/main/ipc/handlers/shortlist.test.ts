@@ -198,16 +198,18 @@ describe('variants:shortlist handler', () => {
     expect(service.getShortlist).toHaveBeenCalledTimes(1)
   })
 
-  it('normalizes dotted extension tieBreaker keys (sv.vaf → sv_vaf) before dispatch', async () => {
+  it('passes dotted extension tieBreaker keys through the allowlist check', async () => {
     // Dotted keys pass `resolveSortColumn`'s allowlist because that's the
-    // SQL-level spelling, but Stage-2 scoring compares against the flat
-    // row shape (`sv_vaf`, `cnv_copy_number`, `str_status`). The handler
-    // MUST rewrite the key in place before calling the service, otherwise
-    // the tie-breaker silently becomes a no-op.
+    // SQL-level spelling. The handler no longer normalizes them — that
+    // responsibility moved to `ShortlistService.getShortlist` so the
+    // `presetId` branch receives the same treatment as the `adHocConfig`
+    // branch. At the IPC layer we just need to verify:
+    //   (a) dotted keys do NOT raise a DatabaseError (they pass allowlist)
+    //   (b) the service is called with the unmodified dotted keys so the
+    //       single enforcement point downstream can do its job.
     //
-    // Covers all three extension namespaces AND the double-prefix case
-    // (`str.str_status` must collapse to `str_status`, not `str_str_status`)
-    // plus a plain base-column key that must pass through unchanged.
+    // Normalization correctness is locked in by
+    // `ShortlistService.test.ts` for BOTH branches.
     const service = makeMockService()
     registerShortlistHandlers(makeDeps(service) as never)
 
@@ -238,12 +240,13 @@ describe('variants:shortlist handler', () => {
       adHocConfig: { tieBreakers: Array<{ key: string; order: string }> }
     }
     const dispatchedKeys = dispatched.adHocConfig.tieBreakers.map((tb) => tb.key)
+    // Handler forwards the dotted keys verbatim — the service normalizes.
     expect(dispatchedKeys).toEqual([
-      'sv_vaf',
-      'sv_is_precise',
-      'cnv_copy_number',
-      'str_status',
-      'str_disease',
+      'sv.vaf',
+      'sv.sv_is_precise',
+      'cnv.copy_number',
+      'str.str_status',
+      'str.disease',
       'cadd'
     ])
   })

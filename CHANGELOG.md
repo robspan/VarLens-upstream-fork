@@ -7,41 +7,196 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+## [0.56.0] — 2026-04-11
 
-- **Unified case shortlist** — ranked cross-type variant view per case.
-  New "Shortlist" tab appears in CaseView when a case contains at least
-  one variant type (SNV/indel, SV, CNV, or STR). Three built-in presets
-  (Tier 1 candidates / All rare damaging / Recessive candidates) drive a
-  two-stage candidate-generation + ranking pipeline. Rows auto-refresh
-  when any variant in the same case is annotated. Score components
-  tooltip surfaces the per-term breakdown on hover. Hard cap of 500
-  rows at the IPC boundary for Electron safety.
-  Spec: `.planning/specs/2026-04-11-unified-shortlist-ranked-view-design.md`
-  Scoring heuristic reference: `.planning/docs/shortlist-scoring-heuristic.md`
-  (every tunable threshold, curve, and rationale — single source of truth
-  for the scoring formulas).
+### Added — Unified case shortlist
 
-- **Shortlist scoring config module** — every numeric threshold used by
-  the Shortlist scorer (CADD saturation, rarity cutoffs, SV length
-  buckets, CNV copy-number branching, STR known-locus shortcut, etc.)
-  lives in one typed config object at
-  `src/main/services/scoring/scoring-config.ts`. Tuning a constant is a
-  one-file edit. No magic numbers anywhere in the per-type scorers.
+- **Shortlist tab** — a ranked, cross-type variant view that appears in
+  `CaseView` whenever a case contains at least one variant type
+  (SNV/indel, SV, CNV, or STR). Surfaces top candidates in one sorted
+  list so triage doesn't require jumping between per-type tabs. On
+  single-type cases the same tab still appears because the algorithmic
+  ranking is valuable regardless of type count.
+- **Three built-in shortlist presets** seeded by migration v27:
+  _Tier 1 candidates_ (strict, cross-type, ClinVar P/LP and starred
+  rows pinned to top), _All rare damaging_ (broad, score-driven, no
+  pins), and _Recessive candidates_ (SNV/indel only). Switch between
+  them from the preset picker in the panel header.
+- **Algorithmic scoring pipeline** — two-stage Stage 1 candidate
+  generation (shared `buildBaseWhere` + extension JOINs + per-case
+  annotation join, ordered by `v.id` for deterministic cap) + Stage 2
+  pure-TypeScript per-type scorers (`scoreSnv` / `scoreSv` / `scoreCnv`
+  / `scoreStr`) feeding a normalized weighted `combine()` and a
+  `compareScoredRows` partition sort (starred → clinvar-pinned →
+  rank_score DESC → configurable tie-breakers → id ASC).
+- **Rank score tooltip** — hover any row's score badge to see the
+  per-component breakdown (impact / pathogenicity / rarity / ClinVar /
+  phenotype) with any active pin flag.
+- **Auto-refresh on annotation** — starring, commenting, or
+  ACMG-classifying any variant in the current case (from any tab,
+  including Shortlist itself) triggers a same-case shortlist refetch
+  within one IPC round-trip via the new `variants:annotationChanged`
+  broadcast. No manual Refresh click needed.
+- **Row-level actions** — row click opens `VariantDetailsPanel`
+  unchanged (`ShortlistRow extends Variant` structurally); kebab menu
+  offers "View details" and "View in \<type\> tab" to switch to the
+  per-type tab with state preserved via `v-show`.
+- **HGVS c. / p. notation on SNV/indel rows** — the variant cell now
+  shows a stacked layout with the genomic coordinate on top and HGVS
+  cDNA + protein notation underneath (in monospace, muted caption
+  style). Annotator-prefixed and bare notation forms are both
+  normalized without double-prefixing.
+- **Scrollable paginated table** — the Shortlist table body scrolls
+  independently of the footer, paginates at 50 rows/page by default
+  with a `[25, 50, 100, 250, 500]` per-page selector.
 
-### Database
+### Added — Case View preferences
 
-- Migration v27: `filter_presets.kind` discriminator column
-  (`'filter' | 'shortlist'`) with a CHECK constraint and a new index.
-  Seeds three built-in shortlist presets. Existing rows backfill to
-  `'filter'`.
+- **Default active tab** preference under **Gear menu → Application
+  Preferences → Case View**. Choose between `Shortlist (ranked view)`
+  (default) and `SNV/Indel (per-type table)`. The setting persists
+  across sessions (localStorage) and takes effect the next time any
+  case opens. The Shortlist tab itself is still always shown on
+  non-empty cases — the preference only controls which tab is
+  default-active, not whether it exists.
 
-### IPC
+### Added — Scoring config module + reference docs
 
-- New `variants:shortlist` handler (Zod-validated discriminated union
-  params: `presetId | adHocConfig`).
-- New `variants:annotationChanged` broadcast from
-  `annotations:upsertPerCase` drives same-case shortlist refresh.
+- **`scoring-config.ts`** (`src/main/services/scoring/scoring-config.ts`)
+  — every numeric threshold used by the Shortlist scorer lives in a
+  single typed config object: CADD saturation ceiling (40), rarity AF
+  cutoff (0.01), SV precise/imprecise factors and length bucket
+  threshold (1 kb), CNV copy-number branching, STR status and
+  known-locus shortcut, VEP IMPACT and ClinVar lookup tables. No magic
+  numbers anywhere in the per-type scorers. Tuning a constant is a
+  one-file edit.
+- **Scoring heuristic reference** at
+  `.planning/docs/shortlist-scoring-heuristic.md` — developer-facing
+  reference documenting every component, every formula, every null
+  fallback, every built-in preset, and every Phase-1 limitation.
+  Single source of truth for the scorer.
+- **User-facing feature page** at `docs/features/shortlist.md` —
+  clinician / researcher reference with annotated screenshots,
+  preset descriptions, sort order explanation, row actions, and a
+  walkthrough of the Case View gear-menu preference.
+
+### Added — Database
+
+- Migration **v27**: `filter_presets.kind` discriminator column
+  (`'filter' | 'shortlist'`) with a CHECK constraint, a new
+  `idx_filter_presets_kind` index, and `INSERT OR IGNORE` seeding for
+  the three built-in shortlist presets. Existing rows backfill to
+  `kind='filter'`. Safe to replay.
+
+### Added — IPC
+
+- New `variants:shortlist` handler — Zod-validated discriminated
+  union params (`presetId | adHocConfig`), both branches `.strict()`
+  so ambiguous payloads carrying both keys are rejected. Service-layer
+  sort-key allowlist + post-resolution tie-breaker key normalization
+  (dotted `sv.vaf` → flat `sv_vaf` aliases) so both preset and ad-hoc
+  configs produce identical comparator behavior.
+- New `variants:annotationChanged` broadcast from the
+  `annotations:upsertPerCase` handler wrapper. Drives same-case
+  shortlist refresh in the renderer via the new `useShortlistQuery`
+  composable subscription.
+- **Preset payload validation at load time** — `ShortlistService`
+  validates `preset.filterJson.shortlist` through `ShortlistConfigSchema`
+  before using it, so a hand-edited or older-schema preset surfaces a
+  `DatabaseError` with structured Zod issues instead of producing `NaN`
+  limits downstream.
+
+### Added — UI polish
+
+- **Distinct Shortlist tab treatment** — a 3px leading accent bar in
+  `primary` (slate navy) + bolder font + right-border separator signals
+  the tab as categorically different from the raw per-type tabs. Icon
+  is `mdiStarFourPoints` in `primary` tonal harmony with other tab
+  labels. Intentionally restrained (Material 3 accent-border pattern +
+  clinical-dashboard conventions — signal hierarchy through restraint,
+  not color blocks).
+- **Proper `@mdi/js` icon imports** across `CaseView.vue`,
+  `ShortlistPanel.vue`, and `ShortlistTable.vue`. Fixes the
+  `<path> attribute d: Expected number, "mdi-..."` console warnings
+  that were surfacing because VarLens uses Vuetify's `mdi-svg` icon set
+  (which expects SVG path strings from `@mdi/js`, not `mdi-*` CSS
+  class names).
+- `data-testid="app-settings-menu"` added to the gear button in the
+  top toolbar as a stable E2E testing seam.
+
+### Fixed
+
+- **Singleton preset store** — `useFilterPresetStore` is now a proper
+  shared singleton (module-level refs) so `ShortlistPanel` and
+  `FilterToolbar` read the same preset list. Previously each consumer
+  got a fresh empty store, leaving the shortlist picker perpetually
+  blank on cold starts. `useShortlistQuery` also calls
+  `loadPresets()` defensively on setup for race-free first render.
+- **Concurrent-fetch race guard** in `useShortlistQuery` —
+  monotonically increasing request id + active-id tracking ensures a
+  slower earlier fetch can't overwrite `result` with stale data when
+  preset / case / annotation / refresh events all fire together.
+- **`ShortlistQueryError extends DatabaseError`** so Stage-1 failures
+  surface as `ErrorCode.DB_ERROR` with a meaningful message in the
+  retry banner, not a generic `ErrorCode.UNKNOWN`.
+- **`RankScoreTooltip` reactivity** — row list is now a `computed()`
+  derived from `props.components` instead of a setup-time const, so
+  the tooltip updates when a component instance is reused across
+  table re-renders.
+- **`ShortlistConfigSchema.perTypeOverrides`** uses `z.partialRecord`
+  instead of `z.record`, so presets can specify overrides for a subset
+  of variant types without Zod rejecting the missing keys. Fixes the
+  Tier 1 preset which only sets sv/cnv/str overrides.
+
+### Changed
+
+- **`docs/` tree is now version-controlled.** Previously the entire
+  VitePress docs site was local-only via two broad gitignore rules
+  (`.vitepress/` and `docs/public/screenshots/*.png`). Tightened the
+  rules to keep only `docs/.vitepress/{dist,cache}/` ignored, and
+  added an explicit negation exception for `docs/public/screenshots/*.png`.
+  The 29 existing feature-doc screenshots plus the 2 new
+  Shortlist-specific ones now ship with the repo so anyone building
+  the docs site sees the published images without needing a local
+  Playwright + ONT-fixture run.
+- **`VariantTable.vue`** — new optional `interactive?: boolean` prop
+  (default `true`) gates all seven `onKeyStroke` handlers (ArrowUp /
+  ArrowDown / Enter / Escape / s / c / a). `CaseView` sets
+  `:interactive="selectedVariantType !== 'shortlist'"` so hidden
+  per-type-table keystrokes don't fire while the Shortlist tab is
+  active. Zero behavior change when `interactive=true`.
+- **Shortlist shown on single-type cases** (previous CHANGELOG
+  language said "more than one variant type" — corrected to "at least
+  one"). The gating was loosened mid-development after user feedback:
+  the Shortlist has two reasons to exist (cross-type comparison AND
+  algorithmic ranking), and reason (2) applies even when a case has
+  only SNVs.
+
+### Developer / test infrastructure
+
+- **Playwright monkey test** (`tests/e2e/shortlist-monkey.e2e.ts`) —
+  env-gated end-to-end exercise of the full Shortlist flow on an
+  obfuscated ONT multi-type case: imports 4 VCFs, navigates, asserts
+  auto-selection, rotates every preset, hovers the rank-score
+  tooltip, toggles star, opens-in-tab, opens `VariantDetailsPanel`,
+  then random-walks for 10 steps. All 12 phases pass end-to-end;
+  console error log empty.
+- **Docs screenshot test** (`tests/e2e/shortlist-docs-screenshots.e2e.ts`)
+  — captures the four reference screenshots for the user-facing doc
+  and emits bounding-box JSON sidecars so post-run ImageMagick
+  annotation is reproducible. Shortlist feature is the first in the
+  repo with this pattern.
+- Test suite grew from **2719 → 2905 tests** (+186 new across the
+  Wave 0-7 rollout plus the review / audit / polish commits).
+- Coverage thresholds raised per-file for every new Shortlist module
+  (`src/main/services/scoring/**`, `ShortlistService.ts`,
+  `shortlist-query.ts`, `src/main/ipc/handlers/shortlist.ts`,
+  `useShortlistQuery.ts`, `src/renderer/src/components/shortlist/**`).
+
+Spec: `.planning/specs/2026-04-11-unified-shortlist-ranked-view-design.md`
+Plan: `.planning/plans/2026-04-11-unified-shortlist-plan.md`
+Scoring reference: `.planning/docs/shortlist-scoring-heuristic.md`
+User-facing feature page: `docs/features/shortlist.md`
 
 ## [0.55.0] — 2026-04-11
 

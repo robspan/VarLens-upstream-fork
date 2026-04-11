@@ -36,6 +36,7 @@ describe('createRepositories', () => {
         'metadata',
         'panels',
         'overview',
+        'shortlistService',
         'tags',
         'transcripts',
         'variants'

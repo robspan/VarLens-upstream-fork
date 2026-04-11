@@ -2,6 +2,7 @@ import { BaseRepository } from './BaseRepository'
 import type {
   FilterPreset,
   FilterPresetCreate,
+  FilterPresetKind,
   FilterPresetUpdate
 } from '../../shared/types/filter-presets'
 import { DatabaseError, NotFoundError, UniqueConstraintError } from './errors'
@@ -19,12 +20,18 @@ interface PresetRow {
   updated_at: number
 }
 
+/**
+ * Hydrate a raw `filter_presets` row into a typed `FilterPreset`.
+ *
+ * Post migration v27 (Wave 1.B), the `kind` column is NOT NULL with a
+ * default of `'filter'`, so every row that comes back from this table is
+ * guaranteed to carry a kind value. The `row.kind ?? 'filter'` fallback is
+ * kept purely as defense-in-depth — if a stale row somehow slipped through
+ * (e.g. a hand-edited DB file) the classic-filter default keeps existing
+ * call sites working.
+ */
 function rowToPreset(row: PresetRow): FilterPreset {
-  // Rows pre-dating migration v27 have no `kind` column — default to 'filter'.
-  // TODO(Wave 2): after migration v27 backfills all rows and makes `kind`
-  // NOT NULL, this ternary becomes pure defense-in-depth — consider
-  // simplifying to `row.kind ?? 'filter'` once the column is guaranteed.
-  const kind = row.kind === 'shortlist' ? 'shortlist' : 'filter'
+  const kind: FilterPresetKind = row.kind === 'shortlist' ? 'shortlist' : 'filter'
   return {
     id: row.id,
     name: row.name,
@@ -57,6 +64,7 @@ export class FilterPresetRepository extends BaseRepository {
   createPreset(params: FilterPresetCreate): FilterPreset {
     try {
       const now = Date.now()
+      const kind: FilterPresetKind = params.kind ?? 'filter'
       const row = this.execFirst<PresetRow>(
         this.kysely
           .insertInto('filter_presets')
@@ -64,6 +72,7 @@ export class FilterPresetRepository extends BaseRepository {
             name: params.name,
             description: params.description ?? null,
             filter_json: JSON.stringify(params.filterJson),
+            kind,
             is_built_in: 0,
             is_visible: params.isVisible !== false ? 1 : 0,
             sort_order: params.sortOrder ?? 0,
@@ -104,6 +113,7 @@ export class FilterPresetRepository extends BaseRepository {
         if (updates.description !== undefined) updateObj.description = updates.description ?? null
         if (updates.filterJson !== undefined)
           updateObj.filter_json = JSON.stringify(updates.filterJson)
+        if (updates.kind !== undefined) updateObj.kind = updates.kind
         if (updates.isVisible !== undefined) updateObj.is_visible = updates.isVisible ? 1 : 0
         if (updates.sortOrder !== undefined) updateObj.sort_order = updates.sortOrder
       }

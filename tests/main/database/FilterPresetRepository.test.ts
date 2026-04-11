@@ -63,6 +63,16 @@ describe('FilterPresetRepository', () => {
       expect(presets[0].name).toBe('Rare Pathogenic')
       expect(presets[0].isBuiltIn).toBe(true)
     })
+
+    it("carries kind='filter' on classic built-in presets", () => {
+      const classic = repo.listPresets().find((p) => p.name === 'Rare Pathogenic')
+      expect(classic?.kind).toBe('filter')
+    })
+
+    it("carries kind='shortlist' on built-in shortlist presets seeded by v27", () => {
+      const shortlist = repo.listPresets().find((p) => p.name === 'Tier 1 candidates')
+      expect(shortlist?.kind).toBe('shortlist')
+    })
   })
 
   describe('createPreset', () => {
@@ -81,6 +91,43 @@ describe('FilterPresetRepository', () => {
     it('throws on duplicate name', () => {
       repo.createPreset({ name: 'Dup', filterJson: {} })
       expect(() => repo.createPreset({ name: 'Dup', filterJson: {} })).toThrow(/already exists/)
+    })
+
+    it("defaults kind to 'filter' when omitted", () => {
+      const preset = repo.createPreset({
+        name: 'ImplicitFilterKind',
+        filterJson: { maxGnomadAf: 0.01 }
+      })
+      expect(preset.kind).toBe('filter')
+    })
+
+    it("persists kind='shortlist' when provided", () => {
+      const preset = repo.createPreset({
+        name: 'ExplicitShortlistKind',
+        filterJson: {},
+        kind: 'shortlist'
+      })
+      expect(preset.kind).toBe('shortlist')
+    })
+
+    it('round-trips kind through listPresets', () => {
+      repo.createPreset({ name: 'RoundTripShortlist', filterJson: {}, kind: 'shortlist' })
+      repo.createPreset({ name: 'RoundTripFilter', filterJson: {}, kind: 'filter' })
+      const all = repo.listPresets()
+      const shortlist = all.find((p) => p.name === 'RoundTripShortlist')!
+      const filter = all.find((p) => p.name === 'RoundTripFilter')!
+      expect(shortlist.kind).toBe('shortlist')
+      expect(filter.kind).toBe('filter')
+    })
+
+    it('round-trips kind through getPreset', () => {
+      const created = repo.createPreset({
+        name: 'GetPresetKindRoundTrip',
+        filterJson: {},
+        kind: 'shortlist'
+      })
+      const fetched = repo.getPreset(created.id)
+      expect(fetched?.kind).toBe('shortlist')
     })
   })
 
@@ -101,6 +148,17 @@ describe('FilterPresetRepository', () => {
       // Should allow visibility toggle but not name/filter changes
       const updated = repo.updatePreset(builtIns[0].id, { isVisible: false })
       expect(updated.isVisible).toBe(false)
+    })
+
+    it('updates kind on user presets', () => {
+      const created = repo.createPreset({
+        name: 'KindUpgrade',
+        filterJson: {},
+        kind: 'filter'
+      })
+      expect(created.kind).toBe('filter')
+      const updated = repo.updatePreset(created.id, { kind: 'shortlist' })
+      expect(updated.kind).toBe('shortlist')
     })
   })
 

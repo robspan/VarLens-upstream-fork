@@ -15,7 +15,7 @@
  * Spec: .planning/specs/2026-04-11-post-0.56.0-cleanup-design.md §5.2
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { ref } from 'vue'
 import { createVuetify } from 'vuetify'
@@ -212,59 +212,97 @@ describe('ShortlistTable — typeChipColor & targetTabFor (lines 120-131)', () =
 })
 
 // ─── ShortlistTable: actions menu click handlers (lines 216-224) ──────────
+//
+// The v-menu list items at lines 216 and 219 use inline @click handlers that
+// V8 coverage only credits when the click is actually fired — rendering the
+// template isn't enough. The menu's v-list is teleported to document.body by
+// Vuetify, so `wrapper.findAll('.v-list-item')` misses the items; we query
+// `document` directly after opening the menu.
+//
+// Addresses Copilot review comments on PR #153 — the previous version of
+// these tests used `wrapper.vm.$emit(...)` fallbacks that bypassed the real
+// template handlers entirely (tautological assertions that always passed).
 
 describe('ShortlistTable — actions menu emits (lines 216-224)', () => {
+  /** Open the actions v-menu for a given row id and return the teleported list items. */
+  async function openActionsMenu(
+    wrapper: ReturnType<typeof mount>,
+    rowId: number
+  ): Promise<HTMLElement[]> {
+    const dotsBtn = wrapper.find(`[data-testid="shortlist-actions-${rowId}"]`)
+    expect(dotsBtn.exists()).toBe(true)
+    await dotsBtn.trigger('click')
+    await flushPromises()
+    // v-menu teleports its list to document.body; query from there, not the wrapper.
+    return Array.from(document.querySelectorAll<HTMLElement>('.v-list-item'))
+  }
+
   it('actions menu "View details" emits row-click (line 216)', async () => {
-    // The v-menu list item at line 216 emits row-click on click.
     const testRow = row({ id: 7, variant_type: 'snv' })
     const wrapper = mount(ShortlistTable, {
       props: { rows: [testRow] },
       global: { plugins: [vuetify] },
       attachTo: document.body
     })
-    // Open the actions menu by clicking the dots button
-    const dotsBtn = wrapper.find('button[data-testid="shortlist-actions-7"]')
-    if (dotsBtn.exists()) {
-      await dotsBtn.trigger('click')
-      await flushPromises()
-      const viewDetails = wrapper
-        .findAll('v-list-item, .v-list-item')
-        .find((el) => el.text().includes('View details'))
-      if (viewDetails) {
-        await viewDetails.trigger('click')
-        expect(wrapper.emitted('row-click')).toBeTruthy()
-      }
-    }
-    // Fallback: emit directly to cover the code path
-    wrapper.vm.$emit('row-click', testRow)
-    expect(wrapper.emitted('row-click')).toBeTruthy()
+    const items = await openActionsMenu(wrapper, 7)
+    const viewDetails = items.find((el) => el.textContent?.includes('View details'))
+    expect(viewDetails, 'v-menu should render a "View details" list item').toBeTruthy()
+    viewDetails?.dispatchEvent(new Event('click', { bubbles: true }))
+    await flushPromises()
+    const emitted = wrapper.emitted('row-click')
+    expect(emitted).toBeTruthy()
+    expect(emitted?.[0]?.[0]).toMatchObject({ id: 7, variant_type: 'snv' })
     wrapper.unmount()
   })
 
-  it('actions menu "View in ... tab" emits open-in-tab (lines 219-222)', async () => {
-    // The v-menu list item at line 219 emits open-in-tab with targetTabFor result.
+  it('actions menu "View in ... tab" emits open-in-tab with targetTabFor result (lines 219-222)', async () => {
     const testRow = row({ id: 8, variant_type: 'sv', sv_type: 'DUP', sv_length: 2000 })
     const wrapper = mount(ShortlistTable, {
       props: { rows: [testRow] },
       global: { plugins: [vuetify] },
       attachTo: document.body
     })
-    const dotsBtn = wrapper.find('button[data-testid="shortlist-actions-8"]')
-    if (dotsBtn.exists()) {
-      await dotsBtn.trigger('click')
-      await flushPromises()
-      const tabItem = wrapper
-        .findAll('v-list-item, .v-list-item')
-        .find((el) => el.text().toLowerCase().includes('view in'))
-      if (tabItem) {
-        await tabItem.trigger('click')
-        expect(wrapper.emitted('open-in-tab')).toBeTruthy()
-      }
-    }
-    // Fallback: emit directly to cover the code path
-    wrapper.vm.$emit('open-in-tab', 'sv')
-    expect(wrapper.emitted('open-in-tab')).toBeTruthy()
+    const items = await openActionsMenu(wrapper, 8)
+    const tabItem = items.find((el) => el.textContent?.toLowerCase().includes('view in'))
+    expect(tabItem, 'v-menu should render a "View in ... tab" list item').toBeTruthy()
+    // The menu item text should include the uppercase variant type (line 221).
+    expect(tabItem?.textContent).toContain('SV')
+    tabItem?.dispatchEvent(new Event('click', { bubbles: true }))
+    await flushPromises()
+    // Exercises line 219: emit('open-in-tab', targetTabFor(item.variant_type))
+    // For an SV row, targetTabFor returns 'sv' directly (not the 'indel'→'snv' fallback).
+    const emitted = wrapper.emitted('open-in-tab')
+    expect(emitted).toBeTruthy()
+    expect(emitted?.[0]?.[0]).toBe('sv')
     wrapper.unmount()
+  })
+
+  it('actions menu on an indel row emits open-in-tab with "snv" (targetTabFor indel→snv fallback)', async () => {
+    // The targetTabFor function at line 128-131 maps 'indel' → 'snv' as the fallback branch.
+    // This test exercises the indel path through the same menu click handler so the
+    // fallback return 'snv' at line 131 is covered when actually called.
+    const testRow = row({ id: 9, variant_type: 'indel' })
+    const wrapper = mount(ShortlistTable, {
+      props: { rows: [testRow] },
+      global: { plugins: [vuetify] },
+      attachTo: document.body
+    })
+    const items = await openActionsMenu(wrapper, 9)
+    const tabItem = items.find((el) => el.textContent?.toLowerCase().includes('view in'))
+    expect(tabItem).toBeTruthy()
+    expect(tabItem?.textContent).toContain('SNV')
+    tabItem?.dispatchEvent(new Event('click', { bubbles: true }))
+    await flushPromises()
+    const emitted = wrapper.emitted('open-in-tab')
+    expect(emitted).toBeTruthy()
+    expect(emitted?.[0]?.[0]).toBe('snv')
+    wrapper.unmount()
+  })
+
+  afterEach(() => {
+    // v-menu teleports list elements to document.body — reset between tests so
+    // stale menu content doesn't leak into the next test's document.querySelectorAll.
+    document.body.innerHTML = ''
   })
 })
 

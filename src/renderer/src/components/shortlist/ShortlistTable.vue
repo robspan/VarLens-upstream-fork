@@ -208,7 +208,13 @@ function displayVariantType(t: ShortlistRow['variant_type']): string {
     <template #[`item.actions`]="{ item }">
       <v-menu>
         <template #activator="{ props: actProps }">
-          <v-btn icon variant="text" size="x-small" v-bind="actProps">
+          <v-btn
+            icon
+            variant="text"
+            size="x-small"
+            :data-testid="`shortlist-actions-${item.id}`"
+            v-bind="actProps"
+          >
             <v-icon :icon="mdiDotsVertical" />
           </v-btn>
         </template>

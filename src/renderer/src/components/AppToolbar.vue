@@ -93,7 +93,7 @@
     />
     <v-menu>
       <template #activator="{ props }">
-        <v-btn icon size="small" v-bind="props">
+        <v-btn icon size="small" data-testid="app-settings-menu" v-bind="props">
           <v-icon :icon="mdiCog" />
           <v-tooltip activator="parent" location="bottom">Settings</v-tooltip>
         </v-btn>

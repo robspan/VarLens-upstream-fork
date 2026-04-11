@@ -223,7 +223,15 @@ export class VariantFilterBuilder {
     } | null = null
 
     if (filter.column_filters !== undefined) {
-      const result = buildExtensionJoinClauses(filter.column_filters, 'variants')
+      // When the caller has an active variant_type filter, it already emits
+      // its own `variants.variant_type = X` predicate above. Skip the
+      // implicit single-type narrowing inside `buildExtensionJoinClauses` so
+      // we don't duplicate the predicate in the final SQL (which inflates
+      // query plans even though SQLite resolves it correctly).
+      const callerHasTypeFilter = filter.variant_type !== undefined && filter.variant_type !== ''
+      const result = buildExtensionJoinClauses(filter.column_filters, 'variants', {
+        skipImplicitNarrowing: callerHasTypeFilter
+      })
       for (const alias of result.requiredJoinAliases) extensionJoinsNeeded.add(alias)
       extensionFilterClauses = { whereClause: result.whereClause, params: result.params }
     }
@@ -497,6 +505,14 @@ export class VariantFilterBuilder {
     })
 
     // Column filters (dynamic, type-aware)
+    //
+    // TODO: fold this bare-key translator into `variant-where-builder.ts` so
+    // there's a single source of truth for column_filter semantics across
+    // all three query paths. The logic here has converged with
+    // `translateColumnFilter` used by Path 2/3, but the duplication is
+    // currently preserved because Path 1 uses Kysely chain builders while
+    // Path 2/3 use raw SQL + parameter interpolation. Unifying would require
+    // a Kysely-aware emitter in `variant-where-builder` or a shared AST.
     if (filter.column_filters !== undefined) {
       for (const [column, filterDef] of Object.entries(filter.column_filters)) {
         if (SORTABLE_COLUMNS[column] === undefined) continue

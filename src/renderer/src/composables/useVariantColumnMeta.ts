@@ -42,6 +42,22 @@ export function cacheKeyFor(scope: VariantColumnMetaScope): string {
 }
 
 // Module-scoped caches — shared across all useVariantColumnMeta() callers.
+//
+// INVALIDATION POLICY (intentional deferral):
+//
+// These caches are currently unbounded by design for the Electron desktop
+// use case. Sessions load a bounded set of cases into a bounded set of
+// extension columns (~30 dotted keys × ~N visited scopes), so the memory
+// ceiling is low in practice. `invalidate(scope)` and `invalidateAll()` are
+// already exposed on the composable return value, but no runtime consumer
+// currently calls them — VarLens has no generic "case/import-changed" event
+// bus that matches how `useFilterOptionsCache.invalidateFilterOptionsCache`
+// is (also) currently unused.
+//
+// When such an event bus is added, wire `invalidateAll()` to the same
+// import-complete / case-delete triggers as the filter-options cache so
+// stale min/max/distinct bounds don't survive a data mutation. Mirror the
+// pattern used by `useFilterOptionsCache` for consistency.
 const extensionColumnMetaCache = ref<Record<string, Record<string, ColumnFilterMeta>>>({})
 const variantTypesPresentCache = ref<Record<string, Set<string>>>({})
 const inflightColumnMeta = new Map<string, Promise<ColumnFilterMeta>>()

@@ -158,6 +158,51 @@ describe('buildExtensionJoinClauses (direct JOIN mode)', () => {
     expect(result.joins).toContain('cnv.variant_id = variants.id')
     expect(result.whereClause).toContain("variants.variant_type = 'cnv'")
   })
+
+  it('skipImplicitNarrowing=true omits the single-type narrowing but still populates implicitTypeNarrowing', () => {
+    const result = buildExtensionJoinClauses(
+      { 'cnv.copy_number': { operator: '>=', value: 3 } },
+      'variants',
+      { skipImplicitNarrowing: true }
+    )
+    // Narrowing clause is NOT emitted (caller emits its own variant_type predicate)
+    expect(result.whereClause).not.toContain("variants.variant_type = 'cnv'")
+    // But the filter itself is still present
+    expect(result.whereClause).toContain('cnv.copy_number >= ?')
+    expect(result.params).toEqual([3])
+    // And the bookkeeping fields are still populated so callers that track
+    // cross-type narrowing can see the implied single type.
+    expect(result.implicitTypeNarrowing).toBe('cnv')
+    expect(result.requiredJoinAliases.has('cnv')).toBe(true)
+    expect(result.joins).toContain('LEFT JOIN variant_cnv cnv')
+  })
+
+  it('skipImplicitNarrowing=false (default) still prepends the narrowing', () => {
+    const result = buildExtensionJoinClauses(
+      { 'cnv.copy_number': { operator: '>=', value: 3 } },
+      'variants',
+      { skipImplicitNarrowing: false }
+    )
+    expect(result.whereClause).toContain("variants.variant_type = 'cnv'")
+    expect(result.whereClause).toContain('cnv.copy_number >= ?')
+  })
+
+  it('skipImplicitNarrowing is a no-op for cross-type filters', () => {
+    // When filters span multiple types, there is no single-type narrowing to
+    // skip, so the option has no effect on output.
+    const resultSkip = buildExtensionJoinClauses(
+      {
+        'cnv.copy_number': { operator: '>=', value: 3 },
+        'sv.support': { operator: '>=', value: 10 }
+      },
+      'variants',
+      { skipImplicitNarrowing: true }
+    )
+    expect(resultSkip.implicitTypeNarrowing).toBeNull()
+    expect(resultSkip.whereClause).not.toContain('variant_type =')
+    expect(resultSkip.whereClause).toContain('cnv.copy_number >= ?')
+    expect(resultSkip.whereClause).toContain('sv.support >= ?')
+  })
 })
 
 describe('buildExtensionExistsClauses (EXISTS subquery mode)', () => {

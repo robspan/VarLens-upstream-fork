@@ -77,6 +77,7 @@ import {
   type FilterKind
 } from '../../../../shared/types/variant-extension-registry-data'
 import { useVariantColumnMeta } from '../../composables/useVariantColumnMeta'
+import { logService } from '../../services/LogService'
 import NumericRangeControl from './NumericRangeControl.vue'
 import EnumSelectControl from './EnumSelectControl.vue'
 import TextFilterControl from './TextFilterControl.vue'
@@ -98,6 +99,11 @@ const emit = defineEmits<{
 const { getColumnMeta, ensureTypesPresent } = useVariantColumnMeta()
 const typesPresent = ref<Set<string>>(new Set())
 const metaMap = ref<Record<string, ColumnFilterMeta>>({})
+// Dotted keys whose IPC fetch previously rejected. Tracked so an eager
+// re-render does NOT re-fire the same failing fetch forever (the old
+// template-side `getMeta()` fire-and-forget pattern caused a render loop on
+// failure). Keys stay until the scope changes or the component remounts.
+const failedKeys = ref<Set<string>>(new Set())
 
 watch(
   () => props.scope,
@@ -150,23 +156,43 @@ function getFilterValue(dottedKey: string): ColumnFilter | undefined {
   return props.modelValue[dottedKey]
 }
 
+// Eagerly prefetch metadata for every visible extension column whenever the
+// scope or the set of visible sections changes. Previously `getMeta()` was
+// called directly from the template and fire-and-forgot an IPC request on
+// every render — on failure, `metaMap[key]` stayed undefined, so the next
+// render re-entered the fetch path, producing an infinite retry loop. Now
+// the watch drives fetching (bounded by scope changes) and `getMeta()` is a
+// pure cache lookup. Failed keys are tracked so a successful re-render
+// doesn't re-fire the same failing fetch.
+watch(
+  () => ({ scope: props.scope, sections: typeSections.value }),
+  async () => {
+    if (typeSections.value.length === 0) return
+    const fetches = typeSections.value.flatMap((section) =>
+      section.columns.map(async (col) => {
+        if (col.dottedKey in metaMap.value) return // already cached
+        if (failedKeys.value.has(col.dottedKey)) return // previously failed
+        try {
+          const meta = await getColumnMeta(props.scope, col.dottedKey)
+          metaMap.value[col.dottedKey] = meta
+        } catch (err) {
+          failedKeys.value.add(col.dottedKey)
+          logService.warn(
+            `Failed to load column meta for ${col.dottedKey}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+            'ExtensionColumnFilters'
+          )
+        }
+      })
+    )
+    await Promise.all(fetches)
+  },
+  { immediate: true, deep: false }
+)
+
 function getMeta(dottedKey: string): ColumnFilterMeta | undefined {
-  const existing = metaMap.value[dottedKey]
-  if (existing !== undefined) return existing
-  // Fetch lazily — first render triggers the load, subsequent updates use cache.
-  // The void + .then pattern is intentional: we do NOT want to await here
-  // (a computed template binding cannot be async), so we fire-and-forget
-  // and let the reactive `metaMap` re-render the control when the promise
-  // resolves.
-  void getColumnMeta(props.scope, dottedKey)
-    .then((meta) => {
-      metaMap.value[dottedKey] = meta
-    })
-    .catch(() => {
-      // Metadata failure degrades gracefully: controls render without
-      // min/max hints or enum options. Parent can still type values.
-    })
-  return undefined
+  return metaMap.value[dottedKey]
 }
 
 function updateFilter(dottedKey: string, filter: ColumnFilter | undefined): void {

@@ -33,8 +33,14 @@ export interface BuildExtensionJoinResult {
   /**
    * Raw SQL fragment containing `LEFT JOIN` clauses for every distinct
    * extension table referenced by the filters. One line per table. Empty
-   * string when no extension filters were present. Intended to be included
-   * verbatim in the FROM clause of a compiled query.
+   * string when no extension filters were present.
+   *
+   * NOTE: Only Path 3 (`AssociationDataBuilder`) consumes this raw string
+   * form verbatim, because it composes its SQL by hand. Path 1
+   * (`VariantFilterBuilder`) uses Kysely chain builders and drives joins
+   * from `requiredJoinAliases` via `.leftJoin()` for type safety — it does
+   * NOT use this string. Path 2 (`CohortService`) uses the EXISTS-subquery
+   * variant (`buildExtensionExistsClauses`) and doesn't need joins at all.
    */
   joins: string
   /**
@@ -84,7 +90,8 @@ export interface BuildExtensionJoinResult {
  */
 export function buildExtensionJoinClauses(
   columnFilters: ColumnFiltersParam,
-  baseVariantAlias: string
+  baseVariantAlias: string,
+  options: { skipImplicitNarrowing?: boolean } = {}
 ): BuildExtensionJoinResult {
   const params: (string | number)[] = []
   const whereFragments: string[] = []
@@ -105,10 +112,17 @@ export function buildExtensionJoinClauses(
   if (typesSeen.size === 1) {
     const only = [...typesSeen][0]
     implicit = only
-    // Prepend the single-type narrowing so query planner uses idx_variants_type_case
-    whereFragments.unshift(
-      `${baseVariantAlias}.variant_type = '${VARIANT_EXTENSION_REGISTRY[only].variantTypeValue}'`
-    )
+    // Prepend the single-type narrowing so query planner uses
+    // idx_variants_type_case — UNLESS the caller has already emitted its own
+    // `variant_type = X` predicate (e.g. Path 1 when filter.variant_type is
+    // active), in which case duplicating the predicate inflates query plans.
+    // `implicitTypeNarrowing` is still populated so callers that track
+    // cross-type narrowing (AssociationDataBuilder / CohortService) see it.
+    if (options.skipImplicitNarrowing !== true) {
+      whereFragments.unshift(
+        `${baseVariantAlias}.variant_type = '${VARIANT_EXTENSION_REGISTRY[only].variantTypeValue}'`
+      )
+    }
   }
 
   const joins = [...joinSet]

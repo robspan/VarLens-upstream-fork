@@ -517,7 +517,17 @@ function handleRun(): void {
   })
 }
 
-// Expose internals for tests (see tests/renderer/components/association/*)
+// Expose internals for tests (see tests/renderer/components/association/*).
+//
+// WARNING for future test authors: writing directly to `filters.value.*`
+// (e.g. `wrapper.vm.filters.maxGnomadAf = 0.05`) bypasses the panel's input
+// sanitization handlers (`onMaxGnomadAfInput`, `onMaxCaddInput`, etc.) that
+// normalize empty strings, clamp ranges, and reconcile mutually exclusive
+// preset chips. For user-flow-like tests, prefer driving the actual
+// `v-text-field` inputs (`wrapper.find('input[aria-label="..."]').setValue(...)`)
+// or invoking the corresponding `on*Input` handlers directly. Bypassing the
+// handlers can leave `filters` in a state the user cannot actually reach
+// through the UI, masking bugs and producing false-positive green tests.
 defineExpose({
   groupAIds,
   groupBIds,

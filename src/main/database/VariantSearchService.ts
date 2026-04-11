@@ -86,6 +86,14 @@ export class VariantSearchService {
     query: VariantQueryBuilder,
     clause: SearchClause
   ): VariantQueryBuilder {
+    // NOTE: `EXTENSION_FTS_TABLES` is the full static list (SV + STR). We
+    // emit `variants_fts UNION variant_sv_fts UNION variant_str_fts` even
+    // for single-SNV cases where the two extension arms are empty. A
+    // dynamic variant — filtering the UNION by `ensureTypesPresent(scope)`
+    // — would avoid opening the empty tables at query time, but the test
+    // matrix for scope-dependent FTS composition is non-trivial and the
+    // perf cost is negligible at typical scale (empty FTS tables are
+    // near-free to query). Leaving this as a deliberate simplicity win.
     const { sql: composedSql, params } = composeSearchClauses(clause, {
       baseFts: 'variants_fts',
       extensionFts: EXTENSION_FTS_TABLES

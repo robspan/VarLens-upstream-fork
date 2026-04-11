@@ -129,7 +129,7 @@ jobs:
       - name: Extract Electron version
         id: electron-ver
         shell: bash
-        run: echo "ver=$(node -p "require('./package.json').devDependencies.electron")" >> "$GITHUB_OUTPUT"
+        run: echo "ver=$(node -p 'require("./package.json").devDependencies.electron')" >> "$GITHUB_OUTPUT"
 
       - name: Cache native module for Electron ABI
         id: native-cache
@@ -184,7 +184,7 @@ jobs:
       - name: Extract Electron version
         id: electron-ver
         shell: bash
-        run: echo "ver=$(node -p "require('./package.json').devDependencies.electron")" >> "$GITHUB_OUTPUT"
+        run: echo "ver=$(node -p 'require("./package.json").devDependencies.electron')" >> "$GITHUB_OUTPUT"
 
       - name: Cache native module for Electron ABI
         id: native-cache
@@ -240,7 +240,7 @@ jobs:
       - name: Extract Electron version
         id: electron-ver
         shell: bash
-        run: echo "ver=$(node -p "require('./package.json').devDependencies.electron")" >> "$GITHUB_OUTPUT"
+        run: echo "ver=$(node -p 'require("./package.json").devDependencies.electron')" >> "$GITHUB_OUTPUT"
 
       - name: Cache native module for Electron ABI
         id: native-cache

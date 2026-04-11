@@ -9,6 +9,7 @@
  */
 
 import type { FilterState, FilterIpcParams } from '../../../../shared/types/filters'
+import { cloneForIpc } from '../cloneForIpc'
 
 /**
  * Build IPC-safe filter parameters from FilterState
@@ -106,8 +107,14 @@ export function buildIpcParams(filters: FilterState): FilterIpcParams {
   // Column filters map — only include when non-empty. Keys look like
   // 'sv.length' / 'cnv.copy_number' / 'str.repeat_count' plus base columns;
   // the main-side query builders dispatch via ColumnKeyResolver.
+  //
+  // Deep-clone via cloneForIpc: ColumnFilter entries stored in FilterState are
+  // Vue reactive proxies. A shallow spread copies the outer map but leaves the
+  // nested filter objects as proxies, which Electron's structured-clone IPC
+  // serializer rejects (or mis-serializes). Matches the same treatment applied
+  // to column_filters in other fetch/export paths via useCohortData + useVariantData.
   if (filters.columnFilters !== undefined && Object.keys(filters.columnFilters).length > 0) {
-    params.column_filters = { ...filters.columnFilters }
+    params.column_filters = cloneForIpc(filters.columnFilters)
   }
 
   return params

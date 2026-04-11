@@ -50,6 +50,21 @@ async function loadTypeCounts(caseId: number | null): Promise<void> {
       'case'
     )
     typeCounts.value = {}
+    return
+  }
+
+  // Auto-switch to the first non-empty tab if the default (SNV/Indel) is
+  // empty — e.g. an SV-only import. Without this the user would see an
+  // empty table on load until they manually clicked another tab. We only
+  // override when the caller hasn't explicitly picked another tab yet
+  // (`selectedVariantType.value === 'snv'` is the reset sentinel set by
+  // the case watcher below).
+  const snvCount = (typeCounts.value.snv ?? 0) + (typeCounts.value.indel ?? 0)
+  if (selectedVariantType.value === 'snv' && snvCount === 0) {
+    const fallback = (['sv', 'cnv', 'str'] as const).find((t) => (typeCounts.value[t] ?? 0) > 0)
+    if (fallback !== undefined) {
+      selectedVariantType.value = fallback
+    }
   }
 }
 
@@ -57,6 +72,8 @@ async function loadTypeCounts(caseId: number | null): Promise<void> {
 watch(
   selectedCaseId,
   (newCaseId) => {
+    // Reset to the conventional default; loadTypeCounts may override this
+    // after the counts resolve if the case has zero SNV/indel variants.
     selectedVariantType.value = 'snv'
     void loadTypeCounts(newCaseId)
   },

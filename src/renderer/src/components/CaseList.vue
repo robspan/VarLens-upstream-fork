@@ -461,8 +461,18 @@ const handleDelete = async (): Promise<void> => {
   const priorSnapshot = priorIndex >= 0 ? cases.value[priorIndex] : null
 
   // Remove from the visible list + clear any stale selection state.
+  const priorListLength = cases.value.length
   cases.value = markRaw(cases.value.filter((c) => c.id !== deletedId))
+  const removedCount = priorListLength - cases.value.length
   if (totalCaseCount.value > 0) totalCaseCount.value -= 1
+  // Keep `currentOffset` in sync with the visible list length. Because
+  // pagination is offset-based (see onLoad), a stale offset that points past
+  // the correct next-page boundary would cause the next scroll load to skip
+  // rows on the server side. Decrement by the number of rows actually
+  // removed, floored at 0.
+  if (removedCount > 0) {
+    currentOffset.value = Math.max(0, currentOffset.value - removedCount)
+  }
   if (selected.value.includes(deletedId) === true) {
     selected.value = []
   }
@@ -524,6 +534,13 @@ const handleDeleteSelected = async (): Promise<void> => {
   const idSet = new Set(ids)
   const priorSnapshots = cases.value.filter((c) => idSet.has(c.id))
   cases.value = markRaw(cases.value.filter((c) => !idSet.has(c.id)))
+  // Decrement the pagination offset by the number of rows actually removed
+  // from `cases.value` so offset-based page fetches don't skip server rows
+  // on the next scroll load. Using `priorSnapshots.length` (not `ids.length`)
+  // covers the case where some requested ids weren't in the loaded window.
+  if (priorSnapshots.length > 0) {
+    currentOffset.value = Math.max(0, currentOffset.value - priorSnapshots.length)
+  }
   if (totalCaseCount.value > 0) {
     totalCaseCount.value = Math.max(0, totalCaseCount.value - ids.length)
   }

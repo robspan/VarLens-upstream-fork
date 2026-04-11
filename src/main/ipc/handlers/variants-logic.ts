@@ -196,8 +196,16 @@ export async function getColumnMetaForKey(
   scope: { caseId: number } | { caseIds: number[] },
   columnKey: string,
   getDb: () => DatabaseService,
-  _getDbPool?: () => DbPool | null
+  getDbPool?: () => DbPool | null
 ): Promise<ColumnFilterMeta> {
+  const pool = getDbPool?.()
+  if (pool) {
+    return (await pool.run({
+      type: 'variants:columnMeta',
+      params: [scope, columnKey]
+    })) as ColumnFilterMeta
+  }
+
   const db = getDb()
   return db.variants.getColumnMeta(scope, columnKey)
 }
@@ -214,8 +222,18 @@ export async function getColumnMetaForKey(
 export async function getVariantTypesPresent(
   scope: { caseId: number } | { caseIds: number[] },
   getDb: () => DatabaseService,
-  _getDbPool?: () => DbPool | null
+  getDbPool?: () => DbPool | null
 ): Promise<string[]> {
+  const pool = getDbPool?.()
+  if (pool) {
+    // Worker already serializes Set → string[] (structured-clone drops Set
+    // contents across thread boundaries); just forward the array.
+    return (await pool.run({
+      type: 'variants:typesPresent',
+      params: [scope]
+    })) as string[]
+  }
+
   const db = getDb()
   return Array.from(db.variants.getVariantTypesPresent(scope))
 }

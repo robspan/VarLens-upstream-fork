@@ -152,6 +152,24 @@ export function dispatchTask(deps: DispatchDependencies, task: DbTask): unknown 
       case 'variants:typeCounts':
         return repos.variants.getVariantTypeCounts(params[0] as number)
 
+      case 'variants:columnMeta':
+        return repos.variants.getColumnMeta(
+          params[0] as Parameters<typeof repos.variants.getColumnMeta>[0],
+          params[1] as string
+        )
+
+      case 'variants:typesPresent':
+        // Set instances cannot cross the worker-thread structured-clone
+        // boundary (they arrive as empty objects on the other side), so
+        // serialize to a plain array here. The handler in variants-logic.ts
+        // calls Array.from() on the direct path; the pool path already
+        // returns an array so the handler just forwards it.
+        return Array.from(
+          repos.variants.getVariantTypesPresent(
+            params[0] as Parameters<typeof repos.variants.getVariantTypesPresent>[0]
+          )
+        )
+
       // ── Cohort ────────────────────────────────────────────
       case 'cohort:variants': {
         const cohortParams = params[0] as PanelAwareFilter &

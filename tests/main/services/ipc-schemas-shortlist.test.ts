@@ -136,4 +136,28 @@ describe('GetShortlistParamsSchema (discriminated union)', () => {
   it('rejects branch with neither presetId nor adHocConfig', () => {
     expect(GetShortlistParamsSchema.safeParse({ caseId: 1 }).success).toBe(false)
   })
+
+  it('rejects ambiguous payload carrying BOTH presetId AND adHocConfig', () => {
+    // Both branches are `.strict()` so a payload with both keys fails
+    // instead of being silently coerced into one branch.
+    expect(
+      GetShortlistParamsSchema.safeParse({
+        caseId: 1,
+        presetId: 7,
+        adHocConfig: {
+          baseFilters: {},
+          topN: 10,
+          rankConfig: {
+            weights: { impact: 1, pathogenicity: 1, rarity: 1, clinvar: 1, phenotype: 0 }
+          }
+        }
+      }).success
+    ).toBe(false)
+  })
+
+  it('rejects unknown keys on the presetId branch', () => {
+    expect(
+      GetShortlistParamsSchema.safeParse({ caseId: 1, presetId: 1, bogus: true }).success
+    ).toBe(false)
+  })
 })

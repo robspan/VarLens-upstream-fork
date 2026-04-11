@@ -311,6 +311,30 @@ describe('ShortlistService', () => {
         /missing filter_json\.shortlist/i
       )
     })
+
+    it('throws when the nested shortlist payload fails Zod validation', () => {
+      // Preset rows are loaded from disk, not the IPC boundary — a
+      // hand-edited DB or an older-schema preset could store a
+      // structurally-broken shortlist config that would otherwise
+      // produce `NaN * 4` limits or missing weights at runtime. The
+      // service MUST validate the payload through `ShortlistConfigSchema`
+      // and surface a DatabaseError with the parse issues instead of
+      // letting the bad data reach Stage 1.
+      const broken = presetRepo.createPreset({
+        name: 'BrokenShortlistPayload',
+        filterJson: {
+          // topN missing; rankConfig.weights missing `phenotype`
+          shortlist: {
+            baseFilters: {},
+            rankConfig: { weights: { impact: 1 } }
+          }
+        } as unknown as Record<string, unknown>,
+        kind: 'shortlist'
+      })
+      expect(() => service.getShortlist({ caseId: 1, presetId: broken.id })).toThrow(
+        /invalid filter_json\.shortlist payload/i
+      )
+    })
   })
 
   describe('by adHocConfig', () => {

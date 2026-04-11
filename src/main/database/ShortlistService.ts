@@ -42,6 +42,7 @@ import { DatabaseError, NotFoundError } from './errors'
 import type { FilterPresetRepository } from './FilterPresetRepository'
 import { queryVariantsByType } from './shortlist-query'
 import { scoreRow, compareScoredRows } from '../services/scoring'
+import { ShortlistConfigSchema } from '../../shared/types/ipc-schemas'
 import type {
   ShortlistConfig,
   ShortlistCandidate,
@@ -194,13 +195,30 @@ export class ShortlistService {
     // (migration v27 convention). Access it via `as` because the typed
     // `filterJson: Partial<FilterState>` shape does not model this
     // nested extension.
-    const nested = (preset.filterJson as unknown as { shortlist?: ShortlistConfig }).shortlist
+    const nested = (preset.filterJson as unknown as { shortlist?: unknown }).shortlist
     if (nested == null) {
       throw new DatabaseError(
         `Shortlist preset "${preset.name}" is missing filter_json.shortlist payload`
       )
     }
-    return { config: nested, presetUsed: preset }
+    // Validate the stored payload through the same schema that guards
+    // the IPC boundary. Presets are loaded from disk, so a hand-edited
+    // DB or an older-schema preset could carry a malformed config that
+    // would otherwise produce `NaN * 4` limits, undefined weights, or
+    // other silent failures inside the Stage-1/2 pipeline. A parse
+    // failure surfaces as a DatabaseError with the structured Zod
+    // issues in the message so the renderer can show a meaningful
+    // retry banner instead of "An unexpected error occurred".
+    const parsed = ShortlistConfigSchema.safeParse(nested)
+    if (!parsed.success) {
+      const issues = parsed.error.issues
+        .map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`)
+        .join('; ')
+      throw new DatabaseError(
+        `Shortlist preset "${preset.name}" has an invalid filter_json.shortlist payload: ${issues}`
+      )
+    }
+    return { config: parsed.data as ShortlistConfig, presetUsed: preset }
   }
 
   /**

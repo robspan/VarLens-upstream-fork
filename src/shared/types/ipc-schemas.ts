@@ -860,7 +860,12 @@ const BaseFilterStateSchema = FilterStateSchema.omit({ shortlist: true }).partia
 export const ShortlistConfigSchema = z.object({
   variantTypeScope: z.array(VariantTypeKeySchema).optional(),
   baseFilters: BaseFilterStateSchema,
-  perTypeOverrides: z.record(VariantTypeKeySchema, BaseFilterStateSchema).optional(),
+  // `partialRecord` (not `record`) so presets can specify overrides for a
+  // subset of variant types — e.g. the "Tier 1 candidates" built-in only
+  // sets sv/cnv/str, leaving snv/indel to fall through to `baseFilters`.
+  // Zod 4's `z.record(enum, value)` treats missing enum keys as validation
+  // failures, which is the opposite of what the shortlist pipeline wants.
+  perTypeOverrides: z.partialRecord(VariantTypeKeySchema, BaseFilterStateSchema).optional(),
   topN: z.number().int().min(1).max(500),
   tieBreakers: z.array(SortItemSchema).max(10).optional(),
   rankConfig: RankConfigSchema
@@ -878,16 +883,26 @@ export type ValidatedShortlistConfig = z.infer<typeof ShortlistConfigSchema>
  * its stored `ShortlistConfig`) OR an `adHocConfig` (typically the
  * preset editor's live preview). Both branches require a positive
  * `caseId`.
+ *
+ * Both branches are `.strict()` so an ambiguous payload that carries
+ * BOTH `presetId` AND `adHocConfig` is rejected instead of being
+ * silently coerced into one branch. Without `.strict()`, Zod's default
+ * strip behavior would match the first branch and drop the second
+ * field, masking caller-side bugs.
  */
 export const GetShortlistParamsSchema = z.union([
-  z.object({
-    caseId: z.number().int().positive(),
-    presetId: z.number().int().positive()
-  }),
-  z.object({
-    caseId: z.number().int().positive(),
-    adHocConfig: ShortlistConfigSchema
-  })
+  z
+    .object({
+      caseId: z.number().int().positive(),
+      presetId: z.number().int().positive()
+    })
+    .strict(),
+  z
+    .object({
+      caseId: z.number().int().positive(),
+      adHocConfig: ShortlistConfigSchema
+    })
+    .strict()
 ])
 
 /**

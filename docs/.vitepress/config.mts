@@ -53,6 +53,7 @@ export default defineConfig({
           text: 'Features',
           items: [
             { text: 'Variant Table', link: '/features/variant-table' },
+            { text: 'Shortlist', link: '/features/shortlist' },
             { text: 'Filtering', link: '/features/filtering' },
             { text: 'Filter Presets', link: '/features/filter-presets' },
             { text: 'Gene Panels', link: '/features/gene-panels' },

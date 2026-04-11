@@ -8,6 +8,7 @@
 import type { VariantFilter, SortItem } from '../../database/types'
 import type { DatabaseService } from '../../database/DatabaseService'
 import type { DbPool } from '../../database/DbPool'
+import type { ColumnFilterMeta } from '../../../shared/types/column-filters'
 import { computePanelIntervals } from './panelIntervalHelper'
 
 /**
@@ -158,4 +159,81 @@ export async function getGeneSymbols(
 
   const db = getDb()
   return db.variants.getGeneSymbols(caseId, query, limit)
+}
+
+/**
+ * Get variant type counts per case for tab badges (snv, indel, sv, cnv, str).
+ */
+export async function getVariantTypeCounts(
+  caseId: number,
+  getDb: () => DatabaseService,
+  getDbPool?: () => DbPool | null
+): Promise<Record<string, number>> {
+  const pool = getDbPool?.()
+  if (pool) {
+    return (await pool.run({
+      type: 'variants:typeCounts',
+      params: [caseId]
+    })) as Record<string, number>
+  }
+
+  const db = getDb()
+  return db.variants.getVariantTypeCounts(caseId)
+}
+
+/**
+ * Get per-column metadata for a single column (single-case or cohort scope).
+ *
+ * Used by the filter UI to lazy-load on-demand column metadata as users
+ * interact with individual column filter menus. This complements the bulk
+ * `getFilterOptions` path which preloads all columns for the initial render.
+ *
+ * Internally dispatches between the base-column and extension-column paths
+ * via `VariantRepository.getColumnMeta` based on whether `columnKey` is
+ * dotted (e.g. `cnv.copy_number` → extension, `gnomad_af` → base).
+ */
+export async function getColumnMetaForKey(
+  scope: { caseId: number } | { caseIds: number[] },
+  columnKey: string,
+  getDb: () => DatabaseService,
+  getDbPool?: () => DbPool | null
+): Promise<ColumnFilterMeta> {
+  const pool = getDbPool?.()
+  if (pool) {
+    return (await pool.run({
+      type: 'variants:columnMeta',
+      params: [scope, columnKey]
+    })) as ColumnFilterMeta
+  }
+
+  const db = getDb()
+  return db.variants.getColumnMeta(scope, columnKey)
+}
+
+/**
+ * Get the distinct variant types present in a single case or cohort.
+ *
+ * Used by the renderer to auto-hide variant-type tabs/filter chips that
+ * contain no data (e.g. a SNV-only case hides the SV/CNV/STR tabs).
+ *
+ * Returns an array (not a Set) because IPC serialization cannot transmit
+ * Set instances — they would arrive on the renderer side as empty objects.
+ */
+export async function getVariantTypesPresent(
+  scope: { caseId: number } | { caseIds: number[] },
+  getDb: () => DatabaseService,
+  getDbPool?: () => DbPool | null
+): Promise<string[]> {
+  const pool = getDbPool?.()
+  if (pool) {
+    // Worker already serializes Set → string[] (structured-clone drops Set
+    // contents across thread boundaries); just forward the array.
+    return (await pool.run({
+      type: 'variants:typesPresent',
+      params: [scope]
+    })) as string[]
+  }
+
+  const db = getDb()
+  return Array.from(db.variants.getVariantTypesPresent(scope))
 }

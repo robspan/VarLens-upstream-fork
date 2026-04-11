@@ -17,6 +17,9 @@ import { parseVcfHeaderFromLines } from './vcf-header-parser'
 import { parseVcfLine } from './vcf-line-parser'
 import { mapVcfRecord } from './VcfMapper'
 import { DEFAULT_INFO_FIELD_MAPPINGS } from './info-field-registry'
+import { detectCaller } from './caller-detector'
+import type { ImportFilters } from './import-filters'
+import { passesPreMappingFilters, passesPostMappingFilters } from './import-filters'
 export class VcfStrategy implements ImportStrategy {
   readonly formatId = 'vcf' as const
 
@@ -28,7 +31,8 @@ export class VcfStrategy implements ImportStrategy {
     filePath: string,
     options: ImportOptions,
     context: StrategyContext,
-    vcfOptions?: VcfImportOptions
+    vcfOptions?: VcfImportOptions,
+    importFilters?: ImportFilters
   ): Promise<ImportResult> {
     const { db, caseId, startTime } = context
     const batchSize = options.batchSize ?? 5000
@@ -44,6 +48,7 @@ export class VcfStrategy implements ImportStrategy {
     let totalInserted = 0
     let totalSkipped = 0
     const errors: string[] = []
+    let callerName: string | null = null
     let batch: VcfMappedVariant[] = []
 
     // Drop FTS triggers for bulk insert performance
@@ -73,6 +78,9 @@ export class VcfStrategy implements ImportStrategy {
             errors.push('No sample found in VCF file')
             break
           }
+
+          const callerInfo = detectCaller(header.rawHeaderLines)
+          callerName = callerInfo.name !== 'unknown' ? callerInfo.name : null
         }
 
         // Parse the data line
@@ -82,7 +90,28 @@ export class VcfStrategy implements ImportStrategy {
             totalSkipped++
             continue
           }
-          const mapped = mapVcfRecord(record, header, activeSample, DEFAULT_INFO_FIELD_MAPPINGS)
+
+          // Pre-mapping filter gate — PASS-only, min QUAL, BED region.
+          // Shared with the main-thread append path via `import-filters.ts`
+          // so the two paths can't drift apart semantically.
+          if (!passesPreMappingFilters(record, importFilters)) {
+            totalSkipped++
+            continue
+          }
+
+          let mapped = mapVcfRecord(
+            record,
+            header,
+            activeSample,
+            DEFAULT_INFO_FIELD_MAPPINGS,
+            callerName
+          )
+
+          // Post-mapping filter gate — FORMAT/GQ and FORMAT/DP thresholds.
+          // No-op on SV/CNV/STR records which typically lack these fields.
+          if (importFilters !== undefined) {
+            mapped = mapped.filter((v) => passesPostMappingFilters(v, importFilters))
+          }
 
           if (mapped.length === 0) {
             totalSkipped++

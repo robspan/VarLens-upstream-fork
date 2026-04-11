@@ -88,6 +88,12 @@
         </v-chip>
       </v-chip-group>
 
+      <!-- Extension column filter narrowing chip (SV only / CNV only / STR only) -->
+      <FilterTypeNarrowingChip
+        :column-filters="filters.columnFilters"
+        @clear-filter="handleClearTypeFilter"
+      />
+
       <!-- Impact preset chips moved to filter drawer only -->
     </template>
 
@@ -144,7 +150,9 @@ import PresetSaveDialog from '../PresetSaveDialog.vue'
 import PresetManageDialog from '../PresetManageDialog.vue'
 import type { ActiveFilter } from '../../../../shared/types/filters'
 import type { CohortVariant } from '../../../../shared/types/cohort'
+import type { ColumnFiltersParam } from '../../../../shared/types/column-filters'
 import type { CohortFilterDrawerState } from './cohortFilterDrawerTypes'
+import FilterTypeNarrowingChip from '../filters/FilterTypeNarrowingChip.vue'
 import { mdiCommentText, mdiCommentTextOutline, mdiStar, mdiStarOutline } from '@mdi/js'
 import {
   ACMG_FILTER_OPTIONS,
@@ -467,6 +475,40 @@ const {
   }
 })
 
+/**
+ * Clear all extension column filters for a given variant type (sv/cnv/str).
+ * Strips every key matching `${typeKey}.*` from filters.columnFilters so the
+ * cohort query drops the corresponding WHERE clauses on next emission.
+ */
+function handleClearTypeFilter(typeKey: string): void {
+  const next: ColumnFiltersParam = { ...filters.value.columnFilters }
+  for (const key of Object.keys(next)) {
+    if (key.startsWith(`${typeKey}.`)) {
+      delete next[key]
+    }
+  }
+  filters.value.columnFilters = next
+}
+
+// Reactive list of all case IDs in the database — used as the scope for
+// extension column metadata and type-presence queries in the cohort drawer.
+// Loaded on mount via loadCohortCaseIds() in onMounted.
+const cohortCaseIds = ref<number[]>([])
+
+async function loadCohortCaseIds(): Promise<void> {
+  if (api == null) return
+  try {
+    const caseList = await api.cases.list()
+    cohortCaseIds.value = caseList.map((c) => c.id)
+  } catch (e) {
+    logService.warn(
+      'Failed to load cohort case IDs: ' + (e instanceof Error ? e.message : String(e)),
+      'filters'
+    )
+    cohortCaseIds.value = []
+  }
+}
+
 // Provide shared filter state for CohortFilterDrawer (via provide/inject)
 provide<CohortFilterDrawerState>('cohortFilterDrawerState', {
   filters,
@@ -510,7 +552,17 @@ provide<CohortFilterDrawerState>('cohortFilterDrawerState', {
   onDslApply: applyDslFilters,
   onDslClear: handleDslClear,
   onDslSuggestionSelect: applySuggestion,
-  dslColumnFilters
+  dslColumnFilters,
+
+  // Extension column filters (Task 12) — cohort scope spans all loaded cases.
+  // The drawer reads via `columnFilters.value` and writes via
+  // `onColumnFiltersUpdate`, so a read-only computed ref is sufficient.
+  columnFilters: computed(() => filters.value.columnFilters),
+  cohortCaseIds,
+  onColumnFiltersUpdate: (value) => {
+    filters.value.columnFilters = value
+  },
+  onClearTypeFilter: handleClearTypeFilter
 })
 
 const handleClearAll = () => {
@@ -547,9 +599,9 @@ const handleExport = () => {
   emit('export')
 }
 
-// Load presets on mount
+// Load presets + cohort case IDs on mount
 onMounted(async () => {
-  await loadPresets()
+  await Promise.all([loadPresets(), loadCohortCaseIds()])
 })
 
 // Expose DSL column filters for CohortTable to merge into query

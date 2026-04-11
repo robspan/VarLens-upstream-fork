@@ -34,6 +34,7 @@ function makeFilters(overrides: Partial<FilterState> = {}): FilterState {
     inheritanceModes: ['autosomal_dominant'],
     analysisGroupId: 5,
     considerPhasing: true,
+    columnFilters: {},
     ...overrides
   }
 }

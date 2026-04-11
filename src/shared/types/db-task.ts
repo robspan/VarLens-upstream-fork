@@ -14,6 +14,9 @@ export type DbTaskType =
   | 'variants:filterOptions'
   | 'variants:search'
   | 'variants:geneSymbols'
+  | 'variants:typeCounts'
+  | 'variants:columnMeta'
+  | 'variants:typesPresent'
   // Cohort
   | 'cohort:variants'
   | 'cohort:columnMeta'
@@ -24,6 +27,7 @@ export type DbTaskType =
   // Cases
   | 'cases:list'
   | 'cases:query'
+  | 'cases:availableBuilds'
   // Annotations
   | 'annotations:getGlobal'
   | 'annotations:getPerCase'

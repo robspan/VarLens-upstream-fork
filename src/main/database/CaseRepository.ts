@@ -103,11 +103,86 @@ export class CaseRepository extends BaseRepository {
     )
   }
 
+  /**
+   * Return distinct genome builds used across cases with per-build case counts.
+   * Sorted so the most-represented build appears first — the renderer uses
+   * the first entry as the default selection in the cohort view.
+   */
+  getAvailableGenomeBuilds(): Array<{ build: string; caseCount: number }> {
+    const compiled = this.kysely
+      .selectFrom('cases')
+      .select(['genome_build as build'])
+      .select((eb) => eb.fn.countAll<number>().as('caseCount'))
+      .groupBy('genome_build')
+      .orderBy('caseCount', 'desc')
+      .compile()
+    const rows = this.db.prepare(compiled.sql).all(...compiled.parameters) as Array<{
+      build: string | null
+      caseCount: number
+    }>
+    return rows.map((row) => ({
+      build: row.build ?? 'GRCh38',
+      caseCount: Number(row.caseCount)
+    }))
+  }
+
   updateCaseVariantCount(id: number, count: number): void {
     const result = this.execRun(
       this.kysely.updateTable('cases').set({ variant_count: count }).where('id', '=', id)
     )
     if (result.changes === 0) throw new NotFoundError('Case', id)
+  }
+
+  /**
+   * Insert a case_import_files row recording that a VCF file was imported
+   * into this case with the given variant type and caller. Used by the
+   * multi-file import session to preserve per-file provenance.
+   */
+  insertImportFile(params: {
+    case_id: number
+    file_path: string
+    file_size: number
+    variant_type: string
+    caller: string | null
+    variant_count: number
+    annotation_format: string | null
+  }): number {
+    const result = this.execRun(
+      this.kysely.insertInto('case_import_files').values({
+        case_id: params.case_id,
+        file_path: params.file_path,
+        file_size: params.file_size,
+        variant_type: params.variant_type,
+        caller: params.caller,
+        variant_count: params.variant_count,
+        annotation_format: params.annotation_format,
+        imported_at: Date.now()
+      })
+    )
+    return Number(result.lastInsertRowid)
+  }
+
+  /**
+   * Get all import files recorded for a case, ordered by import time.
+   */
+  getImportFiles(caseId: number): Array<{
+    id: number
+    case_id: number
+    file_path: string
+    file_size: number
+    variant_type: string
+    caller: string | null
+    variant_count: number
+    annotation_format: string | null
+    imported_at: number
+  }> {
+    return this.execAll(
+      this.kysely
+        .selectFrom('case_import_files')
+        .selectAll()
+        .where('case_id', '=', caseId)
+        .orderBy('imported_at', 'asc')
+    )
   }
 
   deleteCase(id: number): void {

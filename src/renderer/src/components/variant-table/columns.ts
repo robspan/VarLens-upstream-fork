@@ -1,6 +1,9 @@
-import { computed, type ComputedRef } from 'vue'
+import { computed, type ComputedRef, type Ref } from 'vue'
 import type { useColumnPreferences } from '../../composables/useColumnPreferences'
 import { useVariantLinks } from '../../composables/useVariantLinks'
+import { svHeaders } from './sv-columns'
+import { cnvHeaders } from './cnv-columns'
+import { strHeaders } from './str-columns'
 
 export interface ColumnDef {
   title: string
@@ -8,6 +11,41 @@ export interface ColumnDef {
   sortable: boolean
   width?: string
   align?: 'start' | 'end' | 'center'
+  /**
+   * Optional value getter. When set, Vuetify reads this function instead of
+   * `item[key]` for cell content. Required for extension columns where the
+   * sort key (dotted, e.g. `sv.support`) differs from the row property name
+   * (the SELECT projection alias, e.g. `_sv_support`). Vuetify 3 treats a
+   * dotted `key` string as a nested path accessor via `getObjectValueByPath`
+   * — without this getter, `item['sv']['support']` resolves to undefined and
+   * the cell renders empty.
+   *
+   * Parameter type is `any` to remain assignable to Vuetify's
+   * `SelectItemKey<Variant>` function branch — Vuetify expects
+   * `(item: Variant, fallback?: any) => any`, which is stricter than
+   * `Record<string, unknown>` (Variant has no index signature). Callers
+   * narrow the item shape via type assertion inside the getter.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  value?: (item: any) => unknown
+}
+
+/**
+ * Returns the appropriate column definitions for a given variant type.
+ * Used by the variant table tabs to swap column sets when switching between
+ * SNV/Indel, SV, CNV, and STR views.
+ */
+export function getHeadersForType(variantType: string): ColumnDef[] {
+  switch (variantType) {
+    case 'sv':
+      return svHeaders
+    case 'cnv':
+      return cnvHeaders
+    case 'str':
+      return strHeaders
+    default:
+      return baseHeaders
+  }
 }
 
 /** Static base column definitions for the variant table. */
@@ -35,15 +73,31 @@ export const baseHeaders: ColumnDef[] = [
 
 /**
  * Composable that computes dynamic, ordered, and visible column sets.
+ *
+ * @param prefs - Column preferences from useColumnPreferences
+ * @param variantType - Optional reactive variant type; swaps base column set when
+ *   set to 'sv', 'cnv', or 'str'. Defaults to SNV/Indel columns.
  */
-export function useVariantColumns(prefs: ReturnType<typeof useColumnPreferences>['prefs']) {
+export function useVariantColumns(
+  prefs: ReturnType<typeof useColumnPreferences>['prefs'],
+  variantType?: Ref<string> | ComputedRef<string>
+) {
   const { linksStore } = useVariantLinks()
 
   /** All headers including dynamic virtual link columns from store. */
   const headers: ComputedRef<ColumnDef[]> = computed(() => {
-    const allHeaders: ColumnDef[] = [...baseHeaders]
-    for (const link of linksStore.virtualLinks) {
-      allHeaders.push({ title: link.name, key: `_link_${link.id}`, sortable: false, width: '80px' })
+    const typeHeaders = getHeadersForType(variantType?.value ?? 'snv')
+    const allHeaders: ColumnDef[] = [...typeHeaders]
+    // Only add virtual link columns for SNV/Indel view (type-specific views have curated columns)
+    if ((variantType?.value ?? 'snv') === 'snv') {
+      for (const link of linksStore.virtualLinks) {
+        allHeaders.push({
+          title: link.name,
+          key: `_link_${link.id}`,
+          sortable: false,
+          width: '80px'
+        })
+      }
     }
     return allHeaders
   })

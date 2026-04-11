@@ -7,19 +7,42 @@ import type { Variant, VariantFilter, PaginatedResult, SortItem } from './types'
 import type { FilterOptions } from '../../shared/types/api'
 import type { ColumnFilterMeta } from '../../shared/types/column-filters'
 import type { TranscriptInsertRow } from '../../shared/types/transcript'
-import { createFTSTriggers } from './schema'
+import type {
+  SvExtensionRow,
+  CnvExtensionRow,
+  StrExtensionRow
+} from '../import/vcf/extension-parsers'
+import {
+  tearDownFtsTriggers,
+  restoreFtsTriggers,
+  rebuildAllFtsIndexes,
+  type TriggerSnapshot
+} from './fts-trigger-management'
 import { mainLogger } from '../services/MainLogger'
 
+/** Extended variant fields for multi-type import (SV/CNV/STR) */
+interface VariantExtensionFields {
+  variant_type?: string
+  end_pos?: number | null
+  sv_type?: string | null
+  sv_length?: number | null
+  caller?: string | null
+  _sv?: SvExtensionRow
+  _cnv?: CnvExtensionRow
+  _str?: StrExtensionRow
+}
+
 import { DATABASE_CONFIG } from '../../shared/config'
-import { VariantFilterBuilder, SORTABLE_COLUMNS } from './VariantFilterBuilder'
+import { VariantFilterBuilder, BASE_SORTABLE_COLUMNS } from './VariantFilterBuilder'
 import { VariantSearchService } from './VariantSearchService'
 import { VariantFrequencyService } from './VariantFrequencyService'
+import { isExtensionColumnKey, resolveExtensionColumnKey } from './variant-extension-registry'
 
 const BATCH_SIZE = DATABASE_CONFIG.BATCH_INSERT_SIZE
 
 const NUMERIC_COLUMNS = new Set(['pos', 'gnomad_af', 'cadd', 'qual', 'hpo_sim_score'])
 
-/** Columns that are computed at query time (not physical table columns) -- excluded from getColumnMeta */
+/** Columns that are computed at query time (not physical table columns) -- excluded from getAllColumnMetas */
 const COMPUTED_COLUMNS = new Set(['internal_af'])
 
 export class VariantRepository extends BaseRepository {
@@ -27,6 +50,7 @@ export class VariantRepository extends BaseRepository {
   private readonly filterBuilder: VariantFilterBuilder
   private readonly searchService: VariantSearchService
   private readonly frequencyService: VariantFrequencyService
+  private ftsSnapshot: TriggerSnapshot = {}
 
   constructor(db: DatabaseType, kysely: Kysely<VarlensDatabase>, cases: CaseRepository) {
     super(db, kysely)
@@ -41,11 +65,7 @@ export class VariantRepository extends BaseRepository {
    * Must be paired with a subsequent call to `finishBulkInsert()`.
    */
   beginBulkInsert(): void {
-    this.db.exec(`
-      DROP TRIGGER IF EXISTS variants_fts_ai;
-      DROP TRIGGER IF EXISTS variants_fts_ad;
-      DROP TRIGGER IF EXISTS variants_fts_au;
-    `)
+    this.ftsSnapshot = tearDownFtsTriggers(this.db)
   }
 
   /**
@@ -54,11 +74,15 @@ export class VariantRepository extends BaseRepository {
    * Does not update case variant_count — that is done in `finishBulkInsert()`.
    */
   insertBatch(
-    variants: (Omit<Variant, 'id' | 'case_id'> & { _transcripts?: TranscriptInsertRow[] })[],
+    variants: (Omit<Variant, 'id' | 'case_id'> &
+      VariantExtensionFields & { _transcripts?: TranscriptInsertRow[] })[],
     caseId: number
   ): void {
     const runTransaction = this.db.transaction(
-      (batch: (Omit<Variant, 'id' | 'case_id'> & { _transcripts?: TranscriptInsertRow[] })[]) => {
+      (
+        batch: (Omit<Variant, 'id' | 'case_id'> &
+          VariantExtensionFields & { _transcripts?: TranscriptInsertRow[] })[]
+      ) => {
         for (const v of batch) {
           const result = this.execRun(
             this.kysely.insertInto('variants').values({
@@ -88,12 +112,18 @@ export class VariantRepository extends BaseRepository {
               ab: v.ab ?? null,
               filter: v.filter ?? null,
               info_json: v.info_json ?? null,
-              source_format: v.source_format ?? null
+              source_format: v.source_format ?? null,
+              variant_type: v.variant_type ?? 'snv',
+              end_pos: v.end_pos ?? null,
+              sv_type: v.sv_type ?? null,
+              sv_length: v.sv_length ?? null,
+              caller: v.caller ?? null
             })
           )
 
+          const variantId = result.lastInsertRowid as number
+
           if (v._transcripts !== undefined && v._transcripts.length > 0) {
-            const variantId = result.lastInsertRowid as number
             for (const t of v._transcripts) {
               this.execRun(
                 this.kysely.insertInto('variant_transcripts').values({
@@ -110,6 +140,30 @@ export class VariantRepository extends BaseRepository {
               )
             }
           }
+
+          // Insert extension table row if present
+          if (v._sv !== undefined) {
+            this.execRun(
+              this.kysely.insertInto('variant_sv').values({
+                variant_id: variantId,
+                ...v._sv
+              })
+            )
+          } else if (v._cnv !== undefined) {
+            this.execRun(
+              this.kysely.insertInto('variant_cnv').values({
+                variant_id: variantId,
+                ...v._cnv
+              })
+            )
+          } else if (v._str !== undefined) {
+            this.execRun(
+              this.kysely.insertInto('variant_str').values({
+                variant_id: variantId,
+                ...v._str
+              })
+            )
+          }
         }
       }
     )
@@ -120,21 +174,23 @@ export class VariantRepository extends BaseRepository {
   }
 
   /**
-   * Rebuild FTS, recreate triggers, update case variant_count, run ANALYZE and optimize.
-   * Call this once after all `insertBatch()` calls to complete a bulk insert session.
+   * Rebuild FTS, recreate triggers, run ANALYZE and optimize. Does NOT update
+   * the case's variant_count — callers that need it updated should use
+   * `finishBulkInsert()` (for single-file imports) or call
+   * `recalculateCaseVariantCount()` afterwards (for multi-file sessions where
+   * the final count is the sum across all appended files).
    */
-  finishBulkInsert(caseId: number, totalInserted: number): void {
-    this.cases.updateCaseVariantCount(caseId, totalInserted)
-
+  finishBulkInsertNoCount(): void {
     // Always rebuild FTS and restore triggers, even if a step fails
     try {
-      this.db.exec("INSERT INTO variants_fts(variants_fts) VALUES('rebuild')")
+      rebuildAllFtsIndexes(this.db)
     } catch (error) {
       mainLogger.error(`Failed to rebuild FTS index: ${error}`, 'VariantRepository')
     }
 
     try {
-      this.db.exec(createFTSTriggers)
+      restoreFtsTriggers(this.db, this.ftsSnapshot)
+      this.ftsSnapshot = {}
     } catch (error) {
       mainLogger.error(`Failed to recreate FTS triggers: ${error}`, 'VariantRepository')
     }
@@ -155,6 +211,31 @@ export class VariantRepository extends BaseRepository {
   }
 
   /**
+   * Rebuild FTS, recreate triggers, update case variant_count, run ANALYZE and optimize.
+   * Call this once after all `insertBatch()` calls to complete a bulk insert session.
+   */
+  finishBulkInsert(caseId: number, totalInserted: number): void {
+    this.cases.updateCaseVariantCount(caseId, totalInserted)
+    this.finishBulkInsertNoCount()
+  }
+
+  /**
+   * Recompute a case's variant_count from the variants table and write it back
+   * in a single atomic UPDATE. Used after multi-file import sessions where the
+   * final count should reflect all appended files, and is resilient to any
+   * ordering between per-file inserts and a final variant_count refresh.
+   */
+  recalculateCaseVariantCount(caseId: number): void {
+    this.db
+      .prepare(
+        `UPDATE cases SET variant_count = (
+          SELECT COUNT(*) FROM variants WHERE case_id = ?
+        ) WHERE id = ?`
+      )
+      .run(caseId, caseId)
+  }
+
+  /**
    * Convenience method: drop FTS triggers, insert all variants in batches,
    * then rebuild FTS and restore triggers in a single call.
    *
@@ -164,7 +245,8 @@ export class VariantRepository extends BaseRepository {
    */
   insertVariantsBatch(
     caseId: number,
-    variants: (Omit<Variant, 'id' | 'case_id'> & { _transcripts?: TranscriptInsertRow[] })[]
+    variants: (Omit<Variant, 'id' | 'case_id'> &
+      VariantExtensionFields & { _transcripts?: TranscriptInsertRow[] })[]
   ): number {
     this.cases.getCase(caseId)
 
@@ -200,6 +282,30 @@ export class VariantRepository extends BaseRepository {
     return result?.count ?? 0
   }
 
+  /**
+   * Get variant counts grouped by variant_type for a case.
+   * Used for variant type tab badges in the case view.
+   *
+   * Returns a map like: { snv: 1234, indel: 56, sv: 12, cnv: 3, str: 7 }
+   * Missing types are not included in the returned record.
+   */
+  getVariantTypeCounts(caseId: number): Record<string, number> {
+    const rows = this.execAll<{ variant_type: string; count: number }>(
+      this.kysely
+        .selectFrom('variants')
+        .select(['variant_type'])
+        .select(({ fn }) => fn.countAll<number>().as('count'))
+        .where('case_id', '=', caseId)
+        .groupBy('variant_type')
+    )
+
+    const counts: Record<string, number> = {}
+    for (const row of rows) {
+      counts[row.variant_type] = row.count
+    }
+    return counts
+  }
+
   // ── Query methods ────────────────────────────────────────────
 
   getVariants(
@@ -226,8 +332,10 @@ export class VariantRepository extends BaseRepository {
         total_count = countResult.count
       }
 
-      // Data query with sort + pagination
-      const dataQuery = this.filterBuilder.build(filter)
+      // Data query with sort + pagination.
+      // Pass sortBy into build() so extension sort keys (e.g. 'sv.support')
+      // trigger the required LEFT JOIN before applySort references the alias.
+      const dataQuery = this.filterBuilder.build(filter, { sortBy })
       const sortedQuery = this.filterBuilder
         .applySort(dataQuery, sortBy)
         .limit(limit)
@@ -328,14 +436,21 @@ export class VariantRepository extends BaseRepository {
   }
 
   /**
-   * Gather per-column metadata for filter UI auto-detection.
-   * Consolidated: one aggregate query for all COUNT DISTINCT + MIN/MAX,
-   * then one UNION ALL query for distinct values of low-cardinality columns.
+   * Gather per-column metadata for ALL base columns in a single case scan.
+   *
+   * Consolidated aggregate query (COUNT DISTINCT + MIN/MAX for numerics) plus
+   * one UNION ALL distinct-values pull for low-cardinality columns. Used by
+   * `getFilterOptions` to populate the legacy full-metadata response.
+   *
+   * For per-column on-demand fetches (including extension columns) use the
+   * scope-aware public `getColumnMeta(scope, columnKey)` below instead.
    */
-  private getColumnMeta(caseId: number): ColumnFilterMeta[] {
+  private getAllColumnMetas(caseId: number): ColumnFilterMeta[] {
     const DISTINCT_THRESHOLD = 50
     // Exclude computed columns (e.g. internal_af) which don't exist as physical table columns
-    const columns = Object.entries(SORTABLE_COLUMNS).filter(([key]) => !COMPUTED_COLUMNS.has(key))
+    const columns = Object.entries(BASE_SORTABLE_COLUMNS).filter(
+      ([key]) => !COMPUTED_COLUMNS.has(key)
+    )
 
     // Query 1: Single scan — COUNT(DISTINCT col) for all columns + MIN/MAX for numeric columns
     const selectParts: string[] = []
@@ -379,7 +494,7 @@ export class VariantRepository extends BaseRepository {
 
     // Query 2: UNION ALL for distinct values of all low-cardinality columns
     if (lowCardinalityColumns.length > 0) {
-      // SAFETY: sqlCol values come from hardcoded SORTABLE_COLUMNS constant
+      // SAFETY: sqlCol values come from hardcoded BASE_SORTABLE_COLUMNS constant
       const unionParts = lowCardinalityColumns.map(
         ([key, sqlCol]) =>
           `SELECT '${key}' AS col_key, CAST("${sqlCol}" AS TEXT) AS val FROM variants WHERE case_id = ? AND "${sqlCol}" IS NOT NULL GROUP BY "${sqlCol}"`
@@ -414,6 +529,189 @@ export class VariantRepository extends BaseRepository {
     return meta
   }
 
+  // ── Scope-aware single-column metadata (base + extension) ────
+
+  /**
+   * Fetch metadata for a single column, scoped to one case or a set of cases.
+   *
+   * Dispatches between base-column and extension-column paths based on
+   * whether `columnKey` contains a dot (e.g. `cnv.copy_number` → extension,
+   * `gnomad_af` → base).
+   *
+   * Used by on-demand IPC handlers that populate the per-column filter UI
+   * lazily (Task 8). `getAllColumnMetas` remains the bulk path used by
+   * `getFilterOptions` for the initial variant-type-switch render.
+   */
+  getColumnMeta(
+    scope: { caseId: number } | { caseIds: number[] },
+    columnKey: string
+  ): ColumnFilterMeta {
+    if (isExtensionColumnKey(columnKey)) {
+      return this.getExtensionColumnMeta(scope, columnKey)
+    }
+    return this.getBaseColumnMeta(scope, columnKey)
+  }
+
+  /**
+   * Per-column metadata aggregation for a single base column.
+   *
+   * Mirrors the single-column slice of `getAllColumnMetas` but scoped to an
+   * arbitrary case set (cohort path) rather than always a single case.
+   */
+  private getBaseColumnMeta(
+    scope: { caseId: number } | { caseIds: number[] },
+    columnKey: string
+  ): ColumnFilterMeta {
+    const sqlCol = BASE_SORTABLE_COLUMNS[columnKey]
+    if (sqlCol === undefined || COMPUTED_COLUMNS.has(columnKey)) {
+      return { key: columnKey, dataType: 'text', distinctCount: 0 }
+    }
+
+    const DISTINCT_THRESHOLD = 50
+    const isNumeric = NUMERIC_COLUMNS.has(columnKey)
+    const caseIds = 'caseId' in scope ? [scope.caseId] : scope.caseIds
+    if (caseIds.length === 0) {
+      return {
+        key: columnKey,
+        dataType: isNumeric ? 'numeric' : 'text',
+        distinctCount: 0
+      }
+    }
+    const placeholders = caseIds.map(() => '?').join(', ')
+
+    const aggParts = [`COUNT(DISTINCT "${sqlCol}") AS distinctCount`]
+    if (isNumeric) {
+      aggParts.push(`MIN("${sqlCol}") AS min`, `MAX("${sqlCol}") AS max`)
+    }
+    const aggSql = `SELECT ${aggParts.join(', ')} FROM variants WHERE case_id IN (${placeholders})`
+    const aggRow = this.db.prepare(aggSql).get(...caseIds) as {
+      distinctCount: number | null
+      min?: number | null
+      max?: number | null
+    }
+
+    const entry: ColumnFilterMeta = {
+      key: columnKey,
+      dataType: isNumeric ? 'numeric' : 'text',
+      distinctCount: aggRow.distinctCount ?? 0
+    }
+    if (isNumeric) {
+      entry.min = aggRow.min ?? undefined
+      entry.max = aggRow.max ?? undefined
+    }
+
+    if (entry.distinctCount > 0 && entry.distinctCount <= DISTINCT_THRESHOLD) {
+      // SAFETY: sqlCol comes from hardcoded BASE_SORTABLE_COLUMNS
+      const valRows = this.db
+        .prepare(
+          `SELECT DISTINCT CAST("${sqlCol}" AS TEXT) AS v
+           FROM variants
+           WHERE case_id IN (${placeholders}) AND "${sqlCol}" IS NOT NULL
+           ORDER BY "${sqlCol}"`
+        )
+        .all(...caseIds) as { v: string }[]
+      entry.distinctValues = valRows.map((r) => r.v)
+    }
+
+    return entry
+  }
+
+  /**
+   * Per-column metadata aggregation for a single extension column (e.g.
+   * `cnv.copy_number`, `sv.support`, `str.disease`).
+   *
+   * Runs against the extension table (variant_sv / variant_cnv / variant_str)
+   * joined back through variant_id → variants.case_id IN (...). For number
+   * kinds, returns min/max; for text/enum kinds, returns distinctValues when
+   * below the cardinality threshold.
+   *
+   * SAFETY: `def.table` and `column` come from the registry (never user
+   * input), so interpolating them into the SQL string is safe.
+   */
+  private getExtensionColumnMeta(
+    scope: { caseId: number } | { caseIds: number[] },
+    columnKey: string
+  ): ColumnFilterMeta {
+    const resolved = resolveExtensionColumnKey(columnKey)
+    if (resolved === null) {
+      return { key: columnKey, dataType: 'text', distinctCount: 0 }
+    }
+    const DISTINCT_THRESHOLD = 50
+    const { def, column, columnDef } = resolved
+    const caseIds = 'caseId' in scope ? [scope.caseId] : scope.caseIds
+    if (caseIds.length === 0) {
+      return {
+        key: columnKey,
+        dataType: columnDef.kind === 'number' ? 'numeric' : 'text',
+        distinctCount: 0
+      }
+    }
+    const placeholders = caseIds.map(() => '?').join(', ')
+
+    if (columnDef.kind === 'number') {
+      const row = this.db
+        .prepare(
+          `SELECT MIN("${column}") AS min, MAX("${column}") AS max, COUNT(DISTINCT "${column}") AS distinctCount
+           FROM ${def.table}
+           WHERE variant_id IN (SELECT id FROM variants WHERE case_id IN (${placeholders}))`
+        )
+        .get(...caseIds) as { min: number | null; max: number | null; distinctCount: number }
+      return {
+        key: columnKey,
+        dataType: 'numeric',
+        distinctCount: row.distinctCount ?? 0,
+        min: row.min ?? undefined,
+        max: row.max ?? undefined
+      }
+    }
+
+    const countRow = this.db
+      .prepare(
+        `SELECT COUNT(DISTINCT "${column}") AS distinctCount
+         FROM ${def.table}
+         WHERE variant_id IN (SELECT id FROM variants WHERE case_id IN (${placeholders}))`
+      )
+      .get(...caseIds) as { distinctCount: number }
+
+    const entry: ColumnFilterMeta = {
+      key: columnKey,
+      dataType: 'text',
+      distinctCount: countRow.distinctCount ?? 0
+    }
+
+    if (entry.distinctCount > 0 && entry.distinctCount <= DISTINCT_THRESHOLD) {
+      const valRows = this.db
+        .prepare(
+          `SELECT DISTINCT "${column}" AS v
+           FROM ${def.table}
+           WHERE variant_id IN (SELECT id FROM variants WHERE case_id IN (${placeholders}))
+             AND "${column}" IS NOT NULL
+           ORDER BY "${column}"`
+        )
+        .all(...caseIds) as { v: string | number | null }[]
+      entry.distinctValues = valRows.map((r) => String(r.v))
+    }
+
+    return entry
+  }
+
+  /**
+   * Return the set of distinct `variant_type` values present in the given
+   * scope. Used by the renderer to auto-hide variant-type tabs that have
+   * zero rows (e.g. a SNV-only case hides the SV/CNV/STR tabs).
+   */
+  getVariantTypesPresent(scope: { caseId: number } | { caseIds: number[] }): Set<string> {
+    const caseIds = 'caseId' in scope ? [scope.caseId] : scope.caseIds
+    if (caseIds.length === 0) return new Set()
+    const placeholders = caseIds.map(() => '?').join(', ')
+    const rows = this.db
+      .prepare(
+        `SELECT DISTINCT variant_type FROM variants WHERE case_id IN (${placeholders}) AND variant_type IS NOT NULL`
+      )
+      .all(...caseIds) as { variant_type: string }[]
+    return new Set(rows.map((r) => r.variant_type))
+  }
+
   // ── Frequency delegators ────────────────────────────────────
 
   updateFrequencies(caseId: number): void {
@@ -429,7 +727,7 @@ export class VariantRepository extends BaseRepository {
   }
 
   getFilterOptions(caseId: number): FilterOptions {
-    const columnMeta = this.getColumnMeta(caseId)
+    const columnMeta = this.getAllColumnMetas(caseId)
 
     // Extract legacy FilterOptions fields from column metadata
     const metaByKey = new Map(columnMeta.map((m) => [m.key, m]))

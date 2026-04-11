@@ -4,6 +4,7 @@
       @show-case-metadata="dialogHostRef?.showCaseMetadata()"
       @show-database-overview="dialogHostRef?.showDatabaseOverview()"
       @import-click="dialogHostRef?.showImportDialog()"
+      @vcf-import-click="dialogHostRef?.showVcfImportDialog()"
       @show-external-links="dialogHostRef?.showExternalLinks()"
       @show-tag-management="dialogHostRef?.showTagManagement()"
       @show-panel-manager="dialogHostRef?.showPanelManager()"
@@ -17,7 +18,11 @@
     />
 
     <v-navigation-drawer v-model="sidebarOpen" :width="sidebarWidth" :scrim="tier === 'narrow'">
-      <AppSidebar :case-count="caseCount" @import-click="dialogHostRef?.showImportDialog()">
+      <AppSidebar
+        :case-count="caseCount"
+        @import-click="dialogHostRef?.showImportDialog()"
+        @vcf-import-click="dialogHostRef?.showVcfImportDialog()"
+      >
         <CaseList
           ref="caseListRef"
           @case-selected="handleCaseSelected"
@@ -304,6 +309,7 @@ const handleDatabaseSwitched = async (): Promise<void> => {
 const handleShowImportProgress = (): void => {
   dialogHostRef.value?.reopenImportDialog()
   dialogHostRef.value?.reopenBatchImportDialog()
+  void dialogHostRef.value?.reopenVcfImportDialog()
 }
 
 const handleCancelImport = async (): Promise<void> => {

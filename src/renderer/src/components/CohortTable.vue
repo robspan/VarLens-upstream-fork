@@ -17,16 +17,41 @@
       </div>
     </v-alert>
 
-    <!-- Rebuild Indicator -->
-    <v-banner
-      v-if="summaryStale"
-      density="compact"
-      color="info"
-      :icon="mdiDatabaseSync"
-      class="mb-2"
-    >
-      Rebuilding cohort index...
-    </v-banner>
+    <!-- Rebuild indicator — the cohort summary table is rebuilt in a worker
+         whenever cases are imported/deleted, and the cohort view can't show
+         meaningful data until it finishes.
+         -
+         Design notes (see research in git history):
+         - A plain styled div (not v-alert/v-banner) avoids Vuetify theme
+           min-heights that fight scoped :deep overrides.
+         - The whole notice has a shimmer gradient sweeping left-to-right
+           so the motion is where the user is looking, not tucked into a
+           corner spinner (NN/g + Material M3 skeleton pattern).
+         - Elapsed seconds tick live from `rebuildElapsedSec`.
+         - If a previous rebuild's duration is cached in localStorage we
+           show it as a soft ETA ("~Ns last time"). Even an inaccurate
+           estimate is better than none (Apple HIG).
+         - No backend changes: rebuild-summary-worker is opaque
+           (one 'complete' event, no phase reporting), so all progress
+           signals are derived on the renderer side. -->
+    <div v-if="summaryStale" class="cohort-rebuild-notice" role="status" aria-live="polite">
+      <v-icon :icon="mdiDatabaseSync" size="14" class="cohort-rebuild-notice__icon" />
+      <span class="cohort-rebuild-notice__text">
+        <template v-if="rebuildPhaseLabel !== null">
+          {{ rebuildPhaseLabel }} ({{ rebuildPhaseIndex }}/{{ rebuildPhaseTotal }}) —
+          {{ rebuildElapsedSec }}s elapsed<span v-if="rebuildEtaLabel !== null">
+            ({{ rebuildEtaLabel }})</span
+          >
+        </template>
+        <template v-else>
+          Rebuilding cohort index — {{ rebuildElapsedSec }}s elapsed<span
+            v-if="rebuildEtaLabel !== null"
+          >
+            ({{ rebuildEtaLabel }})</span
+          >
+        </template>
+      </span>
+    </div>
 
     <!-- Filter Bar -->
     <CohortFilterBar
@@ -152,7 +177,12 @@ const { api } = useApiService()
 const {
   summary,
   summaryStale,
+  rebuildPhaseIndex,
+  rebuildPhaseTotal,
+  rebuildPhaseLabel,
   columnMeta,
+  genomeBuild,
+  selectedVariantType,
   fetchSummary,
   fetchColumnMeta,
   buildIpcParams,
@@ -213,9 +243,11 @@ const buildCohortQueryParams = (): Omit<
       : undefined,
   column_filters:
     cohortColumnFilters.value != null ||
-    Object.keys(cohortFilterBarRef.value?.dslColumnFilters ?? {}).length > 0
+    Object.keys(cohortFilterBarRef.value?.dslColumnFilters ?? {}).length > 0 ||
+    Object.keys(filters.value.columnFilters).length > 0
       ? {
           ...(cohortColumnFilters.value ?? {}),
+          ...filters.value.columnFilters,
           ...(cohortFilterBarRef.value?.dslColumnFilters ?? {})
         }
       : undefined,
@@ -301,7 +333,9 @@ const exportToExcel = async (): Promise<void> => {
       clinvars: filters.value.clinvars.length > 0 ? [...filters.value.clinvars] : undefined,
       gnomad_af_max: filters.value.maxGnomadAf ?? undefined,
       cadd_min: filters.value.minCadd ?? undefined,
-      max_internal_af: filters.value.maxInternalAf ?? undefined
+      max_internal_af: filters.value.maxInternalAf ?? undefined,
+      genome_build: genomeBuild.value || undefined,
+      variant_type: selectedVariantType.value || undefined
     }
     const result = await api.export.cohort(plainParams)
 
@@ -466,15 +500,84 @@ watch(variants, (newVariants) => {
   }
 })
 
-// Auto-refresh when summary rebuild completes
-watch(summaryStale, (newVal, oldVal) => {
-  if (oldVal === true && newVal === false) {
-    // Summary rebuilt — refresh current page and metadata
-    void invalidateAndReload()
-    void fetchSummary()
-    void fetchColumnMeta()
+// ── Rebuild progress tracking ───────────────────────────────────────
+// Since the rebuild-summary-worker is opaque (sends exactly one 'complete'
+// event with no phase/progress data — see src/main/workers/rebuild-summary-
+// worker.ts), the renderer derives progress signals from a local timer plus
+// a cached duration from the previous successful rebuild. Per Apple HIG:
+// even an inaccurate estimate is better than no estimate. The elapsed count
+// keeps the user informed that work is happening (NN/g 2-10s threshold).
+const REBUILD_DURATION_STORAGE_KEY = 'varlens.cohort.lastRebuildDurationSec'
+const rebuildElapsedSec = ref(0)
+const rebuildEtaLabel = ref<string | null>(null)
+let rebuildStartMs: number | null = null
+let rebuildTimerId: ReturnType<typeof setInterval> | null = null
+
+function readCachedEtaLabel(): string | null {
+  try {
+    const cached = localStorage.getItem(REBUILD_DURATION_STORAGE_KEY)
+    if (cached === null) return null
+    const sec = Number(cached)
+    if (!Number.isFinite(sec) || sec <= 0) return null
+    return `~${Math.round(sec)}s last time`
+  } catch {
+    // localStorage can throw in sandboxed contexts; silently skip the ETA.
+    return null
   }
-})
+}
+
+function startRebuildTimer(): void {
+  rebuildStartMs = Date.now()
+  rebuildElapsedSec.value = 0
+  rebuildEtaLabel.value = readCachedEtaLabel()
+  if (rebuildTimerId !== null) clearInterval(rebuildTimerId)
+  rebuildTimerId = setInterval(() => {
+    if (rebuildStartMs !== null) {
+      rebuildElapsedSec.value = Math.floor((Date.now() - rebuildStartMs) / 1000)
+    }
+  }, 500)
+}
+
+function stopRebuildTimer(success: boolean): void {
+  if (rebuildTimerId !== null) {
+    clearInterval(rebuildTimerId)
+    rebuildTimerId = null
+  }
+  // Persist the observed duration on successful rebuilds so the next
+  // rebuild can show a better estimate. Skip on error/cancel.
+  if (success && rebuildStartMs !== null) {
+    const durationSec = Math.max(1, Math.round((Date.now() - rebuildStartMs) / 1000))
+    try {
+      localStorage.setItem(REBUILD_DURATION_STORAGE_KEY, String(durationSec))
+    } catch {
+      // Ignore localStorage failures — ETA is a nice-to-have, not required.
+    }
+  }
+  rebuildStartMs = null
+  rebuildElapsedSec.value = 0
+  rebuildEtaLabel.value = null
+}
+
+// Auto-refresh when summary rebuild completes + drive the progress timer.
+watch(
+  summaryStale,
+  (newVal, oldVal) => {
+    if (oldVal !== true && newVal === true) {
+      // Rebuild just started — kick off the elapsed-time counter.
+      startRebuildTimer()
+      return
+    }
+    if (oldVal === true && newVal === false) {
+      // Summary rebuilt — stop timer, cache duration, refresh current page
+      // and metadata.
+      stopRebuildTimer(true)
+      void invalidateAndReload()
+      void fetchSummary()
+      void fetchColumnMeta()
+    }
+  },
+  { immediate: true }
+)
 
 // Fetch summary + column metadata on mount so the filter chip can show
 // filtered/total from the start. Table data itself loads via v-data-table-server's
@@ -486,6 +589,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   cleanupListeners()
+  // Clean up the rebuild progress timer if the view is torn down mid-rebuild.
+  // stopRebuildTimer(false) skips persisting the duration since we don't know
+  // if the rebuild actually completed.
+  stopRebuildTimer(false)
 })
 
 onActivated(() => {
@@ -516,9 +623,69 @@ defineExpose({ refresh })
   overflow: hidden;
 }
 
-/* Prevent banners/alerts from growing — only the data table gets remaining space */
+/* Prevent alerts/indicators from growing — only the data table gets the
+   remaining flex space. */
 .cohort-table-container > .v-alert,
-.cohort-table-container > .v-banner {
+.cohort-table-container > .cohort-rebuild-notice {
+  flex-shrink: 0;
+}
+
+/* Rebuild notice: plain styled div, total height ~26 px.
+   -
+   Motion: a linear-gradient shimmer sweeps left-to-right behind the text
+   so the whole notice visibly pulses. Uses `background-size: 200% 100%`
+   + animated `background-position` — the classic Material M3 skeleton
+   pattern. We keep the underlying fill tinted with the info theme color
+   so the tonal identity carries over from v-alert conventions. */
+@keyframes cohort-rebuild-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.cohort-rebuild-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  margin-bottom: 8px;
+  color: rgb(var(--v-theme-info));
+  border-left: 2px solid rgb(var(--v-theme-info));
+  border-radius: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  /* Base tint + shimmer highlight band. The middle stop at 0.18 alpha is
+     brighter than the 0.06 edges so the user sees a sweeping highlight. */
+  background-image: linear-gradient(
+    90deg,
+    rgba(var(--v-theme-info), 0.06) 0%,
+    rgba(var(--v-theme-info), 0.18) 50%,
+    rgba(var(--v-theme-info), 0.06) 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: cohort-rebuild-shimmer 1.6s linear infinite;
+}
+
+/* Accessibility: honor prefers-reduced-motion by swapping the shimmer for
+   a static tinted background. The elapsed-time counter still updates every
+   500 ms so the user retains a sense of progress without motion. */
+@media (prefers-reduced-motion: reduce) {
+  .cohort-rebuild-notice {
+    animation: none;
+    background-image: none;
+    background-color: rgba(var(--v-theme-info), 0.1);
+  }
+}
+
+.cohort-rebuild-notice__text {
+  flex: 1 1 auto;
+}
+
+.cohort-rebuild-notice__icon {
   flex-shrink: 0;
 }
 </style>

@@ -229,6 +229,60 @@ describe('AssociationEngine with DbPool (off-thread build)', () => {
     expect(results.results.length).toBeGreaterThan(0)
   })
 
+  it('association:build DbPool dispatch flows extended VariantFilters (column_filters, clinvars)', async () => {
+    // Verifies that Task 7's extended VariantFilters contract flows through
+    // AssociationEngine.run() → DbPool.run() → db-worker-dispatch without
+    // touching the dispatch line. The engine should pass config.filters
+    // through verbatim, so column_filters + clinvars show up in params[2].
+    const mockPoolRun = vi.fn().mockResolvedValue([])
+    const mockDbPool = {
+      run: mockPoolRun
+    } as unknown as import('../../../src/main/database/DbPool').DbPool
+
+    const mockWorkerRun = vi.fn().mockResolvedValue([])
+    vi.resetModules()
+    vi.doMock('../../../src/main/statistics/WorkerPool', () => {
+      function WorkerPool() {
+        return { run: mockWorkerRun, abort: vi.fn() }
+      }
+      return { WorkerPool }
+    })
+
+    const { AssociationEngine } = await import('../../../src/main/statistics/AssociationEngine')
+
+    const engine = new AssociationEngine(db, undefined, mockDbPool)
+    await engine.run({
+      groupA_ids: [1, 2, 3, 4, 5],
+      groupB_ids: [6, 7, 8, 9, 10],
+      primary_test: 'fisher',
+      weight_scheme: 'uniform',
+      covariates: [],
+      filters: {
+        gnomad_af_max: 0.01,
+        clinvars: ['Pathogenic'],
+        funcs: ['missense_variant'],
+        column_filters: { 'cnv.copy_number': { operator: '>=', value: 3 } }
+      },
+      max_threads: 2
+    })
+
+    expect(mockPoolRun).toHaveBeenCalledOnce()
+    expect(mockPoolRun).toHaveBeenCalledWith({
+      type: 'association:build',
+      params: [
+        [1, 2, 3, 4, 5],
+        [6, 7, 8, 9, 10],
+        {
+          gnomad_af_max: 0.01,
+          clinvars: ['Pathogenic'],
+          funcs: ['missense_variant'],
+          column_filters: { 'cnv.copy_number': { operator: '>=', value: 3 } }
+        },
+        []
+      ]
+    })
+  })
+
   it('falls back to main-thread builder when dbPool is null', async () => {
     const mockWorkerRun = vi.fn().mockResolvedValue([])
     vi.resetModules()

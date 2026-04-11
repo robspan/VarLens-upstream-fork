@@ -10,7 +10,22 @@ export type ColumnFilterOperator = '=' | '!=' | '<' | '>' | '<=' | '>=' | 'like'
 export interface ColumnFilter {
   operator: ColumnFilterOperator
   value: string | number | string[]
-  /** Whether to include NULL/empty values (default: true for range operators) */
+  /**
+   * Whether to include NULL/empty values.
+   *
+   * IMPORTANT: the default diverges between base and extension columns:
+   * - **Base columns** (e.g. `gnomad_af`, `cadd`) default to `true` —
+   *   unannotated variants pass through range filters so they aren't
+   *   silently hidden.
+   * - **Extension columns** (e.g. `cnv.copy_number`, `sv.support`) default
+   *   to `false` — a missing extension row means "variant is not of this
+   *   type", so including NULLs would return cross-type noise.
+   *
+   * See `src/main/database/variant-extension-registry.ts` (the
+   * `translateExtensionFilter` helper) for the extension-side semantics
+   * and `src/main/database/VariantFilterBuilder.ts` for the base-side
+   * semantics.
+   */
   includeEmpty?: boolean
 }
 

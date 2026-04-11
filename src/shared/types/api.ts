@@ -161,6 +161,7 @@ export interface CasesAPI {
   delete: (id: number) => Promise<void>
   deleteAll: () => Promise<number>
   deleteBatch: (ids: number[]) => Promise<number>
+  availableBuilds: () => Promise<Array<{ build: string; caseCount: number }>>
 }
 
 export interface VariantsAPI {
@@ -176,6 +177,25 @@ export interface VariantsAPI {
   getFilterOptions: (caseId: number) => Promise<FilterOptions>
   search: (caseId: number, query: string, limit?: number) => Promise<Variant[]>
   geneSymbols: (caseId: number, query: string, limit?: number) => Promise<string[]>
+  /** Get variant type counts per case for tab badges (snv/indel/sv/cnv/str) */
+  typeCounts: (caseId: number) => Promise<Record<string, number>>
+  /**
+   * Get per-column metadata for a single column (single-case or cohort scope).
+   * Used by the filter UI to lazy-load metadata on demand instead of bulk
+   * fetching every column via `getFilterOptions`. Either `caseId` or a
+   * non-empty `caseIds` array must be provided.
+   */
+  columnMeta: (payload: {
+    caseId?: number
+    caseIds?: number[]
+    columnKey: string
+  }) => Promise<ColumnFilterMeta>
+  /**
+   * Get distinct variant types present for a single case or cohort. Used by
+   * the renderer to auto-hide variant-type tabs with no data. Either `caseId`
+   * or a non-empty `caseIds` array must be provided.
+   */
+  typesPresent: (payload: { caseId?: number; caseIds?: number[] }) => Promise<string[]>
 }
 
 export interface FilterOptions {
@@ -190,14 +210,52 @@ export interface FilterOptions {
   columnMeta: ColumnFilterMeta[]
 }
 
+export interface MultiFileImportSpec {
+  filePath: string
+  variantType: string
+  caller: string | null
+  annotationFormat: string | null
+}
+
+export interface MultiFileImportFileResult {
+  filePath: string
+  variantType: string
+  variantCount: number
+  error?: string
+}
+
+export interface MultiFileImportResult {
+  caseId: number
+  totalVariants: number
+  totalSkipped: number
+  files: MultiFileImportFileResult[]
+  elapsed: number
+}
+
 export interface ImportAPI {
   selectFile: () => Promise<string | null>
+  selectFiles: () => Promise<string[]>
+  selectBedFile: () => Promise<string | null>
   start: (
     filePath: string,
     caseName: string,
     vcfOptions?: { selectedSample?: string; genomeBuild?: string }
   ) => Promise<ImportResult | SerializableError>
+  startMultiFile: (
+    caseName: string,
+    files: MultiFileImportSpec[],
+    vcfOptions?: { selectedSample?: string; genomeBuild?: string },
+    filters?: {
+      bedFile?: string | null
+      bedPadding?: number
+      passOnly?: boolean
+      minQual?: number | null
+      minGq?: number | null
+      minDp?: number | null
+    }
+  ) => Promise<MultiFileImportResult | SerializableError>
   vcfPreview: (filePath: string) => Promise<VcfPreviewResult>
+  vcfMultiPreview: (filePaths: string[]) => Promise<import('./import').VcfMultiPreviewResult>
   onProgress: (callback: (progress: ProgressUpdate) => void) => () => void
   cancel: () => Promise<void>
 }
@@ -341,7 +399,29 @@ export interface CohortAPI {
   getColumnMeta: () => Promise<ColumnFilterMeta[]>
   getSummaryStatus: () => Promise<{ is_stale: boolean; last_rebuilt_at: number }>
   rebuildSummary: () => Promise<void>
-  onSummaryRebuilt: (callback: (status: { is_stale: boolean }) => void) => () => void
+  /**
+   * Subscribe to cohort summary rebuild events.
+   *
+   * The status payload includes `is_stale` (required) plus optional phase
+   * progress fields. Phase events are emitted between SQL statements inside
+   * the rebuild worker (see `src/main/workers/rebuild-summary-worker.ts`):
+   *
+   * - When a rebuild starts → `{ is_stale: true }`
+   * - For each phase boundary → `{ is_stale: true, phase, phase_index, phase_total, label }`
+   * - When a rebuild finishes → `{ is_stale: false }`
+   *
+   * Subscribers that only read `is_stale` stay correct; subscribers that
+   * want phase progress read the optional fields.
+   */
+  onSummaryRebuilt: (
+    callback: (status: {
+      is_stale: boolean
+      phase?: string
+      phase_index?: number
+      phase_total?: number
+      label?: string
+    }) => void
+  ) => () => void
   runAssociation: (config: unknown) => Promise<unknown>
   cancelAssociation: () => Promise<void>
   onAssociationProgress: (

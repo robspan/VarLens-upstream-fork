@@ -4,6 +4,12 @@ import type { VarlensDatabase } from '../../shared/types/database-schema'
 import type { Variant, VariantFilter, SortItem } from './types'
 import { mainLogger } from '../services/MainLogger'
 import type { VariantSearchService } from './VariantSearchService'
+import {
+  buildExtensionJoinClauses,
+  EXTENSION_SORTABLE_DOTTED_KEYS,
+  resolveExtensionColumnKey,
+  type ExtensionTypeKey
+} from './variant-extension-registry'
 
 /**
  * Kysely query builder type for variant queries.
@@ -13,7 +19,18 @@ import type { VariantSearchService } from './VariantSearchService'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type VariantQueryBuilder = SelectQueryBuilder<VarlensDatabase, any, Record<string, unknown>>
 
-export const SORTABLE_COLUMNS: Record<string, string> = {
+/**
+ * Columns living on the `variants` table that are sortable and eligible for
+ * per-column metadata aggregation.
+ *
+ * Columns on the extension tables (variant_sv / variant_cnv / variant_str —
+ * e.g. `sv.support`, `cnv.copy_number`) live in the extension registry under
+ * dotted keys (`sv.support`) and are sortable per-type via
+ * `EXTENSION_SORTABLE_DOTTED_KEYS`. `getAllColumnMetas` runs aggregate queries
+ * directly against `variants` (no JOINs), so extension columns must NOT be
+ * added here.
+ */
+export const BASE_SORTABLE_COLUMNS: Record<string, string> = {
   chr: 'chr',
   pos: 'pos',
   gene_symbol: 'gene_symbol',
@@ -29,7 +46,50 @@ export const SORTABLE_COLUMNS: Record<string, string> = {
   qual: 'qual',
   hpo_sim_score: 'hpo_sim_score',
   clinvar: 'clinvar',
-  moi: 'moi'
+  moi: 'moi',
+  // Multi-variant type (SV/CNV/STR) discriminator columns — added in
+  // migration v25 as real columns on the variants table. Without these
+  // entries, clicking sort headers on the SV/CNV/STR tabs silently no-ops
+  // because VariantFilterBuilder drops unknown sort keys and getAllColumnMetas
+  // would not gather per-column metadata.
+  variant_type: 'variant_type',
+  end_pos: 'end_pos',
+  sv_type: 'sv_type',
+  sv_length: 'sv_length',
+  caller: 'caller'
+}
+
+/**
+ * Legacy alias — kept for back-compat with callers that imported
+ * `SORTABLE_COLUMNS` before the base/extension split. Points at the same
+ * object as `BASE_SORTABLE_COLUMNS`.
+ */
+export const SORTABLE_COLUMNS = BASE_SORTABLE_COLUMNS
+
+/**
+ * Resolve a sort key (either a base column name or a dotted extension key
+ * like `cnv.copy_number`) to the SQL column reference and whether it targets
+ * an extension table.
+ *
+ * Returns `null` for unknown keys. Caller uses the `isExtension` flag to
+ * decide whether a LEFT JOIN must be added to the query.
+ */
+export function resolveSortColumn(
+  sortKey: string
+): { sql: string; isExtension: boolean; extensionType?: ExtensionTypeKey } | null {
+  if (BASE_SORTABLE_COLUMNS[sortKey] !== undefined) {
+    return { sql: `variants.${BASE_SORTABLE_COLUMNS[sortKey]}`, isExtension: false }
+  }
+  if (EXTENSION_SORTABLE_DOTTED_KEYS.has(sortKey)) {
+    const resolved = resolveExtensionColumnKey(sortKey)
+    if (resolved === null) return null
+    return {
+      sql: `${resolved.def.joinAlias}.${resolved.column}`,
+      isExtension: true,
+      extensionType: resolved.typeKey
+    }
+  }
+  return null
 }
 
 /**
@@ -48,8 +108,16 @@ export class VariantFilterBuilder {
   /**
    * Build a Kysely SELECT query from a VariantFilter.
    * Used by both getVariants() and getAllVariantsForExport().
+   *
+   * The optional `sortBy` argument is used only to pre-compute extension
+   * table JOINs that sort keys might require. The actual ORDER BY clauses
+   * are still applied by `applySort()`. Passing sortBy here avoids needing
+   * to add JOINs later (which would risk duplicating aliases).
    */
-  build(filter: VariantFilter, options?: { forceOrChain?: boolean }): VariantQueryBuilder {
+  build(
+    filter: VariantFilter,
+    options?: { forceOrChain?: boolean; sortBy?: SortItem[] }
+  ): VariantQueryBuilder {
     let query: VariantQueryBuilder = this.kysely
       .selectFrom('variants')
       .selectAll('variants')
@@ -78,6 +146,141 @@ export class VariantFilterBuilder {
         | { cnt: number }
         | undefined
       totalCaseCount = countResult?.cnt ?? 0
+    }
+
+    // Variant type filter (snv includes both snv and indel)
+    query = query.$if(filter.variant_type !== undefined && filter.variant_type !== '', (qb) => {
+      if (filter.variant_type === 'snv') {
+        return qb.where((eb) =>
+          eb.or([
+            eb('variants.variant_type', '=', 'snv'),
+            eb('variants.variant_type', '=', 'indel')
+          ])
+        )
+      }
+      return qb.where('variants.variant_type', '=', filter.variant_type!)
+    })
+
+    // Extension table JOINs for type-specific queries
+    if (filter.variant_type === 'sv') {
+      query = query
+        .leftJoin('variant_sv as sv', 'sv.variant_id', 'variants.id')
+        .select([
+          'sv.support as _sv_support',
+          'sv.dr as _sv_dr',
+          'sv.dv as _sv_dv',
+          'sv.vaf as _sv_vaf',
+          'sv.sv_is_precise as _sv_is_precise',
+          'sv.strand as _sv_strand',
+          'sv.coverage as _sv_coverage',
+          'sv.stdev_len as _sv_stdev_len',
+          'sv.stdev_pos as _sv_stdev_pos'
+        ])
+    } else if (filter.variant_type === 'cnv') {
+      query = query
+        .leftJoin('variant_cnv as cnv', 'cnv.variant_id', 'variants.id')
+        .select([
+          'cnv.copy_number as _cnv_copy_number',
+          'cnv.copy_number_quality as _cnv_gq',
+          'cnv.homozygosity_ref as _cnv_ho_ref',
+          'cnv.homozygosity_alt as _cnv_ho_alt'
+        ])
+    } else if (filter.variant_type === 'str') {
+      query = query
+        .leftJoin('variant_str as str_ext', 'str_ext.variant_id', 'variants.id')
+        .select([
+          'str_ext.repeat_id as _str_repeat_id',
+          'str_ext.repeat_unit as _str_repeat_unit',
+          'str_ext.display_repeat_unit as _str_display_ru',
+          'str_ext.ref_copies as _str_ref_copies',
+          'str_ext.alt_copies as _str_alt_copies',
+          'str_ext.str_status as _str_status',
+          'str_ext.normal_max as _str_normal_max',
+          'str_ext.pathologic_min as _str_pathologic_min',
+          'str_ext.disease as _str_disease',
+          'str_ext.inheritance_mode as _str_inheritance_mode',
+          'str_ext.rank_score as _str_rank_score'
+        ])
+    }
+
+    // ── Extension table JOINs for dotted-key filters and sorts ────────────
+    //
+    // Dotted keys in `column_filters` (e.g. `cnv.copy_number`) and extension
+    // sort keys (e.g. `sv.support`) need LEFT JOINs against the extension
+    // tables. We collect required aliases from both sources, then add each
+    // JOIN exactly once — skipping aliases the variant_type branch above
+    // already added to avoid Kysely "alias already used" errors.
+    //
+    // Alias collision note for STR: the variant_type='str' branch uses the
+    // alias `str_ext` for SELECT projections; the extension filter/sort
+    // path uses the registry-derived alias `str`. These are distinct SQL
+    // aliases on the same physical table, so both joins can coexist without
+    // conflict.
+    const extensionJoinsNeeded = new Set<ExtensionTypeKey>()
+    let extensionFilterClauses: {
+      whereClause: string
+      params: (string | number)[]
+    } | null = null
+
+    if (filter.column_filters !== undefined) {
+      // When the caller has an active variant_type filter, it already emits
+      // its own `variants.variant_type = X` predicate above. Skip the
+      // implicit single-type narrowing inside `buildExtensionJoinClauses` so
+      // we don't duplicate the predicate in the final SQL (which inflates
+      // query plans even though SQLite resolves it correctly).
+      const callerHasTypeFilter = filter.variant_type !== undefined && filter.variant_type !== ''
+      const result = buildExtensionJoinClauses(filter.column_filters, 'variants', {
+        skipImplicitNarrowing: callerHasTypeFilter
+      })
+      for (const alias of result.requiredJoinAliases) extensionJoinsNeeded.add(alias)
+      extensionFilterClauses = { whereClause: result.whereClause, params: result.params }
+    }
+
+    // Collect extension joins implied by sort keys (e.g. ORDER BY sv.support)
+    if (options?.sortBy !== undefined) {
+      for (const sort of options.sortBy) {
+        const resolved = resolveSortColumn(sort.key)
+        if (resolved !== null && resolved.isExtension && resolved.extensionType !== undefined) {
+          extensionJoinsNeeded.add(resolved.extensionType)
+        }
+      }
+    }
+
+    // Add extension table JOINs (skip sv/cnv if variant_type branch above already
+    // added the same alias; always add str under the 'str' alias — distinct from
+    // 'str_ext' used by the variant_type branch).
+    if (extensionJoinsNeeded.has('sv') && filter.variant_type !== 'sv') {
+      query = query.leftJoin(
+        'variant_sv as sv',
+        'sv.variant_id',
+        'variants.id'
+      ) as VariantQueryBuilder
+    }
+    if (extensionJoinsNeeded.has('cnv') && filter.variant_type !== 'cnv') {
+      query = query.leftJoin(
+        'variant_cnv as cnv',
+        'cnv.variant_id',
+        'variants.id'
+      ) as VariantQueryBuilder
+    }
+    if (extensionJoinsNeeded.has('str')) {
+      query = query.leftJoin(
+        'variant_str as str',
+        'str.variant_id',
+        'variants.id'
+      ) as VariantQueryBuilder
+    }
+
+    // Apply the extension WHERE clause via the same sql template interpolation
+    // pattern used by VariantSearchService.applySearchFilter (ts:52-62).
+    if (extensionFilterClauses !== null && extensionFilterClauses.whereClause !== '') {
+      const { whereClause, params: extParams } = extensionFilterClauses
+      const segments = whereClause.split('?')
+      let rawExpr = sql<boolean>`${sql.raw(segments[0])}`
+      for (let i = 1; i < segments.length; i++) {
+        rawExpr = sql<boolean>`${rawExpr}${extParams[i - 1]}${sql.raw(segments[i])}`
+      }
+      query = query.where(rawExpr)
     }
 
     // Simple filters via $if
@@ -302,6 +505,14 @@ export class VariantFilterBuilder {
     })
 
     // Column filters (dynamic, type-aware)
+    //
+    // TODO: fold this bare-key translator into `variant-where-builder.ts` so
+    // there's a single source of truth for column_filter semantics across
+    // all three query paths. The logic here has converged with
+    // `translateColumnFilter` used by Path 2/3, but the duplication is
+    // currently preserved because Path 1 uses Kysely chain builders while
+    // Path 2/3 use raw SQL + parameter interpolation. Unifying would require
+    // a Kysely-aware emitter in `variant-where-builder` or a shared AST.
     if (filter.column_filters !== undefined) {
       for (const [column, filterDef] of Object.entries(filter.column_filters)) {
         if (SORTABLE_COLUMNS[column] === undefined) continue
@@ -489,6 +700,12 @@ export class VariantFilterBuilder {
   /**
    * Apply ORDER BY to a Kysely query using sql template literals
    * for NULLS FIRST/LAST support (not natively available in Kysely 0.28.x).
+   *
+   * Accepts both bare base column keys (e.g. `gnomad_af`) and dotted
+   * extension keys (e.g. `cnv.copy_number`). For extension keys, the caller
+   * MUST have passed `sortBy` to `build()` so the LEFT JOIN for the
+   * referenced extension table is already present in the query; otherwise
+   * the emitted ORDER BY will reference an unknown alias.
    */
   applySort(query: VariantQueryBuilder, sortBy?: SortItem[]): VariantQueryBuilder {
     if (!sortBy || sortBy.length === 0) {
@@ -499,14 +716,17 @@ export class VariantFilterBuilder {
     let hasIdSort = false
 
     for (const sort of sortBy) {
-      const sqlColumn = SORTABLE_COLUMNS[sort.key]
-      if (sqlColumn === undefined) {
+      const resolved = resolveSortColumn(sort.key)
+      if (resolved === null) {
         mainLogger.warn(`Invalid sort column rejected: ${sort.key}`, 'VariantFilterBuilder')
         continue
       }
       const dir = sort.order === 'desc' ? 'DESC' : 'ASC'
       const nulls = 'NULLS LAST'
-      sorted = sorted.orderBy(sql`${sql.ref(sqlColumn)} ${sql.raw(dir)} ${sql.raw(nulls)}`)
+      // `resolved.sql` is `variants.<base_col>` or `<alias>.<ext_col>` — both
+      // come from internally controlled sources (BASE_SORTABLE_COLUMNS /
+      // VARIANT_EXTENSION_REGISTRY), so `sql.raw` is safe here.
+      sorted = sorted.orderBy(sql`${sql.raw(resolved.sql)} ${sql.raw(dir)} ${sql.raw(nulls)}`)
       if (sort.key === 'id') hasIdSort = true
     }
 

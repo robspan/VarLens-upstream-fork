@@ -118,6 +118,7 @@ export function clearAllFilters(): FilterState {
     maxInternalAf: FILTER_DEFAULTS.maxInternalAf,
     inheritanceModes: [...FILTER_DEFAULTS.inheritanceModes],
     analysisGroupId: FILTER_DEFAULTS.analysisGroupId,
-    considerPhasing: FILTER_DEFAULTS.considerPhasing
+    considerPhasing: FILTER_DEFAULTS.considerPhasing,
+    columnFilters: { ...FILTER_DEFAULTS.columnFilters }
   }
 }

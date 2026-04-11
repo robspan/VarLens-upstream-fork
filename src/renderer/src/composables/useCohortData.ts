@@ -15,14 +15,20 @@
  * SOL-02: Centralized cohort data management for CohortTable.vue.
  */
 
-import { ref, shallowRef, markRaw } from 'vue'
-import type { Ref, ShallowRef } from 'vue'
+import { ref, shallowRef, markRaw, inject } from 'vue'
+import type { Ref, ShallowRef, InjectionKey } from 'vue'
 import type { CohortVariant, CohortSummary } from '../../../shared/types/cohort'
 import type { ColumnFilterMeta } from '../../../shared/types/column-filters'
 import type { ColumnFiltersParam } from '../../../shared/types/column-filters'
 import { useApiService } from './useApiService'
 import { cloneForIpc } from '../utils/cloneForIpc'
 import { logService } from '../services/LogService'
+
+/** A single entry in the available genome builds list returned by cases:availableBuilds */
+export interface AvailableBuild {
+  build: string
+  caseCount: number
+}
 
 /**
  * Query parameters for cohort variant fetching
@@ -66,6 +72,10 @@ export interface CohortQueryParams {
   active_panel_ids?: number[]
   /** Padding in base pairs for panel interval computation */
   panel_padding_bp?: number
+  /** Genome build to scope the cohort summary to (e.g. GRCh38, GRCh37) */
+  genome_build?: string
+  /** Variant type to scope the cohort summary to (snv, sv, cnv, str) */
+  variant_type?: string
   /** Whether the COUNT(*) query is needed; set to false to skip (used by pagination count cache) */
   _count_needed?: boolean
 }
@@ -89,8 +99,24 @@ export interface UseCohortDataReturn {
   summary: Ref<CohortSummary | null>
   /** Whether the cohort summary is stale (being rebuilt) */
   summaryStale: Ref<boolean>
+  /** Current rebuild phase key (e.g. 'variant_summary'). Null when not rebuilding. */
+  rebuildPhase: Ref<string | null>
+  /** 1-based phase index within the rebuild sequence. Null when not rebuilding. */
+  rebuildPhaseIndex: Ref<number | null>
+  /** Total phase count for the current rebuild. Null when not rebuilding. */
+  rebuildPhaseTotal: Ref<number | null>
+  /** Human-readable label for the current phase (e.g. "Rebuilding variant summary"). Null when not rebuilding. */
+  rebuildPhaseLabel: Ref<string | null>
   /** Per-column metadata for filter UI auto-detection */
   columnMeta: Ref<ColumnFilterMeta[]>
+  /** Current genome build scope (seeded from available builds on first load) */
+  genomeBuild: Ref<string>
+  /** Current variant type scope (snv/sv/cnv/str) */
+  selectedVariantType: Ref<string>
+  /** All genome builds present in the database with per-build case counts */
+  availableBuilds: Ref<AvailableBuild[]>
+  /** Fetch the list of genome builds and seed genomeBuild to the most common */
+  loadAvailableBuilds: () => Promise<void>
   /** Build IPC-safe params from query parameters */
   buildIpcParams: (params: CohortQueryParams) => Record<string, unknown>
   /** Fetch variants and update reactive state */
@@ -111,7 +137,23 @@ export interface UseCohortDataReturn {
   deactivate: () => void
 }
 
+/**
+ * Injection key for sharing a single cohort data instance between
+ * CohortView (which provides the genome build / variant type selectors)
+ * and CohortTable (which reads those refs when building query params).
+ *
+ * Parents call `provide(CohortDataKey, useCohortData())`; children call
+ * `useCohortData()` which transparently injects the parent instance if one
+ * was provided, falling back to a fresh instance for standalone use.
+ */
+export const CohortDataKey: InjectionKey<UseCohortDataReturn> = Symbol('cohortData')
+
 export function useCohortData(): UseCohortDataReturn {
+  // Prefer an instance provided higher in the tree (e.g. CohortView) so
+  // selector state in the view and the table query code share the same refs.
+  const provided = inject(CohortDataKey, null)
+  if (provided) return provided
+
   const { api } = useApiService()
 
   // State refs
@@ -121,7 +163,21 @@ export function useCohortData(): UseCohortDataReturn {
   const error = ref<Error | null>(null)
   const summary = ref<CohortSummary | null>(null)
   const summaryStale = ref(false)
+  // Phase progress state — populated when the main-side worker emits
+  // progress events between SQL statements. When a rebuild completes these
+  // snap back to null.
+  const rebuildPhase = ref<string | null>(null)
+  const rebuildPhaseIndex = ref<number | null>(null)
+  const rebuildPhaseTotal = ref<number | null>(null)
+  const rebuildPhaseLabel = ref<string | null>(null)
   const columnMeta = ref<ColumnFilterMeta[]>([])
+
+  // Genome build / variant type scope (Phase 3 multi-variant-type).
+  // genomeBuild is seeded by loadAvailableBuilds() to the most-common build;
+  // selectedVariantType defaults to SNV/indel which matches the existing flow.
+  const genomeBuild = ref<string>('GRCh38')
+  const selectedVariantType = ref<string>('snv')
+  const availableBuilds = ref<AvailableBuild[]>([])
 
   // Generation counter and filter cache for count optimization
   let requestGeneration = 0
@@ -137,9 +193,32 @@ export function useCohortData(): UseCohortDataReturn {
     if (!api || cleanupSummaryListener) return
     const cohortApi = api.cohort
     if (typeof cohortApi.onSummaryRebuilt === 'function') {
-      cleanupSummaryListener = cohortApi.onSummaryRebuilt((status: { is_stale: boolean }) => {
-        summaryStale.value = status.is_stale
-      })
+      cleanupSummaryListener = cohortApi.onSummaryRebuilt(
+        (status: {
+          is_stale: boolean
+          phase?: string
+          phase_index?: number
+          phase_total?: number
+          label?: string
+        }) => {
+          summaryStale.value = status.is_stale
+          // Phase progress is optional — if the payload carries phase fields
+          // update them; if not (start/end events), clear them when the
+          // rebuild finishes.
+          if (status.phase !== undefined) {
+            rebuildPhase.value = status.phase
+            rebuildPhaseIndex.value = status.phase_index ?? null
+            rebuildPhaseTotal.value = status.phase_total ?? null
+            rebuildPhaseLabel.value = status.label ?? null
+          } else if (status.is_stale === false) {
+            // Rebuild finished — reset phase state.
+            rebuildPhase.value = null
+            rebuildPhaseIndex.value = null
+            rebuildPhaseTotal.value = null
+            rebuildPhaseLabel.value = null
+          }
+        }
+      )
     }
   }
 
@@ -247,8 +326,43 @@ export function useCohortData(): UseCohortDataReturn {
         ipcParams.panel_padding_bp = params.panel_padding_bp
       }
     }
+    // Prefer explicit params over the composable-level selector state so
+    // callers that already know the build/type (e.g. ad-hoc queries) still win.
+    const effectiveBuild = params.genome_build ?? genomeBuild.value
+    if (effectiveBuild !== undefined && effectiveBuild !== '') {
+      ipcParams.genome_build = effectiveBuild
+    }
+    const effectiveVariantType = params.variant_type ?? selectedVariantType.value
+    if (effectiveVariantType !== undefined && effectiveVariantType !== '') {
+      ipcParams.variant_type = effectiveVariantType
+    }
 
     return ipcParams
+  }
+
+  /**
+   * Load the list of distinct genome builds from cases and seed genomeBuild
+   * to the most-common build on first load. Subsequent calls refresh the
+   * list without overwriting the user's current selection.
+   */
+  const loadAvailableBuilds = async (): Promise<void> => {
+    if (!api) return
+    try {
+      const result = await api.cases.availableBuilds()
+      availableBuilds.value = result ?? []
+      // Only auto-seed on first load (when the user hasn't picked a build yet)
+      if (
+        availableBuilds.value.length > 0 &&
+        !availableBuilds.value.some((b) => b.build === genomeBuild.value)
+      ) {
+        genomeBuild.value = availableBuilds.value[0].build
+      }
+    } catch (err) {
+      logService.error(
+        'Failed to load available builds: ' + (err instanceof Error ? err.message : String(err)),
+        'cohort'
+      )
+    }
   }
 
   /**
@@ -267,7 +381,9 @@ export function useCohortData(): UseCohortDataReturn {
     error.value = null
 
     try {
-      // Determine if filters changed (exclude pagination/sort params)
+      // Determine if filters changed (exclude pagination/sort params).
+      // genome_build and variant_type are part of the filter identity — changing
+      // either one must invalidate the cached count so totals recompute.
       const filterHash = JSON.stringify({
         search_term: params.search_term,
         gene_symbol: params.gene_symbol,
@@ -283,7 +399,9 @@ export function useCohortData(): UseCohortDataReturn {
         acmg_classifications: params.acmg_classifications,
         column_filters: params.column_filters,
         active_panel_ids: params.active_panel_ids,
-        panel_padding_bp: params.panel_padding_bp
+        panel_padding_bp: params.panel_padding_bp,
+        genome_build: params.genome_build ?? genomeBuild.value,
+        variant_type: params.variant_type ?? selectedVariantType.value
       })
       const filtersChanged = filterHash !== cachedFilterHash
 
@@ -362,7 +480,14 @@ export function useCohortData(): UseCohortDataReturn {
     error.value = null
     summary.value = null
     summaryStale.value = false
+    rebuildPhase.value = null
+    rebuildPhaseIndex.value = null
+    rebuildPhaseTotal.value = null
+    rebuildPhaseLabel.value = null
     columnMeta.value = []
+    availableBuilds.value = []
+    genomeBuild.value = 'GRCh38'
+    selectedVariantType.value = 'snv'
     cachedFilterHash = ''
     requestGeneration = 0
   }
@@ -374,7 +499,15 @@ export function useCohortData(): UseCohortDataReturn {
     error,
     summary,
     summaryStale,
+    rebuildPhase,
+    rebuildPhaseIndex,
+    rebuildPhaseTotal,
+    rebuildPhaseLabel,
     columnMeta,
+    genomeBuild,
+    selectedVariantType,
+    availableBuilds,
+    loadAvailableBuilds,
     buildIpcParams,
     fetchVariants,
     fetchSummary,

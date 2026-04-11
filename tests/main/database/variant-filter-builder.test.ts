@@ -310,4 +310,226 @@ describe('VariantFilterBuilder', () => {
       expect(results[0].gene_symbol).toBe('BRCA1')
     })
   })
+
+  // ── Extension-table (SV/CNV/STR) filter + sort scenarios ────────────
+  describe('extension column_filters (dotted keys)', () => {
+    function insertSvVariant(
+      _caseId: number,
+      pos: number,
+      svFields: { support?: number | null; vaf?: number | null; event_id?: string | null }
+    ): number {
+      const result = db
+        .prepare(
+          `INSERT INTO variants (case_id, chr, pos, ref, alt, variant_type)
+           VALUES (?, '1', ?, 'N', '<DEL>', 'sv')`
+        )
+        .run(_caseId, pos)
+      const variantId = result.lastInsertRowid as number
+      db.prepare(
+        `INSERT INTO variant_sv (variant_id, support, vaf, event_id)
+         VALUES (?, ?, ?, ?)`
+      ).run(variantId, svFields.support ?? null, svFields.vaf ?? null, svFields.event_id ?? null)
+      return variantId
+    }
+
+    function insertCnvVariant(_caseId: number, pos: number, copyNumber: number | null): number {
+      const result = db
+        .prepare(
+          `INSERT INTO variants (case_id, chr, pos, ref, alt, variant_type)
+           VALUES (?, '1', ?, 'N', '<CNV>', 'cnv')`
+        )
+        .run(_caseId, pos)
+      const variantId = result.lastInsertRowid as number
+      db.prepare(`INSERT INTO variant_cnv (variant_id, copy_number) VALUES (?, ?)`).run(
+        variantId,
+        copyNumber
+      )
+      return variantId
+    }
+
+    function insertStrVariant(
+      _caseId: number,
+      pos: number,
+      strFields: {
+        repeat_unit?: string | null
+        disease?: string | null
+        str_status?: string | null
+      }
+    ): number {
+      const result = db
+        .prepare(
+          `INSERT INTO variants (case_id, chr, pos, ref, alt, variant_type)
+           VALUES (?, '4', ?, 'C', '<STR>', 'str')`
+        )
+        .run(_caseId, pos)
+      const variantId = result.lastInsertRowid as number
+      db.prepare(
+        `INSERT INTO variant_str (variant_id, repeat_unit, disease, str_status)
+         VALUES (?, ?, ?, ?)`
+      ).run(
+        variantId,
+        strFields.repeat_unit ?? null,
+        strFields.disease ?? null,
+        strFields.str_status ?? null
+      )
+      return variantId
+    }
+
+    it('filters by cnv.copy_number >= 3 (with implicit type narrowing)', () => {
+      insertCnvVariant(caseId, 500000, 2)
+      insertCnvVariant(caseId, 600000, 4)
+      insertCnvVariant(caseId, 700000, 5)
+
+      const results = executeQuery({
+        case_id: caseId,
+        column_filters: {
+          'cnv.copy_number': { operator: '>=', value: 3 }
+        }
+      })
+      // Only CNVs with copy_number >= 3 — narrowing to variant_type='cnv'
+      // already excludes the 3 base SNVs from the fixture.
+      expect(results).toHaveLength(2)
+      for (const row of results) {
+        expect(row.variant_type).toBe('cnv')
+      }
+    })
+
+    it('filters by sv.support >= 10 and pairs with variant_type=sv', () => {
+      insertSvVariant(caseId, 800000, { support: 5, vaf: 0.25 })
+      insertSvVariant(caseId, 900000, { support: 15, vaf: 0.5 })
+      insertSvVariant(caseId, 1000000, { support: 20, vaf: 0.75 })
+
+      const results = executeQuery({
+        case_id: caseId,
+        variant_type: 'sv',
+        column_filters: {
+          'sv.support': { operator: '>=', value: 10 }
+        }
+      })
+      expect(results).toHaveLength(2)
+      for (const row of results) {
+        expect(row.variant_type).toBe('sv')
+      }
+    })
+
+    it('filters by str.disease LIKE (with NOCASE)', () => {
+      insertStrVariant(caseId, 3074876, { repeat_unit: 'CAG', disease: 'Huntington disease' })
+      insertStrVariant(caseId, 3075000, { repeat_unit: 'CGG', disease: 'Fragile X syndrome' })
+
+      const results = executeQuery({
+        case_id: caseId,
+        column_filters: {
+          'str.disease': { operator: 'like', value: 'huntington' }
+        }
+      })
+      expect(results).toHaveLength(1)
+      expect(results[0].variant_type).toBe('str')
+    })
+
+    it('cross-type filters span multiple extension tables (no single narrowing)', () => {
+      insertCnvVariant(caseId, 500000, 5)
+      insertSvVariant(caseId, 900000, { support: 15 })
+
+      const results = executeQuery({
+        case_id: caseId,
+        column_filters: {
+          'cnv.copy_number': { operator: '>=', value: 3 },
+          'sv.support': { operator: '>=', value: 10 }
+        }
+      })
+      // Each variant only matches its own extension table's filter; the other
+      // filter is against a NULL column (LEFT JOIN) and fails (since these
+      // extension filters default to EXCLUDE NULLs), so NEITHER variant
+      // passes. This verifies cross-type filters AND together via AND.
+      expect(results).toHaveLength(0)
+    })
+
+    it('str.str_status IN [...] returns only matching status values', () => {
+      insertStrVariant(caseId, 3074876, {
+        repeat_unit: 'CAG',
+        disease: 'Huntington disease',
+        str_status: 'full_mutation'
+      })
+      insertStrVariant(caseId, 3075000, {
+        repeat_unit: 'CGG',
+        disease: 'Fragile X',
+        str_status: 'premutation'
+      })
+      insertStrVariant(caseId, 3076000, {
+        repeat_unit: 'GCA',
+        disease: 'Other',
+        str_status: 'normal'
+      })
+
+      const results = executeQuery({
+        case_id: caseId,
+        column_filters: {
+          'str.str_status': { operator: 'in', value: ['full_mutation', 'premutation'] }
+        }
+      })
+      expect(results).toHaveLength(2)
+    })
+
+    it('ignores dotted keys for unknown extension columns', () => {
+      const results = executeQuery({
+        case_id: caseId,
+        column_filters: {
+          'cnv.does_not_exist': { operator: '>=', value: 99 }
+        }
+      })
+      // Filter dropped — all 3 fixture variants returned
+      expect(results).toHaveLength(3)
+    })
+
+    it('sort by cnv.copy_number adds LEFT JOIN and orders rows', () => {
+      insertCnvVariant(caseId, 500000, 4)
+      insertCnvVariant(caseId, 600000, 2)
+
+      const query = builder.build(
+        { case_id: caseId, variant_type: 'cnv' },
+        { sortBy: [{ key: 'cnv.copy_number', order: 'desc' }] }
+      )
+      const sorted = builder.applySort(query, [{ key: 'cnv.copy_number', order: 'desc' }])
+      const compiled = sorted.compile()
+      const rows = db.prepare(compiled.sql).all(...compiled.parameters) as Record<string, unknown>[]
+      expect(rows).toHaveLength(2)
+      // Highest copy_number first
+      expect(rows[0]._cnv_copy_number).toBe(4)
+      expect(rows[1]._cnv_copy_number).toBe(2)
+    })
+
+    it('sort by sv.support with no filter still joins the SV table', () => {
+      insertSvVariant(caseId, 800000, { support: 8 })
+      insertSvVariant(caseId, 900000, { support: 12 })
+
+      const query = builder.build(
+        { case_id: caseId, variant_type: 'sv' },
+        { sortBy: [{ key: 'sv.support', order: 'asc' }] }
+      )
+      const sorted = builder.applySort(query, [{ key: 'sv.support', order: 'asc' }])
+      const compiled = sorted.compile()
+      // Verify the join alias `sv` appears in the compiled SQL
+      expect(compiled.sql).toContain('variant_sv')
+      const rows = db.prepare(compiled.sql).all(...compiled.parameters) as Record<string, unknown>[]
+      expect(rows).toHaveLength(2)
+      expect(rows[0]._sv_support).toBe(8)
+      expect(rows[1]._sv_support).toBe(12)
+    })
+
+    it('str filter join uses distinct "str" alias alongside "str_ext" projection', () => {
+      insertStrVariant(caseId, 3074876, { repeat_unit: 'CAG', disease: 'Huntington disease' })
+
+      // filter.variant_type='str' → str_ext alias for SELECT projection
+      // column_filters 'str.disease' → str alias for WHERE predicate
+      const results = executeQuery({
+        case_id: caseId,
+        variant_type: 'str',
+        column_filters: {
+          'str.disease': { operator: 'like', value: 'Huntington' }
+        }
+      })
+      expect(results).toHaveLength(1)
+      expect(results[0]._str_disease).toBe('Huntington disease')
+    })
+  })
 })

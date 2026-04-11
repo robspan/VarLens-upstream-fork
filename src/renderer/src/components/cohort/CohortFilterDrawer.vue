@@ -373,6 +373,35 @@
           />
         </v-expansion-panel-text>
       </v-expansion-panel>
+
+      <!-- === EXTENSION COLUMNS (SV/CNV/STR) === -->
+      <div class="filter-section-header text-overline text-medium-emphasis px-3 pt-3 pb-1">
+        <v-divider class="mb-2" />
+        Structural Variants
+      </div>
+
+      <!-- Extension column filters (SV / CNV / STR) — scoped to full cohort -->
+      <v-expansion-panel value="extension-columns">
+        <FilterPanelTitle
+          :icon="mdiDna"
+          label="Structural Variants"
+          :active="extensionColumnsActive"
+          :value-summary="extensionColumnsSummary"
+        />
+        <v-expansion-panel-text>
+          <FilterTypeNarrowingChip
+            :column-filters="columnFilters"
+            @clear-filter="onClearTypeFilter"
+          />
+          <ExtensionColumnFilters
+            v-if="cohortCaseIds.length > 0"
+            :scope="columnFilterScope"
+            :model-value="columnFilters"
+            @update:model-value="onColumnFiltersUpdate"
+          />
+          <div v-else class="text-caption text-medium-emphasis py-2">Loading cohort cases...</div>
+        </v-expansion-panel-text>
+      </v-expansion-panel>
     </v-expansion-panels>
 
     <PanelManagerDialog v-model="panelManagerOpen" @panels-changed="onPanelsChanged" />
@@ -387,6 +416,8 @@ import DslSearchBar from '../DslSearchBar.vue'
 import GroupedMultiSelect from '../GroupedMultiSelect.vue'
 import PanelManagerDialog from '../panels/PanelManagerDialog.vue'
 import PanelFilterSection from '../panels/PanelFilterSection.vue'
+import ExtensionColumnFilters from '../filters/ExtensionColumnFilters.vue'
+import FilterTypeNarrowingChip from '../filters/FilterTypeNarrowingChip.vue'
 import { consequenceGroups, clinvarGroups } from '../../config/filterGroups'
 import { ACMG_FILTER_OPTIONS } from '../../utils/filters'
 import type { CohortFilterDrawerState } from './cohortFilterDrawerTypes'
@@ -426,7 +457,8 @@ const allPanelValues = [
   'annotations',
   'internal-frequency',
   'frequency',
-  'cadd'
+  'cadd',
+  'extension-columns'
 ]
 const expandedPanels = ref<string[]>(['search', 'impact', 'frequency'])
 
@@ -477,8 +509,22 @@ const {
   dslErrors,
   onDslApply,
   onDslClear,
-  onDslSuggestionSelect
+  onDslSuggestionSelect,
+  columnFilters,
+  cohortCaseIds,
+  onColumnFiltersUpdate,
+  onClearTypeFilter
 } = state
+
+// Scope for extension column filters (cohort view spans all cases)
+const columnFilterScope = computed(() => ({ caseIds: cohortCaseIds.value }))
+
+// Active/summary state for the extension columns expansion panel
+const extensionColumnsActive = computed(() => Object.keys(columnFilters.value).length > 0)
+const extensionColumnsSummary = computed(() => {
+  const count = Object.keys(columnFilters.value).length
+  return count > 0 ? `${count} filter${count === 1 ? '' : 's'}` : ''
+})
 
 // Value summaries for collapsed panel previews
 const searchSummary = computed(() => searchTerm.value || '')

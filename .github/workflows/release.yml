@@ -27,6 +27,26 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
+      # Belt-and-suspenders gate: refuse to release a tag whose SHA didn't
+      # pass build.yml. Branch protection already blocks merges on failing
+      # CI, but direct tag pushes bypass branch protection — this catches
+      # that case before any OS builder spins up and wastes runner minutes.
+      # Tags don't trigger build.yml (it only runs on push-to-main and PRs),
+      # so we look up the latest build.yml run on the exact tagged SHA.
+      - name: Verify build.yml passed on tagged SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA=$(git rev-parse "${{ github.ref_name }}")
+          STATUS=$(gh run list --workflow=build.yml --commit="$SHA" \
+            --json conclusion --jq '.[0].conclusion // "missing"')
+          if [ "$STATUS" != "success" ]; then
+            echo "::error::build.yml did not succeed on $SHA (got: $STATUS)"
+            echo "::error::Refusing to release a tag whose CI did not pass."
+            exit 1
+          fi
+          echo "build.yml passed on $SHA — proceeding with release"
+
       - name: Generate release notes
         run: |
           PREV_TAG=$(git tag --sort=-v:refname | sed -n '2p')
@@ -96,19 +116,30 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Rebuild native modules for Node.js
-        run: npm run rebuild:node
+      # lint/typecheck/test are validated by build.yml on the tagged SHA
+      # before the tag is pushed. The create-release gate above refuses to
+      # proceed when build.yml didn't succeed, so re-running those checks
+      # here would be pure duplication.
 
-      - name: Run linter
-        run: npm run lint:check
+      # Cache the Electron-ABI native binary. Key must include runner.os,
+      # runner.arch, the exact Electron version spec from package.json, and
+      # the lockfile hash — a partial match would leave a wrong-ABI `.node`
+      # on disk and silently corrupt the build. No restore-keys fallback
+      # for the same reason.
+      - name: Extract Electron version
+        id: electron-ver
+        shell: bash
+        run: echo "ver=$(node -p 'require("./package.json").devDependencies.electron')" >> "$GITHUB_OUTPUT"
 
-      - name: Run type check
-        run: npm run typecheck
-
-      - name: Run tests with coverage
-        run: npx vitest run --coverage
+      - name: Cache native module for Electron ABI
+        id: native-cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules/better-sqlite3-multiple-ciphers/build/Release
+          key: native-electron-${{ runner.os }}-${{ runner.arch }}-${{ steps.electron-ver.outputs.ver }}-${{ hashFiles('package-lock.json') }}
 
       - name: Rebuild native modules for Electron
+        if: steps.native-cache.outputs.cache-hit != 'true'
         run: npm run rebuild:electron
 
       - name: Build
@@ -148,19 +179,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Rebuild native modules for Node.js
-        run: npm run rebuild:node
+      # lint/typecheck/test already validated by build.yml on the tagged SHA.
 
-      - name: Run linter
-        run: npm run lint:check
+      - name: Extract Electron version
+        id: electron-ver
+        shell: bash
+        run: echo "ver=$(node -p 'require("./package.json").devDependencies.electron')" >> "$GITHUB_OUTPUT"
 
-      - name: Run type check
-        run: npm run typecheck
-
-      - name: Run tests
-        run: npm run test
+      - name: Cache native module for Electron ABI
+        id: native-cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules/better-sqlite3-multiple-ciphers/build/Release
+          key: native-electron-${{ runner.os }}-${{ runner.arch }}-${{ steps.electron-ver.outputs.ver }}-${{ hashFiles('package-lock.json') }}
 
       - name: Rebuild native modules for Electron
+        if: steps.native-cache.outputs.cache-hit != 'true'
         run: npm run rebuild:electron
 
       - name: Build
@@ -201,19 +235,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Rebuild native modules for Node.js
-        run: npm run rebuild:node
+      # lint/typecheck/test already validated by build.yml on the tagged SHA.
 
-      - name: Run linter
-        run: npm run lint:check
+      - name: Extract Electron version
+        id: electron-ver
+        shell: bash
+        run: echo "ver=$(node -p 'require("./package.json").devDependencies.electron')" >> "$GITHUB_OUTPUT"
 
-      - name: Run type check
-        run: npm run typecheck
-
-      - name: Run tests
-        run: npm run test
+      - name: Cache native module for Electron ABI
+        id: native-cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules/better-sqlite3-multiple-ciphers/build/Release
+          key: native-electron-${{ runner.os }}-${{ runner.arch }}-${{ steps.electron-ver.outputs.ver }}-${{ hashFiles('package-lock.json') }}
 
       - name: Rebuild native modules for Electron
+        if: steps.native-cache.outputs.cache-hit != 'true'
         run: npm run rebuild:electron
 
       - name: Build
@@ -367,14 +404,14 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      # Single `gh release upload` call instead of a shell for-loop —
+      # `gh` parallelises internally and a single invocation also avoids
+      # N separate auth handshakes.
       - name: Upload all assets to release
-        run: |
-          for file in artifacts/*; do
-            [ -f "$file" ] && gh release upload "${{ github.ref_name }}" "$file" --clobber
-          done
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
+        run: gh release upload "${{ github.ref_name }}" artifacts/* --clobber
 
       - name: Publish draft release and mark as latest
         run: |

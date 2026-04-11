@@ -35,6 +35,7 @@ function makeFilters(overrides: Partial<FilterState> = {}): FilterState {
     inheritanceModes: [],
     analysisGroupId: null,
     considerPhasing: false,
+    columnFilters: {},
     ...overrides
   }
 }

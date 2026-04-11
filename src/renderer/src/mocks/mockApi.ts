@@ -49,7 +49,8 @@ export const mockApi: WindowAPI = {
       const before = cases.length
       cases = cases.filter((c) => !ids.includes(c.id))
       return before - cases.length
-    }
+    },
+    availableBuilds: async () => [{ build: 'GRCh38', caseCount: cases.length }]
   },
 
   variants: {
@@ -124,11 +125,41 @@ export const mockApi: WindowAPI = {
           return geneMatch || chrMatch || clinvarMatch
         })
       return filtered.slice(0, limit)
+    },
+    typeCounts: async (caseId: number) => {
+      const counts: Record<string, number> = {}
+      for (const v of variants) {
+        if (v.case_id !== caseId) continue
+        const type = v.variant_type ?? 'snv'
+        counts[type] = (counts[type] ?? 0) + 1
+      }
+      return counts
+    },
+    columnMeta: async (payload: { caseId?: number; caseIds?: number[]; columnKey: string }) => ({
+      key: payload.columnKey,
+      dataType: 'text' as const,
+      distinctCount: 0
+    }),
+    typesPresent: async (payload: { caseId?: number; caseIds?: number[] }) => {
+      const ids =
+        payload.caseIds !== undefined
+          ? payload.caseIds
+          : payload.caseId !== undefined
+            ? [payload.caseId]
+            : []
+      const set = new Set<string>()
+      for (const v of variants) {
+        if (!ids.includes(v.case_id)) continue
+        set.add(v.variant_type ?? 'snv')
+      }
+      return [...set]
     }
   },
 
   import: {
     selectFile: async () => '/mock/selected/file.json',
+    selectFiles: async () => ['/mock/selected/file.vcf.gz'],
+    selectBedFile: async () => '/mock/regions.bed',
     start: async () => ({
       caseId: cases.length + 1,
       variantCount: 1000,
@@ -136,13 +167,30 @@ export const mockApi: WindowAPI = {
       errors: [],
       elapsed: 1500
     }),
+    startMultiFile: async () => ({
+      caseId: cases.length + 1,
+      totalVariants: 0,
+      totalSkipped: 0,
+      files: [],
+      elapsed: 0
+    }),
     vcfPreview: async () => ({
       fileformat: 'VCFv4.2',
       samples: ['SAMPLE1'],
       variantCountEstimate: 100,
-      annotationType: 'none',
+      annotationType: 'none' as const,
       detectedGenomeBuild: 'GRCh38',
-      infoFields: []
+      infoFields: [],
+      callerName: null,
+      callerVersion: null,
+      defaultVariantType: 'snv',
+      filePath: '/mock/file.vcf.gz',
+      fileSize: 1000
+    }),
+    vcfMultiPreview: async () => ({
+      files: [],
+      siblingBedFiles: [],
+      suggestedCaseName: 'MockCase'
     }),
     onProgress: () => () => {},
     cancel: async () => {}

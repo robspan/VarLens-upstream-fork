@@ -40,8 +40,8 @@
 
       <!-- Variant filters -->
       <v-expansion-panels variant="accordion" class="mb-2">
-        <v-expansion-panel title="Variant Filters">
-          <v-expansion-panel-text>
+        <v-expansion-panel title="Variant Filters" eager>
+          <v-expansion-panel-text eager>
             <!-- Impact preset chips -->
             <div class="d-flex align-center mb-3">
               <span class="text-body-2 text-medium-emphasis mr-2">Impact:</span>
@@ -77,7 +77,7 @@
                   </v-chip-group>
                 </div>
                 <v-text-field
-                  v-model.number="gnomadAfMax"
+                  :model-value="filters.maxGnomadAf"
                   type="number"
                   :min="0"
                   :max="1"
@@ -85,7 +85,9 @@
                   density="compact"
                   variant="outlined"
                   hide-details
+                  clearable
                   placeholder="e.g. 0.01"
+                  @update:model-value="onMaxGnomadAfInput"
                 />
               </v-col>
 
@@ -106,14 +108,16 @@
                   </v-chip-group>
                 </div>
                 <v-text-field
-                  v-model.number="caddMin"
+                  :model-value="filters.minCadd"
                   type="number"
                   :min="0"
                   :max="60"
                   density="compact"
                   variant="outlined"
                   hide-details
+                  clearable
                   placeholder="e.g. 20"
+                  @update:model-value="onMinCaddInput"
                 />
               </v-col>
 
@@ -123,7 +127,7 @@
                   <span class="text-body-2 text-medium-emphasis">Consequences:</span>
                 </div>
                 <GroupedMultiSelect
-                  v-model:model-value="selectedConsequences"
+                  v-model:model-value="filters.consequences"
                   :config="consequenceGroupConfig"
                   label="Consequences"
                   :icon="mdiFilterVariant"
@@ -155,6 +159,20 @@
                 </v-textarea>
               </v-col>
             </v-row>
+
+            <!-- Extension column filters (Task 13 — cohort parity for Path 3) -->
+            <div class="mt-3">
+              <FilterTypeNarrowingChip
+                :column-filters="filters.columnFilters"
+                @clear-filter="handleClearTypeFilter"
+              />
+              <ExtensionColumnFilters
+                v-if="scopeCaseIds.length > 0"
+                :scope="{ caseIds: scopeCaseIds }"
+                :model-value="filters.columnFilters"
+                @update:model-value="onColumnFiltersUpdate"
+              />
+            </div>
           </v-expansion-panel-text>
         </v-expansion-panel>
       </v-expansion-panels>
@@ -233,8 +251,14 @@
 import { ref, computed, watch } from 'vue'
 import GroupBuilder from './GroupBuilder.vue'
 import GroupedMultiSelect from '../GroupedMultiSelect.vue'
+import ExtensionColumnFilters from '../filters/ExtensionColumnFilters.vue'
+import FilterTypeNarrowingChip from '../filters/FilterTypeNarrowingChip.vue'
+import { createFilters } from '../../composables/useFilters'
+import { buildIpcParams } from '../../utils/filters'
 import { consequenceGroups, getGroupValues } from '../../config/filterGroups'
 import { mdiChevronDown, mdiChevronUp, mdiDna, mdiFilterVariant, mdiPlay } from '@mdi/js'
+import type { FilterIpcParams } from '../../../../shared/types/filters'
+import type { ColumnFiltersParam } from '../../../../shared/types/column-filters'
 
 interface CaseInfo {
   id: number
@@ -256,6 +280,15 @@ defineProps<{
   hasResults?: boolean
 }>()
 
+/**
+ * Burden-analysis config emitted on Run.
+ *
+ * `filters` is the shared FilterIpcParams shape (same contract as Paths 1/2)
+ * with a panel-specific `gene_list` field merged in — the shared FilterState
+ * only has a single `geneSymbol` substring, so the textarea-parsed gene list
+ * is attached to the IPC payload inside handleRun() instead of living on the
+ * FilterState type.
+ */
 const emit = defineEmits<{
   run: [
     config: {
@@ -264,16 +297,21 @@ const emit = defineEmits<{
       primary_test: string
       weight_scheme: string
       covariates: string[]
-      filters: {
-        gnomad_af_max?: number
-        cadd_min?: number
-        consequences?: string[]
-        gene_list?: string[]
-      }
+      filters: FilterIpcParams & { gene_list?: string[] }
       max_threads: number
     }
   ]
 }>()
+
+// Panel-local shared FilterState instance (NOT the case-view instance).
+// createFilters() builds a fresh FilterState with its own maxGnomadAf/minCadd/
+// consequences/columnFilters refs; useFilters() is the inject-based consumer
+// variant and would throw here because this panel has no provider.
+//
+// We expose `filters` for the template + watchers, and use the panel's own
+// index-based preset chip refs (below) rather than the composable's
+// value-based preset refs because v-chip-group binds by index.
+const { filters } = createFilters()
 
 const collapsed = ref(false)
 const groupAIds = ref<number[]>([])
@@ -281,12 +319,10 @@ const groupBIds = ref<number[]>([])
 const primaryTest = ref('fisher')
 const weightScheme = ref('uniform')
 const selectedCovariates = ref<string[]>([])
-const gnomadAfMax = ref<number | undefined>(undefined)
-const caddMin = ref<number | undefined>(undefined)
-const selectedConsequences = ref<string[]>([])
 const geneListText = ref('')
 
-// Impact presets
+// Impact presets (panel-specific UX — maps HIGH/MOD/LOW chips to the SO
+// consequence arrays that live on the shared filters.value.consequences field).
 const impactPresets = [
   { label: 'HIGH', value: 'HIGH', color: 'error' },
   { label: 'MOD', value: 'MODERATE', color: 'warning' },
@@ -305,17 +341,33 @@ const impactToConsequences: Record<string, string[]> = {
 
 const selectedImpactPresets = ref<number[]>([])
 
-// When impact presets change, update consequences
+// Impact preset chips → shared filters.consequences.
+// Rebuild the preset-derived portion from the currently-selected chips on
+// every change: we strip every consequence that belongs to ANY impact
+// preset, then add back consequences for the currently-selected presets.
+// This preserves manual consequence selections (from GroupedMultiSelect)
+// that don't overlap any preset, while correctly handling deselection —
+// clicking HIGH off after HIGH+MOD now leaves only MOD consequences in
+// place, and deselecting all chips removes all preset-derived consequences.
+const allPresetConsequences = (() => {
+  const set = new Set<string>()
+  for (const preset of impactPresets) {
+    for (const v of impactToConsequences[preset.value] ?? []) set.add(v)
+  }
+  return set
+})()
 watch(selectedImpactPresets, (indices) => {
-  if (indices.length === 0) return
-  const consequences = new Set<string>(selectedConsequences.value)
-  // Add consequences for each selected impact
+  // Start from current consequences minus anything that belongs to a preset
+  // (preserves non-preset manual selections)
+  const next = new Set<string>(
+    filters.value.consequences.filter((c) => !allPresetConsequences.has(c))
+  )
+  // Add back consequences for currently-selected presets
   for (const idx of indices) {
     const preset = impactPresets[idx]
-    const vals = impactToConsequences[preset.value] ?? []
-    for (const v of vals) consequences.add(v)
+    for (const v of impactToConsequences[preset.value] ?? []) next.add(v)
   }
-  selectedConsequences.value = [...consequences]
+  filters.value.consequences = [...next]
 })
 
 // gnomAD AF presets
@@ -327,9 +379,15 @@ const afPresets = [
 
 const selectedAfPreset = ref<number | undefined>(undefined)
 
+// AF preset chip → shared filters.maxGnomadAf.
+// Deselecting a chip clears the filter (null) so presets behave as a
+// single-select mode switch. Users who want to keep a manual value
+// should not toggle a preset chip afterwards.
 watch(selectedAfPreset, (idx) => {
   if (idx !== undefined && idx >= 0 && idx < afPresets.length) {
-    gnomadAfMax.value = afPresets[idx].value
+    filters.value.maxGnomadAf = afPresets[idx].value
+  } else {
+    filters.value.maxGnomadAf = null
   }
 })
 
@@ -342,9 +400,13 @@ const caddPresets = [
 
 const selectedCaddPreset = ref<number | undefined>(undefined)
 
+// CADD preset chip → shared filters.minCadd.
+// Same deselect-clears semantic as the AF preset watcher above.
 watch(selectedCaddPreset, (idx) => {
   if (idx !== undefined && idx >= 0 && idx < caddPresets.length) {
-    caddMin.value = caddPresets[idx].value
+    filters.value.minCadd = caddPresets[idx].value
+  } else {
+    filters.value.minCadd = null
   }
 })
 
@@ -359,7 +421,8 @@ const weightOptions = [
 
 const covariateOptions = ['sex', 'age']
 
-// Parse gene list from textarea
+// Parse gene list from textarea — stays panel-local because the shared
+// FilterState has a single `geneSymbol` substring field, not a list.
 const parsedGeneList = computed(() => {
   if (!geneListText.value.trim()) return []
   return geneListText.value
@@ -377,18 +440,71 @@ const canRun = computed(
   () => groupAIds.value.length > 0 && groupBIds.value.length > 0 && overlapCount.value === 0
 )
 
+// Scope for ExtensionColumnFilters — the metadata scope covers the union of
+// both groups so SV/CNV/STR presence is computed against all analysed cases.
+// When both groups are empty we don't mount the extension filters at all to
+// avoid an IPC call with an empty caseIds array.
+const scopeCaseIds = computed<number[]>(() => [
+  ...new Set<number>([...groupAIds.value, ...groupBIds.value])
+])
+
+/**
+ * Handle numeric input for `filters.maxGnomadAf`. The shared FilterState
+ * stores this as `number | null` (null = "not set"); the v-text-field emits
+ * string | null from `@update:model-value`, so we coerce to a number when
+ * it's a valid non-empty string and otherwise clear to null.
+ */
+function onMaxGnomadAfInput(value: string | number | null | undefined): void {
+  if (value === null || value === undefined || value === '') {
+    filters.value.maxGnomadAf = null
+    return
+  }
+  const num = typeof value === 'number' ? value : Number(value)
+  filters.value.maxGnomadAf = Number.isNaN(num) ? null : num
+}
+
+function onMinCaddInput(value: string | number | null | undefined): void {
+  if (value === null || value === undefined || value === '') {
+    filters.value.minCadd = null
+    return
+  }
+  const num = typeof value === 'number' ? value : Number(value)
+  filters.value.minCadd = Number.isNaN(num) ? null : num
+}
+
+/**
+ * Extension column filters update — assign the new dictionary to the shared
+ * FilterState so the narrowing chip + buildIpcParams pick it up on next run.
+ */
+function onColumnFiltersUpdate(value: ColumnFiltersParam): void {
+  filters.value.columnFilters = value
+}
+
+/**
+ * Strip every key matching `${typeKey}.*` from filters.columnFilters when the
+ * narrowing chip fires a type-level clear (e.g. "clear all SV filters").
+ */
+function handleClearTypeFilter(typeKey: string): void {
+  const next: ColumnFiltersParam = { ...filters.value.columnFilters }
+  for (const key of Object.keys(next)) {
+    if (key.startsWith(`${typeKey}.`)) {
+      delete next[key]
+    }
+  }
+  filters.value.columnFilters = next
+}
+
 function handleRun(): void {
-  const filters: Record<string, unknown> = {}
-  const afVal =
-    typeof gnomadAfMax.value === 'number' && !Number.isNaN(gnomadAfMax.value)
-      ? gnomadAfMax.value
-      : undefined
-  const caddVal =
-    typeof caddMin.value === 'number' && !Number.isNaN(caddMin.value) ? caddMin.value : undefined
-  if (afVal !== undefined) filters.gnomad_af_max = afVal
-  if (caddVal !== undefined) filters.cadd_min = caddVal
-  if (selectedConsequences.value.length > 0) filters.consequences = [...selectedConsequences.value]
-  if (parsedGeneList.value.length > 0) filters.gene_list = [...parsedGeneList.value]
+  // buildIpcParams serializes FilterState → FilterIpcParams (camelCase →
+  // snake_case, drops empty/null values, clones arrays for IPC transport).
+  // It covers gnomad_af_max, cadd_min, consequences, column_filters, etc.
+  const ipcFilters: FilterIpcParams & { gene_list?: string[] } = buildIpcParams(filters.value)
+
+  // gene_list is panel-local (see parsedGeneList); merge it into the IPC
+  // payload here because it's not part of the shared FilterState contract.
+  if (parsedGeneList.value.length > 0) {
+    ipcFilters.gene_list = [...parsedGeneList.value]
+  }
 
   emit('run', {
     groupA_ids: [...groupAIds.value],
@@ -396,8 +512,33 @@ function handleRun(): void {
     primary_test: primaryTest.value,
     weight_scheme: weightScheme.value,
     covariates: [...selectedCovariates.value],
-    filters,
+    filters: ipcFilters,
     max_threads: 4
   })
 }
+
+// Expose internals for tests (see tests/renderer/components/association/*).
+//
+// WARNING for future test authors: writing directly to `filters.value.*`
+// (e.g. `wrapper.vm.filters.maxGnomadAf = 0.05`) bypasses the panel's input
+// sanitization handlers (`onMaxGnomadAfInput`, `onMaxCaddInput`, etc.) that
+// normalize empty strings, clamp ranges, and reconcile mutually exclusive
+// preset chips. For user-flow-like tests, prefer driving the actual
+// `v-text-field` inputs (`wrapper.find('input[aria-label="..."]').setValue(...)`)
+// or invoking the corresponding `on*Input` handlers directly. Bypassing the
+// handlers can leave `filters` in a state the user cannot actually reach
+// through the UI, masking bugs and producing false-positive green tests.
+defineExpose({
+  groupAIds,
+  groupBIds,
+  filters,
+  selectedImpactPresets,
+  selectedAfPreset,
+  selectedCaddPreset,
+  geneListText,
+  handleRun,
+  handleClearTypeFilter,
+  onColumnFiltersUpdate,
+  scopeCaseIds
+})
 </script>

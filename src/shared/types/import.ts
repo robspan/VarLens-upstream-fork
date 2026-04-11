@@ -1,9 +1,17 @@
 // Progress update for import callbacks
 export interface ProgressUpdate {
   phase: 'reading' | 'parsing' | 'inserting'
-  count: number // Variants processed so far
+  count: number // Variants processed so far (within the current file)
   elapsed: number // Milliseconds since start
   skipped?: number // Variants skipped due to validation errors
+  // Multi-file session metadata: identifies WHICH file within a multi-file
+  // import session this event belongs to. The orchestrator (`startMultiFileImport`)
+  // injects these per file so the renderer no longer has to infer transitions
+  // from "count reset" heuristics. Single-file imports omit both fields.
+  fileIndex?: number
+  totalFiles?: number
+  filePath?: string
+  fileName?: string
 }
 
 // Callback type for progress reporting
@@ -81,4 +89,23 @@ export interface VcfPreviewResult {
     description: string
     mapsToColumn: string | null
   }>
+  /** Detected variant caller name from ##source= or ##command= header lines */
+  callerName: string | null
+  /** Caller version extracted from header (e.g., '2.6.3') */
+  callerVersion: string | null
+  /** Default variant type inferred from caller (snv, sv, cnv, str) */
+  defaultVariantType: string
+  /** Absolute file path (used for multi-file preview) */
+  filePath: string
+  /** File size in bytes */
+  fileSize: number
+}
+
+/** Result of scanning multiple VCF files plus optional sibling BED files */
+export interface VcfMultiPreviewResult {
+  files: VcfPreviewResult[]
+  /** Sibling BED files found in the same directory as the selected VCFs */
+  siblingBedFiles: string[]
+  /** Derived case name from sample ID (stripped of path + extension) */
+  suggestedCaseName: string
 }

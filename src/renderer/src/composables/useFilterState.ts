@@ -84,7 +84,8 @@ export function useFilterState(
     panelPaddingBp: 5000,
     inheritanceModes: [] as string[],
     analysisGroupId: null as number | null,
-    considerPhasing: false
+    considerPhasing: false,
+    columnFilters: {}
   })
 
   // -------------------------------------------------------------------------

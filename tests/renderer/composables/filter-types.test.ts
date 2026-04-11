@@ -13,6 +13,7 @@ const defaultState: FilterState = {
   clinvars: [],
   maxGnomadAf: null,
   minCadd: null,
+  minCarriers: null,
   tagIds: [],
   starredOnly: false,
   hasCommentOnly: false,
@@ -23,7 +24,8 @@ const defaultState: FilterState = {
   maxInternalAf: null,
   inheritanceModes: [],
   analysisGroupId: null,
-  considerPhasing: false
+  considerPhasing: false,
+  columnFilters: {}
 }
 
 describe('buildFilterFromState', () => {
@@ -94,6 +96,7 @@ describe('buildFilterFromState', () => {
       clinvars: ['pathogenic'],
       maxGnomadAf: 0.01,
       minCadd: 15,
+      minCarriers: null,
       tagIds: [1, 2],
       starredOnly: true,
       hasCommentOnly: true,
@@ -104,7 +107,8 @@ describe('buildFilterFromState', () => {
       maxInternalAf: null,
       inheritanceModes: [],
       analysisGroupId: null,
-      considerPhasing: false
+      considerPhasing: false,
+      columnFilters: {}
     }
     const result = buildFilterFromState(state, ['HIGH'])
 
@@ -175,6 +179,7 @@ describe('buildFilterFromState', () => {
         clinvars: ['pathogenic'],
         maxGnomadAf: 0.01,
         minCadd: 15,
+        minCarriers: null,
         tagIds: [1, 2],
         starredOnly: true,
         hasCommentOnly: true,
@@ -185,7 +190,8 @@ describe('buildFilterFromState', () => {
         maxInternalAf: null,
         inheritanceModes: [],
         analysisGroupId: null,
-        considerPhasing: false
+        considerPhasing: false,
+        columnFilters: {}
       })
       const result = buildFilterFromState(state.value, ['HIGH'])
       // Must not throw — proves no Proxy objects in the output

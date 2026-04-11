@@ -7,7 +7,9 @@ import {
   CaseIdSchema,
   LimitSchema,
   OffsetSchema,
-  SortItemSchema
+  SortItemSchema,
+  ColumnMetaPayloadSchema,
+  TypesPresentPayloadSchema
 } from '../../../shared/types/ipc-schemas'
 import { mainLogger } from '../../services/MainLogger'
 import { clearPanelIntervalCache } from './panelIntervalHelper'
@@ -16,7 +18,10 @@ import {
   queryVariants,
   getFilterOptions,
   searchVariants,
-  getGeneSymbols
+  getGeneSymbols,
+  getVariantTypeCounts,
+  getColumnMetaForKey,
+  getVariantTypesPresent
 } from './variants-logic'
 
 // Re-export for consumers that import from this module
@@ -239,4 +244,81 @@ export function registerVariantHandlers({ ipcMain, getDb, getDbPool }: HandlerDe
       })
     }
   )
+
+  /**
+   * Get variant type counts per case (for tab badges).
+   * Channel: variants:typeCounts
+   * Returns: Record<string, number> e.g. { snv: 1234, indel: 56, sv: 12 }
+   */
+  ipcMain.handle('variants:typeCounts', async (_event, caseId: unknown) => {
+    return wrapHandler(async () => {
+      const validatedCaseId = CaseIdSchema.safeParse(caseId)
+      if (!validatedCaseId.success) {
+        mainLogger.error(
+          `Invalid variants:typeCounts caseId: ${validatedCaseId.error.message}`,
+          'variants'
+        )
+        throw new Error('Invalid case ID')
+      }
+
+      return getVariantTypeCounts(validatedCaseId.data, getDb, getDbPool)
+    })
+  })
+
+  /**
+   * Get per-column metadata for a single column (single-case or cohort scope).
+   * Channel: variants:columnMeta
+   *
+   * Payload: { caseId?: number, caseIds?: number[], columnKey: string }
+   * Either caseId or a non-empty caseIds array must be provided.
+   *
+   * Returns: ColumnFilterMeta — single-column metadata used by the filter UI
+   * to auto-detect numeric/text data types, min/max, and low-cardinality
+   * distinct values for column filter auto-suggest. Dispatches base vs
+   * extension column paths via VariantRepository.getColumnMeta.
+   */
+  ipcMain.handle('variants:columnMeta', async (_event, payload: unknown) => {
+    return wrapHandler(async () => {
+      const validated = ColumnMetaPayloadSchema.safeParse(payload)
+      if (!validated.success) {
+        mainLogger.error(
+          `Invalid variants:columnMeta payload: ${validated.error.message}`,
+          'variants'
+        )
+        throw new Error('Invalid columnMeta payload')
+      }
+      const { caseId, caseIds, columnKey } = validated.data
+      const scope: { caseId: number } | { caseIds: number[] } =
+        caseIds !== undefined ? { caseIds } : { caseId: caseId as number }
+      return getColumnMetaForKey(scope, columnKey, getDb, getDbPool)
+    })
+  })
+
+  /**
+   * Get distinct variant types present for a single case or cohort.
+   * Channel: variants:typesPresent
+   *
+   * Payload: { caseId?: number, caseIds?: number[] }
+   * Either caseId or a non-empty caseIds array must be provided.
+   *
+   * Returns: string[] — distinct variant_type values present in the scope,
+   * used by the renderer auto-hide logic to dim SV/CNV/STR tabs that have
+   * no data for the current case(s).
+   */
+  ipcMain.handle('variants:typesPresent', async (_event, payload: unknown) => {
+    return wrapHandler(async () => {
+      const validated = TypesPresentPayloadSchema.safeParse(payload)
+      if (!validated.success) {
+        mainLogger.error(
+          `Invalid variants:typesPresent payload: ${validated.error.message}`,
+          'variants'
+        )
+        throw new Error('Invalid typesPresent payload')
+      }
+      const { caseId, caseIds } = validated.data
+      const scope: { caseId: number } | { caseIds: number[] } =
+        caseIds !== undefined ? { caseIds } : { caseId: caseId as number }
+      return getVariantTypesPresent(scope, getDb, getDbPool)
+    })
+  })
 }

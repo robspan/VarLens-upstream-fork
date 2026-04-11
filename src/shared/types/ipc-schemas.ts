@@ -137,6 +137,10 @@ export const CohortSearchParamsSchema = z.object({
     .nullish()
     .transform((val) => val ?? undefined),
 
+  // Genome build / variant type scoping (Phase 3 multi-variant-type)
+  genome_build: nullishString(),
+  variant_type: nullishString(),
+
   // Count optimization flag
   _count_needed: z.boolean().optional()
 })
@@ -277,6 +281,12 @@ export const VariantFilterPartialSchema = z.object({
   consider_phasing: z
     .boolean()
     .nullish()
+    .transform((val) => val ?? undefined),
+
+  // Variant type discriminator filter (snv, indel, sv, cnv, str)
+  variant_type: z
+    .enum(['snv', 'indel', 'sv', 'cnv', 'str'])
+    .nullish()
     .transform((val) => val ?? undefined)
 })
 
@@ -321,6 +331,33 @@ export const CaseIdSchema = z.number().int().positive()
  * Schema for pagination limit
  */
 export const LimitSchema = z.number().int().positive().max(1000)
+
+/**
+ * Payload for variants:columnMeta IPC channel.
+ * Either caseId (single case) OR caseIds (cohort) must be provided.
+ */
+export const ColumnMetaPayloadSchema = z
+  .object({
+    caseId: z.number().int().positive().optional(),
+    caseIds: z.array(z.number().int().positive()).optional(),
+    columnKey: z.string().min(1)
+  })
+  .refine((p) => p.caseId !== undefined || (p.caseIds !== undefined && p.caseIds.length > 0), {
+    message: 'Either caseId or caseIds must be provided'
+  })
+
+/**
+ * Payload for variants:typesPresent IPC channel.
+ * Either caseId (single case) OR caseIds (cohort) must be provided.
+ */
+export const TypesPresentPayloadSchema = z
+  .object({
+    caseId: z.number().int().positive().optional(),
+    caseIds: z.array(z.number().int().positive()).optional()
+  })
+  .refine((p) => p.caseId !== undefined || (p.caseIds !== undefined && p.caseIds.length > 0), {
+    message: 'Either caseId or caseIds must be provided'
+  })
 
 // ============================================================
 // Tag Schemas
@@ -709,7 +746,13 @@ export const AssociationConfigSchema = z.object({
     gnomad_af_max: z.number().min(0).max(1).optional(),
     cadd_min: z.number().min(0).max(DOMAIN_CONFIG.MAX_CADD_SCORE).optional(),
     consequences: z.array(z.string()).optional(),
-    gene_list: z.array(z.string()).optional()
+    gene_list: z.array(z.string()).optional(),
+    // Parity fields with Paths 1/2 (FilterIpcParams subset)
+    clinvars: z.array(z.string()).optional(),
+    funcs: z.array(z.string()).optional(),
+    acmg_classifications: z.array(z.string()).optional(),
+    max_internal_af: z.number().min(0).max(1).optional(),
+    column_filters: z.record(z.string(), ColumnFilterSchema).optional()
   }),
   max_threads: z.number().int().min(1).max(64).default(4)
 })

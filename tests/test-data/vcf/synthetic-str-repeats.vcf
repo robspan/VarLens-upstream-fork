@@ -1,0 +1,15 @@
+##fileformat=VCFv4.3
+##reference=file:///GRCh38.fa
+##contig=<ID=chr4>
+##contig=<ID=chrX>
+##INFO=<ID=REPID,Number=1,Type=String,Description="Repeat ID">
+##INFO=<ID=RU,Number=1,Type=String,Description="Repeat unit">
+##INFO=<ID=VARID,Number=1,Type=String,Description="Catalog variant ID">
+##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Variant type">
+##INFO=<ID=END,Number=1,Type=Integer,Description="End position">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=REPCN,Number=1,Type=String,Description="Repeat copy number">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	SAMPLE1
+chr4	3074876	HTT	C	<STR50>	.	PASS	END=3074933;REPID=HTT;RU=CAG;VARID=HTT;SVTYPE=STR	GT:REPCN	0/1:17/50
+chrX	147912050	FMR1	G	<STR200>	.	PASS	END=147912110;REPID=FMR1;RU=CGG;VARID=FMR1;SVTYPE=STR	GT:REPCN	0/1:20/200
+chr4	39348481	RFC1	A	<STR400>	.	PASS	END=39348558;REPID=RFC1;RU=AAGGG;VARID=RFC1;SVTYPE=STR	GT:REPCN	0/1:11/400

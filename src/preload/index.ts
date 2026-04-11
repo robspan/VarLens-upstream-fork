@@ -33,7 +33,9 @@ const api = {
     query: (params: CaseSearchParams) => ipcRenderer.invoke('cases:query', params),
     delete: (id: number) => ipcRenderer.invoke('cases:delete', id),
     deleteAll: (): Promise<number> => ipcRenderer.invoke('cases:deleteAll'),
-    deleteBatch: (ids: number[]): Promise<number> => ipcRenderer.invoke('cases:deleteBatch', ids)
+    deleteBatch: (ids: number[]): Promise<number> => ipcRenderer.invoke('cases:deleteBatch', ids),
+    availableBuilds: (): Promise<Array<{ build: string; caseCount: number }>> =>
+      ipcRenderer.invoke('cases:availableBuilds')
   },
 
   variants: {
@@ -64,11 +66,32 @@ const api = {
 
     /** Get gene symbols for autocomplete (optimized LIKE query - faster than FTS5) */
     geneSymbols: (caseId: number, query: string, limit?: number) =>
-      ipcRenderer.invoke('variants:geneSymbols', caseId, query, limit ?? 50)
+      ipcRenderer.invoke('variants:geneSymbols', caseId, query, limit ?? 50),
+
+    /** Get variant type counts per case for tab badges (snv/indel/sv/cnv/str) */
+    typeCounts: (caseId: number) => ipcRenderer.invoke('variants:typeCounts', caseId),
+
+    /**
+     * Get per-column metadata for a single column (single-case or cohort scope).
+     * Used by the filter UI to lazy-load column metadata on demand.
+     * Payload must provide either caseId (single case) or caseIds (cohort).
+     */
+    columnMeta: (payload: { caseId?: number; caseIds?: number[]; columnKey: string }) =>
+      ipcRenderer.invoke('variants:columnMeta', payload),
+
+    /**
+     * Get distinct variant types present for a single case or cohort.
+     * Used by the renderer to auto-hide variant-type tabs with no data.
+     * Payload must provide either caseId (single case) or caseIds (cohort).
+     */
+    typesPresent: (payload: { caseId?: number; caseIds?: number[] }) =>
+      ipcRenderer.invoke('variants:typesPresent', payload)
   },
 
   import: {
     selectFile: () => ipcRenderer.invoke('import:selectFile'),
+    selectFiles: () => ipcRenderer.invoke('import:selectFiles'),
+    selectBedFile: () => ipcRenderer.invoke('import:selectBedFile'),
 
     start: (
       filePath: string,
@@ -76,7 +99,28 @@ const api = {
       vcfOptions?: { selectedSample?: string; genomeBuild?: string }
     ) => ipcRenderer.invoke('import:start', filePath, caseName, vcfOptions),
 
+    startMultiFile: (
+      caseName: string,
+      files: Array<{
+        filePath: string
+        variantType: string
+        caller: string | null
+        annotationFormat: string | null
+      }>,
+      vcfOptions?: { selectedSample?: string; genomeBuild?: string },
+      filters?: {
+        bedFile?: string | null
+        bedPadding?: number
+        passOnly?: boolean
+        minQual?: number | null
+        minGq?: number | null
+        minDp?: number | null
+      }
+    ) => ipcRenderer.invoke('import:startMultiFile', caseName, files, vcfOptions, filters),
+
     vcfPreview: (filePath: string) => ipcRenderer.invoke('import:vcfPreview', filePath),
+    vcfMultiPreview: (filePaths: string[]) =>
+      ipcRenderer.invoke('import:vcfMultiPreview', filePaths),
 
     /**
      * Register progress listener. Returns cleanup function.
@@ -197,8 +241,25 @@ const api = {
     },
     getSummaryStatus: () => ipcRenderer.invoke('cohort:summaryStatus'),
     rebuildSummary: () => ipcRenderer.invoke('cohort:rebuildSummary'),
-    onSummaryRebuilt: (callback: (status: { is_stale: boolean }) => void): (() => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, status: { is_stale: boolean }): void => {
+    onSummaryRebuilt: (
+      callback: (status: {
+        is_stale: boolean
+        phase?: string
+        phase_index?: number
+        phase_total?: number
+        label?: string
+      }) => void
+    ): (() => void) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        status: {
+          is_stale: boolean
+          phase?: string
+          phase_index?: number
+          phase_total?: number
+          label?: string
+        }
+      ): void => {
         callback(status)
       }
       ipcRenderer.on('cohort:summaryRebuilt', handler)

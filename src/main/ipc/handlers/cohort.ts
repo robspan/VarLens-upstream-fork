@@ -33,7 +33,19 @@ const CarriersParamsSchema = z.object({
 /** Shared callbacks that wire logic-layer events to renderer via safeEmit. */
 const cohortCallbacks: CohortCallbacks = {
   onSummaryStale: (data) => safeEmit('cohort:summaryRebuilt', data),
-  onSummaryFresh: (data) => safeEmit('cohort:summaryRebuilt', data)
+  onSummaryFresh: (data) => safeEmit('cohort:summaryRebuilt', data),
+  // Phase-progress events are multiplexed onto the same channel as the
+  // stale/fresh events. The renderer distinguishes them by the presence of
+  // a `phase` field. We always set `is_stale: true` on progress payloads so
+  // legacy consumers that only read `is_stale` still behave correctly.
+  onSummaryProgress: (data) =>
+    safeEmit('cohort:summaryRebuilt', {
+      is_stale: true,
+      phase: data.phase,
+      phase_index: data.phase_index,
+      phase_total: data.phase_total,
+      label: data.label
+    })
 }
 
 /**

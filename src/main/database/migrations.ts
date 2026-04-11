@@ -37,6 +37,9 @@ import { BUILT_IN_PRESETS } from './built-in-presets'
  * - 21: analysis_groups + analysis_group_members for family/trio support (#107)
  * - 22: Cross-case variant coordinate index for trio inheritance queries (#107)
  * - 23: VCF import columns on variants + cases (#42)
+ * - 24: Normalize ACMG classification labels to ClinVar sentence case
+ * - 25: Multi-variant type support (SV/CNV/STR extension tables, case_import_files)
+ * - 26: v0.55.0 FTS5 virtual tables for variant_sv + variant_str (multi-variant filter/sort/search)
  *
  * @param db - better-sqlite3-multiple-ciphers Database instance
  */
@@ -1396,5 +1399,273 @@ export function runMigrations(db: Database.Database): void {
     }
 
     db.exec('PRAGMA user_version = 24')
+  }
+
+  // ── v25: Multi-variant type support (SV/CNV/STR extension tables) ──
+  if (currentVersion < 25) {
+    // 1. New columns on variants table
+    const varCols = db.pragma('table_info(variants)') as Array<{ name: string }>
+    if (!varCols.some((c) => c.name === 'variant_type')) {
+      db.exec("ALTER TABLE variants ADD COLUMN variant_type TEXT NOT NULL DEFAULT 'snv'")
+      db.exec('ALTER TABLE variants ADD COLUMN end_pos INTEGER')
+      db.exec('ALTER TABLE variants ADD COLUMN sv_type TEXT')
+      db.exec('ALTER TABLE variants ADD COLUMN sv_length INTEGER')
+      db.exec('ALTER TABLE variants ADD COLUMN caller TEXT')
+    }
+
+    // 2. Classify existing variants by REF/ALT length
+    db.exec(`
+      UPDATE variants SET variant_type =
+        CASE
+          WHEN length(ref) = 1 AND length(alt) = 1 THEN 'snv'
+          ELSE 'indel'
+        END
+    `)
+
+    // 3. Indexes on new columns
+    db.exec('CREATE INDEX IF NOT EXISTS idx_variants_type ON variants(variant_type)')
+    db.exec('CREATE INDEX IF NOT EXISTS idx_variants_type_case ON variants(variant_type, case_id)')
+    db.exec(
+      'CREATE INDEX IF NOT EXISTS idx_variants_end_pos ON variants(chr, end_pos) WHERE end_pos IS NOT NULL'
+    )
+
+    // 4. SV extension table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS variant_sv (
+        variant_id INTEGER PRIMARY KEY,
+        sv_is_precise INTEGER,
+        cipos_left INTEGER, cipos_right INTEGER,
+        ciend_left INTEGER, ciend_right INTEGER,
+        support INTEGER, coverage TEXT, strand TEXT,
+        stdev_len REAL, stdev_pos REAL, vaf REAL,
+        dr INTEGER, dv INTEGER,
+        pe_support INTEGER, sr_support INTEGER,
+        event_id TEXT, mate_id TEXT,
+        FOREIGN KEY (variant_id) REFERENCES variants(id) ON DELETE CASCADE
+      )
+    `)
+
+    // 5. CNV extension table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS variant_cnv (
+        variant_id INTEGER PRIMARY KEY,
+        copy_number INTEGER, copy_number_quality INTEGER,
+        homozygosity_ref REAL, homozygosity_alt REAL,
+        sm REAL, bin_count INTEGER,
+        FOREIGN KEY (variant_id) REFERENCES variants(id) ON DELETE CASCADE
+      )
+    `)
+    db.exec('CREATE INDEX IF NOT EXISTS idx_cnv_copy_number ON variant_cnv(copy_number)')
+
+    // 6. STR extension table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS variant_str (
+        variant_id INTEGER PRIMARY KEY,
+        repeat_id TEXT, variant_catalog_id TEXT,
+        repeat_unit TEXT, display_repeat_unit TEXT,
+        ref_copies REAL, alt_copies TEXT,
+        repeat_length INTEGER,
+        str_status TEXT, normal_max INTEGER, pathologic_min INTEGER,
+        disease TEXT, inheritance_mode TEXT,
+        source_display TEXT, rank_score TEXT,
+        locus_coverage REAL, support_type TEXT, confidence_interval TEXT,
+        FOREIGN KEY (variant_id) REFERENCES variants(id) ON DELETE CASCADE
+      )
+    `)
+    db.exec('CREATE INDEX IF NOT EXISTS idx_str_repeat_id ON variant_str(repeat_id)')
+    db.exec('CREATE INDEX IF NOT EXISTS idx_str_disease ON variant_str(disease)')
+
+    // 7. Case import files provenance table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS case_import_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        file_path TEXT NOT NULL,
+        file_size INTEGER NOT NULL,
+        variant_type TEXT NOT NULL,
+        caller TEXT,
+        variant_count INTEGER NOT NULL DEFAULT 0,
+        annotation_format TEXT,
+        imported_at INTEGER NOT NULL,
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+      )
+    `)
+    db.exec('CREATE INDEX IF NOT EXISTS idx_case_import_files_case ON case_import_files(case_id)')
+
+    // 8. Rebuild cohort_variant_summary + gene_burden_summary with composite PKs.
+    //
+    // The previous schemas used PK (chr,pos,ref,alt) and gene_symbol alone.
+    // With multi-variant-type + multi-build support, the same coordinate can
+    // legitimately exist multiple times under different (variant_type, genome_build)
+    // combinations, so those PKs are no longer sufficient. ALTER TABLE cannot
+    // change a PRIMARY KEY in SQLite, so we DROP and recreate — the data is
+    // fully derivable from the `variants` table, and we mark the summary as
+    // stale so the next cohort access rebuilds it from scratch.
+    db.exec('DROP INDEX IF EXISTS idx_cvs_gene')
+    db.exec('DROP INDEX IF EXISTS idx_cvs_carrier')
+    db.exec('DROP INDEX IF EXISTS idx_cvs_filters')
+    db.exec('DROP INDEX IF EXISTS idx_cvs_consequence')
+    db.exec('DROP INDEX IF EXISTS idx_cvs_cohort_freq')
+    db.exec('DROP INDEX IF EXISTS idx_cvs_covering_common')
+    db.exec('DROP INDEX IF EXISTS idx_cvs_gene_covering')
+    db.exec('DROP TABLE IF EXISTS cohort_variant_summary')
+    db.exec(`
+      CREATE TABLE cohort_variant_summary (
+        chr TEXT NOT NULL,
+        pos INTEGER NOT NULL,
+        ref TEXT NOT NULL,
+        alt TEXT NOT NULL,
+        variant_type TEXT NOT NULL DEFAULT 'snv',
+        genome_build TEXT NOT NULL DEFAULT 'GRCh38',
+        gene_symbol TEXT,
+        cdna TEXT,
+        aa_change TEXT,
+        consequence TEXT,
+        func TEXT,
+        clinvar TEXT,
+        gnomad_af REAL,
+        cadd REAL,
+        transcript TEXT,
+        omim_mim_number TEXT,
+        carrier_count INTEGER NOT NULL,
+        het_count INTEGER NOT NULL,
+        hom_count INTEGER NOT NULL,
+        variant_key TEXT NOT NULL,
+        has_star INTEGER NOT NULL DEFAULT 0,
+        has_comment INTEGER NOT NULL DEFAULT 0,
+        acmg_best TEXT,
+        cohort_frequency REAL,
+        PRIMARY KEY (chr, pos, ref, alt, variant_type, genome_build)
+      )
+    `)
+    db.exec(`
+      CREATE INDEX idx_cvs_carrier ON cohort_variant_summary(carrier_count);
+      CREATE INDEX idx_cvs_filters ON cohort_variant_summary(gnomad_af, cadd);
+      CREATE INDEX idx_cvs_cohort_freq ON cohort_variant_summary(cohort_frequency);
+      CREATE INDEX idx_cvs_covering_common
+        ON cohort_variant_summary(consequence, gnomad_af, carrier_count);
+      CREATE INDEX idx_cvs_gene_covering
+        ON cohort_variant_summary(gene_symbol, carrier_count);
+      CREATE INDEX idx_cvs_type_build ON cohort_variant_summary(variant_type, genome_build);
+    `)
+
+    db.exec('DROP INDEX IF EXISTS idx_gbs_affected')
+    db.exec('DROP TABLE IF EXISTS gene_burden_summary')
+    db.exec(`
+      CREATE TABLE gene_burden_summary (
+        gene_symbol TEXT NOT NULL,
+        genome_build TEXT NOT NULL DEFAULT 'GRCh38',
+        variant_count INTEGER NOT NULL,
+        unique_variant_count INTEGER NOT NULL,
+        affected_case_count INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (gene_symbol, genome_build)
+      )
+    `)
+    db.exec('CREATE INDEX idx_gbs_affected ON gene_burden_summary(affected_case_count DESC)')
+
+    // 9. Mark cohort summary as stale for full rebuild (derives variant_type from variants)
+    const metaExists = (
+      db
+        .prepare(
+          "SELECT COUNT(*) as c FROM sqlite_master WHERE type='table' AND name='cohort_summary_meta'"
+        )
+        .get() as { c: number }
+    ).c
+    if (metaExists > 0) {
+      db.exec("INSERT OR REPLACE INTO cohort_summary_meta (key, value) VALUES ('is_stale', '1')")
+    }
+
+    db.exec('PRAGMA user_version = 25')
+  }
+
+  // ── v26: FTS5 virtual tables for variant_sv + variant_str ──
+  //
+  // Adds two new FTS5 external-content virtual tables so the renderer can
+  // search over structural-variant breakend identifiers (event_id, mate_id)
+  // and short-tandem-repeat metadata (repeat_id, variant_catalog_id,
+  // repeat_unit, display_repeat_unit, str_status, disease).
+  //
+  // variant_cnv is intentionally excluded — its v25 schema is entirely
+  // numeric (copy_number, copy_number_quality, homozygosity_ref/alt, sm,
+  // bin_count) and has nothing worth tokenizing.
+  //
+  // Trigger names follow the `${source_table}_fts_${ai|au|ad}` convention
+  // used by variants_fts_* triggers in schema.ts — this is the convention
+  // the shared fts-trigger-management helper expects when tearing down
+  // triggers during bulk inserts via its `${ftsTable}${suffix}` derivation.
+  //
+  // Backfill runs BEFORE trigger creation so the triggers don't fire
+  // during the initial population.
+  if (currentVersion < 26) {
+    // variant_sv_fts (2 indexed text columns)
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS variant_sv_fts USING fts5(
+        event_id, mate_id,
+        content='variant_sv',
+        content_rowid='variant_id',
+        tokenize='unicode61 remove_diacritics 2'
+      )
+    `)
+    db.exec(`
+      INSERT INTO variant_sv_fts(rowid, event_id, mate_id)
+      SELECT variant_id, event_id, mate_id FROM variant_sv
+    `)
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS variant_sv_fts_ai AFTER INSERT ON variant_sv BEGIN
+        INSERT INTO variant_sv_fts(rowid, event_id, mate_id)
+          VALUES (new.variant_id, new.event_id, new.mate_id);
+      END
+    `)
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS variant_sv_fts_au AFTER UPDATE ON variant_sv BEGIN
+        INSERT INTO variant_sv_fts(variant_sv_fts, rowid, event_id, mate_id)
+          VALUES('delete', old.variant_id, old.event_id, old.mate_id);
+        INSERT INTO variant_sv_fts(rowid, event_id, mate_id)
+          VALUES (new.variant_id, new.event_id, new.mate_id);
+      END
+    `)
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS variant_sv_fts_ad AFTER DELETE ON variant_sv BEGIN
+        INSERT INTO variant_sv_fts(variant_sv_fts, rowid, event_id, mate_id)
+          VALUES('delete', old.variant_id, old.event_id, old.mate_id);
+      END
+    `)
+
+    // variant_str_fts (6 indexed text columns)
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS variant_str_fts USING fts5(
+        repeat_id, variant_catalog_id, repeat_unit, display_repeat_unit, str_status, disease,
+        content='variant_str',
+        content_rowid='variant_id',
+        tokenize='unicode61 remove_diacritics 2'
+      )
+    `)
+    db.exec(`
+      INSERT INTO variant_str_fts(rowid, repeat_id, variant_catalog_id, repeat_unit, display_repeat_unit, str_status, disease)
+      SELECT variant_id, repeat_id, variant_catalog_id, repeat_unit, display_repeat_unit, str_status, disease FROM variant_str
+    `)
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS variant_str_fts_ai AFTER INSERT ON variant_str BEGIN
+        INSERT INTO variant_str_fts(rowid, repeat_id, variant_catalog_id, repeat_unit, display_repeat_unit, str_status, disease)
+          VALUES (new.variant_id, new.repeat_id, new.variant_catalog_id, new.repeat_unit, new.display_repeat_unit, new.str_status, new.disease);
+      END
+    `)
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS variant_str_fts_au AFTER UPDATE ON variant_str BEGIN
+        INSERT INTO variant_str_fts(variant_str_fts, rowid, repeat_id, variant_catalog_id, repeat_unit, display_repeat_unit, str_status, disease)
+          VALUES('delete', old.variant_id, old.repeat_id, old.variant_catalog_id, old.repeat_unit, old.display_repeat_unit, old.str_status, old.disease);
+        INSERT INTO variant_str_fts(rowid, repeat_id, variant_catalog_id, repeat_unit, display_repeat_unit, str_status, disease)
+          VALUES (new.variant_id, new.repeat_id, new.variant_catalog_id, new.repeat_unit, new.display_repeat_unit, new.str_status, new.disease);
+      END
+    `)
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS variant_str_fts_ad AFTER DELETE ON variant_str BEGIN
+        INSERT INTO variant_str_fts(variant_str_fts, rowid, repeat_id, variant_catalog_id, repeat_unit, display_repeat_unit, str_status, disease)
+          VALUES('delete', old.variant_id, old.repeat_id, old.variant_catalog_id, old.repeat_unit, old.display_repeat_unit, old.str_status, old.disease);
+      END
+    `)
+
+    db.exec('PRAGMA user_version = 26')
   }
 }

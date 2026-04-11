@@ -37,5 +37,6 @@ export const FILTER_DEFAULTS: Readonly<FilterState> = Object.freeze({
   maxInternalAf: null,
   inheritanceModes: [],
   analysisGroupId: null,
-  considerPhasing: false
+  considerPhasing: false,
+  columnFilters: {}
 })

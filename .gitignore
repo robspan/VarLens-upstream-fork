@@ -6,6 +6,11 @@ dist/
 out/
 release/
 
+# Tool caches
+.eslintcache
+.prettiercache
+.cache/
+
 # Playwright
 .playwright-mcp/
 playwright-report/

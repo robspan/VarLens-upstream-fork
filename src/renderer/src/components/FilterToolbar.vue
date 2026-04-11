@@ -93,6 +93,12 @@
           {{ cls.label }}
         </v-chip>
       </v-chip-group>
+
+      <!-- Extension column filter narrowing chip (SV only / CNV only / STR only) -->
+      <FilterTypeNarrowingChip
+        :column-filters="filters.columnFilters"
+        @clear-filter="handleClearTypeFilter"
+      />
     </template>
 
     <template #preset-bar>
@@ -165,8 +171,9 @@ import FilterDrawer from './FilterDrawer.vue'
 import PresetBar from './PresetBar.vue'
 import PresetSaveDialog from './PresetSaveDialog.vue'
 import PresetManageDialog from './PresetManageDialog.vue'
+import FilterTypeNarrowingChip from './filters/FilterTypeNarrowingChip.vue'
 import type { VariantFilter } from '../../../shared/types/api'
-import type { ColumnFilter } from '../../../shared/types/column-filters'
+import type { ColumnFilter, ColumnFiltersParam } from '../../../shared/types/column-filters'
 import type { ActiveFilter } from '../../../shared/types/filters'
 import type { FilterDrawerState } from './filterDrawerTypes'
 import { ACMG_FILTER_OPTIONS, applyPresetStateToFilters, isPresetDiverged } from '../utils/filters'
@@ -252,12 +259,25 @@ const {
   computed(() => props.caseId),
   {
     onFiltersUpdate: (f) => {
-      // Merge DSL column filters — dslIntegration is initialized after this
-      // but the closure captures the ref which is populated later
-      if (Object.keys(dslColumnFiltersRef.value).length > 0) {
+      // Merge DSL column filters + shared FilterState.columnFilters into the
+      // outgoing payload. Order of precedence (later overrides earlier):
+      //   1. f.column_filters (from buildFilterFromState — currently unused)
+      //   2. filters.value.columnFilters (ExtensionColumnFilters UI)
+      //   3. dslColumnFiltersRef.value (DSL search bar)
+      // dslIntegration is initialized after this but the closure captures the
+      // ref which is populated later.
+      const stateColumnFilters = filters.value.columnFilters
+      const hasDslFilters = Object.keys(dslColumnFiltersRef.value).length > 0
+      const hasStateFilters =
+        stateColumnFilters !== undefined && Object.keys(stateColumnFilters).length > 0
+      if (hasDslFilters || hasStateFilters) {
         emit('update:filters', {
           ...f,
-          column_filters: { ...(f.column_filters ?? {}), ...dslColumnFiltersRef.value }
+          column_filters: {
+            ...(f.column_filters ?? {}),
+            ...(stateColumnFilters ?? {}),
+            ...dslColumnFiltersRef.value
+          }
         })
       } else {
         emit('update:filters', f)
@@ -476,7 +496,14 @@ provide<FilterDrawerState>('filterDrawerState', {
   dslErrors,
   onDslApply: applyDslFilters,
   onDslClear: handleDslClear,
-  onDslSuggestionSelect: applySuggestion
+  onDslSuggestionSelect: applySuggestion,
+
+  // Extension column filters (Task 12)
+  caseId: computed(() => props.caseId),
+  onColumnFiltersUpdate: (value) => {
+    filters.value.columnFilters = value
+  },
+  onClearTypeFilter: handleClearTypeFilter
 })
 
 // Watch initialSearch prop to pre-populate search from cohort navigation
@@ -589,6 +616,21 @@ function handleClearFilter(filterId: string) {
   } else {
     clearFilter(filterId)
   }
+}
+
+/**
+ * Clear all extension column filters for a given variant type (sv/cnv/str).
+ * Strips every key matching `${typeKey}.*` from filters.columnFilters and
+ * triggers a new filter emission so the query re-runs without them.
+ */
+function handleClearTypeFilter(typeKey: string): void {
+  const next: ColumnFiltersParam = { ...filters.value.columnFilters }
+  for (const key of Object.keys(next)) {
+    if (key.startsWith(`${typeKey}.`)) {
+      delete next[key]
+    }
+  }
+  filters.value.columnFilters = next
 }
 
 // Expose drawer toggles, search focus, and clear-all for parent keyboard shortcuts

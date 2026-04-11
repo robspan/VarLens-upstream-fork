@@ -16,10 +16,11 @@ import type {
   GeneBurden,
   CohortPaginatedResult
 } from '../../shared/types/cohort'
-import type { ColumnFilterMeta } from '../../shared/types/column-filters'
-import { sqlPlaceholders } from './sql-utils'
+import type { ColumnFilterMeta, ColumnFiltersParam } from '../../shared/types/column-filters'
 import { tokenize, parse } from '../../shared/utils/boolean-search'
 import { emitCohortSearch } from './search/cohort-search-emitter'
+import { buildBaseWhere, type BaseFilterInput } from './variant-where-builder'
+import { buildExtensionExistsClauses } from './variant-extension-registry'
 
 /**
  * Sortable columns for cohort queries
@@ -105,72 +106,7 @@ export class CohortService {
       }
     }
 
-    // Gene symbol filter (partial match)
-    if (params.gene_symbol !== undefined && params.gene_symbol !== '') {
-      whereConditions.push('cvs.gene_symbol LIKE ?')
-      paramsArray.push(`%${params.gene_symbol}%`)
-    }
-
-    // Consequence/Impact filter (IN clause)
-    if (params.consequences !== undefined && params.consequences.length > 0) {
-      const placeholders = sqlPlaceholders(params.consequences.length)
-      whereConditions.push(`cvs.consequence IN (${placeholders})`)
-      paramsArray.push(...params.consequences)
-    }
-
-    // Func filter (IN clause)
-    if (params.funcs !== undefined && params.funcs.length > 0) {
-      const placeholders = sqlPlaceholders(params.funcs.length)
-      whereConditions.push(`cvs.func IN (${placeholders})`)
-      paramsArray.push(...params.funcs)
-    }
-
-    // ClinVar filter (exact match via IN clause)
-    if (params.clinvars !== undefined && params.clinvars.length > 0) {
-      const placeholders = sqlPlaceholders(params.clinvars.length)
-      whereConditions.push(`cvs.clinvar IN (${placeholders})`)
-      paramsArray.push(...params.clinvars)
-    }
-
-    // gnomAD AF max filter
-    if (params.gnomad_af_max !== undefined && params.gnomad_af_max > 0) {
-      whereConditions.push('(cvs.gnomad_af IS NULL OR cvs.gnomad_af <= ?)')
-      paramsArray.push(params.gnomad_af_max)
-    }
-
-    // CADD min filter
-    if (params.cadd_min !== undefined && params.cadd_min >= 0) {
-      whereConditions.push('(cvs.cadd IS NULL OR cvs.cadd >= ?)')
-      paramsArray.push(params.cadd_min)
-    }
-
-    // Carrier count min filter (now a regular WHERE, not HAVING)
-    if (params.carrier_count_min !== undefined && params.carrier_count_min > 0) {
-      whereConditions.push('cvs.carrier_count >= ?')
-      paramsArray.push(params.carrier_count_min)
-    }
-
-    if (params.max_internal_af !== undefined && params.max_internal_af > 0) {
-      whereConditions.push('(cvs.cohort_frequency IS NULL OR cvs.cohort_frequency <= ?)')
-      paramsArray.push(params.max_internal_af)
-    }
-
-    // Annotation filters (use denormalized columns from v14)
-    if (params.starred_only === true) {
-      whereConditions.push('cvs.has_star = 1')
-    }
-
-    if (params.has_comment === true) {
-      whereConditions.push('cvs.has_comment = 1')
-    }
-
-    if (params.acmg_classifications !== undefined && params.acmg_classifications.length > 0) {
-      const placeholders = sqlPlaceholders(params.acmg_classifications.length)
-      whereConditions.push(`cvs.acmg_best IN (${placeholders})`)
-      paramsArray.push(...params.acmg_classifications)
-    }
-
-    // Panel interval filter (region-based)
+    // Panel interval filter (region-based, cohort-specific — not in buildBaseWhere)
     if (params.panel_intervals && params.panel_intervals.length > 0) {
       const intervalConditions = params.panel_intervals.map((iv) => {
         paramsArray.push(iv.chr, iv.start, iv.end)
@@ -179,42 +115,62 @@ export class CohortService {
       whereConditions.push(`(${intervalConditions.join(' OR ')})`)
     }
 
-    // Per-column typed filters
+    // Remap column_filters keys through SORTABLE_COLUMNS to preserve the
+    // existing alias mapping (e.g. 'cadd_phred' -> 'cadd') and the whitelist
+    // behaviour. buildBaseWhere emits ${baseAlias}.${column} directly, so
+    // unmapped keys would produce SQL referencing non-existent columns on
+    // cohort_variant_summary.
+    let remappedColumnFilters: ColumnFiltersParam | undefined
     if (params.column_filters !== undefined) {
-      for (const [column, filterDef] of Object.entries(params.column_filters)) {
-        if (SORTABLE_COLUMNS[column] === undefined) continue
-        const sqlColumn = SORTABLE_COLUMNS[column]
-        const { operator, value } = filterDef
+      remappedColumnFilters = {}
+      for (const [key, filter] of Object.entries(params.column_filters)) {
+        const sqlColumn = SORTABLE_COLUMNS[key]
+        if (sqlColumn === undefined) continue
+        remappedColumnFilters[sqlColumn] = filter
+      }
+    }
 
-        if (operator === 'in' && Array.isArray(value)) {
-          if (value.length === 0) continue
-          const placeholders = sqlPlaceholders(value.length)
-          whereConditions.push(`cvs.${sqlColumn} IN (${placeholders})`)
-          paramsArray.push(...value)
-        } else if (operator === 'like' && typeof value === 'string') {
-          if (value.trim() === '') continue // Skip empty — LIKE '%%' excludes NULLs unnecessarily
-          whereConditions.push(`cvs.${sqlColumn} LIKE ? COLLATE NOCASE`)
-          paramsArray.push(`%${value}%`)
-        } else if (
-          ['=', '!='].includes(operator) &&
-          (typeof value === 'string' || typeof value === 'number')
-        ) {
-          // Exact match — NULLs excluded
-          whereConditions.push(`cvs.${sqlColumn} ${operator} ?`)
-          paramsArray.push(value)
-        } else if (
-          ['<', '>', '<=', '>='].includes(operator) &&
-          (typeof value === 'string' || typeof value === 'number')
-        ) {
-          // Range comparison — includeEmpty defaults to true
-          const includeNulls = filterDef.includeEmpty !== false
-          if (includeNulls) {
-            whereConditions.push(`(cvs.${sqlColumn} IS NULL OR cvs.${sqlColumn} ${operator} ?)`)
-          } else {
-            whereConditions.push(`cvs.${sqlColumn} ${operator} ?`)
-          }
-          paramsArray.push(value)
-        }
+    // Delegate base-field + bare-key column_filters translation to the
+    // shared helper. Preserve the legacy > 0 / >= 0 guards on gnomad_af_max
+    // and cadd_min at the call site — buildBaseWhere does not apply these
+    // because they are caller-specific legacy semantics. Tests rely on
+    // gnomad_af_max=0 being treated as a no-op.
+    const baseInput: BaseFilterInput = {
+      gnomad_af_max:
+        params.gnomad_af_max !== undefined && params.gnomad_af_max > 0
+          ? params.gnomad_af_max
+          : undefined,
+      cadd_min: params.cadd_min !== undefined && params.cadd_min >= 0 ? params.cadd_min : undefined,
+      consequences: params.consequences,
+      clinvars: params.clinvars,
+      funcs: params.funcs,
+      gene_symbol: params.gene_symbol,
+      max_internal_af: params.max_internal_af,
+      starred_only: params.starred_only,
+      has_comment: params.has_comment,
+      acmg_classifications: params.acmg_classifications,
+      carrier_count_min: params.carrier_count_min,
+      variant_type: params.variant_type,
+      genome_build: params.genome_build,
+      column_filters: remappedColumnFilters
+    }
+
+    const base = buildBaseWhere(baseInput, { baseAlias: 'cvs', scope: 'cohort-listing' })
+    if (base.sql !== '') {
+      whereConditions.push(base.sql)
+      paramsArray.push(...base.params)
+    }
+
+    // Extension filter via EXISTS subquery (cvs has no variant_id, so we
+    // correlate on chr/pos/ref/alt/variant_type back to variants + extension).
+    // Uses params.column_filters (NOT the remapped version — extension keys
+    // are dotted like 'cnv.copy_number' and don't need SORTABLE_COLUMNS
+    // remapping; the remap would silently drop them).
+    if (params.column_filters !== undefined) {
+      const ext = buildExtensionExistsClauses(params.column_filters, 'cvs')
+      if (ext.whereClause !== '') {
+        whereConditions.push(ext.whereClause)
+        paramsArray.push(...ext.params)
       }
     }
 

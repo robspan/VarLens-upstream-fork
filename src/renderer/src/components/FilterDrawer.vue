@@ -508,6 +508,33 @@
           />
         </v-expansion-panel-text>
       </v-expansion-panel>
+
+      <!-- === EXTENSION COLUMNS (SV/CNV/STR) === -->
+      <div class="filter-section-header text-overline text-medium-emphasis px-3 pt-3 pb-1">
+        <v-divider class="mb-2" />
+        Structural Variants
+      </div>
+
+      <!-- Extension column filters (SV / CNV / STR) -->
+      <v-expansion-panel value="extension-columns">
+        <FilterPanelTitle
+          :icon="mdiDna"
+          label="Structural Variants"
+          :active="extensionColumnsActive"
+          :value-summary="extensionColumnsSummary"
+        />
+        <v-expansion-panel-text>
+          <FilterTypeNarrowingChip
+            :column-filters="filters.columnFilters"
+            @clear-filter="onClearTypeFilter"
+          />
+          <ExtensionColumnFilters
+            :scope="columnFilterScope"
+            :model-value="filters.columnFilters"
+            @update:model-value="onColumnFiltersUpdate"
+          />
+        </v-expansion-panel-text>
+      </v-expansion-panel>
     </v-expansion-panels>
 
     <PanelManagerDialog v-model="panelManagerOpen" @panels-changed="onPanelsChanged" />
@@ -523,6 +550,8 @@ import DslSearchBar from './DslSearchBar.vue'
 import GroupedMultiSelect from './GroupedMultiSelect.vue'
 import PanelManagerDialog from './panels/PanelManagerDialog.vue'
 import PanelFilterSection from './panels/PanelFilterSection.vue'
+import ExtensionColumnFilters from './filters/ExtensionColumnFilters.vue'
+import FilterTypeNarrowingChip from './filters/FilterTypeNarrowingChip.vue'
 import { consequenceGroups, clinvarGroups } from '../config/filterGroups'
 import { ACMG_FILTER_OPTIONS_LONG } from '../utils/filters'
 import { INHERITANCE_MODE_META, SOLO_MODES, TRIO_MODES } from '../../../shared/types/inheritance'
@@ -569,7 +598,8 @@ const allPanelValues = [
   'cadd',
   'tags',
   'annotations',
-  'inheritance'
+  'inheritance',
+  'extension-columns'
 ]
 const expandedPanels = ref<string[]>(['search', 'impact', 'frequency'])
 
@@ -619,8 +649,21 @@ const {
   dslErrors,
   onDslApply,
   onDslClear,
-  onDslSuggestionSelect
+  onDslSuggestionSelect,
+  caseId,
+  onColumnFiltersUpdate,
+  onClearTypeFilter
 } = state
+
+// Scope for extension column filters (single-case view)
+const columnFilterScope = computed(() => ({ caseId: caseId.value }))
+
+// Active/summary state for the extension columns expansion panel
+const extensionColumnsActive = computed(() => Object.keys(filters.value.columnFilters).length > 0)
+const extensionColumnsSummary = computed(() => {
+  const count = Object.keys(filters.value.columnFilters).length
+  return count > 0 ? `${count} filter${count === 1 ? '' : 's'}` : ''
+})
 
 // Value summaries for collapsed panel previews
 const searchSummary = computed(() => filters.value.searchQuery || '')

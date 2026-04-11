@@ -99,6 +99,14 @@ export interface UseCohortDataReturn {
   summary: Ref<CohortSummary | null>
   /** Whether the cohort summary is stale (being rebuilt) */
   summaryStale: Ref<boolean>
+  /** Current rebuild phase key (e.g. 'variant_summary'). Null when not rebuilding. */
+  rebuildPhase: Ref<string | null>
+  /** 1-based phase index within the rebuild sequence. Null when not rebuilding. */
+  rebuildPhaseIndex: Ref<number | null>
+  /** Total phase count for the current rebuild. Null when not rebuilding. */
+  rebuildPhaseTotal: Ref<number | null>
+  /** Human-readable label for the current phase (e.g. "Rebuilding variant summary"). Null when not rebuilding. */
+  rebuildPhaseLabel: Ref<string | null>
   /** Per-column metadata for filter UI auto-detection */
   columnMeta: Ref<ColumnFilterMeta[]>
   /** Current genome build scope (seeded from available builds on first load) */
@@ -155,6 +163,13 @@ export function useCohortData(): UseCohortDataReturn {
   const error = ref<Error | null>(null)
   const summary = ref<CohortSummary | null>(null)
   const summaryStale = ref(false)
+  // Phase progress state — populated when the main-side worker emits
+  // progress events between SQL statements. When a rebuild completes these
+  // snap back to null.
+  const rebuildPhase = ref<string | null>(null)
+  const rebuildPhaseIndex = ref<number | null>(null)
+  const rebuildPhaseTotal = ref<number | null>(null)
+  const rebuildPhaseLabel = ref<string | null>(null)
   const columnMeta = ref<ColumnFilterMeta[]>([])
 
   // Genome build / variant type scope (Phase 3 multi-variant-type).
@@ -178,9 +193,32 @@ export function useCohortData(): UseCohortDataReturn {
     if (!api || cleanupSummaryListener) return
     const cohortApi = api.cohort
     if (typeof cohortApi.onSummaryRebuilt === 'function') {
-      cleanupSummaryListener = cohortApi.onSummaryRebuilt((status: { is_stale: boolean }) => {
-        summaryStale.value = status.is_stale
-      })
+      cleanupSummaryListener = cohortApi.onSummaryRebuilt(
+        (status: {
+          is_stale: boolean
+          phase?: string
+          phase_index?: number
+          phase_total?: number
+          label?: string
+        }) => {
+          summaryStale.value = status.is_stale
+          // Phase progress is optional — if the payload carries phase fields
+          // update them; if not (start/end events), clear them when the
+          // rebuild finishes.
+          if (status.phase !== undefined) {
+            rebuildPhase.value = status.phase
+            rebuildPhaseIndex.value = status.phase_index ?? null
+            rebuildPhaseTotal.value = status.phase_total ?? null
+            rebuildPhaseLabel.value = status.label ?? null
+          } else if (status.is_stale === false) {
+            // Rebuild finished — reset phase state.
+            rebuildPhase.value = null
+            rebuildPhaseIndex.value = null
+            rebuildPhaseTotal.value = null
+            rebuildPhaseLabel.value = null
+          }
+        }
+      )
     }
   }
 
@@ -442,6 +480,10 @@ export function useCohortData(): UseCohortDataReturn {
     error.value = null
     summary.value = null
     summaryStale.value = false
+    rebuildPhase.value = null
+    rebuildPhaseIndex.value = null
+    rebuildPhaseTotal.value = null
+    rebuildPhaseLabel.value = null
     columnMeta.value = []
     availableBuilds.value = []
     genomeBuild.value = 'GRCh38'
@@ -457,6 +499,10 @@ export function useCohortData(): UseCohortDataReturn {
     error,
     summary,
     summaryStale,
+    rebuildPhase,
+    rebuildPhaseIndex,
+    rebuildPhaseTotal,
+    rebuildPhaseLabel,
     columnMeta,
     genomeBuild,
     selectedVariantType,

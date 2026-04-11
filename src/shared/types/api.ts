@@ -399,7 +399,29 @@ export interface CohortAPI {
   getColumnMeta: () => Promise<ColumnFilterMeta[]>
   getSummaryStatus: () => Promise<{ is_stale: boolean; last_rebuilt_at: number }>
   rebuildSummary: () => Promise<void>
-  onSummaryRebuilt: (callback: (status: { is_stale: boolean }) => void) => () => void
+  /**
+   * Subscribe to cohort summary rebuild events.
+   *
+   * The status payload includes `is_stale` (required) plus optional phase
+   * progress fields. Phase events are emitted between SQL statements inside
+   * the rebuild worker (see `src/main/workers/rebuild-summary-worker.ts`):
+   *
+   * - When a rebuild starts → `{ is_stale: true }`
+   * - For each phase boundary → `{ is_stale: true, phase, phase_index, phase_total, label }`
+   * - When a rebuild finishes → `{ is_stale: false }`
+   *
+   * Subscribers that only read `is_stale` stay correct; subscribers that
+   * want phase progress read the optional fields.
+   */
+  onSummaryRebuilt: (
+    callback: (status: {
+      is_stale: boolean
+      phase?: string
+      phase_index?: number
+      phase_total?: number
+      label?: string
+    }) => void
+  ) => () => void
   runAssociation: (config: unknown) => Promise<unknown>
   cancelAssociation: () => Promise<void>
   onAssociationProgress: (

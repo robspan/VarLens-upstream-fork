@@ -11,17 +11,32 @@ import { mainLogger } from '../../services/MainLogger'
 import type { CohortService } from '../../database/cohort'
 import type { DatabaseService } from '../../database/DatabaseService'
 import type { DbPool } from '../../database/DbPool'
-import type { RebuildWorkerResponse } from '../../workers/rebuild-summary-worker'
+import type { RebuildWorkerResponse, RebuildPhase } from '../../workers/rebuild-summary-worker'
 import { AssociationEngine } from '../../statistics/AssociationEngine'
 import { computePanelIntervals } from './panelIntervalHelper'
 import { convertBigInts } from '../../utils/convertBigInts'
 import type { ValidatedCohortSearchParams } from '../../../shared/types/ipc-schemas'
 import type { AssociationConfig } from '../../statistics/types'
 
+/** Progress payload emitted during a cohort summary rebuild. */
+export interface CohortRebuildProgressData {
+  phase: RebuildPhase
+  phase_index: number
+  phase_total: number
+  label: string
+}
+
 /** Callbacks for emitting events to the renderer during cohort operations. */
 export interface CohortCallbacks {
   onSummaryStale?: (data: { is_stale: boolean }) => void
   onSummaryFresh?: (data: { is_stale: boolean }) => void
+  /**
+   * Optional phase-progress callback. Fires between SQL statements inside
+   * the rebuild worker — see `rebuild-summary-worker.ts` for the 3-phase
+   * breakdown. If unset, progress events are silently dropped (worker keeps
+   * sending them — the cost is a handful of postMessage calls per rebuild).
+   */
+  onSummaryProgress?: (data: CohortRebuildProgressData) => void
 }
 
 // Keep a reference for cancellation
@@ -30,8 +45,19 @@ let activeEngine: AssociationEngine | null = null
 /**
  * Spawn a worker thread to rebuild the cohort summary.
  * Returns a Promise that resolves on success and rejects on error.
+ *
+ * @param dbPath Absolute path to the SQLite database file
+ * @param encryptionKey Optional DB encryption key
+ * @param onProgress Optional callback fired on each phase boundary inside
+ *   the worker. Unset = progress events silently dropped on the main side.
+ *   Does NOT settle the Promise — only the terminal `complete` / `error`
+ *   messages do that.
  */
-export function spawnRebuildWorker(dbPath: string, encryptionKey?: string): Promise<void> {
+export function spawnRebuildWorker(
+  dbPath: string,
+  encryptionKey?: string,
+  onProgress?: (data: CohortRebuildProgressData) => void
+): Promise<void> {
   return new Promise<void>((promiseResolve: () => void, promiseReject: (err: Error) => void) => {
     const workerPath = resolve(__dirname, 'rebuild-summary-worker.js')
     const worker = new Worker(workerPath)
@@ -51,11 +77,22 @@ export function spawnRebuildWorker(dbPath: string, encryptionKey?: string): Prom
     }
 
     worker.on('message', (msg: RebuildWorkerResponse) => {
+      if (msg.type === 'progress') {
+        // Non-terminal — forward to caller, don't settle.
+        onProgress?.({
+          phase: msg.phase,
+          phase_index: msg.phase_index,
+          phase_total: msg.phase_total,
+          label: msg.label
+        })
+        return
+      }
       if (msg.type === 'complete') {
         settle()
-      } else {
-        settle(new Error(msg.error ?? 'Rebuild worker reported failure'))
+        return
       }
+      // type === 'error'
+      settle(new Error(msg.error ?? 'Rebuild worker reported failure'))
     })
 
     worker.on('error', (err: Error) => {
@@ -274,7 +311,7 @@ export async function getSummaryStatus(
 }
 
 /**
- * Rebuild the cohort summary, emitting stale/fresh events via callbacks.
+ * Rebuild the cohort summary, emitting stale/fresh/progress events via callbacks.
  */
 export async function rebuildSummary(
   getDb: () => DatabaseService,
@@ -282,7 +319,9 @@ export async function rebuildSummary(
 ): Promise<void> {
   const db = getDb()
   callbacks.onSummaryStale?.({ is_stale: true })
-  await spawnRebuildWorker(db.getPath(), db.getEncryptionKey())
+  await spawnRebuildWorker(db.getPath(), db.getEncryptionKey(), (progress) => {
+    callbacks.onSummaryProgress?.(progress)
+  })
   db.cohort.invalidateColumnMetaCache()
   callbacks.onSummaryFresh?.({ is_stale: false })
 }
@@ -303,7 +342,9 @@ export function triggerStartupRebuildIfNeeded(
   )
   callbacks.onSummaryStale?.({ is_stale: true })
 
-  spawnRebuildWorker(db.getPath(), db.getEncryptionKey())
+  spawnRebuildWorker(db.getPath(), db.getEncryptionKey(), (progress) => {
+    callbacks.onSummaryProgress?.(progress)
+  })
     .then(() => {
       mainLogger.info('Startup: cohort summary rebuild completed', 'cohort')
       try {

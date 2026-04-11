@@ -241,8 +241,25 @@ const api = {
     },
     getSummaryStatus: () => ipcRenderer.invoke('cohort:summaryStatus'),
     rebuildSummary: () => ipcRenderer.invoke('cohort:rebuildSummary'),
-    onSummaryRebuilt: (callback: (status: { is_stale: boolean }) => void): (() => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, status: { is_stale: boolean }): void => {
+    onSummaryRebuilt: (
+      callback: (status: {
+        is_stale: boolean
+        phase?: string
+        phase_index?: number
+        phase_total?: number
+        label?: string
+      }) => void
+    ): (() => void) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        status: {
+          is_stale: boolean
+          phase?: string
+          phase_index?: number
+          phase_total?: number
+          label?: string
+        }
+      ): void => {
         callback(status)
       }
       ipcRenderer.on('cohort:summaryRebuilt', handler)

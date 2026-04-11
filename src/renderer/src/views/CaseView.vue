@@ -312,8 +312,19 @@ defineExpose({
       density="compact"
       class="variant-type-tabs"
     >
-      <v-tab v-for="item in tabItems" :key="item.type" :value="item.type">
-        <v-icon v-if="item.icon" start size="small" :icon="item.icon" />
+      <v-tab
+        v-for="item in tabItems"
+        :key="item.type"
+        :value="item.type"
+        :class="{ 'shortlist-tab': item.type === 'shortlist' }"
+      >
+        <v-icon
+          v-if="item.icon"
+          start
+          :size="item.type === 'shortlist' ? 'default' : 'small'"
+          :color="item.type === 'shortlist' ? 'amber-darken-2' : undefined"
+          :icon="item.icon"
+        />
         {{ item.label }}
         <v-chip v-if="item.count !== null" size="x-small" class="ml-2" variant="tonal">
           {{ item.count }}
@@ -410,6 +421,47 @@ defineExpose({
   min-height: 36px;
   text-transform: none;
   font-weight: 500;
+}
+
+/*
+ * The Shortlist tab is visually distinct from the per-type tabs because
+ * it does something categorically different — it shows an algorithmic
+ * cross-type ranking, not a raw table view. We give it:
+ *   - an amber tonal background so it reads as a "feature" tab
+ *   - a bolder font weight
+ *   - a right divider that separates it from the raw per-type tabs
+ *   - a warm hover/selected state that matches the amber icon color
+ *     chosen in the template binding above
+ * CLAUDE.md forbids `surface-variant` for backgrounds. The VarLens theme
+ * ("Clinical Slate") doesn't define amber palette tokens, so we use
+ * explicit Material amber RGBA values — they render readable on both
+ * the light and dark theme surface colors defined in vuetify.ts.
+ */
+.variant-type-tabs :deep(.v-tab.shortlist-tab) {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  /* Material amber 100 @ ~35% — subtle warm wash that reads as "special" */
+  background: rgba(255, 236, 179, 0.35);
+  border-right: 1px solid rgb(var(--v-theme-outline));
+  margin-right: 4px;
+}
+
+.variant-type-tabs :deep(.v-tab.shortlist-tab:hover) {
+  /* Material amber 100 @ ~55% — deeper on hover */
+  background: rgba(255, 236, 179, 0.55);
+}
+
+.variant-type-tabs :deep(.v-tab.shortlist-tab.v-tab--selected) {
+  /* Material amber 900 (#FF6F00) — warm, high-contrast on both themes */
+  color: #ff6f00;
+  /* Material amber 200 @ 55% — stronger warm wash on selected */
+  background: rgba(255, 224, 130, 0.55);
+}
+
+.variant-type-tabs :deep(.v-tab.shortlist-tab .v-tab__slider) {
+  /* Material amber 700 (#FFA000) — warm slider matches the icon color */
+  background-color: #ffa000;
+  opacity: 1;
 }
 
 /*

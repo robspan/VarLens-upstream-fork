@@ -32,12 +32,20 @@ jobs:
       # CI, but direct tag pushes bypass branch protection — this catches
       # that case before any OS builder spins up and wastes runner minutes.
       # Tags don't trigger build.yml (it only runs on push-to-main and PRs),
-      # so we look up the latest build.yml run on the exact tagged SHA.
+      # so we look up the latest build.yml run on the exact tagged commit.
+      #
+      # IMPORTANT: annotated tags (`git tag -a`) have their own tag object;
+      # `git rev-parse v0.55.0` returns that tag object's SHA, not the commit
+      # it points to. Use `${GITHUB_SHA}` (which Actions always sets to the
+      # underlying commit SHA for tag pushes) so the lookup hits the actual
+      # build.yml run that CI executed. Previous bug: released 0.55.0 failed
+      # with "got: missing" because `gh run list --commit=<tag-object-sha>`
+      # returned an empty array.
       - name: Verify build.yml passed on tagged SHA
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          SHA=$(git rev-parse "${{ github.ref_name }}")
+          SHA="${GITHUB_SHA}"
           STATUS=$(gh run list --workflow=build.yml --commit="$SHA" \
             --json conclusion --jq '.[0].conclusion // "missing"')
           if [ "$STATUS" != "success" ]; then

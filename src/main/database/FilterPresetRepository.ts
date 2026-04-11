@@ -11,6 +11,7 @@ interface PresetRow {
   name: string
   description: string | null
   filter_json: string
+  kind?: string | null
   is_built_in: number
   is_visible: number
   sort_order: number
@@ -19,11 +20,14 @@ interface PresetRow {
 }
 
 function rowToPreset(row: PresetRow): FilterPreset {
+  // Rows pre-dating migration v27 have no `kind` column — default to 'filter'.
+  const kind = row.kind === 'shortlist' ? 'shortlist' : 'filter'
   return {
     id: row.id,
     name: row.name,
     description: row.description,
     filterJson: JSON.parse(row.filter_json),
+    kind,
     isBuiltIn: row.is_built_in === 1,
     isVisible: row.is_visible === 1,
     sortOrder: row.sort_order,

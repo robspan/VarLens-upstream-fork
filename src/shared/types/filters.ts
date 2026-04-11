@@ -11,6 +11,7 @@
  */
 
 import type { ColumnFiltersParam } from './column-filters'
+import type { ShortlistConfig } from './shortlist'
 
 // TODO: The renderer has local copies of FilterState in composables/filter-types.ts
 // and composables/useFilters.ts that must be kept in sync. Consider consolidating.
@@ -72,6 +73,11 @@ export interface FilterState {
   considerPhasing: boolean
   /** Column filters for extension tables and base columns via flexible map */
   columnFilters: ColumnFiltersParam
+  /**
+   * Shortlist configuration. Present only on presets with kind='shortlist'.
+   * Undefined on regular filter presets.
+   */
+  shortlist?: ShortlistConfig
 }
 
 /**

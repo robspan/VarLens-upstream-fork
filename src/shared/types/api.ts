@@ -859,3 +859,17 @@ export interface AuthAPI {
   resetPassword: (username: string, newPassword: string) => Promise<void>
   changePassword: (oldPassword: string, newPassword: string) => Promise<void>
 }
+
+/**
+ * Broadcast payload for the `variants:annotationChanged` event.
+ *
+ * Emitted by the main process whenever an annotation mutation (star,
+ * comment, ACMG classification, evidence update) is persisted so that
+ * the renderer can refetch dependent views (e.g. the Shortlist tab,
+ * which needs to re-score when star or ACMG state changes).
+ */
+export interface AnnotationChangeEvent {
+  caseId: number
+  variantId: number
+  kind: 'star' | 'comment' | 'acmg' | 'evidence'
+}

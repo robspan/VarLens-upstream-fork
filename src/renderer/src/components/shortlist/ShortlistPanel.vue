@@ -1,0 +1,155 @@
+<script setup lang="ts">
+/**
+ * ShortlistPanel — host composition for the case-view Shortlist tab.
+ *
+ * Glues together the three building blocks from earlier waves:
+ *
+ *   • `useShortlistQuery`   (Wave 4)  — preset resolution + IPC fetch + loading/error state
+ *   • `ShortlistTable`      (Wave 1.D) — presentational v-data-table leaf
+ *   • `useApiService`       (existing) — typed IPC bridge for the star write-through
+ *
+ * Four visual states are routed from composable state:
+ *
+ *   loading  → v-progress-linear + skeleton rows
+ *   error    → v-alert + Retry button
+ *   empty    → "No variants matched the shortlist filters."
+ *   success  → <ShortlistTable> with row-click / open-in-tab / toggle-star
+ *              forwarded to the parent (CaseView, wired in Wave 6)
+ *
+ * `toggle-star` is absorbed internally — the panel writes through
+ * `annotations.upsertPerCase` via `useApiService()` and relies on the
+ * `variants:annotationChanged` broadcast (Wave 1.E) to trigger a refetch
+ * via `useShortlistQuery`'s subscription. NO manual `refresh()` call here.
+ *
+ * Spec: .planning/specs/2026-04-11-unified-shortlist-ranked-view-design.md (§6)
+ */
+
+import { toRef } from 'vue'
+import ShortlistTable from './ShortlistTable.vue'
+import { useShortlistQuery } from '../../composables/useShortlistQuery'
+import { useApiService } from '../../composables/useApiService'
+import { logService } from '../../services/LogService'
+import type { ShortlistRow, PerTypeTab } from '../../../../shared/types/shortlist'
+
+const props = defineProps<{
+  caseId: number
+}>()
+
+const emit = defineEmits<{
+  (e: 'row-click', row: ShortlistRow): void
+  (e: 'open-in-tab', variantType: PerTypeTab): void
+}>()
+
+const { api } = useApiService()
+
+const caseIdRef = toRef(props, 'caseId')
+const { shortlistPresets, selectedPresetId, result, loading, error, refresh } =
+  useShortlistQuery(caseIdRef)
+
+/**
+ * Toggle the star annotation for a row. Writes through
+ * `annotations.upsertPerCase` and relies on the
+ * `variants:annotationChanged` broadcast to drive the refetch — no
+ * manual `refresh()` call here.
+ */
+async function onToggleStar(row: ShortlistRow): Promise<void> {
+  if (api === undefined) {
+    logService.warn('toggle star skipped: API unavailable', 'shortlist.panel')
+    return
+  }
+  try {
+    await api.annotations.upsertPerCase(row.case_id, row.id, {
+      starred: !row.is_starred
+    })
+    // No manual refresh — the variants:annotationChanged broadcast
+    // triggers a refetch via useShortlistQuery's subscription.
+  } catch (e) {
+    logService.error(
+      `toggle star failed: ${e instanceof Error ? e.message : String(e)}`,
+      'shortlist.panel'
+    )
+  }
+}
+
+/** Clear the error banner so the user can dismiss stale failures. */
+function dismissError(): void {
+  error.value = null
+}
+</script>
+
+<template>
+  <div class="shortlist-panel">
+    <div class="shortlist-panel__header d-flex align-center ga-3 pa-2">
+      <v-select
+        v-model="selectedPresetId"
+        :items="shortlistPresets"
+        item-title="name"
+        item-value="id"
+        label="Preset"
+        density="compact"
+        hide-details
+        variant="outlined"
+        style="max-width: 320px"
+      />
+      <div v-if="result" class="text-caption text-medium-emphasis">
+        Scored: {{ result.totalCandidates }} → top {{ result.rows.length }}
+        <span class="ml-2">({{ result.elapsedMs }}ms)</span>
+      </div>
+      <v-spacer />
+      <v-btn
+        variant="text"
+        size="small"
+        prepend-icon="mdi-refresh"
+        :loading="loading"
+        @click="refresh"
+      >
+        Refresh
+      </v-btn>
+    </div>
+
+    <div v-if="loading" data-testid="shortlist-loading" class="pa-3">
+      <v-progress-linear indeterminate class="mb-3" />
+      <v-skeleton-loader type="table-row@5" />
+    </div>
+
+    <v-alert
+      v-else-if="error"
+      type="error"
+      variant="tonal"
+      class="ma-3"
+      closable
+      @click:close="dismissError"
+    >
+      {{ error.message }}
+      <template #append>
+        <v-btn variant="text" size="small" @click="refresh">Retry</v-btn>
+      </template>
+    </v-alert>
+
+    <div
+      v-else-if="result && result.rows.length === 0"
+      class="pa-6 text-center text-medium-emphasis"
+    >
+      No variants matched the shortlist filters.
+    </div>
+
+    <ShortlistTable
+      v-else-if="result"
+      :rows="result.rows"
+      @row-click="(row) => emit('row-click', row)"
+      @open-in-tab="(t) => emit('open-in-tab', t)"
+      @toggle-star="onToggleStar"
+    />
+  </div>
+</template>
+
+<style scoped>
+.shortlist-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.shortlist-panel__header {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+</style>

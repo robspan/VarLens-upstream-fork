@@ -100,7 +100,7 @@ jobs:
       # Cache ESLint + Prettier results across CI runs. Key on lockfile +
       # lint/format config so stale caches auto-invalidate when rules change.
       - name: Restore lint caches
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .eslintcache
@@ -114,7 +114,7 @@ jobs:
       # because tsc/vue-tsc use content hashes inside .tsbuildinfo to decide
       # what to recheck. Pattern per actions/cache#459 discussion.
       - name: Restore tsbuildinfo cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .cache/tsbuildinfo
           key: tsbuildinfo-${{ runner.os }}-${{ hashFiles('package-lock.json', 'tsconfig*.json') }}-${{ github.sha }}
@@ -142,7 +142,7 @@ jobs:
 
       - name: Upload coverage
         if: github.event_name == 'push'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: coverage
           path: coverage/coverage-summary.json
@@ -195,7 +195,7 @@ jobs:
 
       - name: Cache native module for Electron ABI
         id: native-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: node_modules/better-sqlite3-multiple-ciphers/build/Release
           key: native-electron-${{ runner.os }}-${{ runner.arch }}-${{ steps.electron-ver.outputs.ver }}-${{ hashFiles('package-lock.json') }}

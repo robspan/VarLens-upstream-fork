@@ -141,7 +141,7 @@ jobs:
 
       - name: Cache native module for Electron ABI
         id: native-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: node_modules/better-sqlite3-multiple-ciphers/build/Release
           key: native-electron-${{ runner.os }}-${{ runner.arch }}-${{ steps.electron-ver.outputs.ver }}-${{ hashFiles('package-lock.json') }}
@@ -156,7 +156,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: release-linux
           path: |
@@ -196,7 +196,7 @@ jobs:
 
       - name: Cache native module for Electron ABI
         id: native-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: node_modules/better-sqlite3-multiple-ciphers/build/Release
           key: native-electron-${{ runner.os }}-${{ runner.arch }}-${{ steps.electron-ver.outputs.ver }}-${{ hashFiles('package-lock.json') }}
@@ -211,7 +211,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: release-macos
           path: |
@@ -252,7 +252,7 @@ jobs:
 
       - name: Cache native module for Electron ABI
         id: native-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: node_modules/better-sqlite3-multiple-ciphers/build/Release
           key: native-electron-${{ runner.os }}-${{ runner.arch }}-${{ steps.electron-ver.outputs.ver }}-${{ hashFiles('package-lock.json') }}
@@ -390,7 +390,7 @@ jobs:
           Set-Content release/latest.yml $yml -NoNewline
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: release-windows
           path: |

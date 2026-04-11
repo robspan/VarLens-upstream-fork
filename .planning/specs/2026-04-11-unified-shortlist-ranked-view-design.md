@@ -81,22 +81,28 @@ The shortlist is a **candidate-generation + ranking** pipeline running in the ma
 ┌─────────────────────────────────────────────────────────┐
 │ Main process: ShortlistService.getShortlist()           │
 │                                                          │
-│  Stage 1 — candidate generation (SQL)                   │
+│  Stage 1 — candidate generation (SQL, fully-joined rows)│
 │  ┌─────────────────────────────────────────────────┐    │
 │  │ for type in config.variantTypeScope:            │    │
 │  │   mergedFilters = merge(config.baseFilters,     │    │
 │  │                   config.perTypeOverrides?[t]) │    │
+│  │   // queryVariantsByType returns rows with ALL  │    │
+│  │   // display fields + extension columns (sv_*,  │    │
+│  │   // cnv_*, str_*) + is_starred, via LEFT JOINs.│    │
+│  │   // No Stage-2 DB access.                      │    │
 │  │   candidates[t] = queryVariantsByType(          │    │
 │  │     caseId, t, mergedFilters,                   │    │
 │  │     limit = topN * 4  // safety cap             │    │
 │  │   )                                             │    │
 │  └─────────────────────────────────────────────────┘    │
 │                                                          │
-│  Stage 2 — ranking (pure TypeScript)                    │
+│  Stage 2 — ranking (pure TypeScript, zero DB access)    │
 │  ┌─────────────────────────────────────────────────┐    │
 │  │ for row in [...candidates]:                     │    │
-│  │   ext = fetchExtension(row)   // if applicable  │    │
-│  │   scored = scoreRow(row, ext, config.rankConfig)│    │
+│  │   // Extension data already on the row from     │    │
+│  │   // Stage 1 — NO fetchExtension() lookup.      │    │
+│  │   scored = scoreRow(row, config.rankConfig,     │    │
+│  │                     row.is_starred)             │    │
 │  │ all.sort(compareScoredRows(tieBreakers))        │    │
 │  │ topN = all.slice(0, config.topN)                │    │
 │  └─────────────────────────────────────────────────┘    │
@@ -104,6 +110,8 @@ The shortlist is a **candidate-generation + ranking** pipeline running in the ma
 │  Return: { rows: topN, totalCandidates, elapsedMs }     │
 └─────────────────────────────────────────────────────────┘
 ```
+
+**Stage boundary commitment**: Stage 1 is the ONLY stage that issues DB queries. Stage 2 operates on the returned row objects in memory — zero DB access, zero N+1 lookups. This is enforced by the `queryVariantsByType()` row projection including every field the scorer or display layer could need (see "ShortlistRow contract" below).
 
 ### Rationale for two-stage over SQL CASE scoring
 
@@ -121,7 +129,7 @@ See `.planning/docs/unified-variant-view-ranking-exploration.md` and the brainst
 
 | File | Responsibility |
 |---|---|
-| `src/shared/types/shortlist.ts` | Shared type contracts: `ShortlistConfig`, `RankComponents`, `RankWeights`, `RankConfig`, `ScoredRow`, `ShortlistResult` |
+| `src/shared/types/shortlist.ts` | Shared type contracts: `VariantTypeKey`, `ShortlistConfig`, `RankComponents`, `RankWeights`, `RankConfig`, `ScoredRow`, `ShortlistCandidate` (Stage-1 flat row), `ScoredCandidate` (Candidate + ScoredRow), `ShortlistRow` (ScoredCandidate + `rank` 1-based), `ShortlistResult`, `AnnotationChangeEvent` |
 | `src/main/services/scoring/index.ts` | Public scorer API: `scoreRow()`, `combine()`, `compareScoredRows()`, `mapConsequenceImpact()`, `mapClinvarBoost()` |
 | `src/main/services/scoring/score-snv.ts` | Per-type scorer (applies to snv and indel) |
 | `src/main/services/scoring/score-sv.ts` | Per-type scorer for SV |
@@ -142,7 +150,7 @@ See `.planning/docs/unified-variant-view-ranking-exploration.md` and the brainst
 |---|---|
 | `src/main/database/migrations.ts` | Add v27 block: `filter_presets.kind` column + seed 3 shortlist presets |
 | `src/main/database/createRepositories.ts` | Wire `ShortlistService` into the `DatabaseService` composition |
-| `src/main/ipc/handlers/annotations-logic.ts` | Emit `variants:annotationChanged` broadcast from `upsertPerCaseAnnotation` |
+| `src/main/ipc/handlers/annotations.ts` | Emit `variants:annotationChanged` broadcast from the `annotations:upsertPerCase` handler wrapper, after the `upsertPerCaseAnnotation()` logic call returns. The logic file (`annotations-logic.ts`) is NOT touched — its JSDoc explicitly prohibits touching Electron APIs. Electron IPC/broadcast work lives in the handler layer only. |
 | `src/preload/index.ts` | Typed wrappers: `variants.shortlist()` + `variants.onAnnotationChanged()` |
 | `src/shared/types/filters.ts` | Extend `FilterState` with optional `shortlist?: ShortlistConfig` |
 | `src/shared/types/ipc-schemas.ts` | Add `ShortlistConfigSchema`, `RankConfigSchema`, `GetShortlistParamsSchema` |
@@ -257,11 +265,13 @@ export const ZERO_COMPONENTS: RankComponents = {
 
 ### Per-type scorers
 
+All per-type scorers take a `ShortlistCandidate` — the flat row shape produced by Stage 1 that contains `Variant` fields PLUS extension-table columns (prefixed `sv_*`/`cnv_*`/`str_*`) PLUS `is_starred`. See the "ShortlistCandidate contract" subsection below for the complete field list.
+
 ```typescript
 // src/main/services/scoring/score-snv.ts
 
 /** Applies to both 'snv' and 'indel' variant types. */
-export function scoreSnv(row: Variant): RankComponents {
+export function scoreSnv(row: ShortlistCandidate): RankComponents {
   return {
     impact: mapConsequenceImpact(row.consequence),
     pathogenicity: row.cadd == null ? 0 : Math.min(row.cadd / 40, 1),
@@ -278,15 +288,17 @@ export function scoreSnv(row: Variant): RankComponents {
 // src/main/services/scoring/score-sv.ts
 
 /**
- * SV scoring. NULL defaults reflect current data availability:
+ * SV scoring. Input is a ShortlistCandidate — a Stage 1 row with extension
+ * columns already flattened in via LEFT JOIN on variant_sv. NULL defaults
+ * reflect current data availability:
  * - No gnomAD-SV frequency source → rarity = 1.0 (assume rare). When Phase
  *   4+ imports SV frequency, this flips to a real computation — code change,
  *   not config change.
  * - Pathogenicity is a proxy: vaf * precision factor.
  */
-export function scoreSv(row: Variant, ext: VariantSvExt): RankComponents {
-  const precisionFactor = ext.sv_is_precise ? 1.0 : 0.7
-  const vaf = ext.vaf ?? 0.5
+export function scoreSv(row: ShortlistCandidate): RankComponents {
+  const precisionFactor = row.sv_is_precise ? 1.0 : 0.7
+  const vaf = row.sv_vaf ?? 0.5
   return {
     impact: row.sv_length != null && row.sv_length >= 1000 ? 1.0 : 0.66,
     pathogenicity: Math.min(vaf * precisionFactor, 1),
@@ -300,17 +312,17 @@ export function scoreSv(row: Variant, ext: VariantSvExt): RankComponents {
 ```typescript
 // src/main/services/scoring/score-cnv.ts
 
-export function scoreCnv(row: Variant, ext: VariantCnvExt): RankComponents {
-  const cn = ext.copy_number
+export function scoreCnv(row: ShortlistCandidate): RankComponents {
+  const cn = row.cnv_copy_number
   const impact = cn == null ? 0
                : cn <= 0 ? 1.0
                : (cn === 1 || cn >= 3) ? 0.66
                : 0
   return {
     impact,
-    pathogenicity: ext.copy_number_quality == null
+    pathogenicity: row.cnv_copy_number_quality == null
       ? 0
-      : Math.min(ext.copy_number_quality / 100, 1),
+      : Math.min(row.cnv_copy_number_quality / 100, 1),
     rarity: 1.0,
     clinvar: mapClinvarBoost(row.clinvar),
     phenotype: row.hpo_sim_score ?? 0
@@ -321,11 +333,11 @@ export function scoreCnv(row: Variant, ext: VariantCnvExt): RankComponents {
 ```typescript
 // src/main/services/scoring/score-str.ts
 
-export function scoreStr(row: Variant, ext: VariantStrExt): RankComponents {
-  const statusImpact = ext.str_status === 'pathologic' ? 1.0
-                     : ext.str_status === 'intermediate' ? 0.66
+export function scoreStr(row: ShortlistCandidate): RankComponents {
+  const statusImpact = row.str_status === 'pathologic' ? 1.0
+                     : row.str_status === 'intermediate' ? 0.66
                      : 0
-  const knownLocus = ext.disease != null && ext.disease.trim() !== ''
+  const knownLocus = row.str_disease != null && row.str_disease.trim() !== ''
   return {
     impact: statusImpact,
     pathogenicity: knownLocus ? 1.0 : 0.5,
@@ -341,12 +353,8 @@ export function scoreStr(row: Variant, ext: VariantStrExt): RankComponents {
 ```typescript
 // src/main/services/scoring/index.ts
 
-export function scoreRow(
-  row: Variant,
-  ext: VariantExtensionRow | null,
-  config: RankConfig,
-  isStarred: boolean
-): ScoredRow {
+/** scoreRow takes a fully-joined Stage-1 row. No DB access, no ext lookup. */
+export function scoreRow(row: ShortlistCandidate, config: RankConfig): ScoredRow {
   let components: RankComponents
   try {
     switch (row.variant_type) {
@@ -355,20 +363,20 @@ export function scoreRow(
         components = scoreSnv(row)
         break
       case 'sv':
-        components = scoreSv(row, ext as VariantSvExt)
+        components = scoreSv(row)
         break
       case 'cnv':
-        components = scoreCnv(row, ext as VariantCnvExt)
+        components = scoreCnv(row)
         break
       case 'str':
-        components = scoreStr(row, ext as VariantStrExt)
+        components = scoreStr(row)
         break
       default:
         components = ZERO_COMPONENTS
     }
   } catch (e) {
     mainLogger.error(
-      `scoreRow failed for variant_type=${row.variant_type} id=${row.id}: ${toError(e).message}`,
+      `scoreRow failed for variant_type=${row.variant_type} id=${row.variant_id}: ${toError(e).message}`,
       'shortlist.scoreRow'
     )
     components = ZERO_COMPONENTS
@@ -377,7 +385,7 @@ export function scoreRow(
     rank_score: combine(components, config.weights),
     rank_components: components,
     rank_clinvar_pinned: config.clinvarPinTop === true && components.clinvar >= 0.9,
-    rank_starred_pinned: config.pinStarredTop === true && isStarred
+    rank_starred_pinned: config.pinStarredTop === true && row.is_starred === true
   }
 }
 ```
@@ -385,9 +393,10 @@ export function scoreRow(
 ### Sort + tie-breaking
 
 ```typescript
+/** Row input is ShortlistCandidate & ScoredRow — the post-scoring shape. */
 export function compareScoredRows(
-  a: ScoredRow & Variant,
-  b: ScoredRow & Variant,
+  a: ScoredCandidate,
+  b: ScoredCandidate,
   tieBreakers?: SortItem[]
 ): number {
   // Starred pin overrides clinvar pin — user curation beats automation
@@ -407,6 +416,79 @@ export function compareScoredRows(
   return a.variant_id - b.variant_id  // stable fallback
 }
 ```
+
+### ShortlistCandidate contract (Stage 1 row shape)
+
+This is the row shape Stage 1 produces and Stage 2 consumes. Every field the scorer or display layer could need is on the row — Stage 2 has no DB access.
+
+```typescript
+// src/shared/types/shortlist.ts
+
+/**
+ * A Stage-1 candidate row. Produced by shortlist-query.ts via per-type
+ * SELECT with LEFT JOINs on the extension tables and case_variant_annotations.
+ * Consumed by the scoring module and the IPC serializer.
+ *
+ * All extension columns are nullable because a given row only populates
+ * columns for ITS variant type (a SNV row has null sv_*/cnv_*/str_* fields).
+ * This is a deliberate flat shape — no nested ext object — to avoid an
+ * extra indirection in the scorer and to match what LEFT JOIN naturally
+ * produces at the SQL layer.
+ */
+export interface ShortlistCandidate {
+  // ── Variant base columns (from variants table) ───────
+  variant_id: number             // aliased from variants.id
+  case_id: number
+  variant_type: VariantTypeKey
+  chr: string
+  pos: number
+  ref: string
+  alt: string
+  gene_symbol: string | null
+  consequence: string | null    // VEP IMPACT: HIGH/MOD/LOW/MODIFIER
+  func: string | null           // SO term
+  gnomad_af: number | null
+  cadd: number | null
+  clinvar: string | null
+  hpo_sim_score: number | null  // Phase 4 populated, Phase 1 null everywhere
+  sv_length: number | null      // on variants table, available for SV rows
+
+  // ── SV extension columns (variant_sv LEFT JOIN; aliased sv_*) ─────
+  sv_is_precise: 0 | 1 | null
+  sv_vaf: number | null         // aliased from variant_sv.vaf
+  sv_support: number | null
+
+  // ── CNV extension columns (variant_cnv LEFT JOIN; aliased cnv_*) ──
+  cnv_copy_number: number | null
+  cnv_copy_number_quality: number | null
+
+  // ── STR extension columns (variant_str LEFT JOIN; aliased str_*) ──
+  str_status: 'normal' | 'intermediate' | 'pathologic' | null
+  str_disease: string | null
+  str_alt_copies: string | null
+
+  // ── Per-case annotation state (case_variant_annotations LEFT JOIN) ─
+  is_starred: boolean            // computed from case_variant_annotations.starred
+}
+
+/** A ShortlistCandidate with scoring fields appended by Stage 2. */
+export interface ScoredCandidate extends ShortlistCandidate, ScoredRow {}
+
+/**
+ * The renderer-facing row shape — what the IPC payload contains.
+ * Extends ScoredCandidate with a 1-based sorted-position field.
+ * variant_notation is NOT on this type — it's computed in the renderer.
+ */
+export interface ShortlistRow extends ScoredCandidate {
+  rank: number                   // 1-based position in the sorted, sliced result
+}
+```
+
+**Aliasing convention**: extension columns are prefixed with their table short name (`sv_`, `cnv_`, `str_`) to avoid collision with base columns and to make the row shape flat. `variant_sv.vaf` becomes `sv_vaf`, `variant_cnv.copy_number` becomes `cnv_copy_number`, and so on. This is a one-time SQL alias at the `shortlist-query.ts` layer — downstream code sees a single flat type.
+
+**`is_starred` derivation**: `shortlist-query.ts` adds `LEFT JOIN case_variant_annotations cva ON cva.case_id = v.case_id AND cva.variant_id = v.id` and selects `COALESCE(cva.starred, 0) AS is_starred_int`, then the row hydration coerces to boolean. If the schema evolves so starred lives in a different table (e.g. when #125 migrates to flags), only this one JOIN and the column name change.
+
+**No SELECT star**: the Stage 1 query explicitly lists every field above. This is load-bearing — `better-sqlite3` returns ONLY the columns named in the SELECT list, which means the IPC payload never accidentally leaks columns the renderer doesn't need. This is also the mechanism that enforces the "no extension data from Stage 2" commitment: if a future scorer field isn't in the Stage 1 SELECT list, TypeScript catches it at the scorer layer (missing property), not at runtime.
 
 ### Design commitments
 
@@ -527,19 +609,23 @@ if (currentVersion < 27) {
 
 ### Built-in shortlist presets (seeded in v27)
 
-**1. "Tier 1 candidates" (strict, ClinVar-pinned, starred-pinned)**
+**1. "Tier 1 candidates" (strict, ClinVar/starred pinned)**
 
 ```typescript
 {
   name: 'Tier 1 candidates',
-  description: 'Strict shortlist: rare HIGH/MOD impact, ClinVar P/LP + starred pinned to top.',
+  description: 'Strict ranking: rare HIGH/MOD impact, top-50. ClinVar P/LP and starred variants pinned to top.',
   sortOrder: 0,
   config: {
     variantTypeScope: ['snv', 'indel', 'sv', 'cnv', 'str'],
     topN: 50,
     baseFilters: {
+      // NOTE: intentionally no `clinvars` filter here — the preset RANKS with
+      // a ClinVar boost, it does not gate on ClinVar. A rare HIGH SNV with no
+      // ClinVar entry is still a Tier 1 candidate and must be able to enter
+      // the shortlist. Pinning (clinvarPinTop) is what elevates P/LP hits to
+      // the top of the ordering.
       consequences: ['HIGH', 'MODERATE'],
-      clinvars: ['Pathogenic', 'Likely_pathogenic', 'Pathogenic/Likely_pathogenic'],
       maxGnomadAf: 0.001
     },
     perTypeOverrides: {
@@ -560,6 +646,8 @@ if (currentVersion < 27) {
   }
 }
 ```
+
+**Rationale for removing the ClinVar hard-filter**: the clinical intent is *"show me strong candidates with ClinVar P/LP prioritized"* — a hard filter on `clinvars` would exclude un-annotated rare HIGH variants that are often the most interesting cases (novel LoF in a rare disease gene). The pinning mechanism (`clinvarPinTop`) gives ClinVar P/LP the sort-ordering priority the clinician wants while the `maxGnomadAf: 0.001` + `consequences: ['HIGH', 'MODERATE']` gates keep the list short and clinically meaningful.
 
 **2. "All rare damaging" (broad, score-driven)**
 
@@ -618,39 +706,24 @@ All built-ins reference only fields that already work in `VariantFilterBuilder` 
 
 ### IPC contract
 
+The IPC payload row type is `ShortlistRow`, defined in Section 4 as `ScoredCandidate & { rank: number }` — see the "ShortlistCandidate contract" subsection above. Here is the outer wrapper:
+
 ```typescript
-// src/main/ipc/handlers/shortlist.ts (pseudo-code)
+// src/main/ipc/handlers/shortlist.ts
 
 type GetShortlistParams =
   | { caseId: number; presetId: number }
   | { caseId: number; adHocConfig: ShortlistConfig }
 
 interface ShortlistResult {
-  rows: ShortlistRow[]           // top-N, pre-sorted
-  totalCandidates: number        // pre-slice count
-  presetUsed: FilterPreset | null
-  elapsedMs: number
-}
-
-interface ShortlistRow {
-  variant_id: number
-  variant_type: VariantTypeKey
-  chr: string
-  pos: number
-  gene_symbol: string | null
-  consequence: string | null
-  gnomad_af: number | null
-  cadd: number | null
-  clinvar: string | null
-  is_starred: boolean
-  // ... extension-specific display columns (nullable) ...
-  rank: number                   // 1-based sorted position
-  rank_score: number
-  rank_components: RankComponents
-  rank_clinvar_pinned: boolean
-  rank_starred_pinned: boolean
+  rows: ShortlistRow[]           // top-N, pre-sorted, see types/shortlist.ts
+  totalCandidates: number        // pre-slice count of all Stage-1 candidates
+  presetUsed: FilterPreset | null  // null if called with adHocConfig
+  elapsedMs: number              // service-level timing, includes Stage 1 + 2
 }
 ```
+
+The `ShortlistRow` type was consolidated with `ShortlistCandidate` in Section 4 to avoid the previous ambiguity where two separate "row" types implied a transform that did not exist. There is now exactly one row shape: Stage 1 produces `ShortlistCandidate` (flat, fully-joined), Stage 2 produces `ScoredCandidate` (Candidate + score fields), Stage 3 (slicing) produces `ShortlistRow` (ScoredCandidate + `rank` 1-based index). Each step is an additive type extension.
 
 ### Zod schemas (IPC boundary validation)
 
@@ -736,21 +809,54 @@ const tabItems = computed(() => {
 const selectedVariantType = ref<string>(tabItems.value[0]?.type ?? 'snv')
 ```
 
-Template addition:
+Template addition — note this replaces the current flat `FilterToolbar + VariantTable` region (currently lines ~222-253) with a conditional block that also hides `FilterToolbar` in shortlist mode:
 
 ```vue
-<ShortlistPanel
-  v-if="selectedVariantType === 'shortlist'"
-  :case-id="caseId"
-  @open-in-tab="selectedVariantType = $event"
-/>
-<VariantTable
-  v-else
-  :case-id="caseId"
-  :variant-type="selectedVariantType"
-  ...
-/>
+<template>
+  <!-- ... existing <v-tabs> unchanged ... -->
+
+  <!-- Shortlist mode: no FilterToolbar, no VariantTable -->
+  <template v-if="selectedVariantType === 'shortlist'">
+    <ShortlistPanel
+      :case-id="selectedCaseId"
+      @open-in-tab="selectedVariantType = $event"
+      @row-click="handleRowClick"
+    />
+  </template>
+
+  <!-- Per-type mode: existing FilterToolbar + VariantTable unchanged -->
+  <template v-else>
+    <div class="filter-bar-container">
+      <FilterToolbar
+        ref="filterToolbarRef"
+        :case-id="selectedCaseId"
+        ...
+      />
+    </div>
+    <VariantTable
+      ref="variantTableRef"
+      :case-id="selectedCaseId"
+      :variant-type="selectedVariantType"
+      ...
+    />
+  </template>
+</template>
 ```
+
+### CaseView ownership model when Shortlist is active
+
+The existing `CaseView.vue` is tightly coupled to `VariantTable`: `FilterToolbar` receives `columns`, `columnActiveFilters`, `filteredCount`, `totalCount`, `hasSort` all sourced from `variantTableRef`. When Shortlist is active, `variantTableRef` is `null` and those props don't apply. Rather than fighting this coupling, the design **hides `FilterToolbar` entirely in shortlist mode** — the shortlist has its own preset picker inside `ShortlistPanel`, so there is no confusing "live but non-functional" toolbar.
+
+**Lifecycle rules in shortlist mode**:
+
+1. **`FilterToolbar` not mounted** — no `filterToolbarRef`, no filter state sync with the shortlist. `ShortlistPanel` owns its own filter state via `useShortlistQuery`. The filter bar visible in per-type tabs simply does not appear when Shortlist is active.
+2. **`VariantTable` not mounted** — no `variantTableRef`, no `columnMeta` fetch, no `updateCounts` emission. `tabItems` reads `typeCounts` from a separate composable (already the case), so tab badges still reflect imported data correctly.
+3. **Existing `CaseView` handlers guard against null refs** — `handleClearColumnFilters`, `handleClearColumnFilter`, `handleResetSort`, `handleSortUpdate`, `handleCountsUpdate` all need optional-chaining or early-return guards when called in a state where `variantTableRef.value == null`. This is already correct in some handlers and needs to be applied consistently (Wave 6 task).
+4. **Tab switch from Shortlist → per-type tab** remounts `FilterToolbar` + `VariantTable` fresh. Any prior filter state the user had in those tabs is NOT preserved across shortlist toggles in Phase 1 (known limitation — Phase 2+ can persist per-tab filter state in Pinia if users ask).
+5. **Row click in shortlist → opens `VariantDetailsPanel`** (the existing component) via the `handleRowClick` handler already defined in `CaseView`. `ShortlistPanel` re-emits `row-click` upward so the existing handler runs unchanged.
+6. **"View in [type] tab" action** emits `open-in-tab` with the target type string; `CaseView` listens and updates `selectedVariantType`. `VariantTable` mounts fresh, filters reset to defaults — Phase 1 does NOT pre-filter the target tab to the clicked variant's position. Phase 2+ can add "scroll to variant" by extending `VariantTable` with a target-variant-id prop.
+
+**Why not just wire `FilterToolbar` into `ShortlistPanel`**: the filter toolbar is designed for linear tab-filtering, not cross-type preset ranking. It would need substantial refactoring (remove column metadata plumbing, hide sort controls, hide export options that don't apply) for a feature that is read-only in Phase 1. Clean separation is simpler now and doesn't foreclose reuse in Phase 2.
 
 ### `ShortlistPanel.vue` structure
 
@@ -821,12 +927,20 @@ Pure presentation, reads from `row.rank_components`. No new IPC, no composable l
 
 ```typescript
 // src/renderer/src/composables/useShortlistQuery.ts
+import { ref, computed, watch, onBeforeUnmount, type Ref } from 'vue'
+import { useFilterPresetStore } from './useFilterPresetStore'
+import { logService } from '../services/LogService'
+import type { ShortlistResult, AnnotationChangeEvent } from '../../../shared/types/...'
 
 export function useShortlistQuery(caseId: Ref<number>) {
   const presetStore = useFilterPresetStore()
 
+  // NOTE: the existing composable exposes `presets` (a ref<FilterPreset[]>)
+  // and a computed `visiblePresets`. It does NOT expose `allPresets`. We
+  // filter over `visiblePresets` so users who have hidden a built-in
+  // shortlist preset don't see it in the picker.
   const shortlistPresets = computed(() =>
-    presetStore.allPresets.filter(p => p.filterJson.shortlist != null)
+    presetStore.visiblePresets.value.filter(p => p.filterJson.shortlist != null)
   )
   const selectedPresetId = ref<number | null>(null)
 
@@ -855,43 +969,100 @@ export function useShortlistQuery(caseId: Ref<number>) {
     }
   }
 
+  // Re-fetch when the user picks a different preset or the case changes.
   watch([selectedPresetId, caseId], fetch, { immediate: false })
 
+  // Default to the first shortlist preset once they load (presets load async).
   watch(shortlistPresets, (presets) => {
     if (selectedPresetId.value == null && presets.length > 0) {
       selectedPresetId.value = presets[0].id
     }
   }, { immediate: true })
 
-  // Auto-refresh on same-case annotation changes
-  onMounted(() => {
-    const unsubscribe = window.api.variants.onAnnotationChanged((ev) => {
+  // Auto-refresh on same-case annotation changes.
+  // Subscription is registered at setup() top-level (NOT nested inside
+  // onMounted) so `onBeforeUnmount` can be used to unsubscribe cleanly.
+  // The returned unsubscribe from `onAnnotationChanged` is captured once
+  // and called on component teardown — this is the correct composable
+  // lifecycle for Vue 3 + the existing preload subscription idiom.
+  const unsubscribeAnnotations = window.api.variants.onAnnotationChanged(
+    (ev: AnnotationChangeEvent) => {
       if (ev.caseId === caseId.value) fetch()
-    })
-    onUnmounted(unsubscribe)
-  })
+    }
+  )
+  onBeforeUnmount(unsubscribeAnnotations)
 
-  return { shortlistPresets, selectedPresetId, result, loading, error, refresh: fetch }
+  return {
+    shortlistPresets,
+    selectedPresetId,
+    result,
+    loading,
+    error,
+    refresh: fetch
+  }
 }
 ```
 
+**Lifecycle notes for the implementer**:
+
+1. The subscription is created during `setup()` (synchronous), not inside `onMounted`. This matches Vue 3's recommended pattern for anything that must run exactly once per component instance and must be reliably torn down.
+2. `onBeforeUnmount(unsubscribeAnnotations)` is the only lifecycle hook called. Do NOT nest `onUnmounted` inside `onMounted` — that pattern only works under specific conditions and breaks silently if `onMounted` doesn't fire (e.g., during SSR or test rendering).
+3. `presetStore.visiblePresets` is a `ComputedRef<FilterPreset[]>`, so we dereference via `.value` in the computed. If `useFilterPresetStore` is refactored in the future to return raw refs directly, this code updates in one place.
+4. `presetStore` only loads presets once `loadPresets()` is called from the owning component (same pattern as other composables). `useShortlistQuery`'s consumer (`ShortlistPanel.vue`) is responsible for ensuring `presetStore.loadPresets()` runs — typically already the case because `CaseView` triggers preset loading at mount time.
+
 ### Annotation-event broadcast (new infrastructure)
 
-A small but new piece of infrastructure. Wave 1.E adds this end-to-end:
+A small but new piece of infrastructure. Wave 1.E adds this end-to-end. **Layering note**: `annotations-logic.ts` has an explicit JSDoc contract — "never touch IPC/Electron APIs directly." All Electron broadcast work therefore lives in the handler layer (`annotations.ts`), not the logic layer.
 
-**Main process emitter** (`annotations-logic.ts`):
+**Main process emitter** — added to the `annotations:upsertPerCase` handler wrapper in `src/main/ipc/handlers/annotations.ts`, AFTER the `upsertPerCaseAnnotation()` logic call returns:
 
 ```typescript
-// Inside upsertPerCaseAnnotation, after successful write
-BrowserWindow.getAllWindows().forEach(win => {
-  if (!win.isDestroyed()) {
-    win.webContents.send('variants:annotationChanged', {
-      caseId,
-      variantId,
-      kind: detectKind(annotationUpdates)  // 'star' | 'comment' | 'acmg'
+// src/main/ipc/handlers/annotations.ts — inside the existing
+// ipcMain.handle('annotations:upsertPerCase', ...) block.
+// This sits in the handler, NOT in annotations-logic.ts.
+ipcMain.handle(
+  'annotations:upsertPerCase',
+  async (_event, caseId: unknown, variantId: unknown, updates: unknown) => {
+    return wrapHandler(async () => {
+      // ... existing Zod validation unchanged ...
+
+      const result = upsertPerCaseAnnotation(
+        validatedIds.data.caseId,
+        validatedIds.data.variantId,
+        validatedUpdates.data,
+        getDb
+      )
+
+      // NEW: broadcast to all renderer windows after successful write.
+      // Uses BrowserWindow + webContents.send — these are Electron APIs
+      // and are therefore only called from the handler layer.
+      broadcastAnnotationChanged({
+        caseId: validatedIds.data.caseId,
+        variantId: validatedIds.data.variantId,
+        kind: detectKind(validatedUpdates.data)
+      })
+
+      return result
     })
   }
-})
+)
+
+/** Helper co-located in annotations.ts (handler layer). */
+function broadcastAnnotationChanged(ev: AnnotationChangeEvent): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send('variants:annotationChanged', ev)
+    }
+  }
+}
+
+/** Maps the validated update shape to the event kind enum. */
+function detectKind(updates: PerCaseAnnotationUpdates): AnnotationChangeEvent['kind'] {
+  if (updates.starred !== undefined) return 'star'
+  if (updates.acmg_classification !== undefined) return 'acmg'
+  if (updates.acmg_evidence !== undefined) return 'evidence'
+  return 'comment'
+}
 ```
 
 **Preload wrapper** (`src/preload/index.ts`):
@@ -917,7 +1088,9 @@ export interface AnnotationChangeEvent {
 }
 ```
 
-Adding the emit call requires ONE change in `annotations-logic.ts` (at the `upsertPerCaseAnnotation` success path), not scattered changes across handlers.
+**Phase 1 limitation**: `annotations:upsertGlobal` (global annotations — not case-scoped) does NOT emit the broadcast. A clinician editing a global ClinVar override from the shortlist's detail panel will not see the shortlist auto-refresh. Workaround: the manual Refresh button. Phase 2+ can extend the broadcast to global edits by deriving the affected caseIds via the variant's chr/pos/ref/alt + `case_id` join.
+
+Total change footprint: ~40 lines in `annotations.ts` (handler wrapper), ~6 lines in `preload/index.ts`, ~6 lines in `api.ts` (type). Logic file untouched.
 
 ### Design commitments
 
@@ -1189,7 +1362,7 @@ Each fixture variant has a documented expected rank position under "Tier 1 candi
 | **W1.B migration** | `src/main/database/migrations.ts` (append v27 block), `src/main/database/built-in-shortlist-presets.ts` (new), `tests/main/database/migrations.test.ts` (append v27 tests) | `feat(db): migration v27 + built-in shortlist presets` |
 | **W1.C query helper** | `src/main/database/shortlist-query.ts` (new), `tests/main/database/shortlist-query.test.ts` (new) | `feat(db): shortlist-query helper (Stage 1)` |
 | **W1.D UI leaves** | `src/renderer/src/components/shortlist/ShortlistTable.vue` (new), `src/renderer/src/components/shortlist/RankScoreTooltip.vue` (new), corresponding tests | `feat(ui): ShortlistTable + RankScoreTooltip components` |
-| **W1.E annotation events** | `src/main/ipc/handlers/annotations-logic.ts` (add `emit()` to `upsertPerCaseAnnotation`), `src/preload/index.ts` (add `onAnnotationChanged` wrapper), `src/shared/types/api.ts` (add `AnnotationChangeEvent` type), corresponding tests | `feat(ipc): variants:annotationChanged broadcast` |
+| **W1.E annotation events** | `src/main/ipc/handlers/annotations.ts` (handler wrapper — add broadcast emit after `upsertPerCaseAnnotation()` call; do NOT touch `annotations-logic.ts`), `src/preload/index.ts` (add `onAnnotationChanged` wrapper), `src/shared/types/api.ts` (add `AnnotationChangeEvent` type), corresponding tests in `tests/main/ipc/handlers/annotations.test.ts` | `feat(ipc): variants:annotationChanged broadcast` |
 
 ### Integration strategy
 
@@ -1227,7 +1400,7 @@ After Wave 7 completes:
 | 7 | Phase 2 editor finds data model rigid | Low | Discriminated-union IPC params (`presetId | adHocConfig`) mean editor never needs new IPC — just POSTs full config |
 | 8 | Test fixture drifts from real-world data | Medium | Fixture documented per-variant with expected rank positions; follow-up adds GIAB-sourced fixture when practical |
 | 9 | Worktree merge conflicts despite non-overlap table | Low | Wave-0 type lock + explicit authorization table + agent briefs list prohibited files |
-| 10 | Per-type scorer's extension column types don't match runtime row shape | Medium | `VariantExtensionRow` union type in shared types + runtime type checks at scorer dispatch; malformed rows return `ZERO_COMPONENTS` with error log |
+| 10 | `ShortlistCandidate` row shape drifts from Stage-1 SELECT list (scorer expects a field the query doesn't project) | Medium | TypeScript catches missing fields at the scorer layer (static error). The `shortlist-query.ts` test suite asserts the row shape returned by a real in-memory DB matches `ShortlistCandidate` exactly (structural equality test on all fields). Scorer dispatch also has a defensive try/catch that returns `ZERO_COMPONENTS` with an error log if a runtime shape mismatch somehow reaches production. |
 
 ---
 

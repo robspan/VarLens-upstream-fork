@@ -15,6 +15,8 @@ import type {
   LogMessage
 } from '../shared/types'
 import type { CommentCategory, AnnotationChangeEvent } from '../shared/types/api'
+import type { ShortlistResult } from '../shared/types/shortlist'
+import type { ValidatedGetShortlistParams } from '../shared/types/ipc-schemas'
 
 /**
  * Preload script - exposes typed API to renderer via contextBridge.
@@ -86,6 +88,15 @@ const api = {
      */
     typesPresent: (payload: { caseId?: number; caseIds?: number[] }) =>
       ipcRenderer.invoke('variants:typesPresent', payload),
+
+    /**
+     * Run the unified shortlist pipeline for a case. Wave 3 wrapper
+     * around `variants:shortlist`. Accepts either a preset id or an
+     * inline `adHocConfig` (discriminated union) and resolves to the
+     * ranked `ShortlistResult` envelope.
+     */
+    shortlist: (params: ValidatedGetShortlistParams): Promise<ShortlistResult> =>
+      ipcRenderer.invoke('variants:shortlist', params),
 
     /**
      * Subscribe to `variants:annotationChanged` broadcasts emitted by the

@@ -799,9 +799,40 @@ Why the computed wrapper (Option B): `useVariantData` in `VariantTable` watches 
 // src/renderer/src/views/CaseView.vue — additions to the existing script
 // (extends the existing selectedVariantType/typeCounts/loadTypeCounts pattern)
 
+// ── Local type aliases ────────────────────────────────────
+// Drop the implicit `string` typing on tab state refs so the
+// 'never shortlist' invariant is enforced by TypeScript.
+
+/** Every value v-tabs can hold in the case view. */
+type VisibleTab = 'shortlist' | 'snv' | 'sv' | 'cnv' | 'str'
+
+/** Values that map to a real DB variant_type filter. Never includes 'shortlist'. */
+type PerTypeTab = 'snv' | 'sv' | 'cnv' | 'str'
+
+// ── Shared "present tab types" helper ─────────────────────
+// Used by BOTH tabItems (display) and the default-selection branch in
+// loadTypeCounts (initial tab choice). Centralizing the SNV/indel folding
+// rule here prevents drift between visible tabs and initial tab choice —
+// that rule is domain logic, not display trivia.
+
+/**
+ * Returns the per-type tabs that should be shown for this case, in
+ * canonical display order. Folds 'indel' into 'snv' (the existing
+ * convention). Returns an empty array for an empty case.
+ */
+function getPresentTabTypes(counts: Record<string, number>): PerTypeTab[] {
+  const present: PerTypeTab[] = []
+  if ((counts.snv ?? 0) + (counts.indel ?? 0) > 0) present.push('snv')
+  if ((counts.sv ?? 0) > 0) present.push('sv')
+  if ((counts.cnv ?? 0) > 0) present.push('cnv')
+  if ((counts.str ?? 0) > 0) present.push('str')
+  return present
+}
+
+// ── Tab items (uses the shared helper) ────────────────────
 const tabItems = computed(() => {
   const counts = typeCounts.value
-  const presentTypes = Object.entries(counts).filter(([, c]) => c > 0).map(([t]) => t)
+  const presentTypes = getPresentTabTypes(counts)
   const snvCount = (counts.snv ?? 0) + (counts.indel ?? 0)
 
   const items: TabItem[] = []
@@ -811,7 +842,9 @@ const tabItems = computed(() => {
     items.push({ type: 'shortlist', label: 'Shortlist', count: null, icon: 'mdi-star-circle' })
   }
 
-  items.push({ type: 'snv', label: 'SNV/Indel', count: snvCount })
+  if (presentTypes.includes('snv')) {
+    items.push({ type: 'snv', label: 'SNV/Indel', count: snvCount })
+  }
   if ((counts.sv ?? 0) > 0)  items.push({ type: 'sv',  label: 'SV',  count: counts.sv! })
   if ((counts.cnv ?? 0) > 0) items.push({ type: 'cnv', label: 'CNV', count: counts.cnv! })
   if ((counts.str ?? 0) > 0) items.push({ type: 'str', label: 'STR', count: counts.str! })
@@ -819,11 +852,12 @@ const tabItems = computed(() => {
   return items
 })
 
+// ── State refs ────────────────────────────────────────────
 // Selected tab — drives v-tabs + v-show/v-if. Initialized to the same
 // conventional default the existing CaseView uses (`'snv'`). The real
 // correction happens inside loadTypeCounts() once counts resolve — see
 // "Default selection logic" below.
-const selectedVariantType = ref<string>('snv')
+const selectedVariantType = ref<VisibleTab>('snv')
 
 /**
  * Remembered state: the last non-shortlist tab the user was on. Updated
@@ -832,10 +866,15 @@ const selectedVariantType = ref<string>('snv')
  *
  * Default 'snv' matches the existing selectedVariantType default so
  * first-frame renders are consistent before loadTypeCounts() runs.
+ * loadTypeCounts() re-seeds this to the first present per-type once the
+ * case's type mix is known, so a cnv+str case never wastes a zero-row
+ * preload against SNV.
  */
-const lastNonShortlistType = ref<string>('snv')
+const lastNonShortlistType = ref<PerTypeTab>('snv')
 
 // Watcher: remember the last real per-type selection.
+// TypeScript narrows `next` from VisibleTab to PerTypeTab in the truthy
+// branch, so no cast is needed at the assignment.
 watch(selectedVariantType, (next) => {
   if (next !== 'shortlist') {
     lastNonShortlistType.value = next
@@ -845,17 +884,17 @@ watch(selectedVariantType, (next) => {
 /**
  * Single read site for VariantTable's filter type. ALWAYS yields a real
  * per-type value — never 'shortlist'. If selectedVariantType is 'shortlist',
- * falls back to lastNonShortlistType (which the watcher maintains).
+ * falls back to lastNonShortlistType (which the watcher maintains and
+ * loadTypeCounts seeds to a present type).
  *
- * This computed is the Option B enforcement: any code path that reads the
- * "current variant type" via this computed is safe by construction; the
- * invariant is not just a watcher convention.
+ * Because both refs are typed as VisibleTab/PerTypeTab, the computed
+ * return type is inferred as PerTypeTab without an `as` cast.
  */
-const variantTableType = computed<'snv' | 'sv' | 'cnv' | 'str'>(() => {
-  const current = selectedVariantType.value
-  return (current === 'shortlist' ? lastNonShortlistType.value : current) as
-    'snv' | 'sv' | 'cnv' | 'str'
-})
+const variantTableType = computed<PerTypeTab>(() =>
+  selectedVariantType.value === 'shortlist'
+    ? lastNonShortlistType.value
+    : selectedVariantType.value
+)
 
 // effectiveFilters composes currentFilters with variantTableType (NOT with
 // selectedVariantType directly). Both VariantTable's variant-type prop and
@@ -868,9 +907,7 @@ const effectiveFilters = computed<Omit<VariantFilter, 'case_id'>>(() => ({
 
 ### Default selection logic (post-load, async-aware)
 
-The existing CaseView already handles a similar async problem: the case has only SV variants (`typeCounts.snv === 0`), and the default tab needs to flip from `'snv'` to `'sv'` once `loadTypeCounts()` resolves. That logic lives at `CaseView.vue:56-68` today. The shortlist adds one more branch to the same post-load selector: if more than one variant type is present, pick `'shortlist'` as the default.
-
-The spec extends `loadTypeCounts()` — NOT the initial `ref` declaration — so the default correctly applies *after* the async counts load:
+The existing CaseView already handles a similar async problem: the case has only SV variants (`typeCounts.snv === 0`), and the default tab needs to flip from `'snv'` to `'sv'` once `loadTypeCounts()` resolves. That logic lives at `CaseView.vue:56-68` today. The shortlist extends the same post-load selector with a "multi-type → shortlist" branch AND seeds `lastNonShortlistType` to the first actually-present per-type (so a cnv+str case doesn't pre-mount VariantTable against an absent SNV type).
 
 ```typescript
 // src/renderer/src/views/CaseView.vue — inside existing loadTypeCounts()
@@ -881,7 +918,10 @@ async function loadTypeCounts(caseId: number | null): Promise<void> {
 
   // Default selection rule (extends the existing SV-only fallback):
   //
-  // 1. If the case has >1 variant type present, land on 'shortlist'.
+  // 1. If the case has >1 variant type present, land on 'shortlist' AND
+  //    seed lastNonShortlistType to the first present per-type so the
+  //    hidden VariantTable pre-mounts against a real type (not a
+  //    zero-row SNV query on e.g. cnv+str cases).
   // 2. Else if the user is still on the 'snv' reset sentinel AND SNV/indel
   //    is empty, fall back to the first available per-type tab.
   // 3. Otherwise leave selectedVariantType as the user set it.
@@ -889,30 +929,33 @@ async function loadTypeCounts(caseId: number | null): Promise<void> {
   // We only override when selectedVariantType is still 'snv' — the reset
   // sentinel set by the case-change watcher above. That preserves the
   // existing "user explicitly picked a tab, don't clobber it" semantic.
+  //
+  // Uses the shared getPresentTabTypes() helper so the "what counts as a
+  // present tab" rule (SNV/indel folding) stays synchronized with tabItems.
 
-  const presentTypes = (['snv', 'sv', 'cnv', 'str'] as const)
-    .filter((t) => {
-      if (t === 'snv') return (typeCounts.value.snv ?? 0) + (typeCounts.value.indel ?? 0) > 0
-      return (typeCounts.value[t] ?? 0) > 0
-    })
+  const presentTypes = getPresentTabTypes(typeCounts.value)
 
   if (selectedVariantType.value === 'snv') {
     if (presentTypes.length > 1) {
-      // Multi-type case → Shortlist is the default landing tab
+      // Multi-type case → Shortlist is the default landing tab.
+      // Seed lastNonShortlistType to the first present real type BEFORE
+      // flipping selectedVariantType, so the hidden VariantTable's
+      // variantTableType computed reads the correct type on its first
+      // render (not the stale default 'snv' from the ref declaration).
+      lastNonShortlistType.value = presentTypes[0]
       selectedVariantType.value = 'shortlist'
-      // lastNonShortlistType stays 'snv' (the watcher doesn't update on
-      // 'shortlist'). That is intentional: the first per-type tab VariantTable
-      // pre-mounts against is SNV — a reasonable default hidden-preload.
     } else if (presentTypes.length === 1 && presentTypes[0] !== 'snv') {
-      // Single non-SNV type (e.g. SV-only import) — existing fallback
+      // Single non-SNV type (e.g. SV-only import) — existing fallback.
+      // selectedVariantType.value = presentTypes[0] also triggers the
+      // watcher which seeds lastNonShortlistType correctly.
       selectedVariantType.value = presentTypes[0]
     }
-    // else: SNV-only or empty, stay on 'snv' (existing behavior)
+    // else: SNV-only or empty, stay on 'snv' (existing behavior).
   }
 }
 ```
 
-This preserves the existing semantics for SNV-only / SV-only cases and adds the "multi-type → shortlist" branch without touching any other initialization code. The case-change watcher still resets to `'snv'` on every case switch, so the rule applies consistently whenever `loadTypeCounts()` resolves new counts.
+This preserves the existing semantics for SNV-only / SV-only cases, adds the "multi-type → shortlist" branch, and fixes the round-5 finding that the previous spec wasted a zero-row SNV preload on cnv+str / sv+cnv / any-multi-type-without-SNV case. The case-change watcher still resets to `'snv'` on every case switch, so the rule applies consistently whenever `loadTypeCounts()` resolves new counts.
 
 Template addition — the per-type region uses `v-show` (stays mounted, state persists) and receives `variantTableType` as its variant-type prop; the shortlist region uses `v-if` (mounts on demand). A new `:interactive` prop on VariantTable suppresses global keyboard shortcuts while hidden (see "VariantTable interactive prop" below):
 

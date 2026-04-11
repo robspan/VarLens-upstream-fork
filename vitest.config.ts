@@ -109,21 +109,23 @@ export default defineConfig({
         'src/renderer/src/plugins/**'
       ],
       thresholds: {
-        autoUpdate: true,
-        // Global floor -- calibrated from CI actuals (~0.5% below to account for platform variance).
-        // Recalibrated 2026-04-10 twice:
-        //   1. After adding multi-variant-type import plumbing (migration v25,
-        //      multi-file session housekeeping, genome-build lock, new wizard IPC).
-        //   2. After the multi-variant filter/sort/search plan (Tasks 1-13 added
-        //      variant-where-builder, column-meta IPC, search-clause-emitter,
-        //      FilterState.columnFilters, ExtensionColumnFilters component, and
-        //      the Path-3 AssociationDataBuilder refactor). Coverage rose because
-        //      many of the new modules ship with dedicated unit tests.
-        // Auto-updated via `COVERAGE=1 vitest run --coverage` (autoUpdate: true).
-        lines: 35.52,
-        functions: 22.04,
-        branches: 31.42,
-        statements: 34.74
+        // Global floor — calibrated ~0.5 pp BELOW the CI-observed values to
+        // absorb platform variance and flaky/skipped test delta between
+        // local and CI. The 0.55.0 release failed because `autoUpdate: true`
+        // ratcheted the thresholds up to the exact PR-branch local values
+        // (lines 35.52 / statements 34.74 / branches 31.42), and the
+        // post-merge CI build on main ran with 6 more tests skipped and
+        // landed 0.06-0.09 pp below — enough to trip the gate.
+        //
+        // `autoUpdate` is intentionally disabled so the floor stays where
+        // the engineer set it. When coverage genuinely improves, bump
+        // these by hand with a margin rather than letting automation chase
+        // the exact observed value.
+        autoUpdate: false,
+        lines: 35.0,
+        functions: 21.5,
+        branches: 30.8,
+        statements: 34.1
       },
       // On CI we only need the JSON summary to gate the thresholds and
       // upload as an artifact. Skipping `text` and `html` reporters saves

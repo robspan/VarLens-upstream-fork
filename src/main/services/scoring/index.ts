@@ -13,6 +13,14 @@
  * No DB dependency. No I/O. Formula changes produce human-readable PR diffs
  * via inline snapshots in the per-scorer tests.
  *
+ * **Every tunable numeric constant lives in `./scoring-config.ts`.** No
+ * magic numbers anywhere else in this module. A tuning PR touches that
+ * one file, not five.
+ *
+ * **Complete reference documentation:**
+ * `.planning/docs/shortlist-scoring-heuristic.md` — every threshold,
+ * every curve, every rationale. Single source of truth for the heuristic.
+ *
  * Spec: .planning/specs/2026-04-11-unified-shortlist-ranked-view-design.md
  * (§4 score engine, §8 tests)
  */
@@ -27,6 +35,7 @@ import type {
   ScoredCandidate
 } from '../../../shared/types/shortlist'
 import type { SortItem } from '../../../shared/types/database'
+import { SCORING_CONFIG } from './scoring-config'
 import { scoreSnv } from './score-snv'
 import { scoreSv } from './score-sv'
 import { scoreCnv } from './score-cnv'
@@ -40,28 +49,22 @@ export const ZERO_COMPONENTS: RankComponents = {
   phenotype: 0
 }
 
-const CONSEQUENCE_IMPACT: Readonly<Record<string, number>> = {
-  HIGH: 1.0,
-  MODERATE: 0.66,
-  LOW: 0.33,
-  MODIFIER: 0.0
-}
-
+/**
+ * Map a VEP IMPACT string to the `impact` sub-score in [0, 1]. Lookup
+ * table lives in `scoring-config.ts` so the vocabulary and step values
+ * stay in one place. Returns 0 for null or unknown strings.
+ */
 export function mapConsequenceImpact(consequence: string | null): number {
-  return consequence == null ? 0 : (CONSEQUENCE_IMPACT[consequence] ?? 0)
+  return consequence == null ? 0 : (SCORING_CONFIG.consequenceImpact[consequence] ?? 0)
 }
 
-const CLINVAR_BOOST: Readonly<Record<string, number>> = {
-  Pathogenic: 1.0,
-  Likely_pathogenic: 0.9,
-  'Pathogenic/Likely_pathogenic': 0.95,
-  Uncertain_significance: 0.3,
-  Likely_benign: 0,
-  Benign: 0
-}
-
+/**
+ * Map a ClinVar significance string to the `clinvar` sub-score boost in
+ * [0, 1]. Lookup table lives in `scoring-config.ts`. Returns 0 for null
+ * or unknown strings.
+ */
 export function mapClinvarBoost(clinvar: string | null): number {
-  return clinvar == null ? 0 : (CLINVAR_BOOST[clinvar] ?? 0)
+  return clinvar == null ? 0 : (SCORING_CONFIG.clinvarBoost[clinvar] ?? 0)
 }
 
 /**

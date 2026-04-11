@@ -1,29 +1,40 @@
 import type { RankComponents, ShortlistCandidate } from '../../../shared/types/shortlist'
 import { mapConsequenceImpact, mapClinvarBoost } from './index'
+import { SCORING_CONFIG } from './scoring-config'
 
 /**
- * SNV / indel scoring.
+ * SNV / indel scoring. Applies to BOTH `'snv'` and `'indel'` variant types.
  *
- * NULL defaults:
- *   - consequence NULL -> impact 0
- *   - cadd NULL         -> pathogenicity 0
- *   - gnomad_af NULL    -> rarity 1.0 (assume rare until proven otherwise)
- *   - clinvar NULL      -> clinvar 0
- *   - hpo_sim_score NULL -> phenotype 0
+ * Formula (all five components bounded to [0, 1]):
  *
- * The CADD curve saturates at 40 (CADD score threshold commonly cited as
- * the high-confidence damaging ceiling). Rarity curve is linear from
- * AF=0 (score 1.0) down to AF=0.01 (score 0.0); anything more common is
- * considered non-rare.
+ *   impact        = mapConsequenceImpact(consequence)            // VEP IMPACT table
+ *   pathogenicity = min(cadd / caddSaturationCeiling, 1)         // linear → 1.0 at the ceiling
+ *   rarity        = max(0, 1 - min(af / rarityUpperCutoffAf, 1)) // linear 0..cutoff
+ *   clinvar       = mapClinvarBoost(clinvar)                     // ClinVar significance table
+ *   phenotype     = hpo_sim_score ?? defaults.nullPhenotypeScore
  *
- * Applies to BOTH `'snv'` and `'indel'` variant types.
+ * Null-value contracts:
+ *   - consequence null  → impact 0   (unknown consequence ≠ high-impact)
+ *   - cadd null         → pathogenicity 0
+ *   - gnomad_af null    → rarity nullRarityDefault (1.0: absence of evidence
+ *                         in gnomAD ≠ evidence of absence; novel variants
+ *                         surface to the top)
+ *   - clinvar null      → clinvar 0
+ *   - hpo_sim_score null → phenotype 0
+ *
+ * Every numeric threshold lives in `scoring-config.ts`; every rationale
+ * comment is on the corresponding field in that file.
  */
 export function scoreSnv(row: ShortlistCandidate): RankComponents {
+  const { snv, defaults } = SCORING_CONFIG
   return {
     impact: mapConsequenceImpact(row.consequence),
-    pathogenicity: row.cadd == null ? 0 : Math.min(row.cadd / 40, 1),
-    rarity: row.gnomad_af == null ? 1 : Math.max(0, 1 - Math.min(row.gnomad_af / 0.01, 1)),
+    pathogenicity: row.cadd == null ? 0 : Math.min(row.cadd / snv.caddSaturationCeiling, 1),
+    rarity:
+      row.gnomad_af == null
+        ? snv.nullRarityDefault
+        : Math.max(0, 1 - Math.min(row.gnomad_af / snv.rarityUpperCutoffAf, 1)),
     clinvar: mapClinvarBoost(row.clinvar),
-    phenotype: row.hpo_sim_score ?? 0
+    phenotype: row.hpo_sim_score ?? defaults.nullPhenotypeScore
   }
 }

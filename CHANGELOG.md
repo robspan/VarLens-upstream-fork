@@ -10,14 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Unified case shortlist** — ranked cross-type variant view per case.
-  New "Shortlist" tab appears in CaseView when a case contains more than
-  one variant type (SNV/indel + SV/CNV/STR). Three built-in presets
+  New "Shortlist" tab appears in CaseView when a case contains at least
+  one variant type (SNV/indel, SV, CNV, or STR). Three built-in presets
   (Tier 1 candidates / All rare damaging / Recessive candidates) drive a
   two-stage candidate-generation + ranking pipeline. Rows auto-refresh
   when any variant in the same case is annotated. Score components
   tooltip surfaces the per-term breakdown on hover. Hard cap of 500
   rows at the IPC boundary for Electron safety.
   Spec: `.planning/specs/2026-04-11-unified-shortlist-ranked-view-design.md`
+  Scoring heuristic reference: `.planning/docs/shortlist-scoring-heuristic.md`
+  (every tunable threshold, curve, and rationale — single source of truth
+  for the scoring formulas).
+
+- **Shortlist scoring config module** — every numeric threshold used by
+  the Shortlist scorer (CADD saturation, rarity cutoffs, SV length
+  buckets, CNV copy-number branching, STR known-locus shortcut, etc.)
+  lives in one typed config object at
+  `src/main/services/scoring/scoring-config.ts`. Tuning a constant is a
+  one-file edit. No magic numbers anywhere in the per-type scorers.
 
 ### Database
 

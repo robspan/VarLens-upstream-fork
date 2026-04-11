@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { useFilterPresetStore } from '../../../src/renderer/src/composables/useFilterPresetStore'
+import {
+  useFilterPresetStore,
+  __resetFilterPresetStoreForTest
+} from '../../../src/renderer/src/composables/useFilterPresetStore'
 import type { FilterPreset } from '../../../src/shared/types/filter-presets'
 
 const mockPresets: FilterPreset[] = [
@@ -53,6 +56,10 @@ vi.stubGlobal('window', { api: { presets: mockApi } })
 describe('useFilterPresetStore', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // The store is now a module-level singleton so callers share state.
+    // Reset shared refs before every test to preserve the original
+    // "fresh store per test" contract these tests were written against.
+    __resetFilterPresetStoreForTest()
   })
 
   it('loads presets on init', async () => {

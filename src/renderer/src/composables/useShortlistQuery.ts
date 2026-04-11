@@ -40,6 +40,15 @@ export function useShortlistQuery(caseId: Ref<number>) {
   const presetStore = useFilterPresetStore()
   const { api } = useApiService()
 
+  // Defensive: make sure the shared preset store is populated. `FilterToolbar`
+  // normally loads presets on its own `onMounted`, but when ShortlistPanel is
+  // the active (default) tab on first render, `v-show` mounts the toolbar AND
+  // the panel in the same tick — without this call the toolbar's async load
+  // would race the shortlist auto-select and leave the picker empty on cold
+  // starts. Idempotent: if the store is already populated, the roundtrip
+  // just overwrites with the same data.
+  void presetStore.loadPresets()
+
   // `useFilterPresetStore` exposes `visiblePresets: ComputedRef<FilterPreset[]>`.
   // Filter for shortlist presets — those whose filterJson carries a shortlist
   // config. (`kind === 'shortlist'` is equivalent once Wave 2 is live, but

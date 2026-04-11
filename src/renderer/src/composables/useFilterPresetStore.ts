@@ -3,6 +3,14 @@
  *
  * Loads presets from the backend, tracks which are active (toggled on),
  * and provides a merged filter state from all active presets.
+ *
+ * **Singleton state:** the preset list, active set, and loading flag are
+ * hoisted to module scope so every `useFilterPresetStore()` call returns
+ * the SAME reactive data. This is required for cross-component
+ * consistency — e.g. `FilterToolbar` calls `loadPresets()` on mount and
+ * `ShortlistPanel` (via `useShortlistQuery`) needs to see the same loaded
+ * list, not a fresh empty one. Tests that need isolation call
+ * `__resetFilterPresetStoreForTest()` in `beforeEach`.
  */
 
 import { ref, computed } from 'vue'
@@ -14,13 +22,29 @@ import type {
 import type { FilterState } from '../../../shared/types/filters'
 import { useApiService } from './useApiService'
 
+// ─── Module-level shared state ────────────────────────────────────────────────
+// These refs are intentionally defined outside the composable factory so every
+// consumer shares the same list. Without this, `ShortlistPanel` and
+// `FilterToolbar` would each instantiate disconnected stores and the shortlist
+// preset picker would render empty even after the toolbar finished loading.
+
+const presets = ref<FilterPreset[]>([])
+const activePresetIds = ref<Set<number>>(new Set())
+const loading = ref(false)
+const visiblePresets = computed(() => presets.value.filter((p) => p.isVisible))
+
+/**
+ * Clear all shared preset store state. Exported for use in unit tests that
+ * need fresh state between cases — production code must NEVER call this.
+ */
+export function __resetFilterPresetStoreForTest(): void {
+  presets.value = []
+  activePresetIds.value = new Set()
+  loading.value = false
+}
+
 export function useFilterPresetStore() {
   const { api } = useApiService()
-  const presets = ref<FilterPreset[]>([])
-  const activePresetIds = ref<Set<number>>(new Set())
-  const loading = ref(false)
-
-  const visiblePresets = computed(() => presets.value.filter((p) => p.isVisible))
 
   async function loadPresets(): Promise<void> {
     if (!api) return

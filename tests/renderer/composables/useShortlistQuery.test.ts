@@ -25,9 +25,11 @@ import type { FilterPreset } from '../../../src/shared/types/filter-presets'
 // Needs to live outside the harness so the `vi.mock` hoisting sees it.
 let mockVisiblePresets: Ref<FilterPreset[]>
 
+const mockLoadPresets = vi.fn().mockResolvedValue(undefined)
 vi.mock('../../../src/renderer/src/composables/useFilterPresetStore', () => ({
   useFilterPresetStore: () => ({
-    visiblePresets: mockVisiblePresets
+    visiblePresets: mockVisiblePresets,
+    loadPresets: mockLoadPresets
   })
 }))
 
@@ -114,6 +116,7 @@ describe('useShortlistQuery', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     app = null
+    mockLoadPresets.mockClear()
   })
 
   afterEach(() => {
@@ -126,6 +129,16 @@ describe('useShortlistQuery', () => {
       app = null
     }
     vi.restoreAllMocks()
+  })
+
+  it('kicks off loadPresets() on setup (defensive cold-start guard)', async () => {
+    const h = harness()
+    app = h.app
+    await nextTick()
+    // Verifies the fix for a production bug where ShortlistPanel mounted
+    // alongside FilterToolbar could race against FilterToolbar's onMounted
+    // load, leaving the preset dropdown empty on cold starts.
+    expect(mockLoadPresets).toHaveBeenCalledTimes(1)
   })
 
   it('auto-selects the first visible shortlist preset', async () => {

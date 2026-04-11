@@ -16,6 +16,7 @@
  * Spec: .planning/specs/2026-04-11-unified-shortlist-ranked-view-design.md (§6)
  */
 
+import { mdiStar, mdiStarOutline, mdiDotsVertical } from '@mdi/js'
 import RankScoreTooltip from './RankScoreTooltip.vue'
 import type { ShortlistRow } from '../../../../shared/types/shortlist'
 
@@ -197,9 +198,10 @@ function displayVariantType(t: ShortlistRow['variant_type']): string {
         :data-testid="`shortlist-star-${item.id}`"
         @click.stop="emit('toggle-star', item)"
       >
-        <v-icon :color="item.is_starred ? 'primary' : undefined">
-          {{ item.is_starred ? 'mdi-star' : 'mdi-star-outline' }}
-        </v-icon>
+        <v-icon
+          :color="item.is_starred ? 'primary' : undefined"
+          :icon="item.is_starred ? mdiStar : mdiStarOutline"
+        />
       </v-btn>
     </template>
 
@@ -207,7 +209,7 @@ function displayVariantType(t: ShortlistRow['variant_type']): string {
       <v-menu>
         <template #activator="{ props: actProps }">
           <v-btn icon variant="text" size="x-small" v-bind="actProps">
-            <v-icon>mdi-dots-vertical</v-icon>
+            <v-icon :icon="mdiDotsVertical" />
           </v-btn>
         </template>
         <v-list density="compact">

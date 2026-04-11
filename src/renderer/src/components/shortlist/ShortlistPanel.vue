@@ -25,6 +25,7 @@
  */
 
 import { toRef } from 'vue'
+import { mdiRefresh } from '@mdi/js'
 import ShortlistTable from './ShortlistTable.vue'
 import { useShortlistQuery } from '../../composables/useShortlistQuery'
 import { useApiService } from '../../composables/useApiService'
@@ -99,7 +100,7 @@ function dismissError(): void {
       <v-btn
         variant="text"
         size="small"
-        prepend-icon="mdi-refresh"
+        :prepend-icon="mdiRefresh"
         :loading="loading"
         @click="refresh"
       >

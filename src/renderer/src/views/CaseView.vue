@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onActivated, watch } from 'vue'
+import { mdiStarFourPoints } from '@mdi/js'
 import type { ColumnFilterMeta } from '../../../shared/types/column-filters'
 import type { AnnotationScope } from '../../../shared/types/annotations'
 import type { VisibleTab, PerTypeTab } from '../../../shared/types/shortlist'
@@ -168,7 +169,12 @@ const tabItems = computed<TabItem[]>(() => {
   const items: TabItem[] = []
 
   if (presentTypes.length >= 1) {
-    items.push({ type: 'shortlist', label: 'Shortlist', count: null, icon: 'mdi-star-circle' })
+    // `mdiStarFourPoints` from @mdi/js — four-point star reads as
+    // "curated / featured / best-of" in clinical dashboards without the
+    // awards-ceremony feel of `mdi-star-circle`. The icon field stores
+    // the SVG path directly because Vuetify's `mdi-svg` iconset expects
+    // a path string, not a CSS class name.
+    items.push({ type: 'shortlist', label: 'Shortlist', count: null, icon: mdiStarFourPoints })
   }
 
   if (presentTypes.includes('snv')) {
@@ -318,13 +324,7 @@ defineExpose({
         :value="item.type"
         :class="{ 'shortlist-tab': item.type === 'shortlist' }"
       >
-        <v-icon
-          v-if="item.icon"
-          start
-          :size="item.type === 'shortlist' ? 'default' : 'small'"
-          :color="item.type === 'shortlist' ? 'amber-darken-2' : undefined"
-          :icon="item.icon"
-        />
+        <v-icon v-if="item.icon" start size="small" color="primary" :icon="item.icon" />
         {{ item.label }}
         <v-chip v-if="item.count !== null" size="x-small" class="ml-2" variant="tonal">
           {{ item.count }}
@@ -424,44 +424,39 @@ defineExpose({
 }
 
 /*
- * The Shortlist tab is visually distinct from the per-type tabs because
- * it does something categorically different — it shows an algorithmic
- * cross-type ranking, not a raw table view. We give it:
- *   - an amber tonal background so it reads as a "feature" tab
- *   - a bolder font weight
- *   - a right divider that separates it from the raw per-type tabs
- *   - a warm hover/selected state that matches the amber icon color
- *     chosen in the template binding above
- * CLAUDE.md forbids `surface-variant` for backgrounds. The VarLens theme
- * ("Clinical Slate") doesn't define amber palette tokens, so we use
- * explicit Material amber RGBA values — they render readable on both
- * the light and dark theme surface colors defined in vuetify.ts.
+ * The Shortlist tab is categorically different from the per-type tabs
+ * (algorithmic cross-type ranking vs. raw table), so it should be
+ * distinguishable at a glance — but this is a clinical UI, so we signal
+ * hierarchy through restraint, not color. The treatment draws on
+ * Material 3's "accent border" pattern and clinical-dashboard
+ * conventions (signal specialness via typography + a single accent
+ * mark, not background washes):
+ *
+ *   - A 3px leading accent bar in the theme `primary` (slate navy).
+ *     This is the whole featured-tab signal — no background tint, no
+ *     custom text color, no amber.
+ *   - Font weight bumped to 600 (vs 500 default). Subtle but reads as
+ *     "emphasized".
+ *   - A 1px right-border separator + a few pixels of margin visually
+ *     groups the Shortlist tab as a category distinct from the raw
+ *     per-type tabs that follow.
+ *   - The icon itself is colored via the template `color="primary"`
+ *     binding — no additional CSS needed for hover/selected states
+ *     since everything inherits from the base v-tab styling.
+ *
+ * CLAUDE.md forbids `surface-variant` backgrounds. This rule uses no
+ * background at all — the accent bar + typography carry the whole
+ * signal.
  */
 .variant-type-tabs :deep(.v-tab.shortlist-tab) {
   font-weight: 600;
   letter-spacing: 0.01em;
-  /* Material amber 100 @ ~35% — subtle warm wash that reads as "special" */
-  background: rgba(255, 236, 179, 0.35);
+  /* 3px leading accent bar in primary — Material 3 accent-border pattern */
+  border-left: 3px solid rgb(var(--v-theme-primary));
+  padding-left: calc(16px - 3px);
+  /* Right-border separator visually groups the Shortlist tab */
   border-right: 1px solid rgb(var(--v-theme-outline));
   margin-right: 4px;
-}
-
-.variant-type-tabs :deep(.v-tab.shortlist-tab:hover) {
-  /* Material amber 100 @ ~55% — deeper on hover */
-  background: rgba(255, 236, 179, 0.55);
-}
-
-.variant-type-tabs :deep(.v-tab.shortlist-tab.v-tab--selected) {
-  /* Material amber 900 (#FF6F00) — warm, high-contrast on both themes */
-  color: #ff6f00;
-  /* Material amber 200 @ 55% — stronger warm wash on selected */
-  background: rgba(255, 224, 130, 0.55);
-}
-
-.variant-type-tabs :deep(.v-tab.shortlist-tab .v-tab__slider) {
-  /* Material amber 700 (#FFA000) — warm slider matches the icon color */
-  background-color: #ffa000;
-  opacity: 1;
 }
 
 /*

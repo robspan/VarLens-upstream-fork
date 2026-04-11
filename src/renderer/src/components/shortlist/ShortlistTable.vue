@@ -96,8 +96,9 @@ function displayVariantType(t: ShortlistRow['variant_type']): string {
     :items="props.rows"
     item-value="id"
     density="compact"
-    hide-default-footer
-    :items-per-page="-1"
+    :items-per-page="50"
+    :items-per-page-options="[25, 50, 100, 250, 500]"
+    class="shortlist-data-table"
     @click:row="(_: MouseEvent, { item }: { item: ShortlistRow }) => emit('row-click', item)"
   >
     <template #[`item.rank_score`]="{ item }">
@@ -162,3 +163,29 @@ function displayVariantType(t: ShortlistRow['variant_type']): string {
     </template>
   </v-data-table>
 </template>
+
+<style scoped>
+/*
+ * Make the table fill whatever flex height its parent gives it. The panel
+ * wrapper (ShortlistPanel.vue) provides the bounded-flex context; this
+ * rule ensures the data-table stretches vertically and the body gets its
+ * own scroll viewport so long result sets don't overflow the panel.
+ */
+.shortlist-data-table {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
+.shortlist-data-table :deep(.v-table__wrapper) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.shortlist-data-table :deep(.v-data-table-footer) {
+  flex: 0 0 auto;
+}
+</style>

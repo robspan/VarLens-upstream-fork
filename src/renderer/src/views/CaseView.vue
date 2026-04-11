@@ -126,21 +126,19 @@ async function loadTypeCounts(caseId: number | null): Promise<void> {
   // set by the case watcher below), land on whichever tab best
   // represents the case:
   //
-  //   • multi-type case → land on Shortlist AND seed
+  //   • any case with >= 1 variant type → land on Shortlist AND seed
   //     `lastNonShortlistType` to the first present real type so the
   //     hidden VariantTable preloads with meaningful data (not a stale
-  //     'snv' bind on a cnv+str case).
-  //   • single-type case with no SNV/indel → fall back to that single
-  //     type (existing behavior for e.g. an SV-only import).
-  //   • SNV/indel case (with or without other types) → leave as-is.
+  //     'snv' bind on a cnv+str or sv-only case). Shortlist is valuable
+  //     for single-type cases too because reason (2) — algorithmic
+  //     ranking — applies regardless of how many types are present.
+  //   • empty case (no variants) → leave the sentinel `'snv'` default.
   const presentTypes = getPresentTabTypes(typeCounts.value)
 
   if (selectedVariantType.value === 'snv') {
-    if (presentTypes.length > 1) {
+    if (presentTypes.length >= 1) {
       lastNonShortlistType.value = presentTypes[0]
       selectedVariantType.value = 'shortlist'
-    } else if (presentTypes.length === 1 && presentTypes[0] !== 'snv') {
-      selectedVariantType.value = presentTypes[0]
     }
   }
 }
@@ -157,14 +155,19 @@ watch(
   { immediate: true }
 )
 
-// Tab items — shortlist tab prepended when >1 real variant type is present
+// Tab items — shortlist tab prepended whenever at least one real variant
+// type is present. The Shortlist has two reasons to exist:
+//   (1) cross-type comparison in a single ranked view, and
+//   (2) algorithmic ranking of best variants regardless of type count.
+// Reason (2) means the tab is valuable on single-type cases too, so we
+// gate on `>= 1` present types, not `> 1`.
 const tabItems = computed<TabItem[]>(() => {
   const counts = typeCounts.value
   const presentTypes = getPresentTabTypes(counts)
   const snvCount = (counts.snv ?? 0) + (counts.indel ?? 0)
   const items: TabItem[] = []
 
-  if (presentTypes.length > 1) {
+  if (presentTypes.length >= 1) {
     items.push({ type: 'shortlist', label: 'Shortlist', count: null, icon: 'mdi-star-circle' })
   }
 

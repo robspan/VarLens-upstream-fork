@@ -154,12 +154,13 @@ describe('CaseView — Shortlist tab integration', () => {
     typeCountsMock.mockReset()
   })
 
-  it('does NOT show Shortlist tab when only SNV variants are present', async () => {
+  it('shows Shortlist tab even on single-type cases (algorithmic ranking view)', async () => {
     typeCountsMock.mockResolvedValue({ snv: 10, sv: 0, cnv: 0, str: 0 })
     const { wrapper } = mountCaseView(1)
     await flushPromises()
-    // Single-type case → tabItems has one entry, showVariantTypeTabs is false.
-    expect(wrapper.text()).not.toContain('Shortlist')
+    // Shortlist has two reasons to exist — cross-type comparison AND
+    // algorithmic ranking. Reason (2) applies even on SNV-only cases.
+    expect(wrapper.text()).toContain('Shortlist')
   })
 
   it('shows Shortlist tab when more than one variant type is present', async () => {
@@ -169,7 +170,7 @@ describe('CaseView — Shortlist tab integration', () => {
     expect(wrapper.text()).toContain('Shortlist')
   })
 
-  it('defaults selectedVariantType to "shortlist" when >1 type is present', async () => {
+  it('defaults selectedVariantType to "shortlist" on any non-empty case', async () => {
     typeCountsMock.mockResolvedValue({ snv: 10, sv: 3 })
     const { wrapper } = mountCaseView(1)
     await flushPromises()
@@ -190,13 +191,16 @@ describe('CaseView — Shortlist tab integration', () => {
     expect(vm.lastNonShortlistType).toBe('cnv')
   })
 
-  it('falls back to the single present non-snv type when counts have only one', async () => {
+  it('lands on Shortlist with lastNonShortlistType seeded for a single-type SV-only case', async () => {
     typeCountsMock.mockResolvedValue({ snv: 0, sv: 5, cnv: 0, str: 0 })
     const { wrapper } = mountCaseView(1)
     await flushPromises()
-    expect((wrapper.vm as unknown as { selectedVariantType: string }).selectedVariantType).toBe(
-      'sv'
-    )
+    const vm = wrapper.vm as unknown as {
+      selectedVariantType: string
+      lastNonShortlistType: string
+    }
+    expect(vm.selectedVariantType).toBe('shortlist')
+    expect(vm.lastNonShortlistType).toBe('sv')
   })
 
   it('variantTableType computed never yields "shortlist" when Shortlist is selected', async () => {

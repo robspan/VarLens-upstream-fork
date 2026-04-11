@@ -107,49 +107,74 @@ function dismissError(): void {
       </v-btn>
     </div>
 
-    <div v-if="loading" data-testid="shortlist-loading" class="pa-3">
-      <v-progress-linear indeterminate class="mb-3" />
-      <v-skeleton-loader type="table-row@5" />
+    <div class="shortlist-panel__body">
+      <div v-if="loading" data-testid="shortlist-loading" class="pa-3">
+        <v-progress-linear indeterminate class="mb-3" />
+        <v-skeleton-loader type="table-row@5" />
+      </div>
+
+      <v-alert
+        v-else-if="error"
+        type="error"
+        variant="tonal"
+        class="ma-3"
+        closable
+        @click:close="dismissError"
+      >
+        {{ error.message }}
+        <template #append>
+          <v-btn variant="text" size="small" @click="refresh">Retry</v-btn>
+        </template>
+      </v-alert>
+
+      <div
+        v-else-if="result && result.rows.length === 0"
+        class="pa-6 text-center text-medium-emphasis"
+      >
+        No variants matched the shortlist filters.
+      </div>
+
+      <ShortlistTable
+        v-else-if="result"
+        :rows="result.rows"
+        @row-click="(row) => emit('row-click', row)"
+        @open-in-tab="(t) => emit('open-in-tab', t)"
+        @toggle-star="onToggleStar"
+      />
     </div>
-
-    <v-alert
-      v-else-if="error"
-      type="error"
-      variant="tonal"
-      class="ma-3"
-      closable
-      @click:close="dismissError"
-    >
-      {{ error.message }}
-      <template #append>
-        <v-btn variant="text" size="small" @click="refresh">Retry</v-btn>
-      </template>
-    </v-alert>
-
-    <div
-      v-else-if="result && result.rows.length === 0"
-      class="pa-6 text-center text-medium-emphasis"
-    >
-      No variants matched the shortlist filters.
-    </div>
-
-    <ShortlistTable
-      v-else-if="result"
-      :rows="result.rows"
-      @row-click="(row) => emit('row-click', row)"
-      @open-in-tab="(t) => emit('open-in-tab', t)"
-      @toggle-star="onToggleStar"
-    />
   </div>
 </template>
 
 <style scoped>
+/*
+ * The panel claims the full height of its parent (`.shortlist-region` in
+ * CaseView.vue, which is `flex: 1 1 auto; min-height: 0` inside the
+ * viewport-bounded `.case-content`). Without these rules the panel would
+ * size to its intrinsic content and a long shortlist would overflow the
+ * viewport without scrolling.
+ */
 .shortlist-panel {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   min-height: 0;
+  height: 100%;
 }
 .shortlist-panel__header {
+  flex: 0 0 auto;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+/*
+ * The body wrapper is the flex-grow region that hosts whichever of the
+ * four state branches is active (loading / error / empty / success).
+ * `min-height: 0` is required to let `ShortlistTable`'s nested overflow
+ * container size correctly inside a flex parent.
+ */
+.shortlist-panel__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 </style>

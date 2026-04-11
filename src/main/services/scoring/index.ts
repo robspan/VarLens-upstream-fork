@@ -3,7 +3,7 @@
  *
  * Exposes:
  *   - ZERO_COMPONENTS          — neutral components used on dispatch errors
- *   - mapConsequenceImpact     — VEP IMPACT (HIGH/MOD/LOW/MOD) -> [0,1]
+ *   - mapConsequenceImpact     — VEP IMPACT (HIGH/MODERATE/LOW/MODIFIER) -> [0,1]
  *   - mapClinvarBoost          — ClinVar significance -> [0,1]
  *   - combine                  — weighted sum normalized over weight sum
  *   - scoreRow                 — per-type scorer dispatch + error handling

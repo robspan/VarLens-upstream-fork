@@ -1695,8 +1695,11 @@ export function runMigrations(db: Database.Database): void {
     `)
 
     const now = Date.now()
+    // INSERT OR IGNORE so the migration is safe to replay and does not fail
+    // with UNIQUE on a pre-existing user preset that happens to share the
+    // built-in name. Matches the v15/v16 built-in-preset seed pattern above.
     const insertShortlistStmt = db.prepare(
-      `INSERT INTO filter_presets
+      `INSERT OR IGNORE INTO filter_presets
          (name, description, filter_json, is_built_in, is_visible, sort_order, kind, created_at, updated_at)
        VALUES (?, ?, ?, 1, 1, ?, 'shortlist', ?, ?)`
     )

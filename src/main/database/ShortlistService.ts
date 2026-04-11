@@ -67,8 +67,12 @@ export type GetShortlistParams =
  * Thrown when one or more per-type Stage-1 queries fail. Aggregates the
  * per-type errors so callers can surface a clear diagnostic instead of a
  * silently-narrowed result set.
+ *
+ * Extends `DatabaseError` so `toSerializableError` (src/main/ipc/errorHandler.ts)
+ * maps it to `ErrorCode.DB_ERROR` with the stored message instead of the
+ * generic `ErrorCode.UNKNOWN` / "An unexpected error occurred" fallback.
  */
-export class ShortlistQueryError extends Error {
+export class ShortlistQueryError extends DatabaseError {
   readonly queryErrors: Array<{ type: VariantTypeKey; error: Error }>
 
   constructor(message: string, queryErrors: Array<{ type: VariantTypeKey; error: Error }>) {

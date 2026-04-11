@@ -249,4 +249,49 @@ describe('queryVariantsByType()', () => {
     expect(row).toHaveProperty('is_starred')
     expect(typeof row.is_starred).toBe('boolean')
   })
+
+  it('orders Stage-1 rows by v.id ASC before applying the limit cap', () => {
+    // Determinism guard: without `ORDER BY v.id` before `LIMIT`, SQLite
+    // could silently return different rows on different invocations when
+    // the per-type cap (`topN * 4`) bites — that would let the Stage-2
+    // scorer see a nondeterministic candidate set. This test seeds more
+    // rows than the cap and asserts the IDs returned are the lowest N.
+    for (let i = 10; i < 30; i++) {
+      db.prepare(
+        `INSERT INTO variants (id, case_id, variant_type, chr, pos, ref, alt, consequence)
+         VALUES (?, 1, 'snv', '1', ?, 'A', 'T', 'MODERATE')`
+      ).run(i, i * 100)
+    }
+    const rows = queryVariantsByType(db, 1, 'snv', {} as Partial<FilterState>, 5)
+    expect(rows).toHaveLength(5)
+    const ids = rows.map((r) => r.id)
+    // Deterministic lowest-5 IDs: existing id=1 (BRCA1) + ids 10-13.
+    expect(ids).toEqual([1, 10, 11, 12, 13])
+    // And assert ascending order as the contract guarantees.
+    expect([...ids].sort((a, b) => a - b)).toEqual(ids)
+  })
+
+  it('inheritanceModes in FilterState is NOT forwarded to Stage-1 (documented gap)', () => {
+    // The shortlist pipeline currently has no inheritance-mode plumbing —
+    // the logic lives in the Kysely-based VariantFilterBuilder and depends
+    // on analysis_group_id context that the shortlist service does not
+    // carry. This test locks in the Phase-1 behaviour: passing
+    // `inheritanceModes` is a silent no-op. When a future wave adds the
+    // plumbing, this test will need to be rewritten to assert actual
+    // filtering semantics instead.
+    //
+    // The fixture seeds a single HIGH SNV with gt_num=NULL. Passing
+    // inheritanceModes=['homozygous'] would (if honoured) exclude it
+    // because gt_num is not '1/1' / '1|1'. Since the field is dropped at
+    // the baseInput projection, the row still surfaces.
+    const rows = queryVariantsByType(
+      db,
+      1,
+      'snv',
+      { inheritanceModes: ['homozygous'] } as Partial<FilterState>,
+      100
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0].id).toBe(1)
+  })
 })

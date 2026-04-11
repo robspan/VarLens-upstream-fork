@@ -38,6 +38,11 @@ const BASE_ALIAS = 'v'
  * Stage 2 (scoring) and Stage 3 (ranking) can run without hitting SQLite
  * again. See spec §4 for the aliasing convention.
  *
+ * Rows are ordered by `v.id` ASC before the LIMIT is applied, so the cap
+ * is deterministic and reproducible across SQLite invocations — but this
+ * does NOT pre-rank by scoring criteria. Stage 2 handles the final
+ * rank-score ordering after the cap.
+ *
  * @param db SQLite connection (already migrated to v26+).
  * @param caseId Case scope — the query emits an explicit `v.case_id = ?`
  *   predicate instead of relying on `buildBaseWhere` (which is scope-agnostic
@@ -62,6 +67,18 @@ export function queryVariantsByType(
   //    panel intervals, starred-only, …) are omitted — Stage 2/3 reuse the
   //    candidate set as-is, and the full Case-path filters still apply when
   //    the user drills into a per-type tab.
+  //
+  //    KNOWN GAP: `inheritanceModes` is intentionally NOT forwarded. The
+  //    inheritance-mode SQL currently lives in the Kysely-based
+  //    `VariantFilterBuilder` and the compound-het / trio branches also
+  //    depend on an `analysis_group_id` that the shortlist service has no
+  //    context for. A follow-up wave either ports the solo modes
+  //    (homozygous / heterozygous / x_hemizygous / candidate_compound_het)
+  //    into `buildBaseWhere` or plumbs the analysis-group context through
+  //    the shortlist pipeline. Until then, built-in presets MUST NOT set
+  //    `inheritanceModes` — doing so would silently be ignored and return
+  //    every consequence-matching row. See `built-in-shortlist-presets.ts`
+  //    module JSDoc for the full rationale.
   const baseInput: BaseFilterInput = {
     variant_type: variantType,
     gnomad_af_max: filters.maxGnomadAf ?? undefined,
@@ -104,6 +121,11 @@ export function queryVariantsByType(
   //    (including the v25-era `sv_length` / `sv_type` columns that moved onto
   //    the base table), extension columns are aliased with their `<type>_`
   //    prefix, and `is_starred_int` is hydrated into a boolean below.
+  // ORDER BY v.id ASC BEFORE the LIMIT so the cap is deterministic across
+  // SQLite invocations. SQLite does not guarantee row order without ORDER
+  // BY, which would otherwise let the Stage-1 cap silently drop different
+  // rows on different runs. This is NOT a pre-rank by scoring criteria —
+  // Stage 2 handles the final ordering after the cap.
   const sql = `
     SELECT
       ${BASE_ALIAS}.*,
@@ -113,6 +135,7 @@ export function queryVariantsByType(
     LEFT JOIN case_variant_annotations cva
       ON cva.case_id = ${BASE_ALIAS}.case_id AND cva.variant_id = ${BASE_ALIAS}.id
     WHERE ${whereFragments.join(' AND ')}
+    ORDER BY ${BASE_ALIAS}.id ASC
     LIMIT ?
   `
 

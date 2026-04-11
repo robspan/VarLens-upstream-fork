@@ -42,9 +42,14 @@ export interface RankComponents {
 }
 
 /**
- * User-tunable weights for the five ranking sub-scores. Each weight
- * must be in the range [0, 100] — the Zod schema enforces the clamp at
- * the IPC boundary.
+ * User-tunable weights for the five ranking sub-scores.
+ *
+ * Weights are clamped to [0, 100] at the IPC boundary via the Zod
+ * schema, but the `combine()` step in `src/main/services/scoring/index.ts`
+ * normalizes by the sum of the supplied weights — so fractions (0..1)
+ * and percentages (0..100) produce identical rank scores. Built-in
+ * presets use 0..1 fractions for consistency with the spec; ad-hoc
+ * presets authored from the editor may use either scale interchangeably.
  */
 export interface RankWeights {
   impact: number
@@ -164,6 +169,14 @@ export interface ShortlistConfig {
  */
 export interface ShortlistResult {
   rows: ShortlistRow[]
+  /**
+   * Post-cap count of rows that entered Stage 2 (after the `topN * 4`
+   * per-type Stage-1 limit). This is NOT the total number of rows that
+   * would match the filters without any cap — a case with 1000 HIGH
+   * SNVs and `topN=50` will report `totalCandidates <= 200` because
+   * Stage 1 bails out at the per-type cap. Use this for the UI
+   * "Scored (capped)" indicator, not as a filter-match metric.
+   */
   totalCandidates: number
   presetUsed: FilterPreset | null
   elapsedMs: number

@@ -198,6 +198,56 @@ describe('variants:shortlist handler', () => {
     expect(service.getShortlist).toHaveBeenCalledTimes(1)
   })
 
+  it('normalizes dotted extension tieBreaker keys (sv.vaf → sv_vaf) before dispatch', async () => {
+    // Dotted keys pass `resolveSortColumn`'s allowlist because that's the
+    // SQL-level spelling, but Stage-2 scoring compares against the flat
+    // row shape (`sv_vaf`, `cnv_copy_number`, `str_status`). The handler
+    // MUST rewrite the key in place before calling the service, otherwise
+    // the tie-breaker silently becomes a no-op.
+    //
+    // Covers all three extension namespaces AND the double-prefix case
+    // (`str.str_status` must collapse to `str_status`, not `str_str_status`)
+    // plus a plain base-column key that must pass through unchanged.
+    const service = makeMockService()
+    registerShortlistHandlers(makeDeps(service) as never)
+
+    const ok = {
+      caseId: 1,
+      adHocConfig: {
+        baseFilters: {},
+        topN: 10,
+        tieBreakers: [
+          { key: 'sv.vaf', order: 'desc' },
+          { key: 'sv.sv_is_precise', order: 'desc' },
+          { key: 'cnv.copy_number', order: 'asc' },
+          { key: 'str.str_status', order: 'asc' },
+          { key: 'str.disease', order: 'asc' },
+          { key: 'cadd', order: 'desc' }
+        ],
+        rankConfig: {
+          weights: { impact: 1, pathogenicity: 1, rarity: 1, clinvar: 1, phenotype: 0 }
+        }
+      }
+    }
+
+    const result = await invokeHandler('variants:shortlist', ok)
+    expect(isIpcError(result)).toBe(false)
+    expect(service.getShortlist).toHaveBeenCalledTimes(1)
+
+    const dispatched = service.getShortlist.mock.calls[0][0] as {
+      adHocConfig: { tieBreakers: Array<{ key: string; order: string }> }
+    }
+    const dispatchedKeys = dispatched.adHocConfig.tieBreakers.map((tb) => tb.key)
+    expect(dispatchedKeys).toEqual([
+      'sv_vaf',
+      'sv_is_precise',
+      'cnv_copy_number',
+      'str_status',
+      'str_disease',
+      'cadd'
+    ])
+  })
+
   it('propagates service errors through wrapHandler', async () => {
     const service = makeMockService({
       getShortlist: vi.fn().mockImplementation(() => {

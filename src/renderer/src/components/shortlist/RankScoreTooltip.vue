@@ -14,6 +14,7 @@
  * Spec: .planning/specs/2026-04-11-unified-shortlist-ranked-view-design.md (§6)
  */
 
+import { computed } from 'vue'
 import type { RankComponents } from '../../../../shared/types/shortlist'
 
 const props = defineProps<{
@@ -27,13 +28,16 @@ interface Row {
   value: number
 }
 
-const rows: Row[] = [
+// Computed so the tooltip stays in sync if the component instance is
+// reused and the `components` prop changes. A plain const would snapshot
+// the values at setup() time and show stale data on prop updates.
+const rows = computed<Row[]>(() => [
   { label: 'Impact', value: props.components.impact },
   { label: 'Pathogenicity', value: props.components.pathogenicity },
   { label: 'Rarity', value: props.components.rarity },
   { label: 'ClinVar', value: props.components.clinvar },
   { label: 'Phenotype', value: props.components.phenotype }
-]
+])
 
 function pinLabel(): string {
   if (props.pinned === 'starred') return 'Pinned: Starred'

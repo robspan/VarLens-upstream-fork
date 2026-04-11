@@ -849,10 +849,18 @@ export const RankConfigSchema = z.object({
  * - `tieBreakers` hard-capped at 10 so users can't construct
  *   pathologically long sort chains.
  */
+// `baseFilters` and `perTypeOverrides` validate a partial `FilterState`
+// snapshot — but the `shortlist` field on `FilterState` is a mutually-
+// recursive nest into this very schema, which has no meaning inside
+// `baseFilters` itself. We `.omit({ shortlist: true })` before `.partial()`
+// so the base-filter surface does not carry a harmless-but-meaningless
+// opaque key on every payload.
+const BaseFilterStateSchema = FilterStateSchema.omit({ shortlist: true }).partial()
+
 export const ShortlistConfigSchema = z.object({
   variantTypeScope: z.array(VariantTypeKeySchema).optional(),
-  baseFilters: FilterStateSchema.partial(),
-  perTypeOverrides: z.record(VariantTypeKeySchema, FilterStateSchema.partial()).optional(),
+  baseFilters: BaseFilterStateSchema,
+  perTypeOverrides: z.record(VariantTypeKeySchema, BaseFilterStateSchema).optional(),
   topN: z.number().int().min(1).max(500),
   tieBreakers: z.array(SortItemSchema).max(10).optional(),
   rankConfig: RankConfigSchema

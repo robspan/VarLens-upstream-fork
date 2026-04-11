@@ -246,4 +246,64 @@ describe('useShortlistQuery', () => {
     expect(h.shortlistMock).toHaveBeenCalledTimes(1)
     expect(h.shortlistMock).toHaveBeenCalledWith({ caseId: 1, presetId: 1 })
   })
+
+  it('drops stale results when a slower earlier fetch resolves after a newer one', async () => {
+    // Race guard regression: a preset change or annotation broadcast can
+    // issue a second fetch before the first one resolves. If the earlier
+    // (slower) call resolved last WITHOUT the guard, its stale envelope
+    // would clobber the newer result.
+    const h = harness()
+    app = h.app
+    await flushPromises()
+    await flushPromises()
+
+    let resolveSlow!: (v: unknown) => void
+    let resolveFast!: (v: unknown) => void
+
+    // First call (slow) — deliberately held open.
+    h.shortlistMock.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          resolveSlow = r
+        })
+    )
+    // Second call (fast) — resolves immediately.
+    h.shortlistMock.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          resolveFast = r
+        })
+    )
+
+    // Kick off the slow fetch (nothing awaited — we want it in flight).
+    const slowPending = h.composable.refresh()
+    // Immediately kick off the fast fetch, which becomes the "newest" one.
+    const fastPending = h.composable.refresh()
+
+    // Resolve fast FIRST, then slow. The composable should commit the
+    // fast result and ignore the slow one as stale.
+    resolveFast({
+      rows: [{ id: 2, rank: 1, rank_score: 0.95 }],
+      totalCandidates: 5,
+      presetUsed: null,
+      elapsedMs: 3
+    })
+    await fastPending
+    await flushPromises()
+
+    resolveSlow({
+      rows: [{ id: 999, rank: 1, rank_score: 0.0 }],
+      totalCandidates: 1234,
+      presetUsed: null,
+      elapsedMs: 99
+    })
+    await slowPending
+    await flushPromises()
+
+    // Fast result must be the one that stuck. The stale slow envelope
+    // (totalCandidates=1234) must NOT have replaced it.
+    expect(h.composable.result.value?.totalCandidates).toBe(5)
+    expect(h.composable.result.value?.elapsedMs).toBe(3)
+    expect(h.composable.loading.value).toBe(false)
+  })
 })

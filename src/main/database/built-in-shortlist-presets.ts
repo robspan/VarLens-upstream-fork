@@ -8,9 +8,20 @@
  * classes of rows above the score-driven ordering.
  *
  * `baseFilters` / `perTypeOverrides` only reference filter fields that
- * already exist on `FilterState` (`consequences`, `maxGnomadAf`,
- * `minCadd`, `inheritanceModes`), so no new filter plumbing is needed
- * in downstream waves.
+ * the Stage-1 shortlist query actually forwards through
+ * `queryVariantsByType` → `buildBaseWhere`. That set currently covers
+ * `consequences`, `funcs`, `clinvars`, `maxGnomadAf`, `minCadd`,
+ * `geneSymbol`, `columnFilters`.
+ *
+ * Phase-1 limitation: `inheritanceModes` are NOT yet forwarded by the
+ * shortlist pipeline. The inheritance-mode SQL lives in the Kysely-based
+ * `VariantFilterBuilder` (which also needs `analysis_group_id` context
+ * for trio modes), and porting it into the raw-SQL `buildBaseWhere`
+ * helper used by the shortlist query is a follow-up wave. Until then,
+ * any preset that tries to gate on inheritance will silently match every
+ * consequence row — so the "Recessive candidates" preset intentionally
+ * relies on `consequences` + `maxGnomadAf` only, plus a narrower
+ * `variantTypeScope`. See the preset's JSDoc below.
  *
  * Spec: .planning/specs/2026-04-11-unified-shortlist-ranked-view-design.md
  * (§5 built-in presets)
@@ -80,15 +91,23 @@ export const BUILT_IN_SHORTLIST_PRESETS: readonly BuiltInShortlistPreset[] = [
   },
   {
     name: 'Recessive candidates',
-    description: 'SNV/indel only. Homozygous or compound-het inheritance. Rare coding impact.',
+    description:
+      'SNV/indel only. Rare coding impact — use the per-tab Inheritance filter for homozygous / compound-het narrowing.',
     sortOrder: 2,
+    // NOTE: This preset intentionally does NOT set `inheritanceModes`.
+    // The Stage-1 shortlist query does not yet forward inheritance-mode
+    // filtering (see built-in-shortlist-presets.ts module JSDoc for the
+    // full rationale). Setting the field would be silently ignored and
+    // return every rare HIGH/MOD row — misleading for clinical users.
+    // Until the follow-up wave plumbs inheritance through the raw-SQL
+    // path, the preset ships as a rare-damaging SNV/indel filter and
+    // users narrow by inheritance via the per-tab filter toolbar.
     config: {
       variantTypeScope: ['snv', 'indel'],
       topN: 100,
       baseFilters: {
         consequences: ['HIGH', 'MODERATE'],
-        maxGnomadAf: 0.02,
-        inheritanceModes: ['homozygous', 'candidate_compound_het', 'autosomal_recessive']
+        maxGnomadAf: 0.02
       },
       rankConfig: {
         weights: { impact: 0.3, pathogenicity: 0.2, rarity: 0.3, clinvar: 0.2, phenotype: 0 },

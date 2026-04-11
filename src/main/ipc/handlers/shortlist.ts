@@ -32,6 +32,35 @@ import { mainLogger } from '../../services/MainLogger'
 import type { GetShortlistParams } from '../../database/ShortlistService'
 
 /**
+ * Convert a dotted extension sort key (`sv.vaf`, `cnv.copy_number`,
+ * `str.disease`, `str.str_status`) into the flat column alias used on
+ * `ShortlistCandidate` rows (`sv_vaf`, `cnv_copy_number`, `str_disease`,
+ * `str_status`).
+ *
+ * The allowlist check in `resolveSortColumn` (VariantFilterBuilder) runs
+ * against the ORIGINAL dotted key because that's the SQL-level spelling.
+ * However, Stage-2 scoring compares against the flat property shape that
+ * `queryVariantsByType` hydrates into each row — a dotted key would never
+ * match via `compareByKey`'s direct lookup, so tie-breakers would silently
+ * become no-ops. Normalizing AFTER the allowlist check closes that gap
+ * without widening the allowlist.
+ *
+ * Rule: given `<type>.<col>`, if `<col>` already starts with `<type>_`
+ * use `<col>` verbatim (e.g. `str.str_status` → `str_status`); otherwise
+ * prefix with `<type>_` (e.g. `sv.vaf` → `sv_vaf`). This matches the
+ * aliases defined in `buildExtensionColumnProjection()` inside
+ * `src/main/database/shortlist-query.ts`.
+ */
+function normalizeTieBreakerKey(key: string): string {
+  const match = /^(sv|cnv|str)\.(.+)$/.exec(key)
+  if (match === null) return key
+  const typeKey = match[1]
+  const column = match[2]
+  if (column.startsWith(`${typeKey}_`)) return column
+  return `${typeKey}_${column}`
+}
+
+/**
  * Register the `variants:shortlist` handler against the injected
  * `ipcMain`. Pulls `ShortlistService` off the `DatabaseService` getter
  * exposed in Wave 3 (see `DatabaseService.shortlistService`).
@@ -51,7 +80,11 @@ export function registerShortlistHandlers({ ipcMain, getDb }: HandlerDependencie
 
       // ── Step 2: service-layer tieBreaker sort-key allowlist ─────
       // Prevents SQL injection via user-supplied sort keys. Unknown
-      // keys are rejected BEFORE reaching the SQL builder.
+      // keys are rejected BEFORE reaching the SQL builder. Dotted
+      // extension keys (`sv.vaf`, `cnv.copy_number`, `str.status`) pass
+      // the allowlist via `resolveSortColumn`, but Stage-2 scoring
+      // compares against the flat row shape — so we normalize to the
+      // underscore alias AFTER the allowlist runs.
       if ('adHocConfig' in parsed.data && parsed.data.adHocConfig.tieBreakers != null) {
         for (const tb of parsed.data.adHocConfig.tieBreakers) {
           if (resolveSortColumn(tb.key) == null) {
@@ -60,6 +93,13 @@ export function registerShortlistHandlers({ ipcMain, getDb }: HandlerDependencie
             )
           }
         }
+        // Rewrite dotted extension keys into the flat `sv_*` / `cnv_*` /
+        // `str_*` aliases that `ShortlistCandidate` rows actually carry.
+        // Mutation is safe — `parsed.data` is a fresh Zod-produced copy.
+        parsed.data.adHocConfig.tieBreakers = parsed.data.adHocConfig.tieBreakers.map((tb) => ({
+          ...tb,
+          key: normalizeTieBreakerKey(tb.key)
+        }))
       }
 
       // ── Step 3: dispatch to service ─────────────────────────────

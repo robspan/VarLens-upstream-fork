@@ -92,7 +92,7 @@ function dismissError(): void {
         style="max-width: 320px"
       />
       <div v-if="result" class="text-caption text-medium-emphasis">
-        Scored: {{ result.totalCandidates }} → top {{ result.rows.length }}
+        Scored (capped): {{ result.totalCandidates }} → top {{ result.rows.length }}
         <span class="ml-2">({{ result.elapsedMs }}ms)</span>
       </div>
       <v-spacer />

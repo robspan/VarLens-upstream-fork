@@ -767,9 +767,10 @@ export const AssociationConfigSchema = z.object({
  *
  * This schema exists primarily so `ShortlistConfigSchema` can nest
  * `FilterStateSchema.partial()` to validate `baseFilters` and
- * `perTypeOverrides` at the IPC boundary. It also feeds the optional
- * `shortlist` field on `FilterState`, which is itself a `ShortlistConfig`
- * (mutual recursion broken via `z.lazy`).
+ * `perTypeOverrides` at the IPC boundary. The optional `shortlist` field
+ * on `FilterState` would be mutually recursive with `ShortlistConfigSchema`
+ * — the recursion is cut here by typing it as `z.unknown().optional()`
+ * (see the field-level comment on `shortlist` below).
  *
  * Fields mirror `src/shared/types/filters.ts#FilterState`. Arrays default
  * loose (no `min(1)`) because empty arrays are a legitimate state. All
@@ -918,9 +919,12 @@ export const FilterPresetUpdateSchema = z.object({
 })
 
 /**
- * Runtime schema for the full `FilterPreset` DB shape, including the
- * `kind` discriminator introduced by migration v27. Useful for parsing
- * preset rows loaded from disk before handing them to the renderer.
+ * Runtime schema for a normalized `FilterPreset` object (NOT a raw DB
+ * row). Raw rows must first be passed through
+ * `FilterPresetRepository.rowToPreset`, which applies the pre-v27
+ * backfill (`kind` defaults to `'filter'` when the column is absent or
+ * `NULL`). This schema validates the post-repository shape, including
+ * the `kind` discriminator introduced by migration v27.
  */
 export const FilterPresetSchema = z.object({
   id: z.number().int().positive(),

@@ -21,6 +21,9 @@ interface PresetRow {
 
 function rowToPreset(row: PresetRow): FilterPreset {
   // Rows pre-dating migration v27 have no `kind` column — default to 'filter'.
+  // TODO(Wave 2): after migration v27 backfills all rows and makes `kind`
+  // NOT NULL, this ternary becomes pure defense-in-depth — consider
+  // simplifying to `row.kind ?? 'filter'` once the column is guaranteed.
   const kind = row.kind === 'shortlist' ? 'shortlist' : 'filter'
   return {
     id: row.id,

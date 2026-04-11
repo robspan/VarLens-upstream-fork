@@ -81,6 +81,8 @@ import type {
 } from './api-enrichment'
 import type { ColumnFilterMeta } from './column-filters'
 import type { FilterPreset, FilterPresetCreate, FilterPresetUpdate } from './filter-presets'
+import type { ShortlistResult } from './shortlist'
+import type { ValidatedGetShortlistParams } from './ipc-schemas'
 import type { LogMessage } from './log'
 import type { TranscriptAnnotation, TranscriptInsertRow } from './transcript'
 import type { DatabaseOverview } from './database-overview'
@@ -196,6 +198,21 @@ export interface VariantsAPI {
    * or a non-empty `caseIds` array must be provided.
    */
   typesPresent: (payload: { caseId?: number; caseIds?: number[] }) => Promise<string[]>
+  /**
+   * Run the unified shortlist pipeline for a case. Wave 3 wrapper around the
+   * `variants:shortlist` IPC channel. Accepts either a preset id or an
+   * inline `adHocConfig` (discriminated union) and resolves to the ranked
+   * `ShortlistResult` envelope.
+   */
+  shortlist: (params: ValidatedGetShortlistParams) => Promise<ShortlistResult>
+  /**
+   * Subscribe to `variants:annotationChanged` broadcasts. Returns an
+   * unsubscribe function. Emitted only on per-case annotation upserts in
+   * Phase 1 (global upserts do NOT fire this event). Consumers (e.g. Wave 4
+   * `useShortlistQuery`) use this to refetch dependent views when the
+   * same-case star / ACMG state changes.
+   */
+  onAnnotationChanged: (callback: (ev: AnnotationChangeEvent) => void) => () => void
 }
 
 export interface FilterOptions {

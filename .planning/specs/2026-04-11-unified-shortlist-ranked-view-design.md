@@ -785,8 +785,16 @@ export const GetShortlistParamsSchema = z.union([
 
 ### `CaseView.vue` tab integration
 
+Three separate pieces of state govern the Shortlist integration. They must be kept conceptually distinct — conflating them is exactly the bug that an earlier version of this spec had:
+
+- **`selectedVariantType`** — drives which region is *visible*. Values: `'shortlist' | 'snv' | 'sv' | 'cnv' | 'str'`. Updated by `v-tabs` model.
+- **`lastNonShortlistType`** — drives the `VariantTable` `variant-type` prop and therefore the SQL filter applied to the per-type query. Values: `'snv' | 'sv' | 'cnv' | 'str'` ONLY — **never `'shortlist'`**. Updated by a watcher that ignores the shortlist value.
+- **`effectiveFilters`** — the `VariantFilter` passed to `VariantTable`, composed from `currentFilters` + `lastNonShortlistType` (NOT `selectedVariantType`).
+
+Why this decoupling is mandatory: `useVariantData` (in `VariantTable`) watches the serialized filter key and re-queries on any change. If `effectiveFilters.variant_type` flipped to `'shortlist'` when the user toggled the Shortlist tab, `buildBaseWhere` would treat that as an exact-match filter (`variant_type = 'shortlist'`), return zero rows, and discard the hidden table's fetched state — the exact "persists across toggles" guarantee the design is trying to preserve. Keeping `VariantTable`'s filter prop stable across Shortlist toggles is what makes `v-show` correct.
+
 ```typescript
-// Extension to existing tabItems computed (currently ~line 83-97)
+// src/renderer/src/views/CaseView.vue — additions to the existing script
 
 const tabItems = computed(() => {
   const counts = typeCounts.value
@@ -808,23 +816,56 @@ const tabItems = computed(() => {
   return items
 })
 
+// Selected tab — the source of truth for which region is visible.
 const selectedVariantType = ref<string>(tabItems.value[0]?.type ?? 'snv')
+
+/**
+ * The last non-shortlist tab the user was on (or a reasonable default).
+ * This is what VariantTable sees as its variant-type prop — NEVER the raw
+ * `selectedVariantType`, because 'shortlist' is not a real variant_type
+ * value in the DB schema and would make useVariantData re-query with
+ * `variant_type = 'shortlist'` → zero rows.
+ *
+ * Initial value: the first per-type tab in tabItems (skipping the shortlist
+ * entry if present). Because tabItems always contains at least one per-type
+ * entry when Shortlist appears, `firstNonShortlist` is always defined.
+ */
+const lastNonShortlistType = ref<string>(
+  tabItems.value.find((t) => t.type !== 'shortlist')?.type ?? 'snv'
+)
+
+// Update lastNonShortlistType whenever the user picks a real per-type tab.
+// Ignore the shortlist value — that is the whole point of this ref.
+watch(selectedVariantType, (next) => {
+  if (next !== 'shortlist') {
+    lastNonShortlistType.value = next
+  }
+})
+
+// effectiveFilters is now computed from lastNonShortlistType, NOT from
+// selectedVariantType. This is the key change that makes v-show safe:
+// while the user is on the Shortlist tab, VariantTable's filter prop
+// keeps the stable value of the last real tab and its data/watchers
+// sit idle (no re-query, no row discard).
+const effectiveFilters = computed<Omit<VariantFilter, 'case_id'>>(() => ({
+  ...currentFilters.value,
+  variant_type: lastNonShortlistType.value
+}))
 ```
 
-Template addition — note this replaces the current flat `FilterToolbar + VariantTable` region (currently lines ~222-253) with a conditional block that also hides `FilterToolbar` in shortlist mode:
+Template addition — the per-type region uses `v-show` (stays mounted, state persists) and receives `lastNonShortlistType` as its variant-type prop; the shortlist region uses `v-if` (mounts on demand, nothing to preserve when hidden):
 
 ```vue
 <template>
-  <!-- ... existing <v-tabs> unchanged ... -->
+  <!-- ... existing <v-tabs v-model="selectedVariantType"> unchanged ... -->
 
   <!--
-    Per-type mode: stays mounted across Shortlist toggles via v-show, so
-    FilterToolbar's internal state, VariantTable's fetched rows, and the
-    shared `currentFilters` ref all persist. This is critical: the real
-    CaseView stores `currentFilters` in `useAppState` and FilterToolbar
-    initializes its internal state only on mount — if we used v-if here,
-    a Shortlist → SNV toggle would leave a stale filtered table paired
-    with a freshly-reset toolbar UI.
+    Per-type region: stays mounted across Shortlist toggles via v-show.
+    - FilterToolbar's internal state persists.
+    - VariantTable's fetched rows persist because its variant-type prop
+      is bound to `lastNonShortlistType`, which does NOT change on
+      Shortlist toggles. No re-query fires on useVariantData's watchers.
+    - The shared `currentFilters` ref is never touched by tab transitions.
   -->
   <div v-show="selectedVariantType !== 'shortlist'">
     <div class="filter-bar-container">
@@ -837,17 +878,18 @@ Template addition — note this replaces the current flat `FilterToolbar + Varia
     <VariantTable
       ref="variantTableRef"
       :case-id="selectedCaseId"
-      :variant-type="selectedVariantType"
+      :variant-type="lastNonShortlistType"  <!-- NOT selectedVariantType -->
+      :filters="effectiveFilters"
       ...
     />
   </div>
 
   <!--
-    Shortlist mode: mounts conditionally (v-if). Nothing inside the
-    panel needs to be preserved when it's not visible — useShortlistQuery
-    will re-fetch on next mount via its immediate watchers. Keeping
-    ShortlistPanel unmounted when hidden avoids wasted IPC traffic and
-    keeps the annotation-change subscription scoped to "shortlist visible".
+    Shortlist region: mounts conditionally (v-if). No persisted state
+    needed between toggles — useShortlistQuery re-fetches on mount via
+    its immediate watchers. Unmounting on hide keeps the annotation-
+    change subscription scoped to "shortlist visible" and avoids
+    wasted background work.
   -->
   <ShortlistPanel
     v-if="selectedVariantType === 'shortlist'"
@@ -860,18 +902,23 @@ Template addition — note this replaces the current flat `FilterToolbar + Varia
 
 ### CaseView ownership model when Shortlist is active
 
-The existing `CaseView.vue` is tightly coupled to `VariantTable`: `FilterToolbar` receives `columns`, `columnActiveFilters`, `filteredCount`, `totalCount`, `hasSort` all sourced from `variantTableRef`, and `VariantTable` reads `effectiveFilters` which is computed from the shared `currentFilters` ref in `useAppState`. Rather than fighting this coupling, the design hides the per-type region via `v-show` in shortlist mode — components stay mounted, state persists, and the shortlist has its own preset picker inside `ShortlistPanel`.
+The existing `CaseView.vue` is tightly coupled to `VariantTable`: `FilterToolbar` receives `columns`, `columnActiveFilters`, `filteredCount`, `totalCount`, `hasSort` all sourced from `variantTableRef`, and `VariantTable` consumes `effectiveFilters` (a computed over the shared `currentFilters` ref in `useAppState`). The design preserves this coupling but decouples *visibility* from *variant-type filtering* by introducing `lastNonShortlistType` (see the tab integration code above). This means:
+
+- Toggling to Shortlist hides the per-type region via `v-show` but does NOT mutate `lastNonShortlistType` — so VariantTable's filter prop is unchanged, useVariantData's serialized-filter watcher sees no change, and no refetch fires.
+- VariantTable keeps its in-memory row data, sort state, column metadata, and ref handle intact across the toggle.
+- FilterToolbar keeps its internal filter state, search term, and column-filter chips intact.
+- When the user toggles back to a per-type tab, both are already in the correct state — no mount/unmount churn, no flash of loading UI.
 
 **Lifecycle rules in shortlist mode**:
 
 1. **`FilterToolbar` stays mounted but hidden** (`v-show="selectedVariantType !== 'shortlist'"`). Its internal filter state, column-filter chips, and search term all persist. When the user toggles back to a per-type tab, the toolbar is already in the correct state.
-2. **`VariantTable` stays mounted but hidden.** Its fetched rows, sort state, column metadata, pagination cursor, and `variantTableRef` all persist. `currentFilters` is not mutated while Shortlist is active, so no background re-fetch occurs (the table's filter watcher sees no change and does not re-query).
+2. **`VariantTable` stays mounted but hidden, with its filter prop stable.** Its `variant-type` prop is `lastNonShortlistType`, not `selectedVariantType`. Toggling to Shortlist does not mutate `lastNonShortlistType`, so the serialized filter key that `useVariantData` watches is unchanged, no refetch fires, and fetched rows / sort state / column metadata / `variantTableRef` all persist exactly as they were. **This is the load-bearing correctness property that makes `v-show` viable.**
 3. **`ShortlistPanel` mounts conditionally** (`v-if="selectedVariantType === 'shortlist'"`). It is the only region that unmounts when hidden. Its composable `useShortlistQuery` tears down cleanly via `onBeforeUnmount`, including the annotation-change subscription — when the user toggles back to Shortlist, a fresh subscription is registered and the shortlist re-fetches once from its initial watcher.
-4. **`currentFilters` is never reset by tab transitions.** The Shortlist tab does NOT touch the shared `currentFilters` ref — it runs its own query via `useShortlistQuery.fetch()` using the preset's `baseFilters`, independent of the per-type filter state. This means Shortlist → SNV → Shortlist → SV toggles preserve all per-type filter state faithfully and the shortlist operates on a clean, independent filter space.
+4. **`currentFilters` is never reset or mutated by Shortlist toggles.** The Shortlist tab does NOT touch the shared `currentFilters` ref — it runs its own query via `useShortlistQuery.fetch()` using the preset's `baseFilters`, independent of the per-type filter state. Shortlist → SNV → Shortlist → SV toggles preserve all per-type filter state faithfully and the shortlist operates on an independent filter space.
 5. **Row click in shortlist** emits `row-click` with a `ShortlistCandidate` — because that extends `Variant`, the existing `handleRowClick(variant: Variant)` handler accepts it directly. `selectedPanelVariant.value = variant` works with zero type coercion; `VariantDetailsPanel` reads `variant.id` and issues its own transcripts/tags/annotation queries unchanged.
-6. **"View in [type] tab" action** emits `open-in-tab` with the target type string; `CaseView` listens and updates `selectedVariantType`. Because the target tab was kept mounted, it reveals with its prior filter state intact. Phase 1 does NOT scroll the revealed tab to the clicked variant; Phase 2+ can add a target-variant-id prop to `VariantTable` for that scroll behavior.
+6. **"View in [type] tab" action** emits `open-in-tab` with the target type string; `CaseView` listens and updates `selectedVariantType`, which in turn triggers the `watch(selectedVariantType, ...)` that updates `lastNonShortlistType` to the new type. Because that's the first moment `lastNonShortlistType` ever changes, `useVariantData`'s serialized-filter watcher fires once and re-queries against the correct type. The revealed tab shows up-to-date rows without losing the prior per-type filter state (`currentFilters` was never touched).
 
-**Memory cost of keeping per-type components mounted**: one VariantTable instance with its current rows (at most ~1000 rows in Phase 1's default pagination) plus one FilterToolbar instance. A few MB at most. This is strictly better than the correctness bug that `v-if` would introduce.
+**Memory + work cost of keeping per-type components mounted**: one VariantTable instance holding at most ~1000 rows (Phase 1 default pagination) plus one FilterToolbar instance. A few MB at most. **Background work while hidden is zero**: no watchers fire, no IPC is issued, no rendering happens on invisible DOM. This is strictly better than the correctness bug that plain `v-if` would introduce.
 
 **Why not just wire `FilterToolbar` into `ShortlistPanel`**: the filter toolbar is designed for linear tab-filtering, not cross-type preset ranking. It would need substantial refactoring (remove column metadata plumbing, hide sort controls, hide export options that don't apply) for a feature that is read-only in Phase 1. Clean separation is simpler now and doesn't foreclose reuse in Phase 2.
 

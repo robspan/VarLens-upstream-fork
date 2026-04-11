@@ -27,7 +27,7 @@ Download the latest release for your platform from the [GitHub Releases page](ht
 ## System Requirements
 
 - **Windows:** Windows 10 or later
-- **macOS:** macOS 12 (Monterey) or later
+- **macOS:** macOS 12 (Monterey) or later on Apple Silicon (M1 or newer). Intel Macs are not supported.
 - **Linux:** Ubuntu 20.04 or later (or equivalent)
 - **RAM:** 4 GB minimum, 8 GB recommended for large datasets
 - **Disk:** 200 MB for the application, plus space for your variant databases

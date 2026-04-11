@@ -118,4 +118,87 @@ describe('ShortlistTable', () => {
     })
     expect(wrapper.text()).toContain('2:5000 DEL 1000bp')
   })
+
+  it('renders HGVS c. and p. on SNV rows when cdna and aa_change are present', () => {
+    const wrapper = mount(ShortlistTable, {
+      props: {
+        rows: [
+          row({
+            variant_type: 'snv',
+            cdna: '123A>G',
+            aa_change: 'Arg41Gly'
+          } as Partial<ShortlistRow>)
+        ]
+      },
+      global: { plugins: [vuetify] }
+    })
+    const text = wrapper.text()
+    expect(text).toContain('1:1000 A>T')
+    expect(text).toContain('c.123A>G')
+    expect(text).toContain('p.Arg41Gly')
+  })
+
+  it('preserves existing c./p. prefixes from annotators like SnpEff', () => {
+    const wrapper = mount(ShortlistTable, {
+      props: {
+        rows: [
+          row({
+            variant_type: 'snv',
+            cdna: 'c.456C>T',
+            aa_change: 'p.Pro152Leu'
+          } as Partial<ShortlistRow>)
+        ]
+      },
+      global: { plugins: [vuetify] }
+    })
+    const text = wrapper.text()
+    expect(text).toContain('c.456C>T')
+    expect(text).toContain('p.Pro152Leu')
+    // Must NOT double-prefix (e.g. "c.c.456C>T")
+    expect(text).not.toContain('c.c.')
+    expect(text).not.toContain('p.p.')
+  })
+
+  it('omits HGVS lines on SNV rows when cdna/aa_change are null', () => {
+    const wrapper = mount(ShortlistTable, {
+      props: {
+        rows: [
+          row({
+            variant_type: 'snv',
+            cdna: null,
+            aa_change: null
+          } as Partial<ShortlistRow>)
+        ]
+      },
+      global: { plugins: [vuetify] }
+    })
+    const text = wrapper.text()
+    expect(text).toContain('1:1000 A>T')
+    // No c. or p. HGVS strings should show up
+    expect(text).not.toMatch(/\bc\.[A-Z0-9]/)
+    expect(text).not.toMatch(/\bp\.[A-Z][a-z]{2}/)
+  })
+
+  it('does NOT render HGVS lines on SV/CNV/STR rows', () => {
+    const wrapper = mount(ShortlistTable, {
+      props: {
+        rows: [
+          row({
+            variant_type: 'sv',
+            chr: '3',
+            pos: 2000,
+            sv_type: 'INS',
+            sv_length: 500,
+            cdna: '999A>G', // should be ignored for SV
+            aa_change: 'Arg1Gly'
+          } as Partial<ShortlistRow>)
+        ]
+      },
+      global: { plugins: [vuetify] }
+    })
+    const text = wrapper.text()
+    expect(text).toContain('3:2000 INS 500bp')
+    expect(text).not.toContain('c.999A>G')
+    expect(text).not.toContain('p.Arg1Gly')
+  })
 })

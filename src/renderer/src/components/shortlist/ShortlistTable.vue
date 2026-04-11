@@ -34,7 +34,7 @@ const headers = [
   { title: 'Score', key: 'rank_score', width: 90, sortable: false },
   { title: 'Type', key: 'variant_type', width: 80, sortable: false },
   { title: 'Gene', key: 'gene_symbol', width: 140 },
-  { title: 'Variant', key: 'variant_notation', width: 220, sortable: false },
+  { title: 'Variant', key: 'variant_notation', width: 280, sortable: false },
   { title: 'Impact', key: 'consequence', width: 110 },
   { title: 'AF', key: 'gnomad_af', width: 90 },
   { title: 'ClinVar', key: 'clinvar', width: 130 },
@@ -42,17 +42,62 @@ const headers = [
   { title: '', key: 'actions', width: 80, sortable: false }
 ] as const
 
-function variantNotation(row: ShortlistRow): string {
+interface VariantCell {
+  /** Always present — genomic/type-specific primary line. */
+  primary: string
+  /** HGVS c. (cDNA) notation, SNV/indel only. */
+  cdna: string | null
+  /** HGVS p. (protein) notation, SNV/indel only. */
+  protein: string | null
+}
+
+/**
+ * Build the multi-line variant cell for the shortlist table.
+ *
+ * - SNV / indel: primary line is `chr:pos ref>alt`, with cDNA (c.) and
+ *   protein (p.) HGVS on subsequent lines when available on the row.
+ * - SV: primary line is `chr:pos <TYPE> <length>bp`, no HGVS.
+ * - CNV: primary line is `chr:pos CNV CN=<copies>`, no HGVS.
+ * - STR: primary line is `chr:pos STR <alt_copies> copies`, no HGVS.
+ *
+ * Fields `cdna` and `aa_change` come straight from the `Variant` row shape.
+ * The `c.`/`p.` prefixes are conventional HGVS markers — we only prepend
+ * them if the stored value doesn't already start with them (annotators
+ * vary — VEP stores bare notation, SnpEff stores prefixed).
+ */
+function variantCell(row: ShortlistRow): VariantCell {
   if (row.variant_type === 'sv') {
-    return `${row.chr}:${row.pos} ${row.sv_type ?? ''} ${row.sv_length ?? '?'}bp`.trim()
+    return {
+      primary: `${row.chr}:${row.pos} ${row.sv_type ?? ''} ${row.sv_length ?? '?'}bp`.trim(),
+      cdna: null,
+      protein: null
+    }
   }
   if (row.variant_type === 'cnv') {
-    return `${row.chr}:${row.pos} CNV CN=${row.cnv_copy_number ?? '?'}`
+    return {
+      primary: `${row.chr}:${row.pos} CNV CN=${row.cnv_copy_number ?? '?'}`,
+      cdna: null,
+      protein: null
+    }
   }
   if (row.variant_type === 'str') {
-    return `${row.chr}:${row.pos} STR ${row.str_alt_copies ?? '?'} copies`
+    return {
+      primary: `${row.chr}:${row.pos} STR ${row.str_alt_copies ?? '?'} copies`,
+      cdna: null,
+      protein: null
+    }
   }
-  return `${row.chr}:${row.pos} ${row.ref}>${row.alt}`
+  // SNV / indel — add HGVS c./p. if we have them.
+  return {
+    primary: `${row.chr}:${row.pos} ${row.ref}>${row.alt}`,
+    cdna: row.cdna != null && row.cdna !== '' ? ensureHgvsPrefix(row.cdna, 'c.') : null,
+    protein:
+      row.aa_change != null && row.aa_change !== '' ? ensureHgvsPrefix(row.aa_change, 'p.') : null
+  }
+}
+
+function ensureHgvsPrefix(value: string, prefix: 'c.' | 'p.'): string {
+  return value.startsWith(prefix) ? value : `${prefix}${value}`
 }
 
 function pinFor(row: ShortlistRow): 'starred' | 'clinvar' | null {
@@ -121,7 +166,23 @@ function displayVariantType(t: ShortlistRow['variant_type']): string {
     </template>
 
     <template #[`item.variant_notation`]="{ item }">
-      {{ variantNotation(item) }}
+      <div class="variant-cell">
+        <div class="variant-cell__primary">{{ variantCell(item).primary }}</div>
+        <div
+          v-if="variantCell(item).cdna"
+          class="variant-cell__hgvs text-caption text-medium-emphasis"
+          :title="variantCell(item).cdna ?? ''"
+        >
+          {{ variantCell(item).cdna }}
+        </div>
+        <div
+          v-if="variantCell(item).protein"
+          class="variant-cell__hgvs text-caption text-medium-emphasis"
+          :title="variantCell(item).protein ?? ''"
+        >
+          {{ variantCell(item).protein }}
+        </div>
+      </div>
     </template>
 
     <template #[`item.gnomad_af`]="{ item }">
@@ -187,5 +248,34 @@ function displayVariantType(t: ShortlistRow['variant_type']): string {
 
 .shortlist-data-table :deep(.v-data-table-footer) {
   flex: 0 0 auto;
+}
+
+/*
+ * Multi-line variant cell — primary line (genomic) + optional HGVS c./p.
+ * lines in muted caption text. `min-width: 0` lets truncation kick in
+ * inside the fixed-width column. HGVS strings can be long for multi-
+ * exon indels; we clip with ellipsis and put the full value in a title
+ * attribute for hover.
+ */
+.variant-cell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+  padding: 2px 0;
+}
+.variant-cell__primary {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.variant-cell__hgvs {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
 }
 </style>

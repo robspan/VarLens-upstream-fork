@@ -46,7 +46,7 @@ Download the latest release for your platform:
 | Platform | Formats |
 |----------|---------|
 | Windows | [Installer / Portable](https://github.com/berntpopp/VarLens/releases/latest) |
-| macOS | [DMG / ZIP](https://github.com/berntpopp/VarLens/releases/latest) |
+| macOS (Apple Silicon only) | [DMG / ZIP](https://github.com/berntpopp/VarLens/releases/latest) |
 | Linux | [AppImage / DEB](https://github.com/berntpopp/VarLens/releases/latest) |
 
 See the [installation guide](https://berntpopp.github.io/VarLens/guide/installation) for system requirements and first-launch steps.

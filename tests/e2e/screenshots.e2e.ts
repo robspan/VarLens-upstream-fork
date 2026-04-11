@@ -198,6 +198,28 @@ test.describe('Documentation Screenshots', () => {
     await window.setViewportSize(VIEWPORT)
     await window.waitForSelector('.v-application', { timeout: 30000 })
     await dismissDisclaimer(window)
+
+    // Release 0.56.0 added a user preference for which tab opens
+    // default-active in a case view. The default is the new Shortlist
+    // tab, but these pre-existing docs screenshots are built around the
+    // SNV/Indel per-type table — opt into the per-type default so the
+    // screenshot flow still lands on VariantTable for the
+    // `variant-table`, `filters-active`, `variant-details`,
+    // `filter-preset-bar`, and `filter-drawer-sections` shots below.
+    await window.evaluate(() => {
+      const STORAGE_KEY = 'varlens_user_settings_v1'
+      const existing = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as Record<
+        string,
+        unknown
+      >
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ ...existing, defaultCaseTab: 'snv' })
+      )
+    })
+    await window.reload()
+    await window.waitForSelector('.v-application', { timeout: 30000 })
+    await dismissDisclaimer(window)
   })
 
   test.afterAll(async () => {

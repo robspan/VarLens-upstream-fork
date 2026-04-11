@@ -376,7 +376,7 @@ export function scoreRow(row: ShortlistCandidate, config: RankConfig): ScoredRow
     }
   } catch (e) {
     mainLogger.error(
-      `scoreRow failed for variant_type=${row.variant_type} id=${row.variant_id}: ${toError(e).message}`,
+      `scoreRow failed for variant_type=${row.variant_type} id=${row.id}: ${toError(e).message}`,
       'shortlist.scoreRow'
     )
     components = ZERO_COMPONENTS
@@ -413,62 +413,58 @@ export function compareScoredRows(
       if (cmp !== 0) return tb.order === 'desc' ? -cmp : cmp
     }
   }
-  return a.variant_id - b.variant_id  // stable fallback
+  return a.id - b.id  // stable fallback (id is the Variant primary key)
 }
 ```
 
 ### ShortlistCandidate contract (Stage 1 row shape)
 
-This is the row shape Stage 1 produces and Stage 2 consumes. Every field the scorer or display layer could need is on the row — Stage 2 has no DB access.
+This is the row shape Stage 1 produces and Stage 2 consumes. Every field the scorer or display layer could need is on the row — Stage 2 has no DB access. **`ShortlistCandidate` extends `Variant` directly** so that row-click drill-down can reuse the existing `handleRowClick(variant: Variant)` handler and `VariantDetailsPanel` unchanged — both expect a `Variant` shape with an `id` field, not a distinct `variant_id`-prefixed shape.
 
 ```typescript
 // src/shared/types/shortlist.ts
+import type { Variant } from './database'
 
 /**
  * A Stage-1 candidate row. Produced by shortlist-query.ts via per-type
  * SELECT with LEFT JOINs on the extension tables and case_variant_annotations.
  * Consumed by the scoring module and the IPC serializer.
  *
- * All extension columns are nullable because a given row only populates
- * columns for ITS variant type (a SNV row has null sv_*/cnv_*/str_* fields).
- * This is a deliberate flat shape — no nested ext object — to avoid an
- * extra indirection in the scorer and to match what LEFT JOIN naturally
- * produces at the SQL layer.
+ * STRUCTURAL COMMITMENT: ShortlistCandidate **extends Variant** — every
+ * field of the existing Variant interface must be present on every row,
+ * with its existing name and type. This makes ShortlistCandidate directly
+ * assignable to Variant, which is REQUIRED for row-click drill-down to
+ * reuse `CaseView.handleRowClick(variant: Variant)` and VariantDetailsPanel
+ * unchanged. Both consume `variant.id` (not `variant_id`), transcripts by
+ * `id`, tags by `id`, and case-scoped annotation actions by `id` + `case_id`.
+ *
+ * Adding extension fields on top is fine (they're additive). Renaming or
+ * dropping any Variant field would break the drill-down contract.
+ *
+ * Extension columns are aliased with their table short name (sv_*, cnv_*,
+ * str_*) to flatten the row shape — no nested `ext` object. All extension
+ * fields are nullable because a given row populates columns only for ITS
+ * variant type (a SNV row has null sv_*/cnv_*/str_* fields).
  */
-export interface ShortlistCandidate {
-  // ── Variant base columns (from variants table) ───────
-  variant_id: number             // aliased from variants.id
-  case_id: number
-  variant_type: VariantTypeKey
-  chr: string
-  pos: number
-  ref: string
-  alt: string
-  gene_symbol: string | null
-  consequence: string | null    // VEP IMPACT: HIGH/MOD/LOW/MODIFIER
-  func: string | null           // SO term
-  gnomad_af: number | null
-  cadd: number | null
-  clinvar: string | null
-  hpo_sim_score: number | null  // Phase 4 populated, Phase 1 null everywhere
-  sv_length: number | null      // on variants table, available for SV rows
-
+export interface ShortlistCandidate extends Variant {
   // ── SV extension columns (variant_sv LEFT JOIN; aliased sv_*) ─────
-  sv_is_precise: 0 | 1 | null
-  sv_vaf: number | null         // aliased from variant_sv.vaf
-  sv_support: number | null
+  // (sv_length and sv_type are already on Variant — see database.ts)
+  sv_is_precise?: 0 | 1 | null
+  sv_vaf?: number | null            // aliased from variant_sv.vaf
+  sv_support?: number | null
 
   // ── CNV extension columns (variant_cnv LEFT JOIN; aliased cnv_*) ──
-  cnv_copy_number: number | null
-  cnv_copy_number_quality: number | null
+  cnv_copy_number?: number | null
+  cnv_copy_number_quality?: number | null
 
   // ── STR extension columns (variant_str LEFT JOIN; aliased str_*) ──
-  str_status: 'normal' | 'intermediate' | 'pathologic' | null
-  str_disease: string | null
-  str_alt_copies: string | null
+  str_status?: 'normal' | 'intermediate' | 'pathologic' | null
+  str_disease?: string | null
+  str_alt_copies?: string | null
 
   // ── Per-case annotation state (case_variant_annotations LEFT JOIN) ─
-  is_starred: boolean            // computed from case_variant_annotations.starred
+  /** Derived from case_variant_annotations.starred; always present. */
+  is_starred: boolean
 }
 
 /** A ShortlistCandidate with scoring fields appended by Stage 2. */
@@ -478,17 +474,23 @@ export interface ScoredCandidate extends ShortlistCandidate, ScoredRow {}
  * The renderer-facing row shape — what the IPC payload contains.
  * Extends ScoredCandidate with a 1-based sorted-position field.
  * variant_notation is NOT on this type — it's computed in the renderer.
+ *
+ * Because ShortlistCandidate extends Variant, ShortlistRow is also
+ * assignable to Variant: `handleRowClick(row as Variant)` type-checks,
+ * and VariantDetailsPanel receives a prop it already understands.
  */
 export interface ShortlistRow extends ScoredCandidate {
   rank: number                   // 1-based position in the sorted, sliced result
 }
 ```
 
-**Aliasing convention**: extension columns are prefixed with their table short name (`sv_`, `cnv_`, `str_`) to avoid collision with base columns and to make the row shape flat. `variant_sv.vaf` becomes `sv_vaf`, `variant_cnv.copy_number` becomes `cnv_copy_number`, and so on. This is a one-time SQL alias at the `shortlist-query.ts` layer — downstream code sees a single flat type.
+**Row-click drill-down contract**: because `ShortlistCandidate extends Variant`, the existing `CaseView.handleRowClick(variant: Variant)` and `VariantDetailsPanel` work without any changes. `ShortlistPanel` emits `row-click` with a row that is structurally a `Variant` + scoring fields; the parent `CaseView` passes it through to the existing handler, which assigns it to `selectedPanelVariant: Ref<Variant | CohortVariant | null>`. `VariantDetailsPanel` then reads `variant.id`, issues its own transcripts/tags/annotation queries by id — all unchanged from today. The additional scoring fields on the row are ignored by the panel (structural typing tolerates excess properties).
+
+**Aliasing convention**: extension columns are prefixed with their table short name (`sv_`, `cnv_`, `str_`) to avoid collision with base columns and to make the row shape flat. `variant_sv.vaf` becomes `sv_vaf`, `variant_cnv.copy_number` becomes `cnv_copy_number`, and so on. `sv_length` and `sv_type` are NOT aliased because they already live on the base `variants` table (from migration v25) and are therefore already on `Variant` with those names — duplicating them under aliases would be wrong.
 
 **`is_starred` derivation**: `shortlist-query.ts` adds `LEFT JOIN case_variant_annotations cva ON cva.case_id = v.case_id AND cva.variant_id = v.id` and selects `COALESCE(cva.starred, 0) AS is_starred_int`, then the row hydration coerces to boolean. If the schema evolves so starred lives in a different table (e.g. when #125 migrates to flags), only this one JOIN and the column name change.
 
-**No SELECT star**: the Stage 1 query explicitly lists every field above. This is load-bearing — `better-sqlite3` returns ONLY the columns named in the SELECT list, which means the IPC payload never accidentally leaks columns the renderer doesn't need. This is also the mechanism that enforces the "no extension data from Stage 2" commitment: if a future scorer field isn't in the Stage 1 SELECT list, TypeScript catches it at the scorer layer (missing property), not at runtime.
+**Stage 1 SELECT composition**: the query SELECTs `v.*` (all Variant base columns by name, preserving the `id` field) plus the aliased extension columns plus the derived `is_starred_int`. Using `v.*` is intentional here — the goal is explicit Variant-compatibility, so we want every base column, not a narrowed subset. better-sqlite3 returns only named columns; the LEFT JOINed extension tables are projected with explicit `AS` aliases so no accidental column pollution occurs.
 
 ### Design commitments
 
@@ -815,17 +817,16 @@ Template addition — note this replaces the current flat `FilterToolbar + Varia
 <template>
   <!-- ... existing <v-tabs> unchanged ... -->
 
-  <!-- Shortlist mode: no FilterToolbar, no VariantTable -->
-  <template v-if="selectedVariantType === 'shortlist'">
-    <ShortlistPanel
-      :case-id="selectedCaseId"
-      @open-in-tab="selectedVariantType = $event"
-      @row-click="handleRowClick"
-    />
-  </template>
-
-  <!-- Per-type mode: existing FilterToolbar + VariantTable unchanged -->
-  <template v-else>
+  <!--
+    Per-type mode: stays mounted across Shortlist toggles via v-show, so
+    FilterToolbar's internal state, VariantTable's fetched rows, and the
+    shared `currentFilters` ref all persist. This is critical: the real
+    CaseView stores `currentFilters` in `useAppState` and FilterToolbar
+    initializes its internal state only on mount — if we used v-if here,
+    a Shortlist → SNV toggle would leave a stale filtered table paired
+    with a freshly-reset toolbar UI.
+  -->
+  <div v-show="selectedVariantType !== 'shortlist'">
     <div class="filter-bar-container">
       <FilterToolbar
         ref="filterToolbarRef"
@@ -839,22 +840,38 @@ Template addition — note this replaces the current flat `FilterToolbar + Varia
       :variant-type="selectedVariantType"
       ...
     />
-  </template>
+  </div>
+
+  <!--
+    Shortlist mode: mounts conditionally (v-if). Nothing inside the
+    panel needs to be preserved when it's not visible — useShortlistQuery
+    will re-fetch on next mount via its immediate watchers. Keeping
+    ShortlistPanel unmounted when hidden avoids wasted IPC traffic and
+    keeps the annotation-change subscription scoped to "shortlist visible".
+  -->
+  <ShortlistPanel
+    v-if="selectedVariantType === 'shortlist'"
+    :case-id="selectedCaseId"
+    @open-in-tab="selectedVariantType = $event"
+    @row-click="handleRowClick"
+  />
 </template>
 ```
 
 ### CaseView ownership model when Shortlist is active
 
-The existing `CaseView.vue` is tightly coupled to `VariantTable`: `FilterToolbar` receives `columns`, `columnActiveFilters`, `filteredCount`, `totalCount`, `hasSort` all sourced from `variantTableRef`. When Shortlist is active, `variantTableRef` is `null` and those props don't apply. Rather than fighting this coupling, the design **hides `FilterToolbar` entirely in shortlist mode** — the shortlist has its own preset picker inside `ShortlistPanel`, so there is no confusing "live but non-functional" toolbar.
+The existing `CaseView.vue` is tightly coupled to `VariantTable`: `FilterToolbar` receives `columns`, `columnActiveFilters`, `filteredCount`, `totalCount`, `hasSort` all sourced from `variantTableRef`, and `VariantTable` reads `effectiveFilters` which is computed from the shared `currentFilters` ref in `useAppState`. Rather than fighting this coupling, the design hides the per-type region via `v-show` in shortlist mode — components stay mounted, state persists, and the shortlist has its own preset picker inside `ShortlistPanel`.
 
 **Lifecycle rules in shortlist mode**:
 
-1. **`FilterToolbar` not mounted** — no `filterToolbarRef`, no filter state sync with the shortlist. `ShortlistPanel` owns its own filter state via `useShortlistQuery`. The filter bar visible in per-type tabs simply does not appear when Shortlist is active.
-2. **`VariantTable` not mounted** — no `variantTableRef`, no `columnMeta` fetch, no `updateCounts` emission. `tabItems` reads `typeCounts` from a separate composable (already the case), so tab badges still reflect imported data correctly.
-3. **Existing `CaseView` handlers guard against null refs** — `handleClearColumnFilters`, `handleClearColumnFilter`, `handleResetSort`, `handleSortUpdate`, `handleCountsUpdate` all need optional-chaining or early-return guards when called in a state where `variantTableRef.value == null`. This is already correct in some handlers and needs to be applied consistently (Wave 6 task).
-4. **Tab switch from Shortlist → per-type tab** remounts `FilterToolbar` + `VariantTable` fresh. Any prior filter state the user had in those tabs is NOT preserved across shortlist toggles in Phase 1 (known limitation — Phase 2+ can persist per-tab filter state in Pinia if users ask).
-5. **Row click in shortlist → opens `VariantDetailsPanel`** (the existing component) via the `handleRowClick` handler already defined in `CaseView`. `ShortlistPanel` re-emits `row-click` upward so the existing handler runs unchanged.
-6. **"View in [type] tab" action** emits `open-in-tab` with the target type string; `CaseView` listens and updates `selectedVariantType`. `VariantTable` mounts fresh, filters reset to defaults — Phase 1 does NOT pre-filter the target tab to the clicked variant's position. Phase 2+ can add "scroll to variant" by extending `VariantTable` with a target-variant-id prop.
+1. **`FilterToolbar` stays mounted but hidden** (`v-show="selectedVariantType !== 'shortlist'"`). Its internal filter state, column-filter chips, and search term all persist. When the user toggles back to a per-type tab, the toolbar is already in the correct state.
+2. **`VariantTable` stays mounted but hidden.** Its fetched rows, sort state, column metadata, pagination cursor, and `variantTableRef` all persist. `currentFilters` is not mutated while Shortlist is active, so no background re-fetch occurs (the table's filter watcher sees no change and does not re-query).
+3. **`ShortlistPanel` mounts conditionally** (`v-if="selectedVariantType === 'shortlist'"`). It is the only region that unmounts when hidden. Its composable `useShortlistQuery` tears down cleanly via `onBeforeUnmount`, including the annotation-change subscription — when the user toggles back to Shortlist, a fresh subscription is registered and the shortlist re-fetches once from its initial watcher.
+4. **`currentFilters` is never reset by tab transitions.** The Shortlist tab does NOT touch the shared `currentFilters` ref — it runs its own query via `useShortlistQuery.fetch()` using the preset's `baseFilters`, independent of the per-type filter state. This means Shortlist → SNV → Shortlist → SV toggles preserve all per-type filter state faithfully and the shortlist operates on a clean, independent filter space.
+5. **Row click in shortlist** emits `row-click` with a `ShortlistCandidate` — because that extends `Variant`, the existing `handleRowClick(variant: Variant)` handler accepts it directly. `selectedPanelVariant.value = variant` works with zero type coercion; `VariantDetailsPanel` reads `variant.id` and issues its own transcripts/tags/annotation queries unchanged.
+6. **"View in [type] tab" action** emits `open-in-tab` with the target type string; `CaseView` listens and updates `selectedVariantType`. Because the target tab was kept mounted, it reveals with its prior filter state intact. Phase 1 does NOT scroll the revealed tab to the clicked variant; Phase 2+ can add a target-variant-id prop to `VariantTable` for that scroll behavior.
+
+**Memory cost of keeping per-type components mounted**: one VariantTable instance with its current rows (at most ~1000 rows in Phase 1's default pagination) plus one FilterToolbar instance. A few MB at most. This is strictly better than the correctness bug that `v-if` would introduce.
 
 **Why not just wire `FilterToolbar` into `ShortlistPanel`**: the filter toolbar is designed for linear tab-filtering, not cross-type preset ranking. It would need substantial refactoring (remove column metadata plumbing, hide sort controls, hide export options that don't apply) for a feature that is read-only in Phase 1. Clean separation is simpler now and doesn't foreclose reuse in Phase 2.
 
@@ -1088,7 +1105,7 @@ export interface AnnotationChangeEvent {
 }
 ```
 
-**Phase 1 limitation**: `annotations:upsertGlobal` (global annotations — not case-scoped) does NOT emit the broadcast. A clinician editing a global ClinVar override from the shortlist's detail panel will not see the shortlist auto-refresh. Workaround: the manual Refresh button. Phase 2+ can extend the broadcast to global edits by deriving the affected caseIds via the variant's chr/pos/ref/alt + `case_id` join.
+**Phase 1 limitation**: `annotations:upsertGlobal` does NOT emit the broadcast. The global annotation model exposes `global_comment`, `starred` (at the variant level across cases), `acmg_classification`, and `acmg_evidence` on the `variant_annotations` table. The Phase 1 shortlist's ranking inputs (`consequence`, `gnomad_af`, `cadd`, `clinvar`) all come from the `variants` table (imported at ingest), and its display columns do not currently show any global annotation field — so global edits cannot change what the shortlist ranks or shows. A user editing a global comment or a global ACMG classification from the detail panel therefore has no observable impact on the visible shortlist, which is why skipping the broadcast is safe in Phase 1. **When a future shortlist column surfaces a global field (e.g. "Global ACMG" as a display column, or a rank weight using curated ACMG class)**, this broadcast MUST be extended to `annotations:upsertGlobal` — the new column becomes a signal the user expects to update live. Phase 2+ will derive affected caseIds via the variant's `chr/pos/ref/alt` + `case_id` join.
 
 Total change footprint: ~40 lines in `annotations.ts` (handler wrapper), ~6 lines in `preload/index.ts`, ~6 lines in `api.ts` (type). Logic file untouched.
 

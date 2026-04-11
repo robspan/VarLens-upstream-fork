@@ -5,6 +5,34 @@ All notable changes to VarLens are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Unified case shortlist** — ranked cross-type variant view per case.
+  New "Shortlist" tab appears in CaseView when a case contains more than
+  one variant type (SNV/indel + SV/CNV/STR). Three built-in presets
+  (Tier 1 candidates / All rare damaging / Recessive candidates) drive a
+  two-stage candidate-generation + ranking pipeline. Rows auto-refresh
+  when any variant in the same case is annotated. Score components
+  tooltip surfaces the per-term breakdown on hover. Hard cap of 500
+  rows at the IPC boundary for Electron safety.
+  Spec: `.planning/specs/2026-04-11-unified-shortlist-ranked-view-design.md`
+
+### Database
+
+- Migration v27: `filter_presets.kind` discriminator column
+  (`'filter' | 'shortlist'`) with a CHECK constraint and a new index.
+  Seeds three built-in shortlist presets. Existing rows backfill to
+  `'filter'`.
+
+### IPC
+
+- New `variants:shortlist` handler (Zod-validated discriminated union
+  params: `presetId | adHocConfig`).
+- New `variants:annotationChanged` broadcast from
+  `annotations:upsertPerCase` drives same-case shortlist refresh.
+
 ## [0.55.0] — 2026-04-11
 
 ### Added — Multi-variant type support

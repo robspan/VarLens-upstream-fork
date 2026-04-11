@@ -4,8 +4,42 @@
  * Tests annotation repository methods with real SQLite backend.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { DatabaseService } from '../../../src/main/database/DatabaseService'
+
+// ── Electron mock (hoisted) ──────────────────────────────────────────────────
+// The broadcast describe block below registers the real IPC handlers and
+// verifies `BrowserWindow.getAllWindows()[*].webContents.send(...)` is called.
+// We capture sent messages into a module-level array so each test can assert.
+const sentMessages: Array<{ channel: string; payload: unknown }> = []
+
+vi.mock('electron', () => {
+  const mockWebContents = {
+    send: (channel: string, payload: unknown): void => {
+      sentMessages.push({ channel, payload })
+    }
+  }
+  const mockWindow = {
+    isDestroyed: (): boolean => false,
+    webContents: mockWebContents
+  }
+  return {
+    BrowserWindow: {
+      getAllWindows: (): Array<typeof mockWindow> => [mockWindow]
+    },
+    // ipcMain is never used directly by the handler module (it receives an
+    // injected ipcMain via HandlerDependencies), but MainLogger imports
+    // `electron` dynamically so we keep a placeholder.
+    ipcMain: {
+      handle: vi.fn(),
+      on: vi.fn(),
+      removeAllListeners: vi.fn()
+    },
+    app: {
+      getPath: vi.fn(() => '/tmp/varlens-test')
+    }
+  }
+})
 
 describe('annotation IPC handlers', () => {
   let db: DatabaseService
@@ -233,5 +267,178 @@ describe('annotation IPC handlers', () => {
       expect(result['1:12345:A:G'].global).not.toBeNull()
       expect(result['2:67890:T:C'].global).toBeNull()
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Wave 1.E — variants:annotationChanged broadcast
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// The `annotations:upsertPerCase` handler wrapper emits a broadcast on every
+// non-destroyed BrowserWindow via `webContents.send('variants:annotationChanged',
+// { caseId, variantId, kind })` AFTER the `upsertPerCaseAnnotation(...)` logic
+// call returns successfully. These tests verify:
+//   1. Successful upsert emits the broadcast with the correct kind mapping
+//   2. Thrown errors from the logic layer suppress the broadcast
+//   3. The kind is derived from the update shape (star / comment / acmg / evidence)
+//
+// The handler wrapper receives an injected `ipcMain` via `HandlerDependencies`,
+// so we build a fake ipcMain that captures registered handler callbacks, then
+// invoke them directly with a stub `IpcMainInvokeEvent`.
+
+describe('annotations:upsertPerCase — variants:annotationChanged broadcast', () => {
+  let db: DatabaseService
+  let caseId: number
+  let variantId: number
+  type HandlerCallback = (event: unknown, ...args: unknown[]) => Promise<unknown> | unknown
+  const capturedHandlers = new Map<string, HandlerCallback>()
+
+  // Fake ipcMain that records every registered handler so tests can invoke
+  // them directly. Mimics the shape of `HandlerDependencies.ipcMain`.
+  const fakeIpcMain = {
+    handle: (channel: string, cb: HandlerCallback): void => {
+      capturedHandlers.set(channel, cb)
+    }
+  } as unknown as import('electron').IpcMain
+
+  const invoke = async (channel: string, ...args: unknown[]): Promise<unknown> => {
+    const handler = capturedHandlers.get(channel)
+    if (!handler) throw new Error(`No handler registered for ${channel}`)
+    // Pass a minimal stub for IpcMainInvokeEvent — the handler body only
+    // destructures the remaining parameters.
+    return handler({} as unknown, ...args)
+  }
+
+  beforeEach(async () => {
+    // Fresh DB + single case/variant
+    db = new DatabaseService(':memory:')
+    caseId = db.database
+      .prepare(
+        'INSERT INTO cases (name, file_path, file_size, variant_count, created_at) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run('Broadcast Test Case', '/tmp/bc.json', 1, 0, Date.now()).lastInsertRowid as number
+    variantId = db.database
+      .prepare(
+        'INSERT INTO variants (case_id, chr, pos, ref, alt, gt_num) VALUES (?, ?, ?, ?, ?, ?)'
+      )
+      .run(caseId, '1', 200, 'A', 'T', '0/1').lastInsertRowid as number
+
+    // Reset broadcast capture and handler registry for every test
+    sentMessages.length = 0
+    capturedHandlers.clear()
+
+    // Register real handlers against the fake ipcMain
+    const { registerAnnotationHandlers } =
+      await import('../../../src/main/ipc/handlers/annotations')
+    registerAnnotationHandlers({
+      ipcMain: fakeIpcMain,
+      getDb: () => db,
+      getDbManager:
+        (() => ({})) as unknown as () => import('../../../src/main/services/DatabaseManager').DatabaseManager
+    })
+  })
+
+  afterEach(() => {
+    db.close()
+    vi.restoreAllMocks()
+  })
+
+  it('emits variants:annotationChanged with kind="star" after successful starred upsert', async () => {
+    const result = await invoke('annotations:upsertPerCase', caseId, variantId, {
+      starred: true
+    })
+
+    // Handler must return the DB row (not a SerializableError)
+    expect(result).toBeDefined()
+    expect(result).not.toHaveProperty('code')
+
+    expect(sentMessages).toHaveLength(1)
+    expect(sentMessages[0]).toEqual({
+      channel: 'variants:annotationChanged',
+      payload: { caseId, variantId, kind: 'star' }
+    })
+  })
+
+  it('emits kind="comment" when only per_case_comment is updated', async () => {
+    await invoke('annotations:upsertPerCase', caseId, variantId, {
+      per_case_comment: 'A note'
+    })
+
+    expect(sentMessages).toHaveLength(1)
+    expect(sentMessages[0].channel).toBe('variants:annotationChanged')
+    expect(sentMessages[0].payload).toEqual({
+      caseId,
+      variantId,
+      kind: 'comment'
+    })
+  })
+
+  it('emits kind="acmg" when acmg_classification is updated', async () => {
+    await invoke('annotations:upsertPerCase', caseId, variantId, {
+      acmg_classification: 'Pathogenic'
+    })
+
+    expect(sentMessages).toHaveLength(1)
+    expect(sentMessages[0].payload).toEqual({
+      caseId,
+      variantId,
+      kind: 'acmg'
+    })
+  })
+
+  it('emits kind="evidence" when acmg_evidence is updated (no classification, no star)', async () => {
+    await invoke('annotations:upsertPerCase', caseId, variantId, {
+      acmg_evidence: 'PS1,PM2'
+    })
+
+    expect(sentMessages).toHaveLength(1)
+    expect(sentMessages[0].payload).toEqual({
+      caseId,
+      variantId,
+      kind: 'evidence'
+    })
+  })
+
+  it('does NOT broadcast when the upsert throws', async () => {
+    // Force a failure by mocking the logic-layer call to throw. We spy on
+    // the imported function reference — `annotations.ts` imports
+    // `upsertPerCaseAnnotation` from `./annotations-logic`.
+    const logic = await import('../../../src/main/ipc/handlers/annotations-logic')
+    const spy = vi.spyOn(logic, 'upsertPerCaseAnnotation').mockImplementation(() => {
+      throw new Error('boom')
+    })
+
+    // Re-register handlers so the wrapper binds the mocked function
+    capturedHandlers.clear()
+    const { registerAnnotationHandlers } =
+      await import('../../../src/main/ipc/handlers/annotations')
+    registerAnnotationHandlers({
+      ipcMain: fakeIpcMain,
+      getDb: () => db,
+      getDbManager:
+        (() => ({})) as unknown as () => import('../../../src/main/services/DatabaseManager').DatabaseManager
+    })
+
+    const result = await invoke('annotations:upsertPerCase', caseId, variantId, {
+      starred: true
+    })
+
+    // wrapHandler catches the throw and returns a SerializableError
+    expect(result).toMatchObject({ code: expect.any(String), message: 'boom' })
+
+    // Critically: no broadcast fired on the error path
+    expect(sentMessages).toHaveLength(0)
+
+    spy.mockRestore()
+  })
+
+  it('does NOT broadcast on validation failure (invalid caseId)', async () => {
+    const result = await invoke('annotations:upsertPerCase', 'not-a-number', variantId, {
+      starred: true
+    })
+
+    // Handler throws inside wrapHandler → serializable error
+    expect(result).toHaveProperty('code')
+    expect(sentMessages).toHaveLength(0)
   })
 })

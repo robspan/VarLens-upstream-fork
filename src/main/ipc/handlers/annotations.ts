@@ -1,3 +1,4 @@
+import { BrowserWindow } from 'electron'
 import { z } from 'zod'
 import { wrapHandler } from '../errorHandler'
 import type { HandlerDependencies } from '../types'
@@ -9,6 +10,7 @@ import {
   CaseIdSchema
 } from '../../../shared/types/ipc-schemas'
 import { mainLogger } from '../../services/MainLogger'
+import type { AnnotationChangeEvent } from '../../../shared/types/api'
 import {
   getGlobalAnnotation,
   upsertGlobalAnnotation,
@@ -19,6 +21,38 @@ import {
   getAnnotationsForVariant,
   batchGetAnnotations
 } from './annotations-logic'
+
+/**
+ * Broadcast a `variants:annotationChanged` event to every non-destroyed
+ * renderer window. Called AFTER a successful per-case annotation upsert so
+ * that dependent views (e.g. the Wave 4 Shortlist tab) can refetch.
+ *
+ * Handler-layer only — `annotations-logic.ts` is prohibited from touching
+ * Electron APIs per its module JSDoc.
+ */
+function broadcastAnnotationChanged(ev: AnnotationChangeEvent): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send('variants:annotationChanged', ev)
+    }
+  }
+}
+
+/**
+ * Map the validated per-case annotation update shape to the broadcast
+ * event `kind`. Priority order: star → acmg → evidence → comment.
+ * Called only after Zod validation has succeeded so the fields are typed.
+ */
+function detectAnnotationChangeKind(updates: {
+  starred?: unknown
+  acmg_classification?: unknown
+  acmg_evidence?: unknown
+}): AnnotationChangeEvent['kind'] {
+  if (updates.starred !== undefined) return 'star'
+  if (updates.acmg_classification !== undefined) return 'acmg'
+  if (updates.acmg_evidence !== undefined) return 'evidence'
+  return 'comment'
+}
 
 /**
  * Annotations IPC handlers
@@ -153,12 +187,23 @@ export function registerAnnotationHandlers({
           throw new Error('Invalid annotation updates')
         }
 
-        return upsertPerCaseAnnotation(
+        const result = upsertPerCaseAnnotation(
           validatedIds.data.caseId,
           validatedIds.data.variantId,
           validatedUpdates.data,
           getDb
         )
+
+        // Broadcast AFTER the logic-layer write succeeds. If the call above
+        // throws, `wrapHandler` catches it and this line never runs — the
+        // error path must not emit the event (Wave 1.E spec §6).
+        broadcastAnnotationChanged({
+          caseId: validatedIds.data.caseId,
+          variantId: validatedIds.data.variantId,
+          kind: detectAnnotationChangeKind(validatedUpdates.data)
+        })
+
+        return result
       })
     }
   )

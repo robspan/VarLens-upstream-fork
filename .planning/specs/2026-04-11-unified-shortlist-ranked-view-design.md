@@ -154,7 +154,8 @@ See `.planning/docs/unified-variant-view-ranking-exploration.md` and the brainst
 | `src/preload/index.ts` | Typed wrappers: `variants.shortlist()` + `variants.onAnnotationChanged()` |
 | `src/shared/types/filters.ts` | Extend `FilterState` with optional `shortlist?: ShortlistConfig` |
 | `src/shared/types/ipc-schemas.ts` | Add `ShortlistConfigSchema`, `RankConfigSchema`, `GetShortlistParamsSchema` |
-| `src/renderer/src/views/CaseView.vue` | Extend `tabItems` computed to insert Shortlist tab when `variantTypes.length > 1`, default-active |
+| `src/renderer/src/views/CaseView.vue` | Extend `tabItems` computed, add `lastNonShortlistType` ref + `variantTableType` computed + selection watcher, extend `loadTypeCounts()` with multi-type → Shortlist default-selection rule, update template to use `v-show` for per-type region + `v-if` for shortlist region + bind the new `:interactive` prop on `VariantTable` |
+| `src/renderer/src/components/VariantTable.vue` | Add optional `interactive?: boolean` prop (default `true`) and prepend `!props.interactive ||` to every `onKeyStroke` handler's guard (`ArrowUp`, `ArrowDown`, `Enter`, `Escape`, `s`, `c`, `a`). Six-line change. Required because `v-show` keeps the hidden component in the DOM and its global key handlers would otherwise fire while the Shortlist tab is visible. |
 | `src/main/database/FilterPresetRepository.ts` | Extend `FilterPreset` type with `kind: 'filter' \| 'shortlist'`; `rowToPreset()` reads `row.kind`; `createPreset()`/`updatePreset()` accept `kind` (default `'filter'` for back-compat with existing callers) |
 | `src/shared/types/filter-presets.ts` | Add `kind` field to `FilterPreset` / `FilterPresetCreate` / `FilterPresetUpdate` interfaces |
 | `vitest.config.ts` | Coverage thresholds for new modules (final commit) |
@@ -785,16 +786,18 @@ export const GetShortlistParamsSchema = z.union([
 
 ### `CaseView.vue` tab integration
 
-Three separate pieces of state govern the Shortlist integration. They must be kept conceptually distinct — conflating them is exactly the bug that an earlier version of this spec had:
+Four pieces of state govern the Shortlist integration. They must be kept conceptually distinct — conflating them introduces correctness bugs (previous review rounds caught two):
 
-- **`selectedVariantType`** — drives which region is *visible*. Values: `'shortlist' | 'snv' | 'sv' | 'cnv' | 'str'`. Updated by `v-tabs` model.
-- **`lastNonShortlistType`** — drives the `VariantTable` `variant-type` prop and therefore the SQL filter applied to the per-type query. Values: `'snv' | 'sv' | 'cnv' | 'str'` ONLY — **never `'shortlist'`**. Updated by a watcher that ignores the shortlist value.
-- **`effectiveFilters`** — the `VariantFilter` passed to `VariantTable`, composed from `currentFilters` + `lastNonShortlistType` (NOT `selectedVariantType`).
+- **`selectedVariantType`** — drives which region is *visible*. Values: `'shortlist' | 'snv' | 'sv' | 'cnv' | 'str'`. Bound to `v-tabs` v-model. Set imperatively by the case-change watcher and by `loadTypeCounts()` post-load logic.
+- **`lastNonShortlistType`** — remembers the most recently active per-type tab. Updated via a watcher on `selectedVariantType` that ignores the `'shortlist'` value. This is plain remembered state, not itself the filter source.
+- **`variantTableType`** (computed, Option B from round-3 review) — the value passed to `VariantTable`'s `variant-type` prop AND to `effectiveFilters.variant_type`. Always derives to a real per-type value — provably never `'shortlist'` at the read site, regardless of what the upstream state holds. **This is the single source of truth for "what type is VariantTable filtering on".**
+- **`effectiveFilters`** — the `VariantFilter` object passed to `VariantTable`, composed from `currentFilters` + `variantTableType`.
 
-Why this decoupling is mandatory: `useVariantData` (in `VariantTable`) watches the serialized filter key and re-queries on any change. If `effectiveFilters.variant_type` flipped to `'shortlist'` when the user toggled the Shortlist tab, `buildBaseWhere` would treat that as an exact-match filter (`variant_type = 'shortlist'`), return zero rows, and discard the hidden table's fetched state — the exact "persists across toggles" guarantee the design is trying to preserve. Keeping `VariantTable`'s filter prop stable across Shortlist toggles is what makes `v-show` correct.
+Why the computed wrapper (Option B): `useVariantData` in `VariantTable` watches the serialized filter key and re-queries on any change. If `'shortlist'` ever reached `effectiveFilters.variant_type`, `buildBaseWhere` would treat it as an exact-match filter, return zero rows, and discard the hidden table's fetched state — the very "persists across toggles" guarantee the design is trying to preserve. Routing both read sites through a single `variantTableType` computed makes the "never `'shortlist'`" invariant hold at the *read site*, not just by watcher convention at the write site. Accidental future writes to `lastNonShortlistType` can't break the table's filter prop.
 
 ```typescript
 // src/renderer/src/views/CaseView.vue — additions to the existing script
+// (extends the existing selectedVariantType/typeCounts/loadTypeCounts pattern)
 
 const tabItems = computed(() => {
   const counts = typeCounts.value
@@ -816,44 +819,102 @@ const tabItems = computed(() => {
   return items
 })
 
-// Selected tab — the source of truth for which region is visible.
-const selectedVariantType = ref<string>(tabItems.value[0]?.type ?? 'snv')
+// Selected tab — drives v-tabs + v-show/v-if. Initialized to the same
+// conventional default the existing CaseView uses (`'snv'`). The real
+// correction happens inside loadTypeCounts() once counts resolve — see
+// "Default selection logic" below.
+const selectedVariantType = ref<string>('snv')
 
 /**
- * The last non-shortlist tab the user was on (or a reasonable default).
- * This is what VariantTable sees as its variant-type prop — NEVER the raw
- * `selectedVariantType`, because 'shortlist' is not a real variant_type
- * value in the DB schema and would make useVariantData re-query with
- * `variant_type = 'shortlist'` → zero rows.
+ * Remembered state: the last non-shortlist tab the user was on. Updated
+ * by the selectedVariantType watcher below (ignoring 'shortlist'). NOT
+ * read directly by VariantTable — see `variantTableType` computed.
  *
- * Initial value: the first per-type tab in tabItems (skipping the shortlist
- * entry if present). Because tabItems always contains at least one per-type
- * entry when Shortlist appears, `firstNonShortlist` is always defined.
+ * Default 'snv' matches the existing selectedVariantType default so
+ * first-frame renders are consistent before loadTypeCounts() runs.
  */
-const lastNonShortlistType = ref<string>(
-  tabItems.value.find((t) => t.type !== 'shortlist')?.type ?? 'snv'
-)
+const lastNonShortlistType = ref<string>('snv')
 
-// Update lastNonShortlistType whenever the user picks a real per-type tab.
-// Ignore the shortlist value — that is the whole point of this ref.
+// Watcher: remember the last real per-type selection.
 watch(selectedVariantType, (next) => {
   if (next !== 'shortlist') {
     lastNonShortlistType.value = next
   }
 })
 
-// effectiveFilters is now computed from lastNonShortlistType, NOT from
-// selectedVariantType. This is the key change that makes v-show safe:
-// while the user is on the Shortlist tab, VariantTable's filter prop
-// keeps the stable value of the last real tab and its data/watchers
-// sit idle (no re-query, no row discard).
+/**
+ * Single read site for VariantTable's filter type. ALWAYS yields a real
+ * per-type value — never 'shortlist'. If selectedVariantType is 'shortlist',
+ * falls back to lastNonShortlistType (which the watcher maintains).
+ *
+ * This computed is the Option B enforcement: any code path that reads the
+ * "current variant type" via this computed is safe by construction; the
+ * invariant is not just a watcher convention.
+ */
+const variantTableType = computed<'snv' | 'sv' | 'cnv' | 'str'>(() => {
+  const current = selectedVariantType.value
+  return (current === 'shortlist' ? lastNonShortlistType.value : current) as
+    'snv' | 'sv' | 'cnv' | 'str'
+})
+
+// effectiveFilters composes currentFilters with variantTableType (NOT with
+// selectedVariantType directly). Both VariantTable's variant-type prop and
+// its filters prop read from this computed chain.
 const effectiveFilters = computed<Omit<VariantFilter, 'case_id'>>(() => ({
   ...currentFilters.value,
-  variant_type: lastNonShortlistType.value
+  variant_type: variantTableType.value
 }))
 ```
 
-Template addition — the per-type region uses `v-show` (stays mounted, state persists) and receives `lastNonShortlistType` as its variant-type prop; the shortlist region uses `v-if` (mounts on demand, nothing to preserve when hidden):
+### Default selection logic (post-load, async-aware)
+
+The existing CaseView already handles a similar async problem: the case has only SV variants (`typeCounts.snv === 0`), and the default tab needs to flip from `'snv'` to `'sv'` once `loadTypeCounts()` resolves. That logic lives at `CaseView.vue:56-68` today. The shortlist adds one more branch to the same post-load selector: if more than one variant type is present, pick `'shortlist'` as the default.
+
+The spec extends `loadTypeCounts()` — NOT the initial `ref` declaration — so the default correctly applies *after* the async counts load:
+
+```typescript
+// src/renderer/src/views/CaseView.vue — inside existing loadTypeCounts()
+// (after the try/catch that populates typeCounts)
+
+async function loadTypeCounts(caseId: number | null): Promise<void> {
+  // ... existing code that populates typeCounts from the IPC call ...
+
+  // Default selection rule (extends the existing SV-only fallback):
+  //
+  // 1. If the case has >1 variant type present, land on 'shortlist'.
+  // 2. Else if the user is still on the 'snv' reset sentinel AND SNV/indel
+  //    is empty, fall back to the first available per-type tab.
+  // 3. Otherwise leave selectedVariantType as the user set it.
+  //
+  // We only override when selectedVariantType is still 'snv' — the reset
+  // sentinel set by the case-change watcher above. That preserves the
+  // existing "user explicitly picked a tab, don't clobber it" semantic.
+
+  const presentTypes = (['snv', 'sv', 'cnv', 'str'] as const)
+    .filter((t) => {
+      if (t === 'snv') return (typeCounts.value.snv ?? 0) + (typeCounts.value.indel ?? 0) > 0
+      return (typeCounts.value[t] ?? 0) > 0
+    })
+
+  if (selectedVariantType.value === 'snv') {
+    if (presentTypes.length > 1) {
+      // Multi-type case → Shortlist is the default landing tab
+      selectedVariantType.value = 'shortlist'
+      // lastNonShortlistType stays 'snv' (the watcher doesn't update on
+      // 'shortlist'). That is intentional: the first per-type tab VariantTable
+      // pre-mounts against is SNV — a reasonable default hidden-preload.
+    } else if (presentTypes.length === 1 && presentTypes[0] !== 'snv') {
+      // Single non-SNV type (e.g. SV-only import) — existing fallback
+      selectedVariantType.value = presentTypes[0]
+    }
+    // else: SNV-only or empty, stay on 'snv' (existing behavior)
+  }
+}
+```
+
+This preserves the existing semantics for SNV-only / SV-only cases and adds the "multi-type → shortlist" branch without touching any other initialization code. The case-change watcher still resets to `'snv'` on every case switch, so the rule applies consistently whenever `loadTypeCounts()` resolves new counts.
+
+Template addition — the per-type region uses `v-show` (stays mounted, state persists) and receives `variantTableType` as its variant-type prop; the shortlist region uses `v-if` (mounts on demand). A new `:interactive` prop on VariantTable suppresses global keyboard shortcuts while hidden (see "VariantTable interactive prop" below):
 
 ```vue
 <template>
@@ -863,8 +924,11 @@ Template addition — the per-type region uses `v-show` (stays mounted, state pe
     Per-type region: stays mounted across Shortlist toggles via v-show.
     - FilterToolbar's internal state persists.
     - VariantTable's fetched rows persist because its variant-type prop
-      is bound to `lastNonShortlistType`, which does NOT change on
-      Shortlist toggles. No re-query fires on useVariantData's watchers.
+      is bound to `variantTableType`, a computed that NEVER yields 'shortlist'
+      — so the serialized filter key useVariantData watches doesn't change
+      when the Shortlist tab is toggled, and no refetch fires.
+    - The :interactive prop suppresses global keyboard shortcuts while
+      VariantTable is hidden (see VariantTable interactive prop section).
     - The shared `currentFilters` ref is never touched by tab transitions.
   -->
   <div v-show="selectedVariantType !== 'shortlist'">
@@ -878,8 +942,9 @@ Template addition — the per-type region uses `v-show` (stays mounted, state pe
     <VariantTable
       ref="variantTableRef"
       :case-id="selectedCaseId"
-      :variant-type="lastNonShortlistType"  <!-- NOT selectedVariantType -->
+      :variant-type="variantTableType"
       :filters="effectiveFilters"
+      :interactive="selectedVariantType !== 'shortlist'"
       ...
     />
   </div>
@@ -900,25 +965,75 @@ Template addition — the per-type region uses `v-show` (stays mounted, state pe
 </template>
 ```
 
+### VariantTable `interactive` prop (new)
+
+`v-show` keeps the hidden element in the DOM ([Vue docs: Conditional Rendering](https://vuejs.org/guide/essentials/conditional#v-if-vs-v-show)). All of `VariantTable`'s component-level side effects — watchers, composables, lifecycle hooks — therefore remain active while the element is hidden. Most of these are harmless (watchers whose inputs aren't changing will not fire), but `VariantTable.vue` currently registers six global keyboard handlers via `onKeyStroke` (`ArrowUp`, `ArrowDown`, `Enter`, `Escape`, `s`, `c`, `a`) that are gated only on `viewActive` + `isInputFocused`, NOT on visibility. A user pressing `s` while the Shortlist tab is active would call `annotationDialogsRef.value?.handleStarToggle(selectedItem.value)` in the hidden VariantTable and toggle a star on whatever row was last selected. That is clearly wrong.
+
+To fix this without refactoring the composables, `VariantTable.vue` gains a new optional prop:
+
+```typescript
+// src/renderer/src/components/VariantTable.vue — props addition
+const props = withDefaults(
+  defineProps<{
+    // ... existing props ...
+    /**
+     * Whether this VariantTable instance is currently interactive.
+     * When false (e.g. the Shortlist tab is active and the table is
+     * hidden via v-show), all global keyboard shortcuts registered
+     * by this component are suppressed. The table continues to render
+     * and maintain its internal state, but will not respond to
+     * ArrowUp/Down/Enter/Escape/s/c/a keystrokes.
+     *
+     * Default: true (preserves existing behavior for every other
+     * mount site, which has a single VariantTable instance that is
+     * always visible when mounted).
+     */
+    interactive?: boolean
+  }>(),
+  {
+    // ... existing defaults ...
+    interactive: true
+  }
+)
+```
+
+Every existing `onKeyStroke` handler gets one extra guard at the top:
+
+```typescript
+onKeyStroke('ArrowDown', (e) => {
+  if (!props.interactive || !viewActive.value || isInputFocused()) return
+  e.preventDefault()
+  moveDown()
+}, { dedupe: true })
+// … and the same `!props.interactive ||` prefix added to the guard of
+// every other onKeyStroke handler: ArrowUp, Enter, Escape, 's', 'c', 'a'.
+```
+
+This is a six-line change to `VariantTable.vue` and is part of Wave 6 (`CaseView` tab wiring) since both files must ship in the same commit — wiring `:interactive` from `CaseView` without the prop existing in `VariantTable` is a type error, and vice versa is a missed gate. Wave 6 authorization is updated accordingly (see Section 9).
+
+**Non-shortcut side effects**: `VariantTable.vue` also has a `watch(selectedIndex, …)` that scrolls the selected row into view, and an `onMounted` that wires a scroll-sync observer. Neither fires spuriously while the component is hidden (the watch requires `selectedIndex` to change, which only happens on user interaction with the visible table; the onMounted runs once at original mount). Both are safe to leave unchanged.
+
 ### CaseView ownership model when Shortlist is active
 
 The existing `CaseView.vue` is tightly coupled to `VariantTable`: `FilterToolbar` receives `columns`, `columnActiveFilters`, `filteredCount`, `totalCount`, `hasSort` all sourced from `variantTableRef`, and `VariantTable` consumes `effectiveFilters` (a computed over the shared `currentFilters` ref in `useAppState`). The design preserves this coupling but decouples *visibility* from *variant-type filtering* by introducing `lastNonShortlistType` (see the tab integration code above). This means:
 
-- Toggling to Shortlist hides the per-type region via `v-show` but does NOT mutate `lastNonShortlistType` — so VariantTable's filter prop is unchanged, useVariantData's serialized-filter watcher sees no change, and no refetch fires.
+- Toggling to Shortlist hides the per-type region via `v-show`. VariantTable's `variant-type` prop is bound to the `variantTableType` computed, which falls back to `lastNonShortlistType` when `selectedVariantType === 'shortlist'`. Neither ref changes on Shortlist toggles, so the serialized filter key `useVariantData` watches stays stable and no refetch fires.
 - VariantTable keeps its in-memory row data, sort state, column metadata, and ref handle intact across the toggle.
 - FilterToolbar keeps its internal filter state, search term, and column-filter chips intact.
+- VariantTable's global keyboard shortcuts (`ArrowUp/Down`, `Enter`, `Escape`, `s`, `c`, `a`) are suppressed via the new `:interactive="selectedVariantType !== 'shortlist'"` prop. Without this, `v-show` would leave those handlers active on the hidden component and a keystroke while Shortlist is visible could mutate the hidden selection or open an annotation dialog.
 - When the user toggles back to a per-type tab, both are already in the correct state — no mount/unmount churn, no flash of loading UI.
 
 **Lifecycle rules in shortlist mode**:
 
 1. **`FilterToolbar` stays mounted but hidden** (`v-show="selectedVariantType !== 'shortlist'"`). Its internal filter state, column-filter chips, and search term all persist. When the user toggles back to a per-type tab, the toolbar is already in the correct state.
-2. **`VariantTable` stays mounted but hidden, with its filter prop stable.** Its `variant-type` prop is `lastNonShortlistType`, not `selectedVariantType`. Toggling to Shortlist does not mutate `lastNonShortlistType`, so the serialized filter key that `useVariantData` watches is unchanged, no refetch fires, and fetched rows / sort state / column metadata / `variantTableRef` all persist exactly as they were. **This is the load-bearing correctness property that makes `v-show` viable.**
+2. **`VariantTable` stays mounted but hidden, with its filter prop stable.** Its `variant-type` prop is bound to the `variantTableType` computed, which is provably never `'shortlist'` (falls back to `lastNonShortlistType` when needed). Toggling to Shortlist does not mutate either `lastNonShortlistType` or `currentFilters`, so the serialized filter key that `useVariantData` watches is unchanged, no refetch fires, and fetched rows / sort state / column metadata / `variantTableRef` all persist exactly as they were. **This is the load-bearing correctness property that makes `v-show` viable.**
 3. **`ShortlistPanel` mounts conditionally** (`v-if="selectedVariantType === 'shortlist'"`). It is the only region that unmounts when hidden. Its composable `useShortlistQuery` tears down cleanly via `onBeforeUnmount`, including the annotation-change subscription — when the user toggles back to Shortlist, a fresh subscription is registered and the shortlist re-fetches once from its initial watcher.
 4. **`currentFilters` is never reset or mutated by Shortlist toggles.** The Shortlist tab does NOT touch the shared `currentFilters` ref — it runs its own query via `useShortlistQuery.fetch()` using the preset's `baseFilters`, independent of the per-type filter state. Shortlist → SNV → Shortlist → SV toggles preserve all per-type filter state faithfully and the shortlist operates on an independent filter space.
 5. **Row click in shortlist** emits `row-click` with a `ShortlistCandidate` — because that extends `Variant`, the existing `handleRowClick(variant: Variant)` handler accepts it directly. `selectedPanelVariant.value = variant` works with zero type coercion; `VariantDetailsPanel` reads `variant.id` and issues its own transcripts/tags/annotation queries unchanged.
-6. **"View in [type] tab" action** emits `open-in-tab` with the target type string; `CaseView` listens and updates `selectedVariantType`, which in turn triggers the `watch(selectedVariantType, ...)` that updates `lastNonShortlistType` to the new type. Because that's the first moment `lastNonShortlistType` ever changes, `useVariantData`'s serialized-filter watcher fires once and re-queries against the correct type. The revealed tab shows up-to-date rows without losing the prior per-type filter state (`currentFilters` was never touched).
+6. **"View in [type] tab" action** emits `open-in-tab` with the target type string; `CaseView` listens and updates `selectedVariantType`, which in turn triggers the `watch(selectedVariantType, ...)` that updates `lastNonShortlistType`. `variantTableType`'s fallback branch switches from returning `lastNonShortlistType` to returning `selectedVariantType` directly (both now equal the new per-type value), so `useVariantData`'s serialized-filter watcher fires at most once and re-queries against the correct type. The revealed tab shows up-to-date rows without losing the prior per-type filter state (`currentFilters` was never touched).
+7. **Global keyboard shortcuts in the hidden VariantTable are explicitly suppressed** via the new `:interactive` prop, which is bound to `selectedVariantType !== 'shortlist'`. While Shortlist is visible, the hidden table's `ArrowUp/Down`, `Enter`, `Escape`, `s`, `c`, and `a` handlers all short-circuit at their `if (!props.interactive) return` guard. Without this prop, a user pressing `s` on the Shortlist tab would silently toggle a star on whatever row was last selected in the hidden SNV tab. This rule is load-bearing for clinical correctness and is the only modification to `VariantTable.vue` that the spec requires.
 
-**Memory + work cost of keeping per-type components mounted**: one VariantTable instance holding at most ~1000 rows (Phase 1 default pagination) plus one FilterToolbar instance. A few MB at most. **Background work while hidden is zero**: no watchers fire, no IPC is issued, no rendering happens on invisible DOM. This is strictly better than the correctness bug that plain `v-if` would introduce.
+**Memory + work cost of keeping per-type components mounted**: one VariantTable instance holding at most ~1000 rows (Phase 1 default pagination) plus one FilterToolbar instance. A few MB at most. **Background work while hidden** (revised claim after round-4 review): `useVariantData` does not fire a refetch because the serialized filter key it watches is stable (the `variantTableType` computed never yields `'shortlist'`, and `currentFilters` is not mutated by tab transitions). No IPC is issued. The hidden element is still in the DOM ([Vue docs: v-if vs v-show](https://vuejs.org/guide/essentials/conditional#v-if-vs-v-show)), so its watchers and composables remain *registered* — but with stable inputs none of them fire. The one exception was global `onKeyStroke` handlers, which DO fire independent of input changes; the `:interactive` prop fixes that (rule 7). With the prop gate in place, observable work from a hidden VariantTable reduces to: a few bytes of v-show CSS, one computed read per render of the parent, and zero runtime side effects.
 
 **Why not just wire `FilterToolbar` into `ShortlistPanel`**: the filter toolbar is designed for linear tab-filtering, not cross-type preset ranking. It would need substantial refactoring (remove column metadata plumbing, hide sort controls, hide export options that don't apply) for a feature that is read-only in Phase 1. Clean separation is simpler now and doesn't foreclose reuse in Phase 2.
 
@@ -1402,7 +1517,7 @@ Each fixture variant has a documented expected rank position under "Tier 1 candi
 | **3** | 1 | 1 | `variants:shortlist` IPC handler + preload wrapper |
 | **4** | 1 | 1 | `useShortlistQuery` composable |
 | **5** | 1 | 1 | `ShortlistPanel` composition |
-| **6** | 1 | 1 | `CaseView.vue` tab wiring |
+| **6** | 1 | 1 | `CaseView.vue` tab wiring + `VariantTable.vue` `interactive` prop (six-line keyboard gate) — both in the same commit |
 | **7** | 1 | 1 | Coverage thresholds + docs + release notes |
 
 **Total: 12 commits in final linear history.**

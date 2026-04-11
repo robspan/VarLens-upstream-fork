@@ -14,7 +14,9 @@ import type {
   CaseSearchParams,
   LogMessage
 } from '../shared/types'
-import type { CommentCategory } from '../shared/types/api'
+import type { CommentCategory, AnnotationChangeEvent } from '../shared/types/api'
+import type { ShortlistResult } from '../shared/types/shortlist'
+import type { ValidatedGetShortlistParams } from '../shared/types/ipc-schemas'
 
 /**
  * Preload script - exposes typed API to renderer via contextBridge.
@@ -85,7 +87,37 @@ const api = {
      * Payload must provide either caseId (single case) or caseIds (cohort).
      */
     typesPresent: (payload: { caseId?: number; caseIds?: number[] }) =>
-      ipcRenderer.invoke('variants:typesPresent', payload)
+      ipcRenderer.invoke('variants:typesPresent', payload),
+
+    /**
+     * Run the unified shortlist pipeline for a case. Wave 3 wrapper
+     * around `variants:shortlist`. Accepts either a preset id or an
+     * inline `adHocConfig` (discriminated union) and resolves to the
+     * ranked `ShortlistResult` envelope.
+     */
+    shortlist: (params: ValidatedGetShortlistParams): Promise<ShortlistResult> =>
+      ipcRenderer.invoke('variants:shortlist', params),
+
+    /**
+     * Subscribe to `variants:annotationChanged` broadcasts emitted by the
+     * main process after a successful `annotations:upsertPerCase` write.
+     * Returns an unsubscribe function; call it on component unmount to
+     * avoid a growing listener list.
+     *
+     * Consumers (e.g. Wave 4 `useShortlistQuery`) use this to refetch
+     * dependent views when the same-case star / ACMG state changes.
+     *
+     * Phase 1 limitation: global annotation upserts do NOT emit this event.
+     */
+    onAnnotationChanged: (callback: (ev: AnnotationChangeEvent) => void): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, ev: AnnotationChangeEvent): void => {
+        callback(ev)
+      }
+      ipcRenderer.on('variants:annotationChanged', handler)
+      return () => {
+        ipcRenderer.removeListener('variants:annotationChanged', handler)
+      }
+    }
   },
 
   import: {

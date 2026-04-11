@@ -33,6 +33,7 @@ import { registerGeneRefHandlers } from './handlers/gene-ref'
 import { registerAnalysisGroupHandlers } from './handlers/analysis-groups'
 import { registerProteinHandlers } from './handlers/protein'
 import { registerGnomadHandlers } from './handlers/gnomad'
+import { registerShortlistHandlers } from './handlers/shortlist'
 
 // Re-export pool lifecycle for external callers (e.g. app shutdown)
 export { initDbPool, destroyDbPool } from './dbPoolManager'
@@ -81,6 +82,7 @@ export function registerIpcHandlers(): void {
   registerAnalysisGroupHandlers(deps)
   registerProteinHandlers(deps)
   registerGnomadHandlers(deps)
+  registerShortlistHandlers(deps)
 
   mainLogger.info('IPC handlers registered', 'ipc')
 }

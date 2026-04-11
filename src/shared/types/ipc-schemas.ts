@@ -758,8 +758,164 @@ export const AssociationConfigSchema = z.object({
 })
 
 // ============================================================
+// Filter State Schema (shared by presets + shortlist)
+// ============================================================
+
+/**
+ * Runtime schema for `FilterState` — the tab-level filter surface
+ * shared by single-case and cohort views.
+ *
+ * This schema exists primarily so `ShortlistConfigSchema` can nest
+ * `FilterStateSchema.partial()` to validate `baseFilters` and
+ * `perTypeOverrides` at the IPC boundary. The optional `shortlist` field
+ * on `FilterState` would be mutually recursive with `ShortlistConfigSchema`
+ * — the recursion is cut here by typing it as `z.unknown().optional()`
+ * (see the field-level comment on `shortlist` below).
+ *
+ * Fields mirror `src/shared/types/filters.ts#FilterState`. Arrays default
+ * loose (no `min(1)`) because empty arrays are a legitimate state. All
+ * fields are required to match the TypeScript interface; callers that
+ * want "partial" validation should use `.partial()`.
+ */
+export const FilterStateSchema = z.object({
+  geneSymbol: z.string(),
+  searchQuery: z.string(),
+  consequences: z.array(z.string()),
+  funcs: z.array(z.string()),
+  clinvars: z.array(z.string()),
+  maxGnomadAf: z.number().min(0).max(1).nullable(),
+  minCadd: z.number().min(0).max(DOMAIN_CONFIG.MAX_CADD_SCORE).nullable(),
+  minCarriers: z.number().int().nonnegative().nullable(),
+  starredOnly: z.boolean(),
+  hasCommentOnly: z.boolean(),
+  acmgClassifications: z.array(z.string()),
+  tagIds: z.array(z.number().int().positive()),
+  annotationScope: z.enum(['case', 'all']),
+  activePanelIds: z.array(z.number().int().positive()),
+  panelPaddingBp: z.number().int().nonnegative(),
+  maxInternalAf: z.number().min(0).max(1).nullable(),
+  inheritanceModes: z.array(z.string()),
+  analysisGroupId: z.number().int().positive().nullable(),
+  considerPhasing: z.boolean(),
+  columnFilters: z.record(z.string(), ColumnFilterSchema),
+  /**
+   * Shortlist configuration, present only on presets with `kind='shortlist'`.
+   *
+   * Kept as `z.unknown()` here to avoid a mutual-recursion cycle with
+   * `ShortlistConfigSchema` (which nests `FilterStateSchema.partial()`
+   * for its `baseFilters` / `perTypeOverrides` fields). Callers that
+   * need strict validation of a shortlist payload should use
+   * `ShortlistConfigSchema` directly — that is the path every IPC
+   * handler takes via `GetShortlistParamsSchema`.
+   */
+  shortlist: z.unknown().optional()
+})
+
+// ============================================================
+// Shortlist Schemas
+// ============================================================
+
+/**
+ * Zod enum matching `VariantTypeKey` in `src/shared/types/shortlist.ts`.
+ */
+const VariantTypeKeySchema = z.enum(['snv', 'indel', 'sv', 'cnv', 'str'])
+
+/**
+ * Schema for `RankWeights` — every ranking sub-score weight clamped to
+ * [0, 100] at the IPC boundary.
+ */
+export const RankWeightsSchema = z.object({
+  impact: z.number().min(0).max(100),
+  pathogenicity: z.number().min(0).max(100),
+  rarity: z.number().min(0).max(100),
+  clinvar: z.number().min(0).max(100),
+  phenotype: z.number().min(0).max(100)
+})
+
+/**
+ * Schema for `RankConfig` — weights plus optional pinning rules.
+ */
+export const RankConfigSchema = z.object({
+  weights: RankWeightsSchema,
+  clinvarPinTop: z.boolean().optional(),
+  pinStarredTop: z.boolean().optional()
+})
+
+/**
+ * Schema for `ShortlistConfig` — the full self-contained shortlist spec.
+ *
+ * - `topN` hard-capped at 500 to prevent Electron IPC pathologies
+ *   (`electron/electron#7286`).
+ * - `tieBreakers` hard-capped at 10 so users can't construct
+ *   pathologically long sort chains.
+ */
+// `baseFilters` and `perTypeOverrides` validate a partial `FilterState`
+// snapshot — but the `shortlist` field on `FilterState` is a mutually-
+// recursive nest into this very schema, which has no meaning inside
+// `baseFilters` itself. We `.omit({ shortlist: true })` before `.partial()`
+// so the base-filter surface does not carry a harmless-but-meaningless
+// opaque key on every payload.
+const BaseFilterStateSchema = FilterStateSchema.omit({ shortlist: true }).partial()
+
+export const ShortlistConfigSchema = z.object({
+  variantTypeScope: z.array(VariantTypeKeySchema).optional(),
+  baseFilters: BaseFilterStateSchema,
+  // `partialRecord` (not `record`) so presets can specify overrides for a
+  // subset of variant types — e.g. the "Tier 1 candidates" built-in only
+  // sets sv/cnv/str, leaving snv/indel to fall through to `baseFilters`.
+  // Zod 4's `z.record(enum, value)` treats missing enum keys as validation
+  // failures, which is the opposite of what the shortlist pipeline wants.
+  perTypeOverrides: z.partialRecord(VariantTypeKeySchema, BaseFilterStateSchema).optional(),
+  topN: z.number().int().min(1).max(500),
+  tieBreakers: z.array(SortItemSchema).max(10).optional(),
+  rankConfig: RankConfigSchema
+})
+
+/**
+ * Inferred type from `ShortlistConfigSchema`.
+ */
+export type ValidatedShortlistConfig = z.infer<typeof ShortlistConfigSchema>
+
+/**
+ * Discriminated union schema for the `variants:shortlist` IPC handler.
+ *
+ * Callers supply EITHER a `presetId` (server loads the preset and runs
+ * its stored `ShortlistConfig`) OR an `adHocConfig` (typically the
+ * preset editor's live preview). Both branches require a positive
+ * `caseId`.
+ *
+ * Both branches are `.strict()` so an ambiguous payload that carries
+ * BOTH `presetId` AND `adHocConfig` is rejected instead of being
+ * silently coerced into one branch. Without `.strict()`, Zod's default
+ * strip behavior would match the first branch and drop the second
+ * field, masking caller-side bugs.
+ */
+export const GetShortlistParamsSchema = z.union([
+  z
+    .object({
+      caseId: z.number().int().positive(),
+      presetId: z.number().int().positive()
+    })
+    .strict(),
+  z
+    .object({
+      caseId: z.number().int().positive(),
+      adHocConfig: ShortlistConfigSchema
+    })
+    .strict()
+])
+
+/**
+ * Inferred type from `GetShortlistParamsSchema`.
+ */
+export type ValidatedGetShortlistParams = z.infer<typeof GetShortlistParamsSchema>
+
+// ============================================================
 // Filter Preset Schemas
 // ============================================================
+
+/** Discriminator for filter presets — `'filter'` | `'shortlist'`. */
+export const FilterPresetKindSchema = z.enum(['filter', 'shortlist'])
 
 export const FilterPresetIdSchema = z.number().int().positive()
 
@@ -771,6 +927,7 @@ export const FilterPresetCreateSchema = z.object({
     .nullish()
     .transform((val) => val ?? null),
   filterJson: z.record(z.string(), z.unknown()),
+  kind: FilterPresetKindSchema.optional(),
   isVisible: z.boolean().optional().default(true),
   sortOrder: z.number().int().optional().default(0)
 })
@@ -779,8 +936,30 @@ export const FilterPresetUpdateSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().max(500).nullable().optional(),
   filterJson: z.record(z.string(), z.unknown()).optional(),
+  kind: FilterPresetKindSchema.optional(),
   isVisible: z.boolean().optional(),
   sortOrder: z.number().int().optional()
+})
+
+/**
+ * Runtime schema for a normalized `FilterPreset` object (NOT a raw DB
+ * row). Raw rows must first be passed through
+ * `FilterPresetRepository.rowToPreset`, which applies the pre-v27
+ * backfill (`kind` defaults to `'filter'` when the column is absent or
+ * `NULL`). This schema validates the post-repository shape, including
+ * the `kind` discriminator introduced by migration v27.
+ */
+export const FilterPresetSchema = z.object({
+  id: z.number().int().positive(),
+  name: z.string().min(1).max(100),
+  description: z.string().nullable(),
+  filterJson: z.record(z.string(), z.unknown()),
+  kind: FilterPresetKindSchema,
+  isBuiltIn: z.boolean(),
+  isVisible: z.boolean(),
+  sortOrder: z.number().int(),
+  createdAt: z.number().int().nonnegative(),
+  updatedAt: z.number().int().nonnegative()
 })
 
 export const FilterPresetReorderSchema = z.array(

@@ -125,7 +125,54 @@ export default defineConfig({
         lines: 35.0,
         functions: 21.5,
         branches: 30.8,
-        statements: 34.1
+        statements: 34.1,
+
+        // Per-file thresholds for the unified-shortlist modules (spec §8).
+        // Vitest 4.x supports glob keys under `coverage.thresholds` —
+        // each glob gets its own lines/branches/functions/statements
+        // floor applied per-file (not averaged), so any single file
+        // in the glob dropping below the threshold fails the run.
+        //
+        // These only fire when coverage is enabled (COVERAGE=1 or
+        // `npm run test:coverage`). `make ci` runs without coverage,
+        // so the thresholds are latent in PR runs and gate only the
+        // explicit coverage job.
+        'src/main/services/scoring/**': {
+          lines: 95,
+          branches: 90,
+          functions: 95,
+          statements: 95
+        },
+        'src/main/database/ShortlistService.ts': {
+          lines: 85,
+          branches: 80,
+          functions: 85,
+          statements: 85
+        },
+        'src/main/database/shortlist-query.ts': {
+          lines: 90,
+          branches: 85,
+          functions: 90,
+          statements: 90
+        },
+        'src/main/ipc/handlers/shortlist.ts': {
+          lines: 85,
+          branches: 80,
+          functions: 85,
+          statements: 85
+        },
+        'src/renderer/src/composables/useShortlistQuery.ts': {
+          lines: 80,
+          branches: 70,
+          functions: 80,
+          statements: 80
+        },
+        'src/renderer/src/components/shortlist/**': {
+          lines: 75,
+          branches: 65,
+          functions: 75,
+          statements: 75
+        }
       },
       // On CI we only need the JSON summary to gate the thresholds and
       // upload as an artifact. Skipping `text` and `html` reporters saves

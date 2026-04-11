@@ -29,6 +29,21 @@
 
         <v-divider class="my-4" />
 
+        <!-- Case View Section -->
+        <div class="text-subtitle-2 text-medium-emphasis mb-2">Case View</div>
+        <v-select
+          v-model="settings.defaultCaseTab"
+          :items="defaultCaseTabOptions"
+          item-title="label"
+          item-value="value"
+          label="Default active tab"
+          hint="Which tab to open first when you navigate into a case"
+          persistent-hint
+          class="mb-3"
+        />
+
+        <v-divider class="my-4" />
+
         <!-- Performance Section -->
         <div class="text-subtitle-2 text-medium-emphasis mb-2">Performance</div>
         <v-slider
@@ -82,6 +97,13 @@ const { api } = useApiService()
 
 const isOpen = ref(false)
 const cpuCount = ref(navigator.hardwareConcurrency || 4)
+
+// Options for the "Default active tab" preference. Label wording matches
+// the in-case tab labels so the dropdown reads naturally.
+const defaultCaseTabOptions = [
+  { value: 'shortlist', label: 'Shortlist (ranked view)' },
+  { value: 'snv', label: 'SNV/Indel (per-type table)' }
+] as const
 
 // Get CPU count from main process via typed API
 onMounted(async () => {

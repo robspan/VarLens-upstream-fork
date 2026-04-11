@@ -153,7 +153,16 @@ export const mockApi: WindowAPI = {
         set.add(v.variant_type ?? 'snv')
       }
       return [...set]
-    }
+    },
+    // Wave 4 — unified shortlist: minimal stub so browser dev mode has a
+    // placeholder. Real data flows through the main-process handler.
+    shortlist: async () => ({
+      rows: [],
+      totalCandidates: 0,
+      presetUsed: null,
+      elapsedMs: 0
+    }),
+    onAnnotationChanged: () => () => {}
   },
 
   import: {
@@ -1012,6 +1021,7 @@ export const mockApi: WindowAPI = {
       name: params.name,
       description: params.description ?? null,
       filterJson: params.filterJson,
+      kind: params.kind ?? 'filter',
       isBuiltIn: false,
       isVisible: true,
       sortOrder: 0,
@@ -1023,6 +1033,7 @@ export const mockApi: WindowAPI = {
       name: updates.name ?? 'Preset',
       description: updates.description ?? null,
       filterJson: updates.filterJson ?? {},
+      kind: updates.kind ?? 'filter',
       isBuiltIn: false,
       isVisible: updates.isVisible ?? true,
       sortOrder: updates.sortOrder ?? 0,

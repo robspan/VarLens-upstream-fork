@@ -32,6 +32,7 @@ import type { CohortService } from './cohort'
 import type { FilterPresetRepository } from './FilterPresetRepository'
 import type { PanelRepository } from './PanelRepository'
 import type { AnalysisGroupRepository } from './AnalysisGroupRepository'
+import type { ShortlistService } from './ShortlistService'
 
 /**
  * DatabaseService class
@@ -172,6 +173,15 @@ export class DatabaseService {
 
   get analysisGroups(): AnalysisGroupRepository {
     return this._repos.analysisGroups
+  }
+
+  /**
+   * ShortlistService — orchestrator for the unified case Shortlist tab.
+   * Exposes `getShortlist(params)` for the `variants:shortlist` IPC
+   * handler. Added in Wave 3 of the unified-shortlist rollout.
+   */
+  get shortlistService(): ShortlistService {
+    return this._repos.shortlistService
   }
 
   get user(): { id: number; username: string; role: string } | null {

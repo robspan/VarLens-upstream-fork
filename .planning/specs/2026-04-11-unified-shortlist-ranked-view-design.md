@@ -81,22 +81,28 @@ The shortlist is a **candidate-generation + ranking** pipeline running in the ma
 ┌─────────────────────────────────────────────────────────┐
 │ Main process: ShortlistService.getShortlist()           │
 │                                                          │
-│  Stage 1 — candidate generation (SQL)                   │
+│  Stage 1 — candidate generation (SQL, fully-joined rows)│
 │  ┌─────────────────────────────────────────────────┐    │
 │  │ for type in config.variantTypeScope:            │    │
 │  │   mergedFilters = merge(config.baseFilters,     │    │
 │  │                   config.perTypeOverrides?[t]) │    │
+│  │   // queryVariantsByType returns rows with ALL  │    │
+│  │   // display fields + extension columns (sv_*,  │    │
+│  │   // cnv_*, str_*) + is_starred, via LEFT JOINs.│    │
+│  │   // No Stage-2 DB access.                      │    │
 │  │   candidates[t] = queryVariantsByType(          │    │
 │  │     caseId, t, mergedFilters,                   │    │
 │  │     limit = topN * 4  // safety cap             │    │
 │  │   )                                             │    │
 │  └─────────────────────────────────────────────────┘    │
 │                                                          │
-│  Stage 2 — ranking (pure TypeScript)                    │
+│  Stage 2 — ranking (pure TypeScript, zero DB access)    │
 │  ┌─────────────────────────────────────────────────┐    │
 │  │ for row in [...candidates]:                     │    │
-│  │   ext = fetchExtension(row)   // if applicable  │    │
-│  │   scored = scoreRow(row, ext, config.rankConfig)│    │
+│  │   // Extension data already on the row from     │    │
+│  │   // Stage 1 — NO fetchExtension() lookup.      │    │
+│  │   scored = scoreRow(row, config.rankConfig,     │    │
+│  │                     row.is_starred)             │    │
 │  │ all.sort(compareScoredRows(tieBreakers))        │    │
 │  │ topN = all.slice(0, config.topN)                │    │
 │  └─────────────────────────────────────────────────┘    │
@@ -104,6 +110,8 @@ The shortlist is a **candidate-generation + ranking** pipeline running in the ma
 │  Return: { rows: topN, totalCandidates, elapsedMs }     │
 └─────────────────────────────────────────────────────────┘
 ```
+
+**Stage boundary commitment**: Stage 1 is the ONLY stage that issues DB queries. Stage 2 operates on the returned row objects in memory — zero DB access, zero N+1 lookups. This is enforced by the `queryVariantsByType()` row projection including every field the scorer or display layer could need (see "ShortlistRow contract" below).
 
 ### Rationale for two-stage over SQL CASE scoring
 
@@ -121,7 +129,7 @@ See `.planning/docs/unified-variant-view-ranking-exploration.md` and the brainst
 
 | File | Responsibility |
 |---|---|
-| `src/shared/types/shortlist.ts` | Shared type contracts: `ShortlistConfig`, `RankComponents`, `RankWeights`, `RankConfig`, `ScoredRow`, `ShortlistResult` |
+| `src/shared/types/shortlist.ts` | Shared type contracts: `VariantTypeKey`, `ShortlistConfig`, `RankComponents`, `RankWeights`, `RankConfig`, `ScoredRow`, `ShortlistCandidate` (Stage-1 flat row), `ScoredCandidate` (Candidate + ScoredRow), `ShortlistRow` (ScoredCandidate + `rank` 1-based), `ShortlistResult`, `AnnotationChangeEvent` |
 | `src/main/services/scoring/index.ts` | Public scorer API: `scoreRow()`, `combine()`, `compareScoredRows()`, `mapConsequenceImpact()`, `mapClinvarBoost()` |
 | `src/main/services/scoring/score-snv.ts` | Per-type scorer (applies to snv and indel) |
 | `src/main/services/scoring/score-sv.ts` | Per-type scorer for SV |
@@ -142,11 +150,12 @@ See `.planning/docs/unified-variant-view-ranking-exploration.md` and the brainst
 |---|---|
 | `src/main/database/migrations.ts` | Add v27 block: `filter_presets.kind` column + seed 3 shortlist presets |
 | `src/main/database/createRepositories.ts` | Wire `ShortlistService` into the `DatabaseService` composition |
-| `src/main/ipc/handlers/annotations-logic.ts` | Emit `variants:annotationChanged` broadcast from `upsertPerCaseAnnotation` |
+| `src/main/ipc/handlers/annotations.ts` | Emit `variants:annotationChanged` broadcast from the `annotations:upsertPerCase` handler wrapper, after the `upsertPerCaseAnnotation()` logic call returns. The logic file (`annotations-logic.ts`) is NOT touched — its JSDoc explicitly prohibits touching Electron APIs. Electron IPC/broadcast work lives in the handler layer only. |
 | `src/preload/index.ts` | Typed wrappers: `variants.shortlist()` + `variants.onAnnotationChanged()` |
 | `src/shared/types/filters.ts` | Extend `FilterState` with optional `shortlist?: ShortlistConfig` |
 | `src/shared/types/ipc-schemas.ts` | Add `ShortlistConfigSchema`, `RankConfigSchema`, `GetShortlistParamsSchema` |
-| `src/renderer/src/views/CaseView.vue` | Extend `tabItems` computed to insert Shortlist tab when `variantTypes.length > 1`, default-active |
+| `src/renderer/src/views/CaseView.vue` | Extend `tabItems` computed, add `lastNonShortlistType` ref + `variantTableType` computed + selection watcher, extend `loadTypeCounts()` with multi-type → Shortlist default-selection rule, update template to use `v-show` for per-type region + `v-if` for shortlist region + bind the new `:interactive` prop on `VariantTable` |
+| `src/renderer/src/components/VariantTable.vue` | Add optional `interactive?: boolean` prop (default `true`) and prepend `!props.interactive ||` to every `onKeyStroke` handler's guard (`ArrowUp`, `ArrowDown`, `Enter`, `Escape`, `s`, `c`, `a`). Six-line change. Required because `v-show` keeps the hidden component in the DOM and its global key handlers would otherwise fire while the Shortlist tab is visible. |
 | `src/main/database/FilterPresetRepository.ts` | Extend `FilterPreset` type with `kind: 'filter' \| 'shortlist'`; `rowToPreset()` reads `row.kind`; `createPreset()`/`updatePreset()` accept `kind` (default `'filter'` for back-compat with existing callers) |
 | `src/shared/types/filter-presets.ts` | Add `kind` field to `FilterPreset` / `FilterPresetCreate` / `FilterPresetUpdate` interfaces |
 | `vitest.config.ts` | Coverage thresholds for new modules (final commit) |
@@ -257,11 +266,13 @@ export const ZERO_COMPONENTS: RankComponents = {
 
 ### Per-type scorers
 
+All per-type scorers take a `ShortlistCandidate` — the flat row shape produced by Stage 1 that contains `Variant` fields PLUS extension-table columns (prefixed `sv_*`/`cnv_*`/`str_*`) PLUS `is_starred`. See the "ShortlistCandidate contract" subsection below for the complete field list.
+
 ```typescript
 // src/main/services/scoring/score-snv.ts
 
 /** Applies to both 'snv' and 'indel' variant types. */
-export function scoreSnv(row: Variant): RankComponents {
+export function scoreSnv(row: ShortlistCandidate): RankComponents {
   return {
     impact: mapConsequenceImpact(row.consequence),
     pathogenicity: row.cadd == null ? 0 : Math.min(row.cadd / 40, 1),
@@ -278,15 +289,17 @@ export function scoreSnv(row: Variant): RankComponents {
 // src/main/services/scoring/score-sv.ts
 
 /**
- * SV scoring. NULL defaults reflect current data availability:
+ * SV scoring. Input is a ShortlistCandidate — a Stage 1 row with extension
+ * columns already flattened in via LEFT JOIN on variant_sv. NULL defaults
+ * reflect current data availability:
  * - No gnomAD-SV frequency source → rarity = 1.0 (assume rare). When Phase
  *   4+ imports SV frequency, this flips to a real computation — code change,
  *   not config change.
  * - Pathogenicity is a proxy: vaf * precision factor.
  */
-export function scoreSv(row: Variant, ext: VariantSvExt): RankComponents {
-  const precisionFactor = ext.sv_is_precise ? 1.0 : 0.7
-  const vaf = ext.vaf ?? 0.5
+export function scoreSv(row: ShortlistCandidate): RankComponents {
+  const precisionFactor = row.sv_is_precise ? 1.0 : 0.7
+  const vaf = row.sv_vaf ?? 0.5
   return {
     impact: row.sv_length != null && row.sv_length >= 1000 ? 1.0 : 0.66,
     pathogenicity: Math.min(vaf * precisionFactor, 1),
@@ -300,17 +313,17 @@ export function scoreSv(row: Variant, ext: VariantSvExt): RankComponents {
 ```typescript
 // src/main/services/scoring/score-cnv.ts
 
-export function scoreCnv(row: Variant, ext: VariantCnvExt): RankComponents {
-  const cn = ext.copy_number
+export function scoreCnv(row: ShortlistCandidate): RankComponents {
+  const cn = row.cnv_copy_number
   const impact = cn == null ? 0
                : cn <= 0 ? 1.0
                : (cn === 1 || cn >= 3) ? 0.66
                : 0
   return {
     impact,
-    pathogenicity: ext.copy_number_quality == null
+    pathogenicity: row.cnv_copy_number_quality == null
       ? 0
-      : Math.min(ext.copy_number_quality / 100, 1),
+      : Math.min(row.cnv_copy_number_quality / 100, 1),
     rarity: 1.0,
     clinvar: mapClinvarBoost(row.clinvar),
     phenotype: row.hpo_sim_score ?? 0
@@ -321,11 +334,11 @@ export function scoreCnv(row: Variant, ext: VariantCnvExt): RankComponents {
 ```typescript
 // src/main/services/scoring/score-str.ts
 
-export function scoreStr(row: Variant, ext: VariantStrExt): RankComponents {
-  const statusImpact = ext.str_status === 'pathologic' ? 1.0
-                     : ext.str_status === 'intermediate' ? 0.66
+export function scoreStr(row: ShortlistCandidate): RankComponents {
+  const statusImpact = row.str_status === 'pathologic' ? 1.0
+                     : row.str_status === 'intermediate' ? 0.66
                      : 0
-  const knownLocus = ext.disease != null && ext.disease.trim() !== ''
+  const knownLocus = row.str_disease != null && row.str_disease.trim() !== ''
   return {
     impact: statusImpact,
     pathogenicity: knownLocus ? 1.0 : 0.5,
@@ -341,12 +354,8 @@ export function scoreStr(row: Variant, ext: VariantStrExt): RankComponents {
 ```typescript
 // src/main/services/scoring/index.ts
 
-export function scoreRow(
-  row: Variant,
-  ext: VariantExtensionRow | null,
-  config: RankConfig,
-  isStarred: boolean
-): ScoredRow {
+/** scoreRow takes a fully-joined Stage-1 row. No DB access, no ext lookup. */
+export function scoreRow(row: ShortlistCandidate, config: RankConfig): ScoredRow {
   let components: RankComponents
   try {
     switch (row.variant_type) {
@@ -355,13 +364,13 @@ export function scoreRow(
         components = scoreSnv(row)
         break
       case 'sv':
-        components = scoreSv(row, ext as VariantSvExt)
+        components = scoreSv(row)
         break
       case 'cnv':
-        components = scoreCnv(row, ext as VariantCnvExt)
+        components = scoreCnv(row)
         break
       case 'str':
-        components = scoreStr(row, ext as VariantStrExt)
+        components = scoreStr(row)
         break
       default:
         components = ZERO_COMPONENTS
@@ -377,7 +386,7 @@ export function scoreRow(
     rank_score: combine(components, config.weights),
     rank_components: components,
     rank_clinvar_pinned: config.clinvarPinTop === true && components.clinvar >= 0.9,
-    rank_starred_pinned: config.pinStarredTop === true && isStarred
+    rank_starred_pinned: config.pinStarredTop === true && row.is_starred === true
   }
 }
 ```
@@ -385,9 +394,10 @@ export function scoreRow(
 ### Sort + tie-breaking
 
 ```typescript
+/** Row input is ShortlistCandidate & ScoredRow — the post-scoring shape. */
 export function compareScoredRows(
-  a: ScoredRow & Variant,
-  b: ScoredRow & Variant,
+  a: ScoredCandidate,
+  b: ScoredCandidate,
   tieBreakers?: SortItem[]
 ): number {
   // Starred pin overrides clinvar pin — user curation beats automation
@@ -404,9 +414,84 @@ export function compareScoredRows(
       if (cmp !== 0) return tb.order === 'desc' ? -cmp : cmp
     }
   }
-  return a.variant_id - b.variant_id  // stable fallback
+  return a.id - b.id  // stable fallback (id is the Variant primary key)
 }
 ```
+
+### ShortlistCandidate contract (Stage 1 row shape)
+
+This is the row shape Stage 1 produces and Stage 2 consumes. Every field the scorer or display layer could need is on the row — Stage 2 has no DB access. **`ShortlistCandidate` extends `Variant` directly** so that row-click drill-down can reuse the existing `handleRowClick(variant: Variant)` handler and `VariantDetailsPanel` unchanged — both expect a `Variant` shape with an `id` field, not a distinct `variant_id`-prefixed shape.
+
+```typescript
+// src/shared/types/shortlist.ts
+import type { Variant } from './database'
+
+/**
+ * A Stage-1 candidate row. Produced by shortlist-query.ts via per-type
+ * SELECT with LEFT JOINs on the extension tables and case_variant_annotations.
+ * Consumed by the scoring module and the IPC serializer.
+ *
+ * STRUCTURAL COMMITMENT: ShortlistCandidate **extends Variant** — every
+ * field of the existing Variant interface must be present on every row,
+ * with its existing name and type. This makes ShortlistCandidate directly
+ * assignable to Variant, which is REQUIRED for row-click drill-down to
+ * reuse `CaseView.handleRowClick(variant: Variant)` and VariantDetailsPanel
+ * unchanged. Both consume `variant.id` (not `variant_id`), transcripts by
+ * `id`, tags by `id`, and case-scoped annotation actions by `id` + `case_id`.
+ *
+ * Adding extension fields on top is fine (they're additive). Renaming or
+ * dropping any Variant field would break the drill-down contract.
+ *
+ * Extension columns are aliased with their table short name (sv_*, cnv_*,
+ * str_*) to flatten the row shape — no nested `ext` object. All extension
+ * fields are nullable because a given row populates columns only for ITS
+ * variant type (a SNV row has null sv_*/cnv_*/str_* fields).
+ */
+export interface ShortlistCandidate extends Variant {
+  // ── SV extension columns (variant_sv LEFT JOIN; aliased sv_*) ─────
+  // (sv_length and sv_type are already on Variant — see database.ts)
+  sv_is_precise?: 0 | 1 | null
+  sv_vaf?: number | null            // aliased from variant_sv.vaf
+  sv_support?: number | null
+
+  // ── CNV extension columns (variant_cnv LEFT JOIN; aliased cnv_*) ──
+  cnv_copy_number?: number | null
+  cnv_copy_number_quality?: number | null
+
+  // ── STR extension columns (variant_str LEFT JOIN; aliased str_*) ──
+  str_status?: 'normal' | 'intermediate' | 'pathologic' | null
+  str_disease?: string | null
+  str_alt_copies?: string | null
+
+  // ── Per-case annotation state (case_variant_annotations LEFT JOIN) ─
+  /** Derived from case_variant_annotations.starred; always present. */
+  is_starred: boolean
+}
+
+/** A ShortlistCandidate with scoring fields appended by Stage 2. */
+export interface ScoredCandidate extends ShortlistCandidate, ScoredRow {}
+
+/**
+ * The renderer-facing row shape — what the IPC payload contains.
+ * Extends ScoredCandidate with a 1-based sorted-position field.
+ * variant_notation is NOT on this type — it's computed in the renderer.
+ *
+ * Because ShortlistCandidate extends Variant, ShortlistRow is also
+ * assignable to Variant: `handleRowClick(row as Variant)` type-checks,
+ * and VariantDetailsPanel receives a prop it already understands.
+ */
+export interface ShortlistRow extends ScoredCandidate {
+  rank: number                   // 1-based position in the sorted, sliced result
+}
+```
+
+**Row-click drill-down contract**: because `ShortlistCandidate extends Variant`, the existing `CaseView.handleRowClick(variant: Variant)` and `VariantDetailsPanel` work without any changes. `ShortlistPanel` emits `row-click` with a row that is structurally a `Variant` + scoring fields; the parent `CaseView` passes it through to the existing handler, which assigns it to `selectedPanelVariant: Ref<Variant | CohortVariant | null>`. `VariantDetailsPanel` then reads `variant.id`, issues its own transcripts/tags/annotation queries by id — all unchanged from today. The additional scoring fields on the row are ignored by the panel (structural typing tolerates excess properties).
+
+**Aliasing convention**: extension columns are prefixed with their table short name (`sv_`, `cnv_`, `str_`) to avoid collision with base columns and to make the row shape flat. `variant_sv.vaf` becomes `sv_vaf`, `variant_cnv.copy_number` becomes `cnv_copy_number`, and so on. `sv_length` and `sv_type` are NOT aliased because they already live on the base `variants` table (from migration v25) and are therefore already on `Variant` with those names — duplicating them under aliases would be wrong.
+
+**`is_starred` derivation**: `shortlist-query.ts` adds `LEFT JOIN case_variant_annotations cva ON cva.case_id = v.case_id AND cva.variant_id = v.id` and selects `COALESCE(cva.starred, 0) AS is_starred_int`, then the row hydration coerces to boolean. If the schema evolves so starred lives in a different table (e.g. when #125 migrates to flags), only this one JOIN and the column name change.
+
+**Stage 1 SELECT composition**: the query SELECTs `v.*` (all Variant base columns by name, preserving the `id` field) plus the aliased extension columns plus the derived `is_starred_int`. Using `v.*` is intentional here — the goal is explicit Variant-compatibility, so we want every base column, not a narrowed subset. better-sqlite3 returns only named columns; the LEFT JOINed extension tables are projected with explicit `AS` aliases so no accidental column pollution occurs.
 
 ### Design commitments
 
@@ -527,19 +612,23 @@ if (currentVersion < 27) {
 
 ### Built-in shortlist presets (seeded in v27)
 
-**1. "Tier 1 candidates" (strict, ClinVar-pinned, starred-pinned)**
+**1. "Tier 1 candidates" (strict, ClinVar/starred pinned)**
 
 ```typescript
 {
   name: 'Tier 1 candidates',
-  description: 'Strict shortlist: rare HIGH/MOD impact, ClinVar P/LP + starred pinned to top.',
+  description: 'Strict ranking: rare HIGH/MOD impact, top-50. ClinVar P/LP and starred variants pinned to top.',
   sortOrder: 0,
   config: {
     variantTypeScope: ['snv', 'indel', 'sv', 'cnv', 'str'],
     topN: 50,
     baseFilters: {
+      // NOTE: intentionally no `clinvars` filter here — the preset RANKS with
+      // a ClinVar boost, it does not gate on ClinVar. A rare HIGH SNV with no
+      // ClinVar entry is still a Tier 1 candidate and must be able to enter
+      // the shortlist. Pinning (clinvarPinTop) is what elevates P/LP hits to
+      // the top of the ordering.
       consequences: ['HIGH', 'MODERATE'],
-      clinvars: ['Pathogenic', 'Likely_pathogenic', 'Pathogenic/Likely_pathogenic'],
       maxGnomadAf: 0.001
     },
     perTypeOverrides: {
@@ -560,6 +649,8 @@ if (currentVersion < 27) {
   }
 }
 ```
+
+**Rationale for removing the ClinVar hard-filter**: the clinical intent is *"show me strong candidates with ClinVar P/LP prioritized"* — a hard filter on `clinvars` would exclude un-annotated rare HIGH variants that are often the most interesting cases (novel LoF in a rare disease gene). The pinning mechanism (`clinvarPinTop`) gives ClinVar P/LP the sort-ordering priority the clinician wants while the `maxGnomadAf: 0.001` + `consequences: ['HIGH', 'MODERATE']` gates keep the list short and clinically meaningful.
 
 **2. "All rare damaging" (broad, score-driven)**
 
@@ -618,39 +709,24 @@ All built-ins reference only fields that already work in `VariantFilterBuilder` 
 
 ### IPC contract
 
+The IPC payload row type is `ShortlistRow`, defined in Section 4 as `ScoredCandidate & { rank: number }` — see the "ShortlistCandidate contract" subsection above. Here is the outer wrapper:
+
 ```typescript
-// src/main/ipc/handlers/shortlist.ts (pseudo-code)
+// src/main/ipc/handlers/shortlist.ts
 
 type GetShortlistParams =
   | { caseId: number; presetId: number }
   | { caseId: number; adHocConfig: ShortlistConfig }
 
 interface ShortlistResult {
-  rows: ShortlistRow[]           // top-N, pre-sorted
-  totalCandidates: number        // pre-slice count
-  presetUsed: FilterPreset | null
-  elapsedMs: number
-}
-
-interface ShortlistRow {
-  variant_id: number
-  variant_type: VariantTypeKey
-  chr: string
-  pos: number
-  gene_symbol: string | null
-  consequence: string | null
-  gnomad_af: number | null
-  cadd: number | null
-  clinvar: string | null
-  is_starred: boolean
-  // ... extension-specific display columns (nullable) ...
-  rank: number                   // 1-based sorted position
-  rank_score: number
-  rank_components: RankComponents
-  rank_clinvar_pinned: boolean
-  rank_starred_pinned: boolean
+  rows: ShortlistRow[]           // top-N, pre-sorted, see types/shortlist.ts
+  totalCandidates: number        // pre-slice count of all Stage-1 candidates
+  presetUsed: FilterPreset | null  // null if called with adHocConfig
+  elapsedMs: number              // service-level timing, includes Stage 1 + 2
 }
 ```
+
+The `ShortlistRow` type was consolidated with `ShortlistCandidate` in Section 4 to avoid the previous ambiguity where two separate "row" types implied a transform that did not exist. There is now exactly one row shape: Stage 1 produces `ShortlistCandidate` (flat, fully-joined), Stage 2 produces `ScoredCandidate` (Candidate + score fields), Stage 3 (slicing) produces `ShortlistRow` (ScoredCandidate + `rank` 1-based index). Each step is an additive type extension.
 
 ### Zod schemas (IPC boundary validation)
 
@@ -710,12 +786,53 @@ export const GetShortlistParamsSchema = z.union([
 
 ### `CaseView.vue` tab integration
 
-```typescript
-// Extension to existing tabItems computed (currently ~line 83-97)
+Four pieces of state govern the Shortlist integration. They must be kept conceptually distinct — conflating them introduces correctness bugs (previous review rounds caught two):
 
+- **`selectedVariantType`** — drives which region is *visible*. Values: `'shortlist' | 'snv' | 'sv' | 'cnv' | 'str'`. Bound to `v-tabs` v-model. Set imperatively by the case-change watcher and by `loadTypeCounts()` post-load logic.
+- **`lastNonShortlistType`** — remembers the most recently active per-type tab. Updated via a watcher on `selectedVariantType` that ignores the `'shortlist'` value. This is plain remembered state, not itself the filter source.
+- **`variantTableType`** (computed, Option B from round-3 review) — the value passed to `VariantTable`'s `variant-type` prop AND to `effectiveFilters.variant_type`. Always derives to a real per-type value — provably never `'shortlist'` at the read site, regardless of what the upstream state holds. **This is the single source of truth for "what type is VariantTable filtering on".**
+- **`effectiveFilters`** — the `VariantFilter` object passed to `VariantTable`, composed from `currentFilters` + `variantTableType`.
+
+Why the computed wrapper (Option B): `useVariantData` in `VariantTable` watches the serialized filter key and re-queries on any change. If `'shortlist'` ever reached `effectiveFilters.variant_type`, `buildBaseWhere` would treat it as an exact-match filter, return zero rows, and discard the hidden table's fetched state — the very "persists across toggles" guarantee the design is trying to preserve. Routing both read sites through a single `variantTableType` computed makes the "never `'shortlist'`" invariant hold at the *read site*, not just by watcher convention at the write site. Accidental future writes to `lastNonShortlistType` can't break the table's filter prop.
+
+```typescript
+// src/renderer/src/views/CaseView.vue — additions to the existing script
+// (extends the existing selectedVariantType/typeCounts/loadTypeCounts pattern)
+
+// ── Local type aliases ────────────────────────────────────
+// Drop the implicit `string` typing on tab state refs so the
+// 'never shortlist' invariant is enforced by TypeScript.
+
+/** Every value v-tabs can hold in the case view. */
+type VisibleTab = 'shortlist' | 'snv' | 'sv' | 'cnv' | 'str'
+
+/** Values that map to a real DB variant_type filter. Never includes 'shortlist'. */
+type PerTypeTab = 'snv' | 'sv' | 'cnv' | 'str'
+
+// ── Shared "present tab types" helper ─────────────────────
+// Used by BOTH tabItems (display) and the default-selection branch in
+// loadTypeCounts (initial tab choice). Centralizing the SNV/indel folding
+// rule here prevents drift between visible tabs and initial tab choice —
+// that rule is domain logic, not display trivia.
+
+/**
+ * Returns the per-type tabs that should be shown for this case, in
+ * canonical display order. Folds 'indel' into 'snv' (the existing
+ * convention). Returns an empty array for an empty case.
+ */
+function getPresentTabTypes(counts: Record<string, number>): PerTypeTab[] {
+  const present: PerTypeTab[] = []
+  if ((counts.snv ?? 0) + (counts.indel ?? 0) > 0) present.push('snv')
+  if ((counts.sv ?? 0) > 0) present.push('sv')
+  if ((counts.cnv ?? 0) > 0) present.push('cnv')
+  if ((counts.str ?? 0) > 0) present.push('str')
+  return present
+}
+
+// ── Tab items (uses the shared helper) ────────────────────
 const tabItems = computed(() => {
   const counts = typeCounts.value
-  const presentTypes = Object.entries(counts).filter(([, c]) => c > 0).map(([t]) => t)
+  const presentTypes = getPresentTabTypes(counts)
   const snvCount = (counts.snv ?? 0) + (counts.indel ?? 0)
 
   const items: TabItem[] = []
@@ -725,7 +842,9 @@ const tabItems = computed(() => {
     items.push({ type: 'shortlist', label: 'Shortlist', count: null, icon: 'mdi-star-circle' })
   }
 
-  items.push({ type: 'snv', label: 'SNV/Indel', count: snvCount })
+  if (presentTypes.includes('snv')) {
+    items.push({ type: 'snv', label: 'SNV/Indel', count: snvCount })
+  }
   if ((counts.sv ?? 0) > 0)  items.push({ type: 'sv',  label: 'SV',  count: counts.sv! })
   if ((counts.cnv ?? 0) > 0) items.push({ type: 'cnv', label: 'CNV', count: counts.cnv! })
   if ((counts.str ?? 0) > 0) items.push({ type: 'str', label: 'STR', count: counts.str! })
@@ -733,24 +852,233 @@ const tabItems = computed(() => {
   return items
 })
 
-const selectedVariantType = ref<string>(tabItems.value[0]?.type ?? 'snv')
+// ── State refs ────────────────────────────────────────────
+// Selected tab — drives v-tabs + v-show/v-if. Initialized to the same
+// conventional default the existing CaseView uses (`'snv'`). The real
+// correction happens inside loadTypeCounts() once counts resolve — see
+// "Default selection logic" below.
+const selectedVariantType = ref<VisibleTab>('snv')
+
+/**
+ * Remembered state: the last non-shortlist tab the user was on. Updated
+ * by the selectedVariantType watcher below (ignoring 'shortlist'). NOT
+ * read directly by VariantTable — see `variantTableType` computed.
+ *
+ * Default 'snv' matches the existing selectedVariantType default so
+ * first-frame renders are consistent before loadTypeCounts() runs.
+ * loadTypeCounts() re-seeds this to the first present per-type once the
+ * case's type mix is known, so a cnv+str case never wastes a zero-row
+ * preload against SNV.
+ */
+const lastNonShortlistType = ref<PerTypeTab>('snv')
+
+// Watcher: remember the last real per-type selection.
+// TypeScript narrows `next` from VisibleTab to PerTypeTab in the truthy
+// branch, so no cast is needed at the assignment.
+watch(selectedVariantType, (next) => {
+  if (next !== 'shortlist') {
+    lastNonShortlistType.value = next
+  }
+})
+
+/**
+ * Single read site for VariantTable's filter type. ALWAYS yields a real
+ * per-type value — never 'shortlist'. If selectedVariantType is 'shortlist',
+ * falls back to lastNonShortlistType (which the watcher maintains and
+ * loadTypeCounts seeds to a present type).
+ *
+ * Because both refs are typed as VisibleTab/PerTypeTab, the computed
+ * return type is inferred as PerTypeTab without an `as` cast.
+ */
+const variantTableType = computed<PerTypeTab>(() =>
+  selectedVariantType.value === 'shortlist'
+    ? lastNonShortlistType.value
+    : selectedVariantType.value
+)
+
+// effectiveFilters composes currentFilters with variantTableType (NOT with
+// selectedVariantType directly). Both VariantTable's variant-type prop and
+// its filters prop read from this computed chain.
+const effectiveFilters = computed<Omit<VariantFilter, 'case_id'>>(() => ({
+  ...currentFilters.value,
+  variant_type: variantTableType.value
+}))
 ```
 
-Template addition:
+### Default selection logic (post-load, async-aware)
+
+The existing CaseView already handles a similar async problem: the case has only SV variants (`typeCounts.snv === 0`), and the default tab needs to flip from `'snv'` to `'sv'` once `loadTypeCounts()` resolves. That logic lives at `CaseView.vue:56-68` today. The shortlist extends the same post-load selector with a "multi-type → shortlist" branch AND seeds `lastNonShortlistType` to the first actually-present per-type (so a cnv+str case doesn't pre-mount VariantTable against an absent SNV type).
+
+```typescript
+// src/renderer/src/views/CaseView.vue — inside existing loadTypeCounts()
+// (after the try/catch that populates typeCounts)
+
+async function loadTypeCounts(caseId: number | null): Promise<void> {
+  // ... existing code that populates typeCounts from the IPC call ...
+
+  // Default selection rule (extends the existing SV-only fallback):
+  //
+  // 1. If the case has >1 variant type present, land on 'shortlist' AND
+  //    seed lastNonShortlistType to the first present per-type so the
+  //    hidden VariantTable pre-mounts against a real type (not a
+  //    zero-row SNV query on e.g. cnv+str cases).
+  // 2. Else if the user is still on the 'snv' reset sentinel AND SNV/indel
+  //    is empty, fall back to the first available per-type tab.
+  // 3. Otherwise leave selectedVariantType as the user set it.
+  //
+  // We only override when selectedVariantType is still 'snv' — the reset
+  // sentinel set by the case-change watcher above. That preserves the
+  // existing "user explicitly picked a tab, don't clobber it" semantic.
+  //
+  // Uses the shared getPresentTabTypes() helper so the "what counts as a
+  // present tab" rule (SNV/indel folding) stays synchronized with tabItems.
+
+  const presentTypes = getPresentTabTypes(typeCounts.value)
+
+  if (selectedVariantType.value === 'snv') {
+    if (presentTypes.length > 1) {
+      // Multi-type case → Shortlist is the default landing tab.
+      // Seed lastNonShortlistType to the first present real type BEFORE
+      // flipping selectedVariantType, so the hidden VariantTable's
+      // variantTableType computed reads the correct type on its first
+      // render (not the stale default 'snv' from the ref declaration).
+      lastNonShortlistType.value = presentTypes[0]
+      selectedVariantType.value = 'shortlist'
+    } else if (presentTypes.length === 1 && presentTypes[0] !== 'snv') {
+      // Single non-SNV type (e.g. SV-only import) — existing fallback.
+      // selectedVariantType.value = presentTypes[0] also triggers the
+      // watcher which seeds lastNonShortlistType correctly.
+      selectedVariantType.value = presentTypes[0]
+    }
+    // else: SNV-only or empty, stay on 'snv' (existing behavior).
+  }
+}
+```
+
+This preserves the existing semantics for SNV-only / SV-only cases, adds the "multi-type → shortlist" branch, and fixes the round-5 finding that the previous spec wasted a zero-row SNV preload on cnv+str / sv+cnv / any-multi-type-without-SNV case. The case-change watcher still resets to `'snv'` on every case switch, so the rule applies consistently whenever `loadTypeCounts()` resolves new counts.
+
+Template addition — the per-type region uses `v-show` (stays mounted, state persists) and receives `variantTableType` as its variant-type prop; the shortlist region uses `v-if` (mounts on demand). A new `:interactive` prop on VariantTable suppresses global keyboard shortcuts while hidden (see "VariantTable interactive prop" below):
 
 ```vue
-<ShortlistPanel
-  v-if="selectedVariantType === 'shortlist'"
-  :case-id="caseId"
-  @open-in-tab="selectedVariantType = $event"
-/>
-<VariantTable
-  v-else
-  :case-id="caseId"
-  :variant-type="selectedVariantType"
-  ...
-/>
+<template>
+  <!-- ... existing <v-tabs v-model="selectedVariantType"> unchanged ... -->
+
+  <!--
+    Per-type region: stays mounted across Shortlist toggles via v-show.
+    - FilterToolbar's internal state persists.
+    - VariantTable's fetched rows persist because its variant-type prop
+      is bound to `variantTableType`, a computed that NEVER yields 'shortlist'
+      — so the serialized filter key useVariantData watches doesn't change
+      when the Shortlist tab is toggled, and no refetch fires.
+    - The :interactive prop suppresses global keyboard shortcuts while
+      VariantTable is hidden (see VariantTable interactive prop section).
+    - The shared `currentFilters` ref is never touched by tab transitions.
+  -->
+  <div v-show="selectedVariantType !== 'shortlist'">
+    <div class="filter-bar-container">
+      <FilterToolbar
+        ref="filterToolbarRef"
+        :case-id="selectedCaseId"
+        ...
+      />
+    </div>
+    <VariantTable
+      ref="variantTableRef"
+      :case-id="selectedCaseId"
+      :variant-type="variantTableType"
+      :filters="effectiveFilters"
+      :interactive="selectedVariantType !== 'shortlist'"
+      ...
+    />
+  </div>
+
+  <!--
+    Shortlist region: mounts conditionally (v-if). No persisted state
+    needed between toggles — useShortlistQuery re-fetches on mount via
+    its immediate watchers. Unmounting on hide keeps the annotation-
+    change subscription scoped to "shortlist visible" and avoids
+    wasted background work.
+  -->
+  <ShortlistPanel
+    v-if="selectedVariantType === 'shortlist'"
+    :case-id="selectedCaseId"
+    @open-in-tab="selectedVariantType = $event"
+    @row-click="handleRowClick"
+  />
+</template>
 ```
+
+### VariantTable `interactive` prop (new)
+
+`v-show` keeps the hidden element in the DOM ([Vue docs: Conditional Rendering](https://vuejs.org/guide/essentials/conditional#v-if-vs-v-show)). All of `VariantTable`'s component-level side effects — watchers, composables, lifecycle hooks — therefore remain active while the element is hidden. Most of these are harmless (watchers whose inputs aren't changing will not fire), but `VariantTable.vue` currently registers six global keyboard handlers via `onKeyStroke` (`ArrowUp`, `ArrowDown`, `Enter`, `Escape`, `s`, `c`, `a`) that are gated only on `viewActive` + `isInputFocused`, NOT on visibility. A user pressing `s` while the Shortlist tab is active would call `annotationDialogsRef.value?.handleStarToggle(selectedItem.value)` in the hidden VariantTable and toggle a star on whatever row was last selected. That is clearly wrong.
+
+To fix this without refactoring the composables, `VariantTable.vue` gains a new optional prop:
+
+```typescript
+// src/renderer/src/components/VariantTable.vue — props addition
+const props = withDefaults(
+  defineProps<{
+    // ... existing props ...
+    /**
+     * Whether this VariantTable instance is currently interactive.
+     * When false (e.g. the Shortlist tab is active and the table is
+     * hidden via v-show), all global keyboard shortcuts registered
+     * by this component are suppressed. The table continues to render
+     * and maintain its internal state, but will not respond to
+     * ArrowUp/Down/Enter/Escape/s/c/a keystrokes.
+     *
+     * Default: true (preserves existing behavior for every other
+     * mount site, which has a single VariantTable instance that is
+     * always visible when mounted).
+     */
+    interactive?: boolean
+  }>(),
+  {
+    // ... existing defaults ...
+    interactive: true
+  }
+)
+```
+
+Every existing `onKeyStroke` handler gets one extra guard at the top:
+
+```typescript
+onKeyStroke('ArrowDown', (e) => {
+  if (!props.interactive || !viewActive.value || isInputFocused()) return
+  e.preventDefault()
+  moveDown()
+}, { dedupe: true })
+// … and the same `!props.interactive ||` prefix added to the guard of
+// every other onKeyStroke handler: ArrowUp, Enter, Escape, 's', 'c', 'a'.
+```
+
+This is a six-line change to `VariantTable.vue` and is part of Wave 6 (`CaseView` tab wiring) since both files must ship in the same commit — wiring `:interactive` from `CaseView` without the prop existing in `VariantTable` is a type error, and vice versa is a missed gate. Wave 6 authorization is updated accordingly (see Section 9).
+
+**Non-shortcut side effects**: `VariantTable.vue` also has a `watch(selectedIndex, …)` that scrolls the selected row into view, and an `onMounted` that wires a scroll-sync observer. Neither fires spuriously while the component is hidden (the watch requires `selectedIndex` to change, which only happens on user interaction with the visible table; the onMounted runs once at original mount). Both are safe to leave unchanged.
+
+### CaseView ownership model when Shortlist is active
+
+The existing `CaseView.vue` is tightly coupled to `VariantTable`: `FilterToolbar` receives `columns`, `columnActiveFilters`, `filteredCount`, `totalCount`, `hasSort` all sourced from `variantTableRef`, and `VariantTable` consumes `effectiveFilters` (a computed over the shared `currentFilters` ref in `useAppState`). The design preserves this coupling but decouples *visibility* from *variant-type filtering* by introducing `lastNonShortlistType` (see the tab integration code above). This means:
+
+- Toggling to Shortlist hides the per-type region via `v-show`. VariantTable's `variant-type` prop is bound to the `variantTableType` computed, which falls back to `lastNonShortlistType` when `selectedVariantType === 'shortlist'`. Neither ref changes on Shortlist toggles, so the serialized filter key `useVariantData` watches stays stable and no refetch fires.
+- VariantTable keeps its in-memory row data, sort state, column metadata, and ref handle intact across the toggle.
+- FilterToolbar keeps its internal filter state, search term, and column-filter chips intact.
+- VariantTable's global keyboard shortcuts (`ArrowUp/Down`, `Enter`, `Escape`, `s`, `c`, `a`) are suppressed via the new `:interactive="selectedVariantType !== 'shortlist'"` prop. Without this, `v-show` would leave those handlers active on the hidden component and a keystroke while Shortlist is visible could mutate the hidden selection or open an annotation dialog.
+- When the user toggles back to a per-type tab, both are already in the correct state — no mount/unmount churn, no flash of loading UI.
+
+**Lifecycle rules in shortlist mode**:
+
+1. **`FilterToolbar` stays mounted but hidden** (`v-show="selectedVariantType !== 'shortlist'"`). Its internal filter state, column-filter chips, and search term all persist. When the user toggles back to a per-type tab, the toolbar is already in the correct state.
+2. **`VariantTable` stays mounted but hidden, with its filter prop stable.** Its `variant-type` prop is bound to the `variantTableType` computed, which is provably never `'shortlist'` (falls back to `lastNonShortlistType` when needed). Toggling to Shortlist does not mutate either `lastNonShortlistType` or `currentFilters`, so the serialized filter key that `useVariantData` watches is unchanged, no refetch fires, and fetched rows / sort state / column metadata / `variantTableRef` all persist exactly as they were. **This is the load-bearing correctness property that makes `v-show` viable.**
+3. **`ShortlistPanel` mounts conditionally** (`v-if="selectedVariantType === 'shortlist'"`). It is the only region that unmounts when hidden. Its composable `useShortlistQuery` tears down cleanly via `onBeforeUnmount`, including the annotation-change subscription — when the user toggles back to Shortlist, a fresh subscription is registered and the shortlist re-fetches once from its initial watcher.
+4. **`currentFilters` is never reset or mutated by Shortlist toggles.** The Shortlist tab does NOT touch the shared `currentFilters` ref — it runs its own query via `useShortlistQuery.fetch()` using the preset's `baseFilters`, independent of the per-type filter state. Shortlist → SNV → Shortlist → SV toggles preserve all per-type filter state faithfully and the shortlist operates on an independent filter space.
+5. **Row click in shortlist** emits `row-click` with a `ShortlistCandidate` — because that extends `Variant`, the existing `handleRowClick(variant: Variant)` handler accepts it directly. `selectedPanelVariant.value = variant` works with zero type coercion; `VariantDetailsPanel` reads `variant.id` and issues its own transcripts/tags/annotation queries unchanged.
+6. **"View in [type] tab" action** emits `open-in-tab` with the target type string; `CaseView` listens and updates `selectedVariantType`, which in turn triggers the `watch(selectedVariantType, ...)` that updates `lastNonShortlistType`. `variantTableType`'s fallback branch switches from returning `lastNonShortlistType` to returning `selectedVariantType` directly (both now equal the new per-type value), so `useVariantData`'s serialized-filter watcher fires at most once and re-queries against the correct type. The revealed tab shows up-to-date rows without losing the prior per-type filter state (`currentFilters` was never touched).
+7. **Global keyboard shortcuts in the hidden VariantTable are explicitly suppressed** via the new `:interactive` prop, which is bound to `selectedVariantType !== 'shortlist'`. While Shortlist is visible, the hidden table's `ArrowUp/Down`, `Enter`, `Escape`, `s`, `c`, and `a` handlers all short-circuit at their `if (!props.interactive) return` guard. Without this prop, a user pressing `s` on the Shortlist tab would silently toggle a star on whatever row was last selected in the hidden SNV tab. This rule is load-bearing for clinical correctness and is the only modification to `VariantTable.vue` that the spec requires.
+
+**Memory + work cost of keeping per-type components mounted**: one VariantTable instance holding at most ~1000 rows (Phase 1 default pagination) plus one FilterToolbar instance. A few MB at most. **Background work while hidden** (revised claim after round-4 review): `useVariantData` does not fire a refetch because the serialized filter key it watches is stable (the `variantTableType` computed never yields `'shortlist'`, and `currentFilters` is not mutated by tab transitions). No IPC is issued. The hidden element is still in the DOM ([Vue docs: v-if vs v-show](https://vuejs.org/guide/essentials/conditional#v-if-vs-v-show)), so its watchers and composables remain *registered* — but with stable inputs none of them fire. The one exception was global `onKeyStroke` handlers, which DO fire independent of input changes; the `:interactive` prop fixes that (rule 7). With the prop gate in place, observable work from a hidden VariantTable reduces to: a few bytes of v-show CSS, one computed read per render of the parent, and zero runtime side effects.
+
+**Why not just wire `FilterToolbar` into `ShortlistPanel`**: the filter toolbar is designed for linear tab-filtering, not cross-type preset ranking. It would need substantial refactoring (remove column metadata plumbing, hide sort controls, hide export options that don't apply) for a feature that is read-only in Phase 1. Clean separation is simpler now and doesn't foreclose reuse in Phase 2.
 
 ### `ShortlistPanel.vue` structure
 
@@ -821,12 +1149,20 @@ Pure presentation, reads from `row.rank_components`. No new IPC, no composable l
 
 ```typescript
 // src/renderer/src/composables/useShortlistQuery.ts
+import { ref, computed, watch, onBeforeUnmount, type Ref } from 'vue'
+import { useFilterPresetStore } from './useFilterPresetStore'
+import { logService } from '../services/LogService'
+import type { ShortlistResult, AnnotationChangeEvent } from '../../../shared/types/...'
 
 export function useShortlistQuery(caseId: Ref<number>) {
   const presetStore = useFilterPresetStore()
 
+  // NOTE: the existing composable exposes `presets` (a ref<FilterPreset[]>)
+  // and a computed `visiblePresets`. It does NOT expose `allPresets`. We
+  // filter over `visiblePresets` so users who have hidden a built-in
+  // shortlist preset don't see it in the picker.
   const shortlistPresets = computed(() =>
-    presetStore.allPresets.filter(p => p.filterJson.shortlist != null)
+    presetStore.visiblePresets.value.filter(p => p.filterJson.shortlist != null)
   )
   const selectedPresetId = ref<number | null>(null)
 
@@ -855,43 +1191,100 @@ export function useShortlistQuery(caseId: Ref<number>) {
     }
   }
 
+  // Re-fetch when the user picks a different preset or the case changes.
   watch([selectedPresetId, caseId], fetch, { immediate: false })
 
+  // Default to the first shortlist preset once they load (presets load async).
   watch(shortlistPresets, (presets) => {
     if (selectedPresetId.value == null && presets.length > 0) {
       selectedPresetId.value = presets[0].id
     }
   }, { immediate: true })
 
-  // Auto-refresh on same-case annotation changes
-  onMounted(() => {
-    const unsubscribe = window.api.variants.onAnnotationChanged((ev) => {
+  // Auto-refresh on same-case annotation changes.
+  // Subscription is registered at setup() top-level (NOT nested inside
+  // onMounted) so `onBeforeUnmount` can be used to unsubscribe cleanly.
+  // The returned unsubscribe from `onAnnotationChanged` is captured once
+  // and called on component teardown — this is the correct composable
+  // lifecycle for Vue 3 + the existing preload subscription idiom.
+  const unsubscribeAnnotations = window.api.variants.onAnnotationChanged(
+    (ev: AnnotationChangeEvent) => {
       if (ev.caseId === caseId.value) fetch()
-    })
-    onUnmounted(unsubscribe)
-  })
+    }
+  )
+  onBeforeUnmount(unsubscribeAnnotations)
 
-  return { shortlistPresets, selectedPresetId, result, loading, error, refresh: fetch }
+  return {
+    shortlistPresets,
+    selectedPresetId,
+    result,
+    loading,
+    error,
+    refresh: fetch
+  }
 }
 ```
 
+**Lifecycle notes for the implementer**:
+
+1. The subscription is created during `setup()` (synchronous), not inside `onMounted`. This matches Vue 3's recommended pattern for anything that must run exactly once per component instance and must be reliably torn down.
+2. `onBeforeUnmount(unsubscribeAnnotations)` is the only lifecycle hook called. Do NOT nest `onUnmounted` inside `onMounted` — that pattern only works under specific conditions and breaks silently if `onMounted` doesn't fire (e.g., during SSR or test rendering).
+3. `presetStore.visiblePresets` is a `ComputedRef<FilterPreset[]>`, so we dereference via `.value` in the computed. If `useFilterPresetStore` is refactored in the future to return raw refs directly, this code updates in one place.
+4. `presetStore` only loads presets once `loadPresets()` is called from the owning component (same pattern as other composables). `useShortlistQuery`'s consumer (`ShortlistPanel.vue`) is responsible for ensuring `presetStore.loadPresets()` runs — typically already the case because `CaseView` triggers preset loading at mount time.
+
 ### Annotation-event broadcast (new infrastructure)
 
-A small but new piece of infrastructure. Wave 1.E adds this end-to-end:
+A small but new piece of infrastructure. Wave 1.E adds this end-to-end. **Layering note**: `annotations-logic.ts` has an explicit JSDoc contract — "never touch IPC/Electron APIs directly." All Electron broadcast work therefore lives in the handler layer (`annotations.ts`), not the logic layer.
 
-**Main process emitter** (`annotations-logic.ts`):
+**Main process emitter** — added to the `annotations:upsertPerCase` handler wrapper in `src/main/ipc/handlers/annotations.ts`, AFTER the `upsertPerCaseAnnotation()` logic call returns:
 
 ```typescript
-// Inside upsertPerCaseAnnotation, after successful write
-BrowserWindow.getAllWindows().forEach(win => {
-  if (!win.isDestroyed()) {
-    win.webContents.send('variants:annotationChanged', {
-      caseId,
-      variantId,
-      kind: detectKind(annotationUpdates)  // 'star' | 'comment' | 'acmg'
+// src/main/ipc/handlers/annotations.ts — inside the existing
+// ipcMain.handle('annotations:upsertPerCase', ...) block.
+// This sits in the handler, NOT in annotations-logic.ts.
+ipcMain.handle(
+  'annotations:upsertPerCase',
+  async (_event, caseId: unknown, variantId: unknown, updates: unknown) => {
+    return wrapHandler(async () => {
+      // ... existing Zod validation unchanged ...
+
+      const result = upsertPerCaseAnnotation(
+        validatedIds.data.caseId,
+        validatedIds.data.variantId,
+        validatedUpdates.data,
+        getDb
+      )
+
+      // NEW: broadcast to all renderer windows after successful write.
+      // Uses BrowserWindow + webContents.send — these are Electron APIs
+      // and are therefore only called from the handler layer.
+      broadcastAnnotationChanged({
+        caseId: validatedIds.data.caseId,
+        variantId: validatedIds.data.variantId,
+        kind: detectKind(validatedUpdates.data)
+      })
+
+      return result
     })
   }
-})
+)
+
+/** Helper co-located in annotations.ts (handler layer). */
+function broadcastAnnotationChanged(ev: AnnotationChangeEvent): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send('variants:annotationChanged', ev)
+    }
+  }
+}
+
+/** Maps the validated update shape to the event kind enum. */
+function detectKind(updates: PerCaseAnnotationUpdates): AnnotationChangeEvent['kind'] {
+  if (updates.starred !== undefined) return 'star'
+  if (updates.acmg_classification !== undefined) return 'acmg'
+  if (updates.acmg_evidence !== undefined) return 'evidence'
+  return 'comment'
+}
 ```
 
 **Preload wrapper** (`src/preload/index.ts`):
@@ -917,7 +1310,9 @@ export interface AnnotationChangeEvent {
 }
 ```
 
-Adding the emit call requires ONE change in `annotations-logic.ts` (at the `upsertPerCaseAnnotation` success path), not scattered changes across handlers.
+**Phase 1 limitation**: `annotations:upsertGlobal` does NOT emit the broadcast. The global annotation model exposes `global_comment`, `starred` (at the variant level across cases), `acmg_classification`, and `acmg_evidence` on the `variant_annotations` table. The Phase 1 shortlist's ranking inputs (`consequence`, `gnomad_af`, `cadd`, `clinvar`) all come from the `variants` table (imported at ingest), and its display columns do not currently show any global annotation field — so global edits cannot change what the shortlist ranks or shows. A user editing a global comment or a global ACMG classification from the detail panel therefore has no observable impact on the visible shortlist, which is why skipping the broadcast is safe in Phase 1. **When a future shortlist column surfaces a global field (e.g. "Global ACMG" as a display column, or a rank weight using curated ACMG class)**, this broadcast MUST be extended to `annotations:upsertGlobal` — the new column becomes a signal the user expects to update live. Phase 2+ will derive affected caseIds via the variant's `chr/pos/ref/alt` + `case_id` join.
+
+Total change footprint: ~40 lines in `annotations.ts` (handler wrapper), ~6 lines in `preload/index.ts`, ~6 lines in `api.ts` (type). Logic file untouched.
 
 ### Design commitments
 
@@ -1165,7 +1560,7 @@ Each fixture variant has a documented expected rank position under "Tier 1 candi
 | **3** | 1 | 1 | `variants:shortlist` IPC handler + preload wrapper |
 | **4** | 1 | 1 | `useShortlistQuery` composable |
 | **5** | 1 | 1 | `ShortlistPanel` composition |
-| **6** | 1 | 1 | `CaseView.vue` tab wiring |
+| **6** | 1 | 1 | `CaseView.vue` tab wiring + `VariantTable.vue` `interactive` prop (six-line keyboard gate) — both in the same commit |
 | **7** | 1 | 1 | Coverage thresholds + docs + release notes |
 
 **Total: 12 commits in final linear history.**
@@ -1189,7 +1584,7 @@ Each fixture variant has a documented expected rank position under "Tier 1 candi
 | **W1.B migration** | `src/main/database/migrations.ts` (append v27 block), `src/main/database/built-in-shortlist-presets.ts` (new), `tests/main/database/migrations.test.ts` (append v27 tests) | `feat(db): migration v27 + built-in shortlist presets` |
 | **W1.C query helper** | `src/main/database/shortlist-query.ts` (new), `tests/main/database/shortlist-query.test.ts` (new) | `feat(db): shortlist-query helper (Stage 1)` |
 | **W1.D UI leaves** | `src/renderer/src/components/shortlist/ShortlistTable.vue` (new), `src/renderer/src/components/shortlist/RankScoreTooltip.vue` (new), corresponding tests | `feat(ui): ShortlistTable + RankScoreTooltip components` |
-| **W1.E annotation events** | `src/main/ipc/handlers/annotations-logic.ts` (add `emit()` to `upsertPerCaseAnnotation`), `src/preload/index.ts` (add `onAnnotationChanged` wrapper), `src/shared/types/api.ts` (add `AnnotationChangeEvent` type), corresponding tests | `feat(ipc): variants:annotationChanged broadcast` |
+| **W1.E annotation events** | `src/main/ipc/handlers/annotations.ts` (handler wrapper — add broadcast emit after `upsertPerCaseAnnotation()` call; do NOT touch `annotations-logic.ts`), `src/preload/index.ts` (add `onAnnotationChanged` wrapper), `src/shared/types/api.ts` (add `AnnotationChangeEvent` type), corresponding tests in `tests/main/ipc/handlers/annotations.test.ts` | `feat(ipc): variants:annotationChanged broadcast` |
 
 ### Integration strategy
 
@@ -1227,7 +1622,7 @@ After Wave 7 completes:
 | 7 | Phase 2 editor finds data model rigid | Low | Discriminated-union IPC params (`presetId | adHocConfig`) mean editor never needs new IPC — just POSTs full config |
 | 8 | Test fixture drifts from real-world data | Medium | Fixture documented per-variant with expected rank positions; follow-up adds GIAB-sourced fixture when practical |
 | 9 | Worktree merge conflicts despite non-overlap table | Low | Wave-0 type lock + explicit authorization table + agent briefs list prohibited files |
-| 10 | Per-type scorer's extension column types don't match runtime row shape | Medium | `VariantExtensionRow` union type in shared types + runtime type checks at scorer dispatch; malformed rows return `ZERO_COMPONENTS` with error log |
+| 10 | `ShortlistCandidate` row shape drifts from Stage-1 SELECT list (scorer expects a field the query doesn't project) | Medium | TypeScript catches missing fields at the scorer layer (static error). The `shortlist-query.ts` test suite asserts the row shape returned by a real in-memory DB matches `ShortlistCandidate` exactly (structural equality test on all fields). Scorer dispatch also has a defensive try/catch that returns `ZERO_COMPONENTS` with an error log if a runtime shape mismatch somehow reaches production. |
 
 ---
 

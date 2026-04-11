@@ -8,6 +8,7 @@
 import type Database from 'better-sqlite3-multiple-ciphers'
 import { CLINICAL_METRICS } from './clinical-metrics'
 import { BUILT_IN_PRESETS } from './built-in-presets'
+import { BUILT_IN_SHORTLIST_PRESETS } from './built-in-shortlist-presets'
 
 /**
  * Run schema migrations based on PRAGMA user_version
@@ -40,6 +41,7 @@ import { BUILT_IN_PRESETS } from './built-in-presets'
  * - 24: Normalize ACMG classification labels to ClinVar sentence case
  * - 25: Multi-variant type support (SV/CNV/STR extension tables, case_import_files)
  * - 26: v0.55.0 FTS5 virtual tables for variant_sv + variant_str (multi-variant filter/sort/search)
+ * - 27: filter_presets.kind discriminator + built-in shortlist preset seeds (unified Shortlist tab)
  *
  * @param db - better-sqlite3-multiple-ciphers Database instance
  */
@@ -1667,5 +1669,52 @@ export function runMigrations(db: Database.Database): void {
     `)
 
     db.exec('PRAGMA user_version = 26')
+  }
+
+  // ── v27: filter_presets.kind discriminator + built-in shortlist preset seeds ──
+  //
+  // Adds a `kind` discriminator column to filter_presets so classic filter
+  // presets and unified-shortlist configs can coexist in one table. The
+  // DEFAULT 'filter' clause backfills every pre-existing row (all the v15/v16
+  // classic built-ins plus user presets) without a data migration. The CHECK
+  // constraint fails closed on any future invalid kind values.
+  //
+  // Also seeds three built-in shortlist presets (Tier 1 candidates, All rare
+  // damaging, Recessive candidates) with kind='shortlist'. Each preset stores
+  // its ShortlistConfig under the `shortlist` key inside filter_json so the
+  // existing rowToPreset path can parse it without special-casing.
+  //
+  // The seed uses raw SQL rather than FilterPresetRepository — Wave 2 of the
+  // unified-shortlist rollout updates the repository to read/write `kind`
+  // through its public CRUD interface.
+  if (currentVersion < 27) {
+    db.exec(`
+      ALTER TABLE filter_presets ADD COLUMN kind TEXT NOT NULL DEFAULT 'filter'
+        CHECK (kind IN ('filter', 'shortlist'));
+      CREATE INDEX IF NOT EXISTS idx_filter_presets_kind ON filter_presets(kind);
+    `)
+
+    const now = Date.now()
+    // INSERT OR IGNORE so the migration is safe to replay and does not fail
+    // with UNIQUE on a pre-existing user preset that happens to share the
+    // built-in name. Matches the v15/v16 built-in-preset seed pattern above.
+    const insertShortlistStmt = db.prepare(
+      `INSERT OR IGNORE INTO filter_presets
+         (name, description, filter_json, is_built_in, is_visible, sort_order, kind, created_at, updated_at)
+       VALUES (?, ?, ?, 1, 1, ?, 'shortlist', ?, ?)`
+    )
+
+    for (const preset of BUILT_IN_SHORTLIST_PRESETS) {
+      insertShortlistStmt.run(
+        preset.name,
+        preset.description,
+        JSON.stringify({ shortlist: preset.config }),
+        preset.sortOrder,
+        now,
+        now
+      )
+    }
+
+    db.exec('PRAGMA user_version = 27')
   }
 }

@@ -315,12 +315,22 @@ interface Props {
   columnMeta?: ColumnFilterMeta[]
   /** Variant type discriminator — drives column set selection (snv, sv, cnv, str) */
   variantType?: string
+  /**
+   * Whether this VariantTable instance is currently interactive.
+   * When `false`, global keyboard shortcuts registered by this component
+   * (ArrowUp/Down, Enter, Escape, s, c, a) are suppressed so a hidden
+   * VariantTable held alive via `v-show` (e.g. while the Shortlist tab is
+   * active in CaseView) does not steal keystrokes from the visible panel.
+   * Default `true` preserves existing behavior for every existing caller.
+   */
+  interactive?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   annotationScope: 'case',
   columnMeta: () => [],
-  variantType: 'snv'
+  variantType: 'snv',
+  interactive: true
 })
 
 const emit = defineEmits<{
@@ -517,7 +527,7 @@ onDeactivated(() => {
 onKeyStroke(
   'ArrowDown',
   (e: KeyboardEvent) => {
-    if (!viewActive.value || isInputFocused()) return
+    if (!props.interactive || !viewActive.value || isInputFocused()) return
     e.preventDefault()
     moveDown()
   },
@@ -527,7 +537,7 @@ onKeyStroke(
 onKeyStroke(
   'ArrowUp',
   (e: KeyboardEvent) => {
-    if (!viewActive.value || isInputFocused()) return
+    if (!props.interactive || !viewActive.value || isInputFocused()) return
     e.preventDefault()
     moveUp()
   },
@@ -537,7 +547,7 @@ onKeyStroke(
 onKeyStroke(
   'Enter',
   (e: KeyboardEvent) => {
-    if (!viewActive.value || isInputFocused()) return
+    if (!props.interactive || !viewActive.value || isInputFocused()) return
     if (selectedItem.value === null) return
     e.preventDefault()
     emit('row-click', selectedItem.value)
@@ -548,7 +558,7 @@ onKeyStroke(
 onKeyStroke(
   'Escape',
   (e: KeyboardEvent) => {
-    if (!viewActive.value || isInputFocused()) return
+    if (!props.interactive || !viewActive.value || isInputFocused()) return
     e.preventDefault()
     clearSelection()
     selectedVariantId.value = null
@@ -561,7 +571,7 @@ onKeyStroke(
 onKeyStroke(
   's',
   (e: KeyboardEvent) => {
-    if (!viewActive.value || isInputFocused()) return
+    if (!props.interactive || !viewActive.value || isInputFocused()) return
     if (selectedItem.value === null) return
     e.preventDefault()
     annotationDialogsRef.value?.handleStarToggle(selectedItem.value)
@@ -572,7 +582,7 @@ onKeyStroke(
 onKeyStroke(
   'c',
   (e: KeyboardEvent) => {
-    if (!viewActive.value || isInputFocused()) return
+    if (!props.interactive || !viewActive.value || isInputFocused()) return
     if (selectedItem.value === null) return
     e.preventDefault()
     annotationDialogsRef.value?.openCommentDialog(selectedItem.value)
@@ -583,7 +593,7 @@ onKeyStroke(
 onKeyStroke(
   'a',
   (e: KeyboardEvent) => {
-    if (!viewActive.value || isInputFocused()) return
+    if (!props.interactive || !viewActive.value || isInputFocused()) return
     if (selectedItem.value === null) return
     e.preventDefault()
     annotationDialogsRef.value?.openAcmgEvidenceDialog(selectedItem.value)

@@ -22,6 +22,7 @@ import Database from 'better-sqlite3-multiple-ciphers'
 import { DatabaseService } from '../../../src/main/database'
 import { initializeSchema } from '../../../src/main/database/schema'
 import { runMigrations } from '../../../src/main/database/migrations'
+import { BUILT_IN_SHORTLIST_PRESETS } from '../../../src/main/database/built-in-shortlist-presets'
 
 describe('Schema Migrations', () => {
   // Track temp files for cleanup
@@ -130,7 +131,7 @@ describe('Schema Migrations', () => {
       const versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(26)
+      expect(versionResult.user_version).toBe(27)
 
       service.close()
 
@@ -140,7 +141,7 @@ describe('Schema Migrations', () => {
       const versionAfterReopen = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionAfterReopen.user_version).toBe(26)
+      expect(versionAfterReopen.user_version).toBe(27)
 
       service.close()
     })
@@ -467,7 +468,7 @@ describe('Schema Migrations', () => {
       let versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(26)
+      expect(versionResult.user_version).toBe(27)
 
       service.close()
 
@@ -483,11 +484,11 @@ describe('Schema Migrations', () => {
       expect(tableNamesAfterReopen).toContain('variant_annotations')
       expect(tableNamesAfterReopen).toContain('case_variant_annotations')
 
-      // Verify user_version is 18 (v15 creates filter_presets, v16 reseeds, v17 adds perf indexes, v18 adds covering index)
+      // Verify user_version is latest (v15 creates filter_presets, v16 reseeds, v17 adds perf indexes, v18 adds covering index, …, v27 adds shortlist seeds)
       versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(26)
+      expect(versionResult.user_version).toBe(27)
 
       service.close()
     })
@@ -517,11 +518,11 @@ describe('Schema Migrations', () => {
       expect(tableNames).toContain('variant_tags')
       expect(tableNames).toContain('case_hpo_terms')
 
-      // Verify user_version is 18
+      // Verify user_version is latest
       const versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(26)
+      expect(versionResult.user_version).toBe(27)
 
       service.close()
     })
@@ -753,13 +754,13 @@ describe('Schema Migrations', () => {
       service.close()
     })
 
-    it('sets user_version to 7', () => {
+    it('sets user_version to latest', () => {
       const service = new DatabaseService(':memory:')
 
       const version = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(version.user_version).toBe(26)
+      expect(version.user_version).toBe(27)
 
       service.close()
     })
@@ -798,9 +799,9 @@ describe('Schema Migrations', () => {
       const indexNames = indexes.map((i) => i.name)
       expect(indexNames).toContain('idx_cvs_cohort_freq')
 
-      // Verify user_version = 18 (v15 + v16 + v17 + v18 all run)
+      // Verify user_version = latest (v15 + v16 + v17 + v18 + … + v27 all run)
       const version = db.pragma('user_version', { simple: true }) as number
-      expect(version).toBe(26)
+      expect(version).toBe(27)
 
       service.close()
     })
@@ -1168,5 +1169,96 @@ describe('migration v26 - FTS5 for extension tables', () => {
     // forward in two phases and insert rows between phases; for now, the insert
     // tests cover the trigger path (which is the same INSERT SQL the backfill uses).
     expect(true).toBe(true)
+  })
+})
+
+describe('migration v27 — filter_presets.kind + shortlist seeds', () => {
+  let db: Database.Database
+
+  beforeEach(() => {
+    db = new Database(':memory:')
+    initializeSchema(db)
+    runMigrations(db)
+  })
+
+  it('adds kind column to filter_presets', () => {
+    const cols = db.prepare(`PRAGMA table_info(filter_presets)`).all() as Array<{ name: string }>
+    expect(cols.some((c) => c.name === 'kind')).toBe(true)
+  })
+
+  it('backfills existing rows to kind=filter (DEFAULT applies on fresh insert)', () => {
+    // v27 adds `kind TEXT NOT NULL DEFAULT 'filter'`. Post-migration, any insert
+    // that omits `kind` should land as 'filter'. The pre-migration backfill
+    // path is covered implicitly by every built-in classic preset seeded in v15/v16.
+    const now = Date.now()
+    db.prepare(
+      `INSERT INTO filter_presets (name, description, filter_json, is_built_in, is_visible, sort_order, created_at, updated_at)
+       VALUES ('v27-default-test', '', '{}', 0, 1, 9999, ?, ?)`
+    ).run(now, now)
+    const row = db
+      .prepare(`SELECT kind FROM filter_presets WHERE name = 'v27-default-test'`)
+      .get() as { kind: string }
+    expect(row.kind).toBe('filter')
+
+    // And the existing classic built-ins seeded in v15/v16 must all be kind='filter'.
+    const classicCount = db
+      .prepare(`SELECT COUNT(*) AS c FROM filter_presets WHERE is_built_in = 1 AND kind = 'filter'`)
+      .get() as { c: number }
+    expect(classicCount.c).toBeGreaterThanOrEqual(8)
+  })
+
+  it('seeds all three built-in shortlist presets', () => {
+    const rows = db
+      .prepare(
+        `SELECT name, kind, is_built_in, filter_json, sort_order
+         FROM filter_presets
+         WHERE kind = 'shortlist'
+         ORDER BY sort_order`
+      )
+      .all() as Array<{
+      name: string
+      kind: string
+      is_built_in: number
+      filter_json: string
+      sort_order: number
+    }>
+
+    expect(rows).toHaveLength(BUILT_IN_SHORTLIST_PRESETS.length)
+    for (let i = 0; i < rows.length; i++) {
+      const expected = BUILT_IN_SHORTLIST_PRESETS[i]
+      expect(rows[i].name).toBe(expected.name)
+      expect(rows[i].kind).toBe('shortlist')
+      expect(rows[i].is_built_in).toBe(1)
+      expect(rows[i].sort_order).toBe(expected.sortOrder)
+      const parsed = JSON.parse(rows[i].filter_json)
+      expect(parsed.shortlist).toBeDefined()
+      expect(parsed.shortlist.topN).toBe(expected.config.topN)
+      expect(parsed.shortlist.rankConfig).toBeDefined()
+      expect(parsed.shortlist.rankConfig.weights).toEqual(expected.config.rankConfig.weights)
+    }
+  })
+
+  it('CHECK constraint rejects invalid kind', () => {
+    const now = Date.now()
+    expect(() => {
+      db.prepare(
+        `INSERT INTO filter_presets (name, filter_json, is_built_in, is_visible, sort_order, kind, created_at, updated_at)
+         VALUES ('bad-kind', '{}', 0, 1, 9999, 'garbage', ?, ?)`
+      ).run(now, now)
+    }).toThrow()
+  })
+
+  it('idx_filter_presets_kind index exists', () => {
+    const idx = db
+      .prepare(
+        `SELECT name FROM sqlite_master WHERE type='index' AND name='idx_filter_presets_kind'`
+      )
+      .get()
+    expect(idx).toBeTruthy()
+  })
+
+  it('PRAGMA user_version = 27 after migration', () => {
+    const v = db.pragma('user_version', { simple: true })
+    expect(v).toBe(27)
   })
 })

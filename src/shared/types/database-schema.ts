@@ -303,6 +303,13 @@ export interface FilterPresetsTable {
   name: string
   description: string | null
   filter_json: string
+  /**
+   * Preset discriminator added in migration v27. `'filter'` = classic
+   * filter preset (applies `filter_json` to the current tab), `'shortlist'`
+   * = unified Shortlist-tab preset (carries a `ShortlistConfig` under the
+   * `filter_json.shortlist` key). Defaults to `'filter'` at the DB layer.
+   */
+  kind: Generated<string>
   is_built_in: number
   is_visible: number
   sort_order: number

@@ -16,10 +16,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { withSetup } from '../../utils/test-helpers'
 import { createMockApi } from '../../utils/mock-api'
-import {
-  useVariantColumnMeta,
-  cacheKeyFor
-} from '@renderer/composables/useVariantColumnMeta'
+import { useVariantColumnMeta, cacheKeyFor } from '@renderer/composables/useVariantColumnMeta'
 import type { ColumnFilterMeta } from '../../../src/shared/types/column-filters'
 
 function makeColumnMeta(overrides: Partial<ColumnFilterMeta> = {}): ColumnFilterMeta {
@@ -37,10 +34,12 @@ function makeColumnMeta(overrides: Partial<ColumnFilterMeta> = {}): ColumnFilter
  * Install a mock window.api with columnMeta/typesPresent methods on the
  * variants namespace. Returns the vi.fn spies for assertions.
  */
-function installMockApi(opts: {
-  columnMeta?: (...args: unknown[]) => Promise<ColumnFilterMeta>
-  typesPresent?: (...args: unknown[]) => Promise<string[]>
-} = {}): {
+function installMockApi(
+  opts: {
+    columnMeta?: (...args: unknown[]) => Promise<ColumnFilterMeta>
+    typesPresent?: (...args: unknown[]) => Promise<string[]>
+  } = {}
+): {
   columnMetaFn: ReturnType<typeof vi.fn>
   typesPresentFn: ReturnType<typeof vi.fn>
 } {
@@ -97,9 +96,7 @@ describe('useVariantColumnMeta', () => {
     })
 
     it('collides identical cohort scopes regardless of input order', () => {
-      expect(cacheKeyFor({ caseIds: [5, 9, 1] })).toBe(
-        cacheKeyFor({ caseIds: [1, 9, 5] })
-      )
+      expect(cacheKeyFor({ caseIds: [5, 9, 1] })).toBe(cacheKeyFor({ caseIds: [1, 9, 5] }))
     })
 
     it('returns empty sentinel for empty scope', () => {
@@ -196,9 +193,9 @@ describe('useVariantColumnMeta', () => {
       const [result, appInstance] = withSetup(() => useVariantColumnMeta())
       app = appInstance
 
-      await expect(
-        result.getColumnMeta({ caseId: 1 }, 'sv.support')
-      ).rejects.toThrow(/window\.api not available/)
+      await expect(result.getColumnMeta({ caseId: 1 }, 'sv.support')).rejects.toThrow(
+        /window\.api not available/
+      )
     })
 
     it('forwards cohort scope as caseIds', async () => {

@@ -36,10 +36,7 @@ import { DATABASE_CONFIG } from '../../shared/config'
 import { VariantFilterBuilder, BASE_SORTABLE_COLUMNS } from './VariantFilterBuilder'
 import { VariantSearchService } from './VariantSearchService'
 import { VariantFrequencyService } from './VariantFrequencyService'
-import {
-  isExtensionColumnKey,
-  resolveExtensionColumnKey
-} from './variant-extension-registry'
+import { isExtensionColumnKey, resolveExtensionColumnKey } from './variant-extension-registry'
 
 const BATCH_SIZE = DATABASE_CONFIG.BATCH_INSERT_SIZE
 

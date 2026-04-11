@@ -10,10 +10,7 @@ describe('buildBaseWhere', () => {
   })
 
   it('translates gnomad_af_max with IS NULL OR branch', () => {
-    const result = buildBaseWhere(
-      { gnomad_af_max: 0.01 },
-      { baseAlias: 'v', scope: 'case' }
-    )
+    const result = buildBaseWhere({ gnomad_af_max: 0.01 }, { baseAlias: 'v', scope: 'case' })
     expect(result.sql).toContain('v.gnomad_af')
     expect(result.sql).toContain('IS NULL OR')
     expect(result.params).toEqual([0.01])
@@ -168,10 +165,7 @@ describe('cohort-summary-only field gating', () => {
   // raw variants table.
 
   it('drops max_internal_af for case scope', () => {
-    const result = buildBaseWhere(
-      { max_internal_af: 0.05 },
-      { baseAlias: 'v', scope: 'case' }
-    )
+    const result = buildBaseWhere({ max_internal_af: 0.05 }, { baseAlias: 'v', scope: 'case' })
     expect(result.sql).not.toContain('cohort_frequency')
     expect(result.sql).toBe('')
     expect(result.params).toEqual([])
@@ -197,10 +191,7 @@ describe('cohort-summary-only field gating', () => {
   })
 
   it('drops carrier_count_min for case + cohort-burden scopes', () => {
-    const caseResult = buildBaseWhere(
-      { carrier_count_min: 3 },
-      { baseAlias: 'v', scope: 'case' }
-    )
+    const caseResult = buildBaseWhere({ carrier_count_min: 3 }, { baseAlias: 'v', scope: 'case' })
     expect(caseResult.sql).not.toContain('carrier_count')
 
     const burdenResult = buildBaseWhere(

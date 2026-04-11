@@ -328,20 +328,11 @@ describe('VariantFilterBuilder', () => {
       db.prepare(
         `INSERT INTO variant_sv (variant_id, support, vaf, event_id)
          VALUES (?, ?, ?, ?)`
-      ).run(
-        variantId,
-        svFields.support ?? null,
-        svFields.vaf ?? null,
-        svFields.event_id ?? null
-      )
+      ).run(variantId, svFields.support ?? null, svFields.vaf ?? null, svFields.event_id ?? null)
       return variantId
     }
 
-    function insertCnvVariant(
-      _caseId: number,
-      pos: number,
-      copyNumber: number | null
-    ): number {
+    function insertCnvVariant(_caseId: number, pos: number, copyNumber: number | null): number {
       const result = db
         .prepare(
           `INSERT INTO variants (case_id, chr, pos, ref, alt, variant_type)
@@ -349,16 +340,21 @@ describe('VariantFilterBuilder', () => {
         )
         .run(_caseId, pos)
       const variantId = result.lastInsertRowid as number
-      db.prepare(
-        `INSERT INTO variant_cnv (variant_id, copy_number) VALUES (?, ?)`
-      ).run(variantId, copyNumber)
+      db.prepare(`INSERT INTO variant_cnv (variant_id, copy_number) VALUES (?, ?)`).run(
+        variantId,
+        copyNumber
+      )
       return variantId
     }
 
     function insertStrVariant(
       _caseId: number,
       pos: number,
-      strFields: { repeat_unit?: string | null; disease?: string | null; str_status?: string | null }
+      strFields: {
+        repeat_unit?: string | null
+        disease?: string | null
+        str_status?: string | null
+      }
     ): number {
       const result = db
         .prepare(
@@ -495,10 +491,7 @@ describe('VariantFilterBuilder', () => {
       )
       const sorted = builder.applySort(query, [{ key: 'cnv.copy_number', order: 'desc' }])
       const compiled = sorted.compile()
-      const rows = db.prepare(compiled.sql).all(...compiled.parameters) as Record<
-        string,
-        unknown
-      >[]
+      const rows = db.prepare(compiled.sql).all(...compiled.parameters) as Record<string, unknown>[]
       expect(rows).toHaveLength(2)
       // Highest copy_number first
       expect(rows[0]._cnv_copy_number).toBe(4)
@@ -517,10 +510,7 @@ describe('VariantFilterBuilder', () => {
       const compiled = sorted.compile()
       // Verify the join alias `sv` appears in the compiled SQL
       expect(compiled.sql).toContain('variant_sv')
-      const rows = db.prepare(compiled.sql).all(...compiled.parameters) as Record<
-        string,
-        unknown
-      >[]
+      const rows = db.prepare(compiled.sql).all(...compiled.parameters) as Record<string, unknown>[]
       expect(rows).toHaveLength(2)
       expect(rows[0]._sv_support).toBe(8)
       expect(rows[1]._sv_support).toBe(12)

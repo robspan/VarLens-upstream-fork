@@ -54,10 +54,7 @@ const inflightTypes = new Map<string, Promise<Set<string>>>()
  * @returns Accessors and invalidation helpers
  */
 export function useVariantColumnMeta(): {
-  getColumnMeta: (
-    scope: VariantColumnMetaScope,
-    columnKey: string
-  ) => Promise<ColumnFilterMeta>
+  getColumnMeta: (scope: VariantColumnMetaScope, columnKey: string) => Promise<ColumnFilterMeta>
   ensureTypesPresent: (scope: VariantColumnMetaScope) => Promise<Set<string>>
   invalidate: (scope: VariantColumnMetaScope) => void
   invalidateAll: () => void

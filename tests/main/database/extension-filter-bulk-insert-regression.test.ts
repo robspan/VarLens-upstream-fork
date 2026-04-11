@@ -20,9 +20,7 @@ describe('bulk-insert FTS trigger regression', () => {
   it('teardown and restore preserves variants_fts triggers', () => {
     const before = (
       db
-        .prepare(
-          "SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'variants_%'"
-        )
+        .prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'variants_%'")
         .all() as { name: string }[]
     )
       .map((r) => r.name)
@@ -33,9 +31,7 @@ describe('bulk-insert FTS trigger regression', () => {
 
     const after = (
       db
-        .prepare(
-          "SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'variants_%'"
-        )
+        .prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'variants_%'")
         .all() as { name: string }[]
     )
       .map((r) => r.name)

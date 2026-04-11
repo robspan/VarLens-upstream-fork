@@ -90,7 +90,9 @@ describe('fts-trigger-management', () => {
     const snap2 = tearDownFtsTriggers(db)
     restoreFtsTriggers(db, snap2)
     expect(() => {
-      db.prepare("INSERT INTO variants (gene_symbol, consequence, omim_mim_number) VALUES ('BRCA1', 'missense', NULL)").run()
+      db.prepare(
+        "INSERT INTO variants (gene_symbol, consequence, omim_mim_number) VALUES ('BRCA1', 'missense', NULL)"
+      ).run()
     }).not.toThrow()
   })
 

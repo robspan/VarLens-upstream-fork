@@ -885,9 +885,7 @@ describe('CohortService', () => {
       ).run(caseId)
       const matchingRowid = (
         db
-          .prepare(
-            "SELECT id FROM variants WHERE case_id = ? AND chr = 'chr22' AND pos = 100"
-          )
+          .prepare("SELECT id FROM variants WHERE case_id = ? AND chr = 'chr22' AND pos = 100")
           .get(caseId) as { id: number }
       ).id
       db.prepare('INSERT INTO variant_cnv (variant_id, copy_number) VALUES (?, 5)').run(
@@ -900,9 +898,7 @@ describe('CohortService', () => {
       ).run(caseId)
       const nonMatchingRowid = (
         db
-          .prepare(
-            "SELECT id FROM variants WHERE case_id = ? AND chr = 'chr22' AND pos = 200"
-          )
+          .prepare("SELECT id FROM variants WHERE case_id = ? AND chr = 'chr22' AND pos = 200")
           .get(caseId) as { id: number }
       ).id
       db.prepare('INSERT INTO variant_cnv (variant_id, copy_number) VALUES (?, 1)').run(
@@ -938,9 +934,9 @@ describe('CohortService', () => {
         "INSERT INTO variants (case_id, chr, pos, ref, alt, variant_type, gene_symbol) VALUES (?, 'chr4', 3074876, 'C', '<STR>', 'str', 'HTT')"
       ).run(caseId)
       const strId = (
-        db
-          .prepare("SELECT id FROM variants WHERE case_id = ? AND chr = 'chr4'")
-          .get(caseId) as { id: number }
+        db.prepare("SELECT id FROM variants WHERE case_id = ? AND chr = 'chr4'").get(caseId) as {
+          id: number
+        }
       ).id
       db.prepare(
         "INSERT INTO variant_str (variant_id, repeat_id, repeat_unit) VALUES (?, 'HTT', 'CAG')"
@@ -964,9 +960,9 @@ describe('CohortService', () => {
         "INSERT INTO variants (case_id, chr, pos, ref, alt, variant_type, gene_symbol) VALUES (?, 'chr22', 300, 'N', '<CNV>', 'cnv', 'GENE3')"
       ).run(caseId)
       const cnvId = (
-        db
-          .prepare("SELECT id FROM variants WHERE case_id = ? AND pos = 300")
-          .get(caseId) as { id: number }
+        db.prepare('SELECT id FROM variants WHERE case_id = ? AND pos = 300').get(caseId) as {
+          id: number
+        }
       ).id
       db.prepare('INSERT INTO variant_cnv (variant_id, copy_number) VALUES (?, 4)').run(cnvId)
 

@@ -85,9 +85,7 @@ function composeFtsTermUnion(
   params: (string | number)[]
 ): string {
   const ftsQuery = `"${term.replace(/"/g, '""')}"*`
-  const arms: string[] = [
-    `SELECT rowid FROM ${present.baseFts} WHERE ${present.baseFts} MATCH ?`
-  ]
+  const arms: string[] = [`SELECT rowid FROM ${present.baseFts} WHERE ${present.baseFts} MATCH ?`]
   params.push(ftsQuery)
   for (const entry of present.extensionFts) {
     arms.push(`SELECT rowid FROM ${entry.ftsTable} WHERE ${entry.ftsTable} MATCH ?`)

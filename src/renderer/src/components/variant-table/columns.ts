@@ -19,8 +19,15 @@ export interface ColumnDef {
    * dotted `key` string as a nested path accessor via `getObjectValueByPath`
    * — without this getter, `item['sv']['support']` resolves to undefined and
    * the cell renders empty.
+   *
+   * Parameter type is `any` to remain assignable to Vuetify's
+   * `SelectItemKey<Variant>` function branch — Vuetify expects
+   * `(item: Variant, fallback?: any) => any`, which is stricter than
+   * `Record<string, unknown>` (Variant has no index signature). Callers
+   * narrow the item shape via type assertion inside the getter.
    */
-  value?: (item: Record<string, unknown>) => unknown
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  value?: (item: any) => unknown
 }
 
 /**

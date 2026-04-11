@@ -15,10 +15,7 @@ describe('buildExtensionJoinClauses (direct JOIN mode)', () => {
   })
 
   it('ignores unknown dotted keys', () => {
-    const result = buildExtensionJoinClauses(
-      { 'unknown.col': { operator: '>=', value: 1 } },
-      'v'
-    )
+    const result = buildExtensionJoinClauses({ 'unknown.col': { operator: '>=', value: 1 } }, 'v')
     expect(result.joins).toBe('')
     expect(result.whereClause).toBe('')
     expect(result.params).toEqual([])
@@ -26,10 +23,7 @@ describe('buildExtensionJoinClauses (direct JOIN mode)', () => {
   })
 
   it('ignores bare keys (base columns handled elsewhere)', () => {
-    const result = buildExtensionJoinClauses(
-      { gnomad_af: { operator: '<=', value: 0.01 } },
-      'v'
-    )
+    const result = buildExtensionJoinClauses({ gnomad_af: { operator: '<=', value: 0.01 } }, 'v')
     expect(result.joins).toBe('')
     expect(result.whereClause).toBe('')
     expect(result.params).toEqual([])
@@ -50,10 +44,7 @@ describe('buildExtensionJoinClauses (direct JOIN mode)', () => {
   })
 
   it('sv.support >= 10 emits SV join and narrowing', () => {
-    const result = buildExtensionJoinClauses(
-      { 'sv.support': { operator: '>=', value: 10 } },
-      'v'
-    )
+    const result = buildExtensionJoinClauses({ 'sv.support': { operator: '>=', value: 10 } }, 'v')
     expect(result.joins).toContain('LEFT JOIN variant_sv sv')
     expect(result.whereClause).toContain("v.variant_type = 'sv'")
     expect(result.whereClause).toContain('sv.support >= ?')
@@ -100,10 +91,7 @@ describe('buildExtensionJoinClauses (direct JOIN mode)', () => {
   })
 
   it('numeric range defaults to includeEmpty=false (no IS NULL OR)', () => {
-    const result = buildExtensionJoinClauses(
-      { 'sv.support': { operator: '>=', value: 5 } },
-      'v'
-    )
+    const result = buildExtensionJoinClauses({ 'sv.support': { operator: '>=', value: 5 } }, 'v')
     // Extension filters default to EXCLUDE NULLs (no extension row = variant not of that type)
     expect(result.whereClause).not.toContain('IS NULL OR')
   })

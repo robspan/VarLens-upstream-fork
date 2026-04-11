@@ -134,6 +134,25 @@ export const mockApi: WindowAPI = {
         counts[type] = (counts[type] ?? 0) + 1
       }
       return counts
+    },
+    columnMeta: async (payload: { caseId?: number; caseIds?: number[]; columnKey: string }) => ({
+      key: payload.columnKey,
+      dataType: 'text' as const,
+      distinctCount: 0
+    }),
+    typesPresent: async (payload: { caseId?: number; caseIds?: number[] }) => {
+      const ids =
+        payload.caseIds !== undefined
+          ? payload.caseIds
+          : payload.caseId !== undefined
+            ? [payload.caseId]
+            : []
+      const set = new Set<string>()
+      for (const v of variants) {
+        if (!ids.includes(v.case_id)) continue
+        set.add(v.variant_type ?? 'snv')
+      }
+      return [...set]
     }
   },
 

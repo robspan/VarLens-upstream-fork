@@ -197,12 +197,7 @@ describe('AssociationDataBuilder — Path 3 parity (shared helpers)', () => {
     expect(genesMatching.find((g) => g.gene_symbol === 'BRCA1')).toBeDefined()
 
     // Non-matching clinvar: BRCA1 should be filtered out
-    const genesNonMatching = builder.build(
-      [1, 2, 3],
-      [4, 5, 6],
-      { clinvars: ['Benign'] },
-      []
-    )
+    const genesNonMatching = builder.build([1, 2, 3], [4, 5, 6], { clinvars: ['Benign'] }, [])
     expect(genesNonMatching.find((g) => g.gene_symbol === 'BRCA1')).toBeUndefined()
   })
 
@@ -213,9 +208,7 @@ describe('AssociationDataBuilder — Path 3 parity (shared helpers)', () => {
         "INSERT INTO variants (case_id, chr, pos, ref, alt, gene_symbol, variant_type, gt_num) VALUES (?, 'chr17', 43000000, 'N', '<CNV>', 'MYCN', 'cnv', '0/1')"
       ).run(caseId)
       const variantRow = db
-        .prepare(
-          "SELECT id FROM variants WHERE case_id = ? AND chr = 'chr17' AND pos = 43000000"
-        )
+        .prepare("SELECT id FROM variants WHERE case_id = ? AND chr = 'chr17' AND pos = 43000000")
         .get(caseId) as { id: number }
       db.prepare('INSERT INTO variant_cnv (variant_id, copy_number) VALUES (?, 5)').run(
         variantRow.id

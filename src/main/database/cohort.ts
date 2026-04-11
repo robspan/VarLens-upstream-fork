@@ -140,8 +140,7 @@ export class CohortService {
         params.gnomad_af_max !== undefined && params.gnomad_af_max > 0
           ? params.gnomad_af_max
           : undefined,
-      cadd_min:
-        params.cadd_min !== undefined && params.cadd_min >= 0 ? params.cadd_min : undefined,
+      cadd_min: params.cadd_min !== undefined && params.cadd_min >= 0 ? params.cadd_min : undefined,
       consequences: params.consequences,
       clinvars: params.clinvars,
       funcs: params.funcs,

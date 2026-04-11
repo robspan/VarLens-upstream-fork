@@ -73,10 +73,7 @@ describe('VariantRepository — single-column metadata (scope-aware)', () => {
         { chr: '1', pos: 200, ref: 'A', alt: 'T', gnomad_af: 0.1 }
       ])
 
-      const meta = service.variants.getColumnMeta(
-        { caseIds: [caseA, caseB] },
-        'gnomad_af'
-      )
+      const meta = service.variants.getColumnMeta({ caseIds: [caseA, caseB] }, 'gnomad_af')
       expect(meta.distinctCount).toBe(2)
       expect(meta.min).toBe(0.01)
       expect(meta.max).toBe(0.1)
@@ -206,10 +203,7 @@ describe('VariantRepository — single-column metadata (scope-aware)', () => {
       insertCnv(caseA, 100, 3)
       insertCnv(caseB, 200, 5)
 
-      const meta = service.variants.getColumnMeta(
-        { caseIds: [caseA, caseB] },
-        'cnv.copy_number'
-      )
+      const meta = service.variants.getColumnMeta({ caseIds: [caseA, caseB] }, 'cnv.copy_number')
       expect(meta.min).toBe(3)
       expect(meta.max).toBe(5)
       expect(meta.distinctCount).toBe(2)
@@ -260,9 +254,7 @@ describe('VariantRepository — single-column metadata (scope-aware)', () => {
     it('cohort scope unions types across cases', () => {
       const caseA = createTestCase(service, 'snvOnly')
       const caseB = createTestCase(service, 'cnvOnly')
-      service.variants.insertVariantsBatch(caseA, [
-        { chr: '1', pos: 100, ref: 'A', alt: 'T' }
-      ])
+      service.variants.insertVariantsBatch(caseA, [{ chr: '1', pos: 100, ref: 'A', alt: 'T' }])
       service.database
         .prepare(
           "INSERT INTO variants (case_id, chr, pos, ref, alt, variant_type) VALUES (?, '1', 200, 'N', '<CNV>', 'cnv')"

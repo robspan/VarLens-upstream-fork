@@ -41,23 +41,23 @@ export const VARIANT_EXTENSION_REGISTRY = {
     variantIdColumn: 'variant_id',
     hasFts: true,
     columns: {
-      sv_is_precise: { kind: 'enum',   fts: false, sortable: true,  label: 'Precise SV' },
-      support:       { kind: 'number', fts: false, sortable: true,  label: 'Total support' },
-      pe_support:    { kind: 'number', fts: false, sortable: true,  label: 'Paired-end support' },
-      sr_support:    { kind: 'number', fts: false, sortable: true,  label: 'Split-read support' },
-      dr:            { kind: 'number', fts: false, sortable: true,  label: 'Ref depth' },
-      dv:            { kind: 'number', fts: false, sortable: true,  label: 'Alt depth' },
-      vaf:           { kind: 'number', fts: false, sortable: true,  label: 'VAF' },
-      strand:        { kind: 'enum',   fts: false, sortable: true,  label: 'Strand' },
-      coverage:      { kind: 'text',   fts: false, sortable: false, label: 'Coverage' },
-      cipos_left:    { kind: 'number', fts: false, sortable: false, label: 'CIPOS left' },
-      cipos_right:   { kind: 'number', fts: false, sortable: false, label: 'CIPOS right' },
-      ciend_left:    { kind: 'number', fts: false, sortable: false, label: 'CIEND left' },
-      ciend_right:   { kind: 'number', fts: false, sortable: false, label: 'CIEND right' },
-      stdev_len:     { kind: 'number', fts: false, sortable: false, label: 'Stdev length' },
-      stdev_pos:     { kind: 'number', fts: false, sortable: false, label: 'Stdev pos' },
-      event_id:      { kind: 'text',   fts: true,  sortable: false, label: 'Event ID' },
-      mate_id:       { kind: 'text',   fts: true,  sortable: false, label: 'Mate ID' }
+      sv_is_precise: { kind: 'enum', fts: false, sortable: true, label: 'Precise SV' },
+      support: { kind: 'number', fts: false, sortable: true, label: 'Total support' },
+      pe_support: { kind: 'number', fts: false, sortable: true, label: 'Paired-end support' },
+      sr_support: { kind: 'number', fts: false, sortable: true, label: 'Split-read support' },
+      dr: { kind: 'number', fts: false, sortable: true, label: 'Ref depth' },
+      dv: { kind: 'number', fts: false, sortable: true, label: 'Alt depth' },
+      vaf: { kind: 'number', fts: false, sortable: true, label: 'VAF' },
+      strand: { kind: 'enum', fts: false, sortable: true, label: 'Strand' },
+      coverage: { kind: 'text', fts: false, sortable: false, label: 'Coverage' },
+      cipos_left: { kind: 'number', fts: false, sortable: false, label: 'CIPOS left' },
+      cipos_right: { kind: 'number', fts: false, sortable: false, label: 'CIPOS right' },
+      ciend_left: { kind: 'number', fts: false, sortable: false, label: 'CIEND left' },
+      ciend_right: { kind: 'number', fts: false, sortable: false, label: 'CIEND right' },
+      stdev_len: { kind: 'number', fts: false, sortable: false, label: 'Stdev length' },
+      stdev_pos: { kind: 'number', fts: false, sortable: false, label: 'Stdev pos' },
+      event_id: { kind: 'text', fts: true, sortable: false, label: 'Event ID' },
+      mate_id: { kind: 'text', fts: true, sortable: false, label: 'Mate ID' }
     }
   },
   cnv: {
@@ -67,12 +67,12 @@ export const VARIANT_EXTENSION_REGISTRY = {
     variantIdColumn: 'variant_id',
     hasFts: false,
     columns: {
-      copy_number:         { kind: 'number', fts: false, sortable: true, label: 'Copy number' },
+      copy_number: { kind: 'number', fts: false, sortable: true, label: 'Copy number' },
       copy_number_quality: { kind: 'number', fts: false, sortable: true, label: 'CN quality' },
-      homozygosity_ref:    { kind: 'number', fts: false, sortable: true, label: 'Homozygosity ref' },
-      homozygosity_alt:    { kind: 'number', fts: false, sortable: true, label: 'Homozygosity alt' },
-      sm:                  { kind: 'number', fts: false, sortable: true, label: 'Segment mean' },
-      bin_count:           { kind: 'number', fts: false, sortable: true, label: 'Bin count' }
+      homozygosity_ref: { kind: 'number', fts: false, sortable: true, label: 'Homozygosity ref' },
+      homozygosity_alt: { kind: 'number', fts: false, sortable: true, label: 'Homozygosity alt' },
+      sm: { kind: 'number', fts: false, sortable: true, label: 'Segment mean' },
+      bin_count: { kind: 'number', fts: false, sortable: true, label: 'Bin count' }
     }
   },
   str: {
@@ -82,23 +82,33 @@ export const VARIANT_EXTENSION_REGISTRY = {
     variantIdColumn: 'variant_id',
     hasFts: true,
     columns: {
-      repeat_id:           { kind: 'text',   fts: true,  sortable: true,  label: 'Repeat ID' },
-      variant_catalog_id:  { kind: 'text',   fts: true,  sortable: true,  label: 'Catalog ID' },
-      repeat_unit:         { kind: 'text',   fts: true,  sortable: true,  label: 'Repeat unit' },
-      display_repeat_unit: { kind: 'text',   fts: true,  sortable: true,  label: 'Display repeat unit' },
-      repeat_length:       { kind: 'number', fts: false, sortable: true,  label: 'Repeat length' },
-      ref_copies:          { kind: 'number', fts: false, sortable: true,  label: 'Reference copies' },
-      alt_copies:          { kind: 'text',   fts: false, sortable: false, label: 'Alt copies' },
-      str_status:          { kind: 'enum',   fts: true,  sortable: true,  label: 'STR status' },
-      disease:             { kind: 'text',   fts: true,  sortable: true,  label: 'Disease' },
-      inheritance_mode:    { kind: 'enum',   fts: false, sortable: true,  label: 'Inheritance mode' },
-      source_display:      { kind: 'text',   fts: false, sortable: true,  label: 'Source' },
-      support_type:        { kind: 'text',   fts: false, sortable: true,  label: 'Support type' },
-      normal_max:          { kind: 'number', fts: false, sortable: true,  label: 'Normal max' },
-      pathologic_min:      { kind: 'number', fts: false, sortable: true,  label: 'Pathologic min' },
-      locus_coverage:      { kind: 'number', fts: false, sortable: true,  label: 'Locus coverage' },
-      rank_score:          { kind: 'text',   fts: false, sortable: false, label: 'Rank score' },
-      confidence_interval: { kind: 'text',   fts: false, sortable: false, label: 'Confidence interval' }
+      repeat_id: { kind: 'text', fts: true, sortable: true, label: 'Repeat ID' },
+      variant_catalog_id: { kind: 'text', fts: true, sortable: true, label: 'Catalog ID' },
+      repeat_unit: { kind: 'text', fts: true, sortable: true, label: 'Repeat unit' },
+      display_repeat_unit: {
+        kind: 'text',
+        fts: true,
+        sortable: true,
+        label: 'Display repeat unit'
+      },
+      repeat_length: { kind: 'number', fts: false, sortable: true, label: 'Repeat length' },
+      ref_copies: { kind: 'number', fts: false, sortable: true, label: 'Reference copies' },
+      alt_copies: { kind: 'text', fts: false, sortable: false, label: 'Alt copies' },
+      str_status: { kind: 'enum', fts: true, sortable: true, label: 'STR status' },
+      disease: { kind: 'text', fts: true, sortable: true, label: 'Disease' },
+      inheritance_mode: { kind: 'enum', fts: false, sortable: true, label: 'Inheritance mode' },
+      source_display: { kind: 'text', fts: false, sortable: true, label: 'Source' },
+      support_type: { kind: 'text', fts: false, sortable: true, label: 'Support type' },
+      normal_max: { kind: 'number', fts: false, sortable: true, label: 'Normal max' },
+      pathologic_min: { kind: 'number', fts: false, sortable: true, label: 'Pathologic min' },
+      locus_coverage: { kind: 'number', fts: false, sortable: true, label: 'Locus coverage' },
+      rank_score: { kind: 'text', fts: false, sortable: false, label: 'Rank score' },
+      confidence_interval: {
+        kind: 'text',
+        fts: false,
+        sortable: false,
+        label: 'Confidence interval'
+      }
     }
   }
 } as const satisfies Record<string, VariantExtensionDef>

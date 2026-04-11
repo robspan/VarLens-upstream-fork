@@ -399,9 +399,7 @@
             :model-value="columnFilters"
             @update:model-value="onColumnFiltersUpdate"
           />
-          <div v-else class="text-caption text-medium-emphasis py-2">
-            Loading cohort cases...
-          </div>
+          <div v-else class="text-caption text-medium-emphasis py-2">Loading cohort cases...</div>
         </v-expansion-panel-text>
       </v-expansion-panel>
     </v-expansion-panels>

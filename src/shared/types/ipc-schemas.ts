@@ -342,10 +342,9 @@ export const ColumnMetaPayloadSchema = z
     caseIds: z.array(z.number().int().positive()).optional(),
     columnKey: z.string().min(1)
   })
-  .refine(
-    (p) => p.caseId !== undefined || (p.caseIds !== undefined && p.caseIds.length > 0),
-    { message: 'Either caseId or caseIds must be provided' }
-  )
+  .refine((p) => p.caseId !== undefined || (p.caseIds !== undefined && p.caseIds.length > 0), {
+    message: 'Either caseId or caseIds must be provided'
+  })
 
 /**
  * Payload for variants:typesPresent IPC channel.
@@ -356,10 +355,9 @@ export const TypesPresentPayloadSchema = z
     caseId: z.number().int().positive().optional(),
     caseIds: z.array(z.number().int().positive()).optional()
   })
-  .refine(
-    (p) => p.caseId !== undefined || (p.caseIds !== undefined && p.caseIds.length > 0),
-    { message: 'Either caseId or caseIds must be provided' }
-  )
+  .refine((p) => p.caseId !== undefined || (p.caseIds !== undefined && p.caseIds.length > 0), {
+    message: 'Either caseId or caseIds must be provided'
+  })
 
 // ============================================================
 // Tag Schemas

@@ -14,9 +14,7 @@ export function detectPresentFtsTables(db: DatabaseType): string[] {
   const expected = [BASE_FTS_TABLE, ...EXTENSION_FTS_TABLES.map((e) => e.ftsTable)]
   const placeholders = expected.map(() => '?').join(', ')
   const rows = db
-    .prepare(
-      `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (${placeholders})`
-    )
+    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (${placeholders})`)
     .all(...expected) as { name: string }[]
   return rows.map((r) => r.name)
 }

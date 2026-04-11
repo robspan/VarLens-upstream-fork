@@ -380,11 +380,7 @@ describe('variant IPC handlers', () => {
       insertVariant(caseId, '1', 1000, 'A', 'T', { gnomad_af: 0.001 })
       insertVariant(case2, '1', 2000, 'A', 'T', { gnomad_af: 0.05 })
 
-      const meta = await getColumnMetaForKey(
-        { caseIds: [caseId, case2] },
-        'gnomad_af',
-        () => db
-      )
+      const meta = await getColumnMetaForKey({ caseIds: [caseId, case2] }, 'gnomad_af', () => db)
 
       expect(meta.key).toBe('gnomad_af')
       expect(meta.dataType).toBe('numeric')

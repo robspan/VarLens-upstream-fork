@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.56.1] — 2026-04-12
+
+### Changed
+
+- **CI actions bumped to Node-24-compatible majors** ahead of GitHub's
+  June-2026 forced cutover: `actions/cache@v4 → v5`,
+  `actions/upload-artifact@v4 → v5`, `actions/download-artifact@v4 → v6`.
+  `gitleaks/gitleaks-action` stays at `@v2` (no v3 upstream; flagged as
+  a follow-up risk in the PR body).
+- **macOS build is now explicitly Apple Silicon-only.** `package.json`
+  `build.mac.target` switched from the string form to the object form
+  with `arch: ["arm64"]` declared. Previously the build silently
+  depended on the `macos-latest` runner's host architecture. Intel Mac
+  support is dropped; `README.md` and `docs/guide/installation.md`
+  updated to state the requirement explicitly.
+
+### Fixed
+
+- **Coverage thresholds restored** to their pre-`5dc2beb` values via
+  added tests instead of by lowering the gates. Commit `5dc2beb` had
+  lowered `src/main/services/scoring/**` from 95/90/95/95 to 92/90/95/90
+  and `src/renderer/src/components/shortlist/**` from 75/65/75/75 to
+  70/60/70/70 to unbreak main-branch CI. This release restores both
+  thresholds and adds two new test files:
+  - `tests/main/services/scoring/score-row-uncovered-paths.test.ts`
+    exercises the `scoreRow()` dispatcher's `default` switch branch
+    and `catch` block in `src/main/services/scoring/index.ts`, which
+    the existing per-type scorer tests never routed through because
+    they called each scorer directly.
+  - `tests/renderer/components/shortlist/shortlist-render-paths.test.ts`
+    covers the `variantCell()` switch for every variant type
+    (SV/CNV/STR/SNV with and without HGVS), HGVS prefix idempotence,
+    the actions `v-menu` click handlers (`row-click` and `open-in-tab`
+    via `targetTabFor`, including the `indel → snv` fallback), and
+    three `ShortlistPanel` branches (`onToggleStar` `api=undefined`
+    guard, `onToggleStar` catch block, `dismissError`).
+  - Coverage after this release: scoring glob `97.05%` lines, shortlist
+    glob `95.6%` lines — both well above the restored thresholds.
+
+### Internal
+
+- `chore(format):` reformat `package.json` `build.mac.target` to match
+  the project's Prettier config. `make lint` + `make typecheck` don't
+  run Prettier on `package.json`; only `make ci`'s Prettier step did,
+  catching the violation on the first branch CI run.
+- `docs(planning):` new scoring-via-filters vision document at
+  `.planning/docs/2026-04-11-scoring-via-filters-vision.md` captures
+  the architectural direction for eventually replacing the current
+  formula-based scoring with a weighted composition of filter-predicate
+  matches (three Phase-1 scoring gaps — SV/CNV/STR rarity, inheritance
+  forwarding, HPO phenotype — share a single root cause and will be
+  addressed together via future subsystem specs). Not a deprecation of
+  the current scoring module; the existing code stays in `main` until
+  a concrete replacement spec lands.
+- `test(shortlist):` `ShortlistTable.vue` gains a `data-testid` on its
+  actions `v-menu` activator button (matching the existing
+  `shortlist-star-${item.id}` convention on the star button) so unit
+  tests can reliably open the menu without depending on Vuetify
+  internal class selectors. Render-output only; no user-visible
+  behavior change.
+
+### Deferred
+
+- **Two open Dependabot CVEs** targeting `vite` (GHSA-4w7w-66w2-5vf9)
+  and `esbuild` (GHSA-67mh-4wv8-2f99) remain open. The vulnerable
+  instances are nested inside `vitepress@1.6.4` (not top-level deps).
+  `vitepress` 1.x constrains `vite` to `^5.x` and 2.x is alpha-only,
+  so no clean patch path exists. Dev-server-only impact, zero user
+  blast radius. Tracked in GitHub issue #154 for a future
+  vitepress/vite upgrade spec.
+
 ## [0.56.0] — 2026-04-11
 
 ### Added — Unified case shortlist

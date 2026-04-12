@@ -41,19 +41,39 @@ jobs:
       # build.yml run that CI executed. Previous bug: released 0.55.0 failed
       # with "got: missing" because `gh run list --commit=<tag-object-sha>`
       # returned an empty array.
+      # Poll for build.yml completion instead of a single-shot check.
+      # When a release commit is pushed to main AND tagged in quick
+      # succession, build.yml triggers on the main push but may not
+      # finish before release.yml reaches this step. Without retry
+      # logic the check finds no "success" conclusion and fails
+      # (race condition that broke v0.56.1's first release attempt).
       - name: Verify build.yml passed on tagged SHA
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           SHA="${GITHUB_SHA}"
-          STATUS=$(gh run list --workflow=build.yml --commit="$SHA" \
-            --json conclusion --jq '.[0].conclusion // "missing"')
+          MAX_ATTEMPTS=20
+          DELAY=30
+          STATUS="pending"
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            STATUS=$(gh run list --workflow=build.yml --commit="$SHA" \
+              --json conclusion --jq '.[0].conclusion // "pending"')
+            if [ "$STATUS" = "success" ]; then
+              echo "build.yml passed on $SHA — proceeding with release"
+              break
+            elif [ "$STATUS" = "failure" ] || [ "$STATUS" = "cancelled" ]; then
+              echo "::error::build.yml did not succeed on $SHA (got: $STATUS)"
+              echo "::error::Refusing to release a tag whose CI did not pass."
+              exit 1
+            else
+              echo "build.yml status: $STATUS (attempt $i/$MAX_ATTEMPTS, waiting ${DELAY}s...)"
+              sleep $DELAY
+            fi
+          done
           if [ "$STATUS" != "success" ]; then
-            echo "::error::build.yml did not succeed on $SHA (got: $STATUS)"
-            echo "::error::Refusing to release a tag whose CI did not pass."
+            echo "::error::build.yml did not complete within $((MAX_ATTEMPTS * DELAY))s on $SHA (last status: $STATUS)"
             exit 1
           fi
-          echo "build.yml passed on $SHA — proceeding with release"
 
       - name: Generate release notes
         run: |
@@ -156,7 +176,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: release-linux
           path: |
@@ -211,7 +231,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: release-macos
           path: |
@@ -390,7 +410,7 @@ jobs:
           Set-Content release/latest.yml $yml -NoNewline
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: release-windows
           path: |

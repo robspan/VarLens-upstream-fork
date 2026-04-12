@@ -54,7 +54,7 @@ jobs:
         run: xvfb-run --auto-servernum npx playwright test tests/e2e/screenshots.e2e.ts
 
       - name: Upload screenshots
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: screenshots
           path: docs/public/screenshots/*.png

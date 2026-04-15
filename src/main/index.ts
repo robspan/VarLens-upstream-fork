@@ -14,10 +14,7 @@ if (process.env.VARLENS_APP_DATA_DIR !== undefined && process.env.VARLENS_APP_DA
   app.setPath('appData', process.env.VARLENS_APP_DATA_DIR)
 }
 
-if (
-  process.env.VARLENS_USER_DATA_DIR !== undefined &&
-  process.env.VARLENS_USER_DATA_DIR !== ''
-) {
+if (process.env.VARLENS_USER_DATA_DIR !== undefined && process.env.VARLENS_USER_DATA_DIR !== '') {
   app.setPath('userData', process.env.VARLENS_USER_DATA_DIR)
 }
 

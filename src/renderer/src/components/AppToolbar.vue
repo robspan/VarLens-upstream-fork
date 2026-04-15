@@ -7,7 +7,7 @@
       :aria-label="sidebarOpen ? 'Close sidebar' : 'Open sidebar'"
       :aria-expanded="sidebarOpen"
       class="sidebar-toggle-btn"
-      @click="sidebarOpen = !sidebarOpen"
+      @click="handleSidebarToggle"
     />
     <v-app-bar-title
       class="ml-2 text-body-large font-weight-bold flex-grow-0 app-title"
@@ -56,8 +56,8 @@
           style="opacity: 0.7"
           role="button"
           tabindex="0"
-          @click="sidebarOpen = true"
-          @keydown.enter="sidebarOpen = true"
+          @click="openSidebar"
+          @keydown.enter="openSidebar"
         >
           Select a case...
         </span>
@@ -69,7 +69,7 @@
     <v-spacer />
 
     <v-btn-toggle
-      v-model="activeTab"
+      v-model="activeTabModel"
       mandatory
       density="compact"
       variant="outlined"
@@ -169,7 +169,6 @@
 
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import DatabasePicker from './DatabasePicker.vue'
 import CaseStatusIcons from './CaseStatusIcons.vue'
 import ImportStatusChip from './ImportStatusChip.vue'
@@ -196,9 +195,17 @@ import {
   mdiTune
 } from '@mdi/js'
 
-const router = useRouter()
-
-const { selectedCaseId, selectedCaseName, caseCount, activeTab, sidebarOpen } = useAppState()
+const {
+  selectedCaseId,
+  selectedCaseName,
+  caseCount,
+  activeTab,
+  sidebarOpen,
+  setActiveTab,
+  openSidebar,
+  closeSidebar,
+  returnToCaseHome
+} = useAppState()
 
 const { showModeToggleLabels, showContextIndicator } = useResponsiveLayout()
 const { getMetadata, loadMetadata } = useCaseMetadata()
@@ -243,12 +250,21 @@ const selectedSexLabel = computed<CaseSex>(() => {
   return meta?.metadata?.sex ?? 'unknown'
 })
 
+const activeTabModel = computed<'case' | 'cohort'>({
+  get: () => activeTab.value,
+  set: (tab) => setActiveTab(tab)
+})
+
+const handleSidebarToggle = (): void => {
+  if (sidebarOpen.value) {
+    closeSidebar()
+  } else {
+    openSidebar()
+  }
+}
+
 const handleHomeClick = (): void => {
-  selectedCaseId.value = null
-  selectedCaseName.value = ''
-  activeTab.value = 'case'
-  sidebarOpen.value = true
-  router.push('/case')
+  returnToCaseHome()
 }
 </script>
 

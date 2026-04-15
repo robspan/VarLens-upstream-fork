@@ -77,7 +77,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, provide, nextTick, defineAsyncComponent } from 'vue'
+import { ref, watch, onMounted, onUnmounted, provide, defineAsyncComponent, toRef } from 'vue'
 import { useRouter } from 'vue-router'
 import AppToolbar from './components/AppToolbar.vue'
 import AppSidebar from './components/AppSidebar.vue'
@@ -93,6 +93,8 @@ import { useFilterPreferences } from './composables/useFilterPreferences'
 import { useResponsiveLayout } from './composables/useResponsiveLayout'
 import { logService } from './services/LogService'
 import { AppStateKey, createAppState } from './composables/useAppState'
+import { useShellNavigation } from './composables/useShellNavigation'
+import { useShellLifecycle } from './composables/useShellLifecycle'
 import { useApiService } from './composables/useApiService'
 import { useImportStatusStore } from './stores/importStatusStore'
 import {
@@ -124,22 +126,22 @@ provide(AppStateKey, appState)
 
 const {
   selectedCaseId,
-  selectedCaseName,
-  selectedVariantCount,
-  selectedCreatedAt,
   caseCount,
   activeTab,
   sidebarOpen,
-  currentFilters,
-  filteredCount,
-  totalCount,
-  hasSort,
   panelOpen,
   selectedPanelVariant,
   panelMode,
   variantTableRef,
   filterToolbarRef,
-  dataGeneration
+  setCaseCount,
+  incrementDataGeneration,
+  closeSidebar,
+  clearSelectedCase,
+  resetCaseFilters,
+  resetCaseContext,
+  resetForDatabaseSwitch,
+  selectCase
 } = appState
 
 // Keyboard shortcuts help dialog
@@ -153,6 +155,7 @@ const { tier } = useResponsiveLayout()
 
 // Database store
 const databaseStore = useDatabaseStore()
+const databasePath = toRef(databaseStore, 'currentPath')
 
 // Case metadata
 const { clearCache: clearMetadataCache } = useCaseMetadata()
@@ -165,6 +168,7 @@ const { resetToDefaults: resetFilterPreferences } = useFilterPreferences()
 // Component refs
 const dialogHostRef = ref<InstanceType<typeof AppDialogHostType> | null>(null)
 const caseListRef = ref<InstanceType<typeof CaseList> | null>(null)
+const databaseName = toRef(databaseStore, 'currentName')
 
 // Sidebar resize
 const {
@@ -179,7 +183,7 @@ const {
   maxWidth: 450,
   collapseThreshold: 180,
   onCollapse: () => {
-    sidebarOpen.value = false
+    closeSidebar()
   }
 })
 
@@ -197,9 +201,8 @@ const handleDeleteAllCases = async () => {
   const confirmed = await dialogHostRef.value?.showDeleteAllCases(caseCount.value)
   if (confirmed === true) {
     const deleted = await api.cases.deleteAll()
-    selectedCaseId.value = null
-    selectedCaseName.value = ''
-    dataGeneration.value++
+    resetCaseContext()
+    incrementDataGeneration()
     await caseListRef.value?.refreshCases()
     dialogHostRef.value?.showSnackbar(
       `Deleted ${deleted} ${deleted === 1 ? 'case' : 'cases'}`,
@@ -215,13 +218,8 @@ const handleCaseSelected = (
   variantCount: number,
   createdAt: number
 ): void => {
-  selectedCaseId.value = caseId
-  selectedCaseName.value = caseName
-  selectedVariantCount.value = variantCount
-  selectedCreatedAt.value = createdAt
-  activeTab.value = 'case'
-  sidebarOpen.value = false
-  router.push('/case')
+  selectCase({ caseId, caseName, variantCount, createdAt })
+  closeSidebar()
 }
 
 const handleEditCase = (
@@ -230,88 +228,49 @@ const handleEditCase = (
   variantCount: number,
   createdAt: number
 ): void => {
-  selectedCaseId.value = caseId
-  selectedCaseName.value = caseName
-  selectedVariantCount.value = variantCount
-  selectedCreatedAt.value = createdAt
+  selectCase({ caseId, caseName, variantCount, createdAt })
   dialogHostRef.value?.showCaseMetadata()
 }
 
 const handleCasesLoaded = (count: number): void => {
-  caseCount.value = count
+  setCaseCount(count)
 }
 const handleCaseDeleted = (caseId: number): void => {
-  if (selectedCaseId.value === caseId) selectedCaseId.value = null
-  dataGeneration.value++
+  if (selectedCaseId.value === caseId) clearSelectedCase()
+  incrementDataGeneration()
 }
 
-// Import handlers
-const handleImportComplete = async (result: {
-  caseId: number
-  variantCount: number
-  caseName: string
-}): Promise<void> => {
-  dataGeneration.value++
-  await caseListRef.value?.refreshCases()
-  caseListRef.value?.selectCase(result.caseId)
-}
-
-const handleBatchImportComplete = async (): Promise<void> => {
-  dataGeneration.value++
-  await caseListRef.value?.refreshCases()
-}
-
-// Tab/route sync
-watch(activeTab, async (newTab) => {
-  panelOpen.value = false
-  selectedPanelVariant.value = null
-  transitioning.value = true
-  try {
-    if (newTab === 'cohort') {
-      sidebarOpen.value = false
-      await router.push('/cohort')
-    } else {
-      await router.push('/case')
-    }
-  } finally {
-    // Allow a tick for onActivated to fire before hiding overlay
-    await nextTick()
-    transitioning.value = false
-  }
+useShellNavigation({
+  activeTab,
+  sidebarOpen,
+  panelOpen,
+  selectedPanelVariant,
+  transitioning,
+  router
 })
 
 // Clear filters on case change
 watch(selectedCaseId, () => {
-  currentFilters.value = {}
-  hasSort.value = false
+  resetCaseFilters()
 })
 
-// Clear UI state when database path changes
-watch(
-  () => databaseStore.currentPath,
-  () => {
-    selectedCaseId.value = null
-    selectedCaseName.value = ''
-    currentFilters.value = {}
-    filteredCount.value = 0
-    totalCount.value = 0
-    hasSort.value = false
-    activeTab.value = 'case'
-  }
-)
-
-// Database switch handler
-const handleDatabaseSwitched = async (): Promise<void> => {
-  selectedCaseId.value = null
-  selectedCaseName.value = ''
-  currentFilters.value = {}
-  filteredCount.value = 0
-  totalCount.value = 0
-  hasSort.value = false
-  clearMetadataCache()
-  await caseListRef.value?.refreshCases()
-  dialogHostRef.value?.showSnackbar(`Switched to ${databaseStore.currentName}`, 'success')
-}
+const {
+  handleDatabaseSwitched,
+  handleImportComplete,
+  handleBatchImportComplete
+} =
+  useShellLifecycle({
+    api,
+    currentDatabasePath: databasePath,
+    currentDatabaseName: databaseName,
+    incrementDataGeneration,
+    resetForDatabaseSwitch,
+    clearMetadataCache,
+    selectCase,
+    caseListRef,
+    dialogHostRef: dialogHostRef as Parameters<typeof useShellLifecycle>[0]['dialogHostRef'],
+    importStore
+  })
 
 const handleShowImportProgress = (): void => {
   dialogHostRef.value?.reopenImportDialog()
@@ -343,9 +302,6 @@ useKeyboardShortcuts({
   onImport: () => dialogHostRef.value?.showImportDialog()
 })
 
-// Global listener for background import completion
-// This fires even when BatchImportDialog is closed via "Continue in Background"
-let cleanupImportComplete: (() => void) | null = null
 const perfModeEnabled = api?.perf?.isEnabled?.() === true
 
 type RendererPerfRequestEvent = CustomEvent<{ id: string; action: 'get' | 'reset' }>
@@ -397,26 +353,9 @@ onMounted(() => {
     startRendererLongTaskObserver()
     window.addEventListener('varlens:perf-request', handlePerfRequest as EventListener)
   }
-
-  if (api) {
-    cleanupImportComplete = api.batchImport.onComplete((result) => {
-      // Update the import store so the status bar reflects completion
-      importStore.importComplete({
-        ...result,
-        details: result.details.map((d) => ({
-          ...d,
-          caseName: d.caseName ?? d.fileName,
-          status: d.status === 'success' ? 'success' : d.status === 'failed' ? 'failed' : 'skipped'
-        }))
-      })
-      // Refresh the case list with newly imported cases
-      caseListRef.value?.refreshCases()
-    })
-  }
 })
 
 onUnmounted(() => {
-  cleanupImportComplete?.()
   if (perfModeEnabled) {
     window.removeEventListener('varlens:perf-request', handlePerfRequest as EventListener)
     stopRendererLongTaskObserver()

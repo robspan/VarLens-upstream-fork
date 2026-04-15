@@ -235,7 +235,6 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
 import type {
   MultiFileImportResult,
   MultiFileImportSpec,
@@ -279,9 +278,7 @@ const emit = defineEmits<{
 }>()
 
 const { api } = useApiService()
-const router = useRouter()
-const { selectedCaseId, selectedCaseName, selectedVariantCount, selectedCreatedAt, activeTab } =
-  useAppState()
+const { selectCase } = useAppState()
 // Shared store that drives the bottom `ImportStatusBar` pill. Wiring the VCF
 // wizard into the same store gives the multi-file import the same "Continue
 // in Background" capability the JSON batch importer already has: once the
@@ -791,12 +788,12 @@ function markFileStatus(filePath: string, entry: Partial<FileStatusEntry>): void
 // ---------------------------------------------------------------------------
 function handleViewCase(): void {
   if (importResult.value === null) return
-  selectedCaseId.value = importResult.value.caseId
-  selectedCaseName.value = caseName.value.trim()
-  selectedVariantCount.value = importResult.value.totalVariants
-  selectedCreatedAt.value = Date.now()
-  activeTab.value = 'case'
-  void router.push('/case')
+  selectCase({
+    caseId: importResult.value.caseId,
+    caseName: caseName.value.trim(),
+    variantCount: importResult.value.totalVariants,
+    createdAt: Date.now()
+  })
   handleClose()
 }
 

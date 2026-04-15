@@ -18,6 +18,13 @@ import type FilterToolbar from '../components/FilterToolbar.vue'
 import type CohortViewComponent from '../components/CohortView.vue'
 
 /** Shape of the object returned by createAppState / useAppState. */
+export interface SelectedCaseInput {
+  caseId: number
+  caseName: string
+  variantCount?: number
+  createdAt?: number
+}
+
 export interface AppStateReturn {
   // Case selection
   selectedCaseId: Ref<number | null>
@@ -51,7 +58,17 @@ export interface AppStateReturn {
   dataGeneration: Ref<number>
 
   // Shell-owned reset actions
+  setCaseCount: (count: number) => void
+  incrementDataGeneration: () => void
+  setActiveTab: (tab: 'case' | 'cohort') => void
+  openSidebar: () => void
+  closeSidebar: () => void
+  clearSelectedCase: () => void
+  resetCaseFilters: () => void
   resetCaseContext: () => void
+  resetForDatabaseSwitch: () => void
+  returnToCaseHome: () => void
+  selectCase: (input: SelectedCaseInput) => void
 
   // Snackbar
   setSnackbarHandler: (
@@ -115,15 +132,65 @@ export function createAppState(): AppStateReturn {
     }
   }
 
-  function resetCaseContext(): void {
+  function clearSelectedCase(): void {
     selectedCaseId.value = null
+  }
+
+  function setCaseCount(count: number): void {
+    caseCount.value = count
+  }
+
+  function incrementDataGeneration(): void {
+    dataGeneration.value++
+  }
+
+  function setActiveTab(tab: 'case' | 'cohort'): void {
+    activeTab.value = tab
+  }
+
+  function openSidebar(): void {
+    sidebarOpen.value = true
+  }
+
+  function closeSidebar(): void {
+    sidebarOpen.value = false
+  }
+
+  function resetCaseFilters(): void {
+    currentFilters.value = {}
+    hasSort.value = false
+  }
+
+  function resetCaseContext(): void {
+    clearSelectedCase()
     selectedCaseName.value = ''
     selectedVariantCount.value = 0
     selectedCreatedAt.value = 0
-    currentFilters.value = {}
+    resetCaseFilters()
     filteredCount.value = 0
     totalCount.value = 0
-    hasSort.value = false
+  }
+
+  function resetForDatabaseSwitch(): void {
+    resetCaseContext()
+    setActiveTab('case')
+    panelOpen.value = false
+    selectedPanelVariant.value = null
+  }
+
+  function returnToCaseHome(): void {
+    clearSelectedCase()
+    selectedCaseName.value = ''
+    setActiveTab('case')
+    openSidebar()
+  }
+
+  function selectCase(input: SelectedCaseInput): void {
+    selectedCaseId.value = input.caseId
+    selectedCaseName.value = input.caseName
+    selectedVariantCount.value = input.variantCount ?? 0
+    selectedCreatedAt.value = input.createdAt ?? 0
+    setActiveTab('case')
   }
 
   // Computed
@@ -162,7 +229,17 @@ export function createAppState(): AppStateReturn {
     dataGeneration,
 
     // Shell-owned reset actions
+    setCaseCount,
+    incrementDataGeneration,
+    setActiveTab,
+    openSidebar,
+    closeSidebar,
+    clearSelectedCase,
+    resetCaseFilters,
     resetCaseContext,
+    resetForDatabaseSwitch,
+    returnToCaseHome,
+    selectCase,
 
     // Snackbar
     setSnackbarHandler,

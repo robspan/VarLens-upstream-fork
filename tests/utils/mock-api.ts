@@ -6,46 +6,49 @@
  */
 
 import { vi } from 'vitest'
+import type { WindowAPI } from '../../src/shared/types/api'
 
-type MockApiDomain = Record<string, ReturnType<typeof vi.fn>>
+type MockApiDomain<T extends Record<string, unknown>> = {
+  [K in keyof T]: ReturnType<typeof vi.fn>
+}
 
 /**
  * Mock API type matching WindowAPI from preload.
  * All methods are vi.fn() mocks for spy verification.
  */
 export type MockApi = {
-  cases: MockApiDomain
-  variants: MockApiDomain
-  import: MockApiDomain
-  system: MockApiDomain
-  export: MockApiDomain
-  shell: MockApiDomain
-  database: MockApiDomain
-  batchImport: MockApiDomain
-  cohort: MockApiDomain
-  annotations: MockApiDomain
-  vep: MockApiDomain
-  hpo: MockApiDomain
-  myvariant: MockApiDomain
-  spliceai: MockApiDomain
-  caseMetadata: MockApiDomain
-  tags: MockApiDomain
-  presets: MockApiDomain
-  panels: MockApiDomain
-  geneRef: MockApiDomain
-  protein: MockApiDomain
-  gnomad: MockApiDomain
-  logs: MockApiDomain
-  caseComments: MockApiDomain
-  caseMetrics: MockApiDomain
-  transcripts: MockApiDomain
-  geneLists: MockApiDomain
-  regionFiles: MockApiDomain
-  updater: MockApiDomain
-  audit: MockApiDomain
-  auth: MockApiDomain
-  analysisGroups: MockApiDomain
-  perf: MockApiDomain
+  cases: MockApiDomain<WindowAPI['cases']>
+  variants: MockApiDomain<WindowAPI['variants']>
+  import: MockApiDomain<WindowAPI['import']>
+  system: MockApiDomain<WindowAPI['system']>
+  export: MockApiDomain<WindowAPI['export']>
+  shell: MockApiDomain<WindowAPI['shell']>
+  database: MockApiDomain<WindowAPI['database']>
+  batchImport: MockApiDomain<WindowAPI['batchImport']>
+  cohort: MockApiDomain<WindowAPI['cohort']>
+  annotations: MockApiDomain<WindowAPI['annotations']>
+  vep: MockApiDomain<WindowAPI['vep']>
+  hpo: MockApiDomain<WindowAPI['hpo']>
+  myvariant: MockApiDomain<WindowAPI['myvariant']>
+  spliceai: MockApiDomain<WindowAPI['spliceai']>
+  caseMetadata: MockApiDomain<WindowAPI['caseMetadata']>
+  tags: MockApiDomain<WindowAPI['tags']>
+  presets: MockApiDomain<WindowAPI['presets']>
+  panels: MockApiDomain<WindowAPI['panels']>
+  geneRef: MockApiDomain<WindowAPI['geneRef']>
+  protein: MockApiDomain<WindowAPI['protein']>
+  gnomad: MockApiDomain<WindowAPI['gnomad']>
+  logs: MockApiDomain<WindowAPI['logs']>
+  caseComments: MockApiDomain<WindowAPI['caseComments']>
+  caseMetrics: MockApiDomain<WindowAPI['caseMetrics']>
+  transcripts: MockApiDomain<WindowAPI['transcripts']>
+  geneLists: MockApiDomain<WindowAPI['geneLists']>
+  regionFiles: MockApiDomain<WindowAPI['regionFiles']>
+  updater: MockApiDomain<WindowAPI['updater']>
+  audit: MockApiDomain<WindowAPI['audit']>
+  auth: MockApiDomain<WindowAPI['auth']>
+  analysisGroups: MockApiDomain<WindowAPI['analysisGroups']>
+  perf: MockApiDomain<WindowAPI['perf']>
 }
 
 /**

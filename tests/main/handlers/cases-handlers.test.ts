@@ -4,8 +4,19 @@
  * Tests cases:query handler and database:overview pool migration.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi, afterEach as vitestAfterEach } from 'vitest'
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
 import { DatabaseService } from '../../../src/main/database/DatabaseService'
+
+const ROOT = resolve(__dirname, '..', '..', '..')
+
+vitestAfterEach(() => {
+  vi.resetModules()
+  vi.doUnmock('../../../src/main/ipc/handlers/cases')
+  vi.doUnmock('../../../src/main/database')
+  vi.doUnmock('../../../src/main/ipc/dbPoolManager')
+})
 
 describe('cases IPC handlers', () => {
   let db: DatabaseService
@@ -128,5 +139,45 @@ describe('database:overview handler', () => {
 
     expect(serialized.cases).toHaveLength(0)
     expect(serialized.summary.total_cases).toBe(0)
+  })
+})
+
+describe('cases IPC domain registration', () => {
+  it('delegates domain registration to case handlers with injected dependencies', async () => {
+    const registerCaseHandlers = vi.fn()
+    const getDatabaseService = vi.fn()
+    const getDatabaseManager = vi.fn()
+    const getDbPool = vi.fn()
+    const ipcMain = { handle: vi.fn() }
+
+    vi.doMock('../../../src/main/ipc/handlers/cases', () => ({
+      registerCaseHandlers
+    }))
+    vi.doMock('../../../src/main/database', () => ({
+      getDatabaseService,
+      getDatabaseManager
+    }))
+    vi.doMock('../../../src/main/ipc/dbPoolManager', () => ({
+      getDbPool
+    }))
+
+    const { registerCasesDomain } = await import('../../../src/main/ipc/domains/cases')
+
+    registerCasesDomain(ipcMain as never)
+
+    expect(registerCaseHandlers).toHaveBeenCalledOnce()
+    expect(registerCaseHandlers).toHaveBeenCalledWith({
+      ipcMain,
+      getDb: getDatabaseService,
+      getDbManager: getDatabaseManager,
+      getDbPool
+    })
+  })
+
+  it('main IPC index wires the cases domain module', () => {
+    const indexSource = readFileSync(resolve(ROOT, 'src/main/ipc/index.ts'), 'utf-8')
+
+    expect(indexSource).toContain("import { registerCasesDomain } from './domains/cases'")
+    expect(indexSource).toContain('registerCasesDomain(ipcMain)')
   })
 })

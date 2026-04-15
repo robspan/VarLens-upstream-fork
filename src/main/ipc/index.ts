@@ -4,7 +4,7 @@ import { mainLogger } from '../services/MainLogger'
 import type { HandlerDependencies } from './types'
 import { getDbPool } from './dbPoolManager'
 
-import { registerCaseHandlers } from './handlers/cases'
+import { registerCasesDomain } from './domains/cases'
 import { registerVariantHandlers } from './handlers/variants'
 import { registerImportHandlers } from './handlers/import'
 import { registerSystemHandlers } from './handlers/system'
@@ -53,7 +53,7 @@ export function registerIpcHandlers(): void {
     getDbPool
   }
 
-  registerCaseHandlers(deps)
+  registerCasesDomain(ipcMain)
   registerVariantHandlers(deps)
   registerImportHandlers(deps)
   registerSystemHandlers(deps)

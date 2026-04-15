@@ -64,6 +64,7 @@ import type {
 } from './database'
 import type { ProgressUpdate, ImportResult, VcfPreviewResult } from './import'
 import type { SerializableError } from './errors'
+import type { IpcResult } from './errors'
 import type {
   CohortVariant,
   CohortSummary,
@@ -109,6 +110,7 @@ import type {
   ProteinApiError
 } from './protein'
 import type { PerfSnapshot } from './perf'
+import type { CasesDomainContract } from '../ipc/domains/cases'
 
 // Re-export for convenience
 export type {
@@ -158,14 +160,15 @@ export type {
   PanelAppSearchResult
 }
 
-export interface CasesAPI {
-  list: () => Promise<Case[]>
-  query: (params: CaseSearchParams) => Promise<{ data: CaseWithCohorts[]; total_count: number }>
-  delete: (id: number) => Promise<void>
-  deleteAll: () => Promise<number>
-  deleteBatch: (ids: number[]) => Promise<number>
-  availableBuilds: () => Promise<Array<{ build: string; caseCount: number }>>
+type UnwrapDomainResult<T> = T extends Promise<IpcResult<infer TValue>> ? Promise<TValue> : T
+
+type RendererApiFromDomain<TDomain> = {
+  [TKey in keyof TDomain]: TDomain[TKey] extends (...args: infer TArgs) => infer TResult
+    ? (...args: TArgs) => UnwrapDomainResult<TResult>
+    : never
 }
+
+export interface CasesAPI extends RendererApiFromDomain<CasesDomainContract> {}
 
 export interface VariantsAPI {
   query: (

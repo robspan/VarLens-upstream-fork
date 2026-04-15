@@ -10,9 +10,10 @@
  * that would pull in Electron dependencies.
  */
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
+import { ErrorCode } from '../../../src/shared/types/errors'
 
 const ROOT = resolve(__dirname, '..', '..', '..')
 
@@ -158,6 +159,23 @@ function extractSubInterfaceKeys(interfaceName: string): string[] {
     if (inBlock && depth === 0) break
   }
 
+  const extendsMatch = content
+    .slice(startIdx)
+    .match(new RegExp(`export interface ${interfaceName}\\s+extends\\s+RendererApiFromDomain<(\\w+)>`))
+  if (keys.length === 0 && extendsMatch) {
+    const domainContent = readFileSync(resolve(ROOT, 'src/shared/ipc/domains/cases.ts'), 'utf-8')
+    const domainMatch = domainContent.match(
+      new RegExp(`export interface ${extendsMatch[1]}\\s*\\{([\\s\\S]*?)\\}`)
+    )
+    if (!domainMatch) return []
+
+    return domainMatch[1]
+      .split('\n')
+      .map((line) => line.match(/^\s+(\w+)\s*:/)?.[1])
+      .filter((key): key is string => Boolean(key))
+      .sort()
+  }
+
   return keys.sort()
 }
 
@@ -188,6 +206,8 @@ describe('Preload contract alignment', () => {
   const windowApiKeys = extractWindowApiKeys()
   const preloadKeys = extractPreloadApiKeys()
   const mockApiKeys = extractMockApiKeys()
+  const preloadSource = readFileSync(resolve(ROOT, 'src/preload/index.ts'), 'utf-8')
+  const casesDomainSource = readFileSync(resolve(ROOT, 'src/preload/domains/cases.ts'), 'utf-8')
 
   it('WindowAPI interface has expected keys', () => {
     expect(windowApiKeys.length).toBeGreaterThan(10)
@@ -195,6 +215,22 @@ describe('Preload contract alignment', () => {
 
   it('preload const api has expected keys', () => {
     expect(preloadKeys.length).toBeGreaterThan(10)
+  })
+
+  it('preload imports the cases domain factory', () => {
+    expect(preloadSource).toContain("import { createCasesApi } from './domains/cases'")
+  })
+
+  it('cases preload domain uses the shared domain contract boundary', () => {
+    expect(casesDomainSource).toContain(
+      "import type { CasesDomainContract } from '../../shared/ipc/domains/cases'"
+    )
+    expect(casesDomainSource).toContain('export function createCasesApi(): CasesDomainContract')
+    expect(casesDomainSource).not.toContain('unwrapIpcResult')
+    expect(casesDomainSource).toContain("deleteBatch: (ids) => ipcRenderer.invoke('cases:deleteBatch', ids)")
+    expect(casesDomainSource).toContain(
+      "availableBuilds: () => ipcRenderer.invoke('cases:availableBuilds')"
+    )
   })
 
   it('mockApi type has expected keys', () => {
@@ -239,5 +275,110 @@ describe('Preload contract alignment', () => {
 
   it('mockApi keys match WindowAPI interface keys exactly', () => {
     expect(mockApiKeys).toEqual(windowApiKeys)
+  })
+})
+
+describe('cases preload domain behavior', () => {
+  beforeEach(() => {
+    vi.resetModules()
+  })
+
+  afterEach(() => {
+    vi.resetModules()
+    vi.doUnmock('electron')
+    delete (process as typeof process & { contextIsolated?: boolean }).contextIsolated
+  })
+
+  it('forwards all cases domain channels without unwrapping in createCasesApi', async () => {
+    const invoke = vi
+      .fn()
+      .mockResolvedValueOnce([{ id: 1, name: 'Case Alpha' }])
+      .mockResolvedValueOnce({ data: [], total_count: 0 })
+      .mockResolvedValueOnce({
+        code: ErrorCode.DB_ERROR,
+        message: 'delete failed',
+        userMessage: 'Could not delete case'
+      })
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce([{ build: 'GRCh38', caseCount: 4 }])
+
+    vi.doMock('electron', () => ({
+      ipcRenderer: { invoke }
+    }))
+
+    const { createCasesApi } = await import('../../../src/preload/domains/cases')
+    const api = createCasesApi()
+
+    await expect(api.list()).resolves.toEqual([{ id: 1, name: 'Case Alpha' }])
+    await expect(api.query({ limit: 50, offset: 0 })).resolves.toEqual({ data: [], total_count: 0 })
+    await expect(api.delete(7)).resolves.toEqual({
+      code: ErrorCode.DB_ERROR,
+      message: 'delete failed',
+      userMessage: 'Could not delete case'
+    })
+    await expect(api.deleteAll()).resolves.toBe(3)
+    await expect(api.deleteBatch([1, 2])).resolves.toBe(2)
+    await expect(api.availableBuilds()).resolves.toEqual([{ build: 'GRCh38', caseCount: 4 }])
+
+    expect(invoke).toHaveBeenNthCalledWith(1, 'cases:list')
+    expect(invoke).toHaveBeenNthCalledWith(2, 'cases:query', { limit: 50, offset: 0 })
+    expect(invoke).toHaveBeenNthCalledWith(3, 'cases:delete', 7)
+    expect(invoke).toHaveBeenNthCalledWith(4, 'cases:deleteAll')
+    expect(invoke).toHaveBeenNthCalledWith(5, 'cases:deleteBatch', [1, 2])
+    expect(invoke).toHaveBeenNthCalledWith(6, 'cases:availableBuilds')
+  })
+
+  it('preload index unwraps all cases methods before exposing window.api', async () => {
+    const invoke = vi.fn(async (channel: string) => {
+      if (channel === 'cases:list' || channel === 'cases:deleteBatch') {
+        return {
+          code: ErrorCode.DB_ERROR,
+          message: `${channel} failed`,
+          userMessage: `Could not run ${channel}`
+        }
+      }
+      if (channel === 'cases:availableBuilds') {
+        return [{ build: 'GRCh38', caseCount: 2 }]
+      }
+      return undefined
+    })
+    const exposeInMainWorld = vi.fn()
+
+    vi.doMock('electron', () => ({
+      contextBridge: { exposeInMainWorld },
+      ipcRenderer: {
+        invoke,
+        on: vi.fn(),
+        removeListener: vi.fn(),
+        send: vi.fn()
+      }
+    }))
+
+    ;(process as typeof process & { contextIsolated?: boolean }).contextIsolated = true
+
+    await import('../../../src/preload/index')
+
+    const api = exposeInMainWorld.mock.calls[0]?.[1] as {
+      cases: {
+        list: () => Promise<unknown>
+        deleteBatch: (ids: number[]) => Promise<unknown>
+        availableBuilds: () => Promise<unknown>
+      }
+    }
+
+    await expect(api.cases.list()).rejects.toMatchObject({
+      code: ErrorCode.DB_ERROR,
+      message: 'cases:list failed'
+    })
+    await expect(api.cases.deleteBatch([8, 9])).rejects.toMatchObject({
+      code: ErrorCode.DB_ERROR,
+      message: 'cases:deleteBatch failed'
+    })
+    await expect(api.cases.availableBuilds()).resolves.toEqual([{ build: 'GRCh38', caseCount: 2 }])
+
+    expect(invoke).toHaveBeenCalledWith('cases:list')
+    expect(invoke).toHaveBeenCalledWith('cases:deleteBatch', [8, 9])
+    expect(invoke).toHaveBeenCalledWith('cases:availableBuilds')
   })
 })

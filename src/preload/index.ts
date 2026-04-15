@@ -1,4 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import { createCasesApi } from './domains/cases'
+import { unwrapIpcResult } from '../shared/types/errors'
 import type {
   ProgressUpdate,
   VariantFilter,
@@ -30,15 +32,16 @@ import type { MainPerfSnapshot } from '../shared/types/perf'
  * - shell:openExternal
  */
 
+const casesDomain = createCasesApi()
+
 const api = {
   cases: {
-    list: () => ipcRenderer.invoke('cases:list'),
-    query: (params: CaseSearchParams) => ipcRenderer.invoke('cases:query', params),
-    delete: (id: number) => ipcRenderer.invoke('cases:delete', id),
-    deleteAll: (): Promise<number> => ipcRenderer.invoke('cases:deleteAll'),
-    deleteBatch: (ids: number[]): Promise<number> => ipcRenderer.invoke('cases:deleteBatch', ids),
-    availableBuilds: (): Promise<Array<{ build: string; caseCount: number }>> =>
-      ipcRenderer.invoke('cases:availableBuilds')
+    list: async () => unwrapIpcResult(await casesDomain.list()),
+    query: async (params: CaseSearchParams) => unwrapIpcResult(await casesDomain.query(params)),
+    delete: async (id: number) => unwrapIpcResult(await casesDomain.delete(id)),
+    deleteAll: async () => unwrapIpcResult(await casesDomain.deleteAll()),
+    deleteBatch: async (ids: number[]) => unwrapIpcResult(await casesDomain.deleteBatch(ids)),
+    availableBuilds: async () => unwrapIpcResult(await casesDomain.availableBuilds())
   },
 
   variants: {

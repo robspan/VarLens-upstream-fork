@@ -268,7 +268,7 @@ const {
     clearMetadataCache,
     selectCase,
     caseListRef,
-    dialogHostRef,
+    dialogHostRef: dialogHostRef as Parameters<typeof useShellLifecycle>[0]['dialogHostRef'],
     importStore
   })
 

@@ -3,10 +3,7 @@ import type { Ref } from 'vue'
 import type { SelectedCaseInput } from './useAppState'
 import type { WindowAPI } from '../../../shared/types/api'
 import type { useImportStatusStore } from '../stores/importStatusStore'
-
-interface SnackbarHost {
-  showSnackbar: (message: string, type: string) => void
-}
+import type AppDialogHostType from '../components/AppDialogHost.vue'
 
 interface CaseListActions {
   refreshCases: () => Promise<unknown> | unknown
@@ -22,7 +19,7 @@ interface UseShellLifecycleOptions {
   clearMetadataCache: () => void
   selectCase: (input: SelectedCaseInput) => void
   caseListRef: Ref<CaseListActions | null>
-  dialogHostRef: Ref<SnackbarHost | null>
+  dialogHostRef: Ref<InstanceType<typeof AppDialogHostType> | null>
   importStore: ReturnType<typeof useImportStatusStore>
 }
 

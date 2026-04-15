@@ -58,6 +58,8 @@ export interface AppStateReturn {
   dataGeneration: Ref<number>
 
   // Shell-owned reset actions
+  clearSelectedCase: () => void
+  resetCaseFilters: () => void
   resetCaseContext: () => void
   resetForDatabaseSwitch: () => void
   selectCase: (input: SelectedCaseInput) => void
@@ -124,15 +126,23 @@ export function createAppState(): AppStateReturn {
     }
   }
 
-  function resetCaseContext(): void {
+  function clearSelectedCase(): void {
     selectedCaseId.value = null
+  }
+
+  function resetCaseFilters(): void {
+    currentFilters.value = {}
+    hasSort.value = false
+  }
+
+  function resetCaseContext(): void {
+    clearSelectedCase()
     selectedCaseName.value = ''
     selectedVariantCount.value = 0
     selectedCreatedAt.value = 0
-    currentFilters.value = {}
+    resetCaseFilters()
     filteredCount.value = 0
     totalCount.value = 0
-    hasSort.value = false
   }
 
   function resetForDatabaseSwitch(): void {
@@ -186,6 +196,8 @@ export function createAppState(): AppStateReturn {
     dataGeneration,
 
     // Shell-owned reset actions
+    clearSelectedCase,
+    resetCaseFilters,
     resetCaseContext,
     resetForDatabaseSwitch,
     selectCase,

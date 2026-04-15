@@ -129,16 +129,14 @@ const {
   caseCount,
   activeTab,
   sidebarOpen,
-  currentFilters,
-  filteredCount,
-  totalCount,
-  hasSort,
   panelOpen,
   selectedPanelVariant,
   panelMode,
   variantTableRef,
   filterToolbarRef,
   dataGeneration,
+  clearSelectedCase,
+  resetCaseFilters,
   resetCaseContext,
   resetForDatabaseSwitch,
   selectCase
@@ -235,7 +233,7 @@ const handleCasesLoaded = (count: number): void => {
   caseCount.value = count
 }
 const handleCaseDeleted = (caseId: number): void => {
-  if (selectedCaseId.value === caseId) selectedCaseId.value = null
+  if (selectedCaseId.value === caseId) clearSelectedCase()
   dataGeneration.value++
 }
 
@@ -250,8 +248,7 @@ useShellNavigation({
 
 // Clear filters on case change
 watch(selectedCaseId, () => {
-  currentFilters.value = {}
-  hasSort.value = false
+  resetCaseFilters()
 })
 
 // Clear UI state when database path changes

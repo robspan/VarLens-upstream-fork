@@ -21,6 +21,21 @@ describe('createAppState', () => {
     expect(state.activeTab.value).toBe('case')
   })
 
+  it('clears case selection and case filters through explicit shell actions', () => {
+    const state = createAppState()
+
+    state.selectedCaseId.value = 7
+    state.currentFilters.value = { gene_symbol: 'BRCA1' }
+    state.hasSort.value = true
+
+    state.clearSelectedCase()
+    state.resetCaseFilters()
+
+    expect(state.selectedCaseId.value).toBeNull()
+    expect(state.currentFilters.value).toEqual({})
+    expect(state.hasSort.value).toBe(false)
+  })
+
   it('resets case-scoped shell state together', () => {
     const state = createAppState()
 

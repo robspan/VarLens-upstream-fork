@@ -50,6 +50,9 @@ export interface AppStateReturn {
   // Data generation (incremented on import/delete for KeepAlive invalidation)
   dataGeneration: Ref<number>
 
+  // Shell-owned reset actions
+  resetCaseContext: () => void
+
   // Snackbar
   setSnackbarHandler: (
     fn: (message: string, type: string, options?: Record<string, unknown>) => void
@@ -112,6 +115,17 @@ export function createAppState(): AppStateReturn {
     }
   }
 
+  function resetCaseContext(): void {
+    selectedCaseId.value = null
+    selectedCaseName.value = ''
+    selectedVariantCount.value = 0
+    selectedCreatedAt.value = 0
+    currentFilters.value = {}
+    filteredCount.value = 0
+    totalCount.value = 0
+    hasSort.value = false
+  }
+
   // Computed
   const panelMode = computed(() => (activeTab.value === 'case' ? 'case' : 'cohort'))
 
@@ -146,6 +160,9 @@ export function createAppState(): AppStateReturn {
 
     // Data generation
     dataGeneration,
+
+    // Shell-owned reset actions
+    resetCaseContext,
 
     // Snackbar
     setSnackbarHandler,

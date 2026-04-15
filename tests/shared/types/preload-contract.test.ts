@@ -101,7 +101,7 @@ function extractMockApiKeys(): string[] {
   for (const line of lines) {
     // Check match BEFORE updating depth
     if (depth === 1) {
-      const match = line.match(/^\s+(\w+)\s*:\s*\{/)
+      const match = line.match(/^\s+(\w+)\s*:/)
       if (match) {
         keys.push(match[1])
       }
@@ -233,8 +233,11 @@ describe('Preload contract alignment', () => {
     }
   })
 
-  it('all three sources have identical top-level keys', () => {
+  it('preload domain modules and WindowAPI stay aligned', () => {
     expect(preloadKeys).toEqual(windowApiKeys)
+  })
+
+  it('mockApi keys match WindowAPI interface keys exactly', () => {
     expect(mockApiKeys).toEqual(windowApiKeys)
   })
 })

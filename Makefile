@@ -4,6 +4,7 @@
 .DEFAULT_GOAL := help
 
 CI_NODE_VERSION ?= $(shell tr -d '\n' < .nvmrc)
+XVFB_RUN ?= $(shell if command -v xvfb-run >/dev/null 2>&1; then printf 'xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" '; fi)
 
 define ensure_ci_node
 	@current_node="$$(node -v | sed 's/^v//')"; \
@@ -166,7 +167,7 @@ ci-package-linux: ## Run the Linux package validation job under Node $(CI_NODE_V
 	npx electron-vite build
 	@echo ""
 	@echo "Step 4/5: Running startup smoke..."
-	npx playwright test tests/e2e/startup-smoke.e2e.ts --workers=1
+	$(XVFB_RUN)npx playwright test tests/e2e/startup-smoke.e2e.ts --workers=1
 	@echo ""
 	@echo "Step 5/5: Packaging Linux artifacts..."
 	CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --publish never

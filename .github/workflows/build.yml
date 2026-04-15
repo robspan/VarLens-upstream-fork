@@ -209,7 +209,7 @@ jobs:
 
       - name: Run startup smoke (Linux)
         if: runner.os == 'Linux'
-        run: npx playwright test tests/e2e/startup-smoke.e2e.ts --workers=1
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npx playwright test tests/e2e/startup-smoke.e2e.ts --workers=1
 
       - name: Upload startup smoke artifacts (Linux)
         if: runner.os == 'Linux' && always()

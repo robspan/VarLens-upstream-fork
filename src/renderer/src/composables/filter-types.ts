@@ -1,5 +1,5 @@
 import type { Ref, ComputedRef } from 'vue'
-import type { FilterOptions } from '../../../shared/types/api'
+import type { FilterOptions, VariantFilter } from '../../../shared/types/api'
 import type { Tag } from '../../../shared/types/database-entities'
 import type { FilterState, ActiveFilter } from '../../../shared/types/filters'
 import { FILTER_DEFAULTS } from '../../../shared/filters/filterDefaults'

@@ -6,6 +6,8 @@ export function createCasesApi(): CasesDomainContract {
     list: () => ipcRenderer.invoke('cases:list'),
     query: (params) => ipcRenderer.invoke('cases:query', params),
     delete: (id) => ipcRenderer.invoke('cases:delete', id),
-    deleteAll: () => ipcRenderer.invoke('cases:deleteAll')
+    deleteAll: () => ipcRenderer.invoke('cases:deleteAll'),
+    deleteBatch: (ids) => ipcRenderer.invoke('cases:deleteBatch', ids),
+    availableBuilds: () => ipcRenderer.invoke('cases:availableBuilds')
   }
 }

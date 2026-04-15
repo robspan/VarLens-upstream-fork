@@ -8,4 +8,6 @@ export interface CasesDomainContract {
   ) => Promise<IpcResult<{ data: CaseWithCohorts[]; total_count: number }>>
   delete: (id: number) => Promise<IpcResult<void>>
   deleteAll: () => Promise<IpcResult<number>>
+  deleteBatch: (ids: number[]) => Promise<IpcResult<number>>
+  availableBuilds: () => Promise<IpcResult<Array<{ build: string; caseCount: number }>>>
 }

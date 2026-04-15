@@ -168,10 +168,7 @@ type RendererApiFromDomain<TDomain> = {
     : never
 }
 
-export interface CasesAPI extends RendererApiFromDomain<CasesDomainContract> {
-  deleteBatch: (ids: number[]) => Promise<number>
-  availableBuilds: () => Promise<Array<{ build: string; caseCount: number }>>
-}
+export interface CasesAPI extends RendererApiFromDomain<CasesDomainContract> {}
 
 export interface VariantsAPI {
   query: (

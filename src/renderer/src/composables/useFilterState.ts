@@ -20,8 +20,8 @@ import { useTags } from './useTags'
 import { useApiService } from './useApiService'
 import { APP_CONFIG } from '../../../shared/config'
 import { createFilterState } from '../../../shared/filters/filterDefaults'
+import { buildVariantFilterFromState } from '../../../shared/filters/filterSerialization'
 import {
-  buildFilterFromState,
   type FilterState,
   type UseFilterStateOptions,
   type UseFilterStateReturn
@@ -102,7 +102,7 @@ export function useFilterState(
   // -------------------------------------------------------------------------
 
   const emitFilters = () => {
-    const variantFilter = buildFilterFromState(filters.value, selectedImpactPresets.value)
+    const variantFilter = buildVariantFilterFromState(filters.value, selectedImpactPresets.value)
     onFiltersUpdate(variantFilter)
   }
 

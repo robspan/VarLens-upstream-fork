@@ -528,6 +528,22 @@ describe('useFilterState', () => {
       expect(emitted).toEqual({})
     })
 
+    it('emits cloned column_filters through the shared serialization path', () => {
+      const { result, onFiltersUpdate } = createState()
+
+      result.filters.value.columnFilters = {
+        gene_symbol: { operator: 'like', value: 'BRCA%' }
+      }
+
+      result.emitFilters()
+
+      const emitted = onFiltersUpdate.mock.calls[0][0]
+      expect(emitted.column_filters).toEqual({
+        gene_symbol: { operator: 'like', value: 'BRCA%' }
+      })
+      expect(emitted.column_filters).not.toBe(result.filters.value.columnFilters)
+    })
+
     it('emitted consequences merges impact presets and custom consequences', async () => {
       const { result, onFiltersUpdate } = createState()
 

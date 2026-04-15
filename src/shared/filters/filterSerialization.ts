@@ -1,3 +1,4 @@
+import type { VariantFilter } from '../types/api'
 import type { FilterIpcParams, FilterState } from '../types/filters'
 import { cloneForIpc } from '../utils/cloneForIpc'
 
@@ -77,6 +78,74 @@ export function buildFilterIpcParams(filters: FilterState): FilterIpcParams {
   }
 
   return params
+}
+
+export function buildVariantFilterFromState(
+  filters: FilterState,
+  selectedImpactPresets: string[]
+): Omit<VariantFilter, 'case_id'> {
+  const variantFilter: Omit<VariantFilter, 'case_id'> = {}
+  const ipcParams = buildFilterIpcParams(filters)
+
+  if (ipcParams.search_term !== undefined) {
+    variantFilter.search_query = ipcParams.search_term
+  }
+  if (ipcParams.gene_symbol !== undefined) {
+    variantFilter.gene_symbol = ipcParams.gene_symbol
+  }
+  if (ipcParams.funcs !== undefined) {
+    variantFilter.funcs = ipcParams.funcs
+  }
+  if (ipcParams.clinvars !== undefined) {
+    variantFilter.clinvars = ipcParams.clinvars
+  }
+  if (ipcParams.gnomad_af_max !== undefined) {
+    variantFilter.gnomad_af_max = ipcParams.gnomad_af_max
+  }
+  if (ipcParams.cadd_min !== undefined) {
+    variantFilter.cadd_min = ipcParams.cadd_min
+  }
+  if (ipcParams.has_comment !== undefined) {
+    variantFilter.has_comment = ipcParams.has_comment
+  }
+  if (ipcParams.acmg_classifications !== undefined) {
+    variantFilter.acmg_classifications = ipcParams.acmg_classifications
+  }
+  if (ipcParams.active_panel_ids !== undefined) {
+    variantFilter.active_panel_ids = ipcParams.active_panel_ids
+    variantFilter.panel_padding_bp = ipcParams.panel_padding_bp
+  }
+  if (ipcParams.max_internal_af !== undefined) {
+    variantFilter.max_internal_af = ipcParams.max_internal_af
+  }
+  if (ipcParams.inheritance_modes !== undefined) {
+    variantFilter.inheritance_modes = ipcParams.inheritance_modes
+  }
+  if (ipcParams.analysis_group_id !== undefined) {
+    variantFilter.analysis_group_id = ipcParams.analysis_group_id
+  }
+  if (ipcParams.consider_phasing !== undefined) {
+    variantFilter.consider_phasing = ipcParams.consider_phasing
+  }
+  if (ipcParams.column_filters !== undefined) {
+    variantFilter.column_filters = ipcParams.column_filters
+  }
+
+  const allConsequences = [...selectedImpactPresets, ...filters.consequences]
+  if (allConsequences.length > 0) {
+    variantFilter.consequences = [...new Set(allConsequences)]
+  }
+  if (filters.tagIds.length > 0) {
+    variantFilter.tag_ids = [...filters.tagIds]
+  }
+  if (ipcParams.starred_only !== undefined) {
+    variantFilter.starred_only = ipcParams.starred_only
+  }
+  if (filters.annotationScope === 'all') {
+    variantFilter.annotation_scope = 'all'
+  }
+
+  return variantFilter
 }
 
 export const buildIpcParams = buildFilterIpcParams

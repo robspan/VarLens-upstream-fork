@@ -188,6 +188,7 @@ describe('Preload contract alignment', () => {
   const windowApiKeys = extractWindowApiKeys()
   const preloadKeys = extractPreloadApiKeys()
   const mockApiKeys = extractMockApiKeys()
+  const preloadSource = readFileSync(resolve(ROOT, 'src/preload/index.ts'), 'utf-8')
 
   it('WindowAPI interface has expected keys', () => {
     expect(windowApiKeys.length).toBeGreaterThan(10)
@@ -195,6 +196,10 @@ describe('Preload contract alignment', () => {
 
   it('preload const api has expected keys', () => {
     expect(preloadKeys.length).toBeGreaterThan(10)
+  })
+
+  it('preload imports the cases domain factory', () => {
+    expect(preloadSource).toContain("import { createCasesApi } from './domains/cases'")
   })
 
   it('mockApi type has expected keys', () => {

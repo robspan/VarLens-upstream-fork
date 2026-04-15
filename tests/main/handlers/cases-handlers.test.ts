@@ -5,7 +5,11 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
 import { DatabaseService } from '../../../src/main/database/DatabaseService'
+
+const ROOT = resolve(__dirname, '..', '..', '..')
 
 describe('cases IPC handlers', () => {
   let db: DatabaseService
@@ -128,5 +132,14 @@ describe('database:overview handler', () => {
 
     expect(serialized.cases).toHaveLength(0)
     expect(serialized.summary.total_cases).toBe(0)
+  })
+})
+
+describe('cases IPC domain registration', () => {
+  it('registers cases via the domain module from the main IPC index', () => {
+    const indexSource = readFileSync(resolve(ROOT, 'src/main/ipc/index.ts'), 'utf-8')
+
+    expect(indexSource).toContain("import { registerCasesDomain } from './domains/cases'")
+    expect(indexSource).toContain('registerCasesDomain(ipcMain)')
   })
 })

@@ -95,6 +95,13 @@ import { logService } from './services/LogService'
 import { AppStateKey, createAppState } from './composables/useAppState'
 import { useApiService } from './composables/useApiService'
 import { useImportStatusStore } from './stores/importStatusStore'
+import {
+  resetRendererLongTaskObserver,
+  startRendererLongTaskObserver,
+  stopRendererLongTaskObserver
+} from './services/RendererLongTaskObserver'
+import { resetRendererPerfSnapshot } from './services/PerfSnapshot'
+import { getTraceSnapshot } from './services/PerfTrace'
 
 const ImportStatusBar = defineAsyncComponent(() => import('./components/ImportStatusBar.vue'))
 const VariantDetailsPanel = defineAsyncComponent(
@@ -339,6 +346,34 @@ useKeyboardShortcuts({
 // Global listener for background import completion
 // This fires even when BatchImportDialog is closed via "Continue in Background"
 let cleanupImportComplete: (() => void) | null = null
+const perfModeEnabled = api?.perf?.isEnabled?.() === true
+
+type RendererPerfRequestEvent = CustomEvent<{ id: string; action: 'get' | 'reset' }>
+
+const handlePerfRequest = async (event: Event): Promise<void> => {
+  const perfEvent = event as RendererPerfRequestEvent
+  const { id, action } = perfEvent.detail
+
+  if (action === 'reset') {
+    resetRendererPerfSnapshot()
+    resetRendererLongTaskObserver()
+    window.dispatchEvent(
+      new CustomEvent('varlens:perf-response', {
+        detail: { id, payload: undefined }
+      })
+    )
+    return
+  }
+
+  window.dispatchEvent(
+    new CustomEvent('varlens:perf-response', {
+      detail: {
+        id,
+        payload: getTraceSnapshot()
+      }
+    })
+  )
+}
 
 // Lifecycle
 onMounted(() => {
@@ -354,8 +389,13 @@ onMounted(() => {
   })
 
   // Report to main process that renderer is interactive
-  if (import.meta.env.DEV) {
+  if (import.meta.env.DEV || perfModeEnabled) {
     api?.perf?.reportInteractive()
+  }
+
+  if (perfModeEnabled) {
+    startRendererLongTaskObserver()
+    window.addEventListener('varlens:perf-request', handlePerfRequest as EventListener)
   }
 
   if (api) {
@@ -377,6 +417,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   cleanupImportComplete?.()
+  if (perfModeEnabled) {
+    window.removeEventListener('varlens:perf-request', handlePerfRequest as EventListener)
+    stopRendererLongTaskObserver()
+  }
 })
 </script>
 

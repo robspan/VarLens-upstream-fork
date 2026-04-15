@@ -1,7 +1,19 @@
-.PHONY: help rebuild dev build preview lint lint-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build docs docs-dev docs-preview docs-screenshots
+.PHONY: help rebuild dev build preview lint lint-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-actions docs docs-dev docs-preview docs-screenshots
 
 # Default target - show help
 .DEFAULT_GOAL := help
+
+CI_NODE_VERSION ?= $(shell tr -d '\n' < .nvmrc)
+XVFB_RUN ?= $(shell if command -v xvfb-run >/dev/null 2>&1; then printf 'xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" '; fi)
+
+define ensure_ci_node
+	@current_node="$$(node -v | sed 's/^v//')"; \
+	if [ "$$current_node" != "$(CI_NODE_VERSION)" ]; then \
+		echo "Node version mismatch: expected $(CI_NODE_VERSION) from .nvmrc, got $$current_node"; \
+		echo "Switch Node versions locally before running this target."; \
+		exit 1; \
+	fi
+endef
 
 #---------------------------------------------------------------------------
 # Help
@@ -94,43 +106,85 @@ test-coverage: ## Run tests with coverage report
 	npm run test:coverage
 
 #---------------------------------------------------------------------------
-# CI / Full Checks (mirrors GitHub Actions exactly)
+# CI / Full Checks
 #---------------------------------------------------------------------------
 
 ci: lint-check format-check typecheck rebuild-node test ## Run all CI checks (lint, format, typecheck, rebuild, test)
 
-ci-full: ## Run FULL CI pipeline (exactly mirrors GitHub Actions)
-	@echo "=== CI Pipeline (mirrors GitHub Actions build.yml) ==="
+ci-checks: ## Run the GitHub Actions "Checks (Ubuntu)" job under Node $(CI_NODE_VERSION)
+	@echo "=== Checks (Ubuntu) using Node $(CI_NODE_VERSION) ==="
+	$(ensure_ci_node)
 	@echo ""
-	@echo "Step 1/7: Installing dependencies..."
+	@echo "Step 1/6: Installing dependencies..."
 	npm ci
 	@echo ""
-	@echo "Step 2/7: Rebuilding native modules for Node.js (tests need Node-compatible binaries)..."
+	@echo "Step 2/6: Rebuilding native modules for Node.js..."
 	npm run rebuild:node
 	@echo ""
-	@echo "Step 3/7: Running linter..."
+	@echo "Step 3/6: Running linter..."
 	npm run lint:check
 	@echo ""
-	@echo "Step 4/7: Running Prettier format check..."
+	@echo "Step 4/6: Running Prettier format check..."
 	npm run format:check
 	@echo ""
-	@echo "Step 5/7: Running type check..."
+	@echo "Step 5/6: Running type check..."
 	npm run typecheck
 	@echo ""
-	@echo "Step 6/7: Running tests..."
+	@echo "Step 6/6: Running tests..."
 	npm run test
 	@echo ""
-	@echo "Step 7/7: Rebuilding native modules for Electron..."
+	@echo "=== Checks (Ubuntu) PASSED ==="
+
+ci-startup-smoke: ## Run the GitHub Actions "Startup Smoke (Linux)" job under Node $(CI_NODE_VERSION)
+	@echo "=== Startup Smoke (Linux) using Node $(CI_NODE_VERSION) ==="
+	$(ensure_ci_node)
+	@echo ""
+	@echo "Step 1/4: Installing dependencies..."
+	npm ci
+	@echo ""
+	@echo "Step 2/4: Rebuilding native modules for Electron..."
 	npm run rebuild:electron
 	@echo ""
-	@echo "=== CI Pipeline PASSED ==="
+	@echo "Step 3/4: Building Electron app..."
+	npm run build
+	@echo ""
+	@echo "Step 4/4: Running startup smoke..."
+	npx playwright test tests/e2e/startup-smoke.e2e.ts --workers=1
+	@echo ""
+	@echo "=== Startup Smoke (Linux) PASSED ==="
 
-ci-build: ci-full ## Run full CI + build (like GitHub Actions with dist)
+ci-package-linux: ## Run the Linux package validation job under Node $(CI_NODE_VERSION)
+	@echo "=== Package (ubuntu-latest) using Node $(CI_NODE_VERSION) ==="
+	$(ensure_ci_node)
 	@echo ""
-	@echo "Step 6/6: Building Electron app..."
-	CSC_IDENTITY_AUTO_DISCOVERY=false npm run dist
+	@echo "Step 1/5: Installing dependencies..."
+	npm ci
 	@echo ""
-	@echo "=== CI + Build PASSED ==="
+	@echo "Step 2/5: Rebuilding native modules for Electron..."
+	npm run rebuild:electron
+	@echo ""
+	@echo "Step 3/5: Building Electron app..."
+	npx electron-vite build
+	@echo ""
+	@echo "Step 4/5: Running startup smoke..."
+	$(XVFB_RUN)npx playwright test tests/e2e/startup-smoke.e2e.ts --workers=1
+	@echo ""
+	@echo "Step 5/5: Packaging Linux artifacts..."
+	CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --publish never
+	@echo ""
+	@echo "=== Package (ubuntu-latest) PASSED ==="
+
+ci-full: ci-actions ## Run the local GitHub Actions parity pipeline
+
+ci-actions: ## Run the required local GitHub Actions parity pipeline under Node $(CI_NODE_VERSION)
+	@echo "=== GitHub Actions parity pipeline using Node $(CI_NODE_VERSION) ==="
+	$(MAKE) ci-checks
+	$(MAKE) ci-startup-smoke
+	$(MAKE) ci-package-linux
+	@echo ""
+	@echo "=== GitHub Actions parity pipeline PASSED ==="
+
+ci-build: ci-actions ## Run the local GitHub Actions parity pipeline
 
 all: ci build ## Run CI checks and build
 

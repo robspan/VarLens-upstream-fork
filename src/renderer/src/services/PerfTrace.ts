@@ -1,22 +1,21 @@
 import { PERF_BUDGETS, type PerfBudgetKey } from '../../../shared/config/perf-budgets'
+import type {
+  PerfLongTaskSummary,
+  PerfTraceEntry,
+  RendererPerfSnapshot
+} from '../../../shared/types/perf'
 import { logService } from './LogService'
 
-export interface PerfEntry {
-  /** Flow name (e.g., 'case-switch', 'filter-apply') */
-  name: string
-  /** Duration in milliseconds */
-  duration: number
-  /** Budget key if applicable */
-  budget?: PerfBudgetKey
-  /** Whether duration exceeded the budget */
-  overBudget: boolean
-  /** ISO timestamp */
-  timestamp: string
-}
+export type PerfEntry = PerfTraceEntry
 
 const MAX_ENTRIES = 100
 const entries: PerfEntry[] = []
 const activeTraces = new Map<string, number>()
+let longTaskSummary: PerfLongTaskSummary = {
+  count: 0,
+  totalDurationMs: 0,
+  maxDurationMs: 0
+}
 
 /** Start a named trace. Returns the trace ID for passing to traceEnd. */
 export function traceStart(name: string): string {
@@ -83,8 +82,32 @@ export function getRecentTraces(limit = 20): readonly PerfEntry[] {
   return entries.slice(-limit).reverse()
 }
 
+export function setLongTaskSummary(summary: PerfLongTaskSummary): void {
+  longTaskSummary = {
+    count: summary.count,
+    totalDurationMs: Math.round(summary.totalDurationMs * 100) / 100,
+    maxDurationMs: Math.round(summary.maxDurationMs * 100) / 100
+  }
+}
+
+export function getTraceSnapshot(limit = MAX_ENTRIES): RendererPerfSnapshot {
+  return {
+    traces: [...getRecentTraces(limit)],
+    longTasks: { ...longTaskSummary }
+  }
+}
+
 /** Clear all traces (for testing). */
 export function clearTraces(): void {
   entries.length = 0
   activeTraces.clear()
+}
+
+export function resetPerfSnapshot(): void {
+  clearTraces()
+  setLongTaskSummary({
+    count: 0,
+    totalDurationMs: 0,
+    maxDurationMs: 0
+  })
 }

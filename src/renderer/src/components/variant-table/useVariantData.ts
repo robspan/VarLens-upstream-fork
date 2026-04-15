@@ -14,6 +14,7 @@ import type { PerfBudgetKey } from '../../../../shared/config/perf-budgets'
 interface UseVariantDataOptions {
   caseId: Ref<number>
   filters: Ref<Omit<VariantFilter, 'case_id'>>
+  active?: Ref<boolean>
   /** Optional external column metadata (e.g. from useFilterState). Avoids duplicate IPC call. */
   columnMeta?: Ref<ColumnFilterMeta[]>
   onCountsUpdate: (counts: { filtered: number; total: number }) => void
@@ -21,7 +22,14 @@ interface UseVariantDataOptions {
 }
 
 export function useVariantData(options: UseVariantDataOptions) {
-  const { caseId, filters, columnMeta: externalColumnMeta, onCountsUpdate, onSortUpdate } = options
+  const {
+    caseId,
+    filters,
+    active = ref(true),
+    columnMeta: externalColumnMeta,
+    onCountsUpdate,
+    onSortUpdate
+  } = options
   const { api } = useApiService()
 
   // Flow-level tracing: track active user-flow trace across watchers
@@ -107,7 +115,8 @@ export function useVariantData(options: UseVariantDataOptions) {
       }
     },
     onSortChange: onSortUpdate,
-    filterKey
+    filterKey,
+    prefetchEnabled: active
   })
 
   // Use external columnMeta if provided (from useFilterState), otherwise internal ref
@@ -154,6 +163,7 @@ export function useVariantData(options: UseVariantDataOptions) {
 
   // Reload when filters change (serialized key avoids deep reactive traversal)
   watch(filterKey, () => {
+    if (!active.value) return
     if (import.meta.env.DEV) {
       if (activeFlowTraceId !== null) {
         traceEnd(activeFlowTraceId, activeFlowBudget)
@@ -166,7 +176,10 @@ export function useVariantData(options: UseVariantDataOptions) {
 
   // Debounced reload when per-column filters change
   const { debouncedFn: debouncedColumnFilterReload } = useDebounce(invalidateAndReload, 300)
-  watch(columnFilterState.columnFilters, debouncedColumnFilterReload)
+  watch(columnFilterState.columnFilters, () => {
+    if (!active.value) return
+    debouncedColumnFilterReload()
+  })
 
   // Load annotations when variants change; invalidate generation first so any
   // in-flight batch from the previous page is discarded when it resolves.
@@ -174,6 +187,7 @@ export function useVariantData(options: UseVariantDataOptions) {
     variants,
     async (newVariants) => {
       invalidateAnnotationGeneration()
+      if (!active.value) return
       if (newVariants.length > 0 && caseId.value !== undefined && caseId.value !== 0) {
         await loadAnnotationsBatch(caseId.value, newVariants)
       }
@@ -184,6 +198,17 @@ export function useVariantData(options: UseVariantDataOptions) {
       }
     },
     { immediate: true }
+  )
+
+  watch(
+    active,
+    async (isActive) => {
+      if (!isActive) return
+      if (variants.value.length === 0 || caseId.value === undefined || caseId.value === 0) return
+      invalidateAnnotationGeneration()
+      await loadAnnotationsBatch(caseId.value, variants.value)
+    },
+    { immediate: false }
   )
 
   return {

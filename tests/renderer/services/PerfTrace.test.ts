@@ -4,7 +4,10 @@ import {
   traceEnd,
   traceAsync,
   getRecentTraces,
-  clearTraces
+  clearTraces,
+  getTraceSnapshot,
+  setLongTaskSummary,
+  resetPerfSnapshot
 } from '../../../src/renderer/src/services/PerfTrace'
 
 describe('PerfTrace', () => {
@@ -77,5 +80,41 @@ describe('PerfTrace', () => {
       traceEnd(id)
     }
     expect(getRecentTraces(200).length).toBe(100)
+  })
+
+  it('builds a trace snapshot with long-task summary', () => {
+    const id = traceStart('snapshot-op')
+    traceEnd(id)
+    setLongTaskSummary({
+      count: 3,
+      totalDurationMs: 180,
+      maxDurationMs: 72
+    })
+
+    const snapshot = getTraceSnapshot()
+
+    expect(snapshot.traces).toHaveLength(1)
+    expect(snapshot.traces[0].name).toBe('snapshot-op')
+    expect(snapshot.longTasks.count).toBe(3)
+    expect(snapshot.longTasks.totalDurationMs).toBe(180)
+    expect(snapshot.longTasks.maxDurationMs).toBe(72)
+  })
+
+  it('resetPerfSnapshot clears traces and long-task state', () => {
+    const id = traceStart('reset-op')
+    traceEnd(id)
+    setLongTaskSummary({
+      count: 1,
+      totalDurationMs: 55,
+      maxDurationMs: 55
+    })
+
+    resetPerfSnapshot()
+
+    const snapshot = getTraceSnapshot()
+    expect(snapshot.traces).toHaveLength(0)
+    expect(snapshot.longTasks.count).toBe(0)
+    expect(snapshot.longTasks.totalDurationMs).toBe(0)
+    expect(snapshot.longTasks.maxDurationMs).toBe(0)
   })
 })

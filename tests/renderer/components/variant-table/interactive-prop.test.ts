@@ -112,6 +112,7 @@ vi.mock('../../../../src/renderer/src/composables/useVariantLinks', () => ({
 
 vi.mock('../../../../src/renderer/src/components/variant-table/useVariantRowViewModel', () => ({
   useVariantRowViewModel: () => ({
+    rowViewModels: computed(() => new Map()),
     getViewModel: () => null
   })
 }))

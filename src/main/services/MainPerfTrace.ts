@@ -1,5 +1,6 @@
 import { is } from '@electron-toolkit/utils'
 import { mainLogger } from './MainLogger'
+import type { MainPerfSnapshot } from '../../shared/types/perf'
 
 const marks = new Map<string, number>()
 const appStartTime = performance.now()
@@ -20,4 +21,11 @@ export function getElapsedMs(): number {
 /** Get all recorded milestones. */
 export function getMilestones(): ReadonlyMap<string, number> {
   return marks
+}
+
+export function getMainPerfSnapshot(): MainPerfSnapshot {
+  return {
+    elapsedMs: getElapsedMs(),
+    milestones: Object.fromEntries(marks.entries())
+  }
 }

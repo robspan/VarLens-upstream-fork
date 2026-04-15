@@ -512,7 +512,17 @@ export function createMockApi(): MockApi {
     },
 
     perf: {
-      reportInteractive: vi.fn()
+      reportInteractive: vi.fn(),
+      getSnapshot: vi.fn().mockResolvedValue({
+        capturedAt: new Date().toISOString(),
+        main: { elapsedMs: 0, milestones: {} },
+        renderer: {
+          traces: [],
+          longTasks: { count: 0, totalDurationMs: 0, maxDurationMs: 0 }
+        }
+      }),
+      resetSnapshot: vi.fn().mockResolvedValue(undefined),
+      isEnabled: vi.fn().mockReturnValue(false)
     }
   }
 }

@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { isReactive } from 'vue'
+import { isReactive, ref } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 import { withSetup, flushPromises } from '../../utils/test-helpers'
 import { useOffsetPagination } from '@renderer/composables/useOffsetPagination'
@@ -177,6 +177,27 @@ describe('predictive pre-fetch', () => {
     await flushPromises()
 
     // Only the primary fetch — no pre-fetch
+    expect(fetchPage).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not pre-fetch when hidden-work gating disables it', async () => {
+    const mockItems: MockItem[] = [{ id: 1, name: 'Alpha', nested: { value: 10 } }]
+    const fetchPage = makeFetchPage(mockItems, 30)
+    const prefetchEnabled = ref(false)
+
+    const [result, appInstance] = withSetup(() => {
+      const settings = useSettingsStore()
+      settings.prefetchEnabled = true
+      return useOffsetPagination({ fetchPage, prefetchEnabled })
+    })
+    app = appInstance
+
+    result.itemsPerPage.value = 10
+    result.page.value = 1
+
+    await result.loadPage()
+    await flushPromises()
+
     expect(fetchPage).toHaveBeenCalledTimes(1)
   })
 

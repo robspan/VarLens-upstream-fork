@@ -4,6 +4,7 @@ export type { AuditActionType, CaseVariantAnnotation } from './database-entities
 export * from './errors'
 export * from './filters'
 export * from './log'
+export * from './perf'
 export * from './protein'
 export * from './transcript'
 export * from './vcf'

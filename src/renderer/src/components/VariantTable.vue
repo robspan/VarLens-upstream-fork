@@ -11,7 +11,7 @@
       v-model:items-per-page="itemsPerPage"
       v-model:sort-by="sortBy"
       :headers="visibleHeaders"
-      :items="variants"
+      :items="renderRows"
       :items-length="totalCount"
       :loading="loading"
       :items-per-page-options="itemsPerPageOptions"
@@ -52,20 +52,12 @@
       <!-- Annotations column (star, ACMG, comment) -->
       <template #[`item.annotations`]="{ item }">
         <AnnotationsCell
-          :is-starred="getViewModel(item.chr, item.pos, item.ref, item.alt)?.isStarred ?? false"
-          :is-global-starred="
-            getViewModel(item.chr, item.pos, item.ref, item.alt)?.isGlobalStarred ?? false
-          "
-          :acmg-classification="
-            getViewModel(item.chr, item.pos, item.ref, item.alt)?.acmgClassification ?? null
-          "
-          :global-acmg-classification="
-            getViewModel(item.chr, item.pos, item.ref, item.alt)?.globalAcmgClassification ?? null
-          "
-          :has-comment="getViewModel(item.chr, item.pos, item.ref, item.alt)?.hasComment ?? false"
-          :has-global-comment="
-            getViewModel(item.chr, item.pos, item.ref, item.alt)?.hasGlobalComment ?? false
-          "
+          :is-starred="item.render.isStarred"
+          :is-global-starred="item.render.isGlobalStarred"
+          :acmg-classification="item.render.acmgClassification"
+          :global-acmg-classification="item.render.globalAcmgClassification"
+          :has-comment="item.render.hasComment"
+          :has-global-comment="item.render.hasGlobalComment"
           :show-global-indicators="true"
           :annotation-scope="annotationScope"
           @star-toggle="annotationDialogsRef?.handleStarToggle(item)"
@@ -78,8 +70,8 @@
       <!-- Chromosome with dynamic link from store -->
       <template #[`item.chr`]="{ item, value }">
         <ExternalLinkCell
-          v-if="getViewModel(item.chr, item.pos, item.ref, item.alt)?.links.chr"
-          :url="getViewModel(item.chr, item.pos, item.ref, item.alt)!.links.chr!"
+          v-if="item.render.links.chr"
+          :url="item.render.links.chr"
           :label="value"
           @click="openExternalLink"
         />
@@ -90,7 +82,7 @@
       <template #[`item.pos`]="{ item, value }">
         <PositionCell
           :position="value"
-          :url="getViewModel(item.chr, item.pos, item.ref, item.alt)?.links.pos ?? null"
+          :url="item.render.links.pos ?? null"
           @click="openExternalLink"
         />
       </template>
@@ -104,11 +96,7 @@
       <template #[`item.clinvar`]="{ item, value }">
         <ClinVarCell
           :significance="value"
-          :url="
-            value
-              ? (getViewModel(item.chr, item.pos, item.ref, item.alt)?.links.clinvar ?? null)
-              : null
-          "
+          :url="value ? (item.render.links.clinvar ?? null) : null"
           @click="openExternalLink"
         />
       </template>
@@ -132,11 +120,7 @@
       <template #[`item.gene_symbol`]="{ item, value }">
         <GeneSymbolCell
           :value="value"
-          :link-url="
-            value
-              ? (getViewModel(item.chr, item.pos, item.ref, item.alt)?.links.gene_symbol ?? null)
-              : null
-          "
+          :link-url="value ? (item.render.links.gene_symbol ?? null) : null"
           @click="openExternalLink"
         />
       </template>
@@ -230,8 +214,8 @@
         #[`item._link_${link.id}`]="{ item }"
       >
         <ExternalLinkCell
-          v-if="resolveLink(link.id, item)"
-          :url="resolveLink(link.id, item)!"
+          v-if="item.render.links[`_link_${link.id}`]"
+          :url="item.render.links[`_link_${link.id}`]!"
           label="View"
           @click="openExternalLink"
         />
@@ -282,10 +266,12 @@ import { buildActiveFiltersList } from '../utils/filters/activeFilters'
 import { useColumnFilterMeta } from '../composables/useColumnFilterMeta'
 import { useAnnotations, annotationCache } from '../composables/useAnnotations'
 import { useVariantRowViewModel } from './variant-table/useVariantRowViewModel'
+import { useVariantRenderRows } from './variant-table/useVariantRenderRows'
 import { useColumnPreferences } from '../composables/useColumnPreferences'
 import { useVariantLinks } from '../composables/useVariantLinks'
 import { resolveUrlTemplate } from '../utils/externalLinks'
 import { formatConsequence } from '../utils/formatters'
+import { getAdaptiveRowScrollBehavior } from '../utils/adaptiveRowScroll'
 import { useTableScroll } from '../composables/useTableScroll'
 import { useTableKeyboardNav } from '../composables/useTableKeyboardNav'
 import { onKeyStroke } from '@vueuse/core'
@@ -341,6 +327,9 @@ const emit = defineEmits<{
   'clear-filters': []
 }>()
 
+const viewActive = ref(true)
+const tableWorkActive = computed(() => props.interactive && viewActive.value)
+
 // Annotations
 const {
   getAcmgEvidence,
@@ -376,7 +365,7 @@ const annotationActions = {
 }
 
 // Links
-const { linksStore, buildOmimEntryUrl, resolveLink, openExternalLink } = useVariantLinks()
+const { linksStore, buildOmimEntryUrl, openExternalLink } = useVariantLinks()
 
 // Column preferences and column definitions — swap columns on variant type change
 const { prefs } = useColumnPreferences('variant-table')
@@ -408,6 +397,7 @@ const {
 } = useVariantData({
   caseId: toRef(props, 'caseId'),
   filters: toRef(props, 'filters'),
+  active: tableWorkActive,
   columnMeta: computed(() => props.columnMeta ?? []),
   onCountsUpdate: (counts) => emit('update:counts', counts),
   onSortUpdate: (hasSort) => emit('update:hasSort', hasSort)
@@ -422,9 +412,9 @@ const linkConfig = computed<
 >(() => {
   const config: Record<string, import('./variant-table/useVariantRowViewModel').LinkConfig> = {}
   for (const link of linksStore.enabledLinks) {
-    if (link.column === 'virtual') continue
     const capturedLink = link
-    config[link.column] = {
+    const columnKey = link.column === 'virtual' ? `_link_${link.id}` : link.column
+    config[columnKey] = {
       id: link.id,
       resolve: (item) =>
         resolveUrlTemplate(
@@ -446,7 +436,8 @@ const linkConfig = computed<
 })
 
 // Precomputed row view models: annotation + link state per variant key
-const { getViewModel } = useVariantRowViewModel(variants, annotationCache, linkConfig)
+const { rowViewModels } = useVariantRowViewModel(variants, annotationCache, linkConfig)
+const { renderRows } = useVariantRenderRows(variants, rowViewModels)
 
 // Column active filter chips for the toolbar
 const columnActiveFilters = computed<ActiveFilter[]>(() => {
@@ -509,13 +500,14 @@ const {
 
 // Row click handler
 const handleRowClick = (_event: unknown, { item }: { item: Variant }): void => {
+  pendingScrollBehavior.value = 'smooth'
+  lastKeyboardMoveAtMs.value = null
   selectByClick(item)
   selectedVariantId.value = item.id
   emit('row-click', item)
 }
 
 // KeepAlive: disable keyboard handlers when this view is cached but not active
-const viewActive = ref(true)
 onActivated(() => {
   viewActive.value = true
 })
@@ -524,11 +516,17 @@ onDeactivated(() => {
 })
 
 // Keyboard navigation handlers
+const lastKeyboardMoveAtMs = ref<number | null>(null)
+const pendingScrollBehavior = ref<ScrollBehavior>('smooth')
+
 onKeyStroke(
   'ArrowDown',
   (e: KeyboardEvent) => {
     if (!props.interactive || !viewActive.value || isInputFocused()) return
     e.preventDefault()
+    const now = performance.now()
+    pendingScrollBehavior.value = getAdaptiveRowScrollBehavior(lastKeyboardMoveAtMs.value, now)
+    lastKeyboardMoveAtMs.value = now
     moveDown()
   },
   { dedupe: true }
@@ -539,6 +537,9 @@ onKeyStroke(
   (e: KeyboardEvent) => {
     if (!props.interactive || !viewActive.value || isInputFocused()) return
     e.preventDefault()
+    const now = performance.now()
+    pendingScrollBehavior.value = getAdaptiveRowScrollBehavior(lastKeyboardMoveAtMs.value, now)
+    lastKeyboardMoveAtMs.value = now
     moveUp()
   },
   { dedupe: true }
@@ -609,7 +610,8 @@ watch(selectedIndex, async (newIndex) => {
   if (!tableEl) return
   const rows = tableEl.querySelectorAll('tbody tr')
   const row = rows[newIndex] as HTMLElement | undefined
-  row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  row?.scrollIntoView({ block: 'nearest', behavior: pendingScrollBehavior.value })
+  pendingScrollBehavior.value = 'smooth'
 })
 
 // Setup scroll sync after mount

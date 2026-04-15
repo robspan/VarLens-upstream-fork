@@ -7,6 +7,7 @@ import type { HandlerDependencies } from '../types'
 import { setWorkerThreads, getWorkerThreads } from '../dbPoolManager'
 import { wrapHandler } from '../errorHandler'
 import { mainLogger } from '../../services/MainLogger'
+import { getMainPerfSnapshot } from '../../services/MainPerfTrace'
 
 /**
  * System IPC handlers
@@ -82,6 +83,12 @@ export function registerSystemHandlers({ ipcMain }: HandlerDependencies): void {
   ipcMain.handle('system:logFilePath', async () => {
     return wrapHandler(async () => {
       return mainLogger.getLogFilePath()
+    })
+  })
+
+  ipcMain.handle('perf:mainSnapshot', async () => {
+    return wrapHandler(async () => {
+      return getMainPerfSnapshot()
     })
   })
 }

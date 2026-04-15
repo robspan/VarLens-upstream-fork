@@ -108,6 +108,7 @@ import type {
   ClinVarFetchResult,
   ProteinApiError
 } from './protein'
+import type { PerfSnapshot } from './perf'
 
 // Re-export for convenience
 export type {
@@ -801,6 +802,9 @@ export interface GnomadAPI {
 
 export interface PerfAPI {
   reportInteractive: () => void
+  getSnapshot: () => Promise<PerfSnapshot>
+  resetSnapshot: () => Promise<void>
+  isEnabled: () => boolean
 }
 
 export interface WindowAPI {

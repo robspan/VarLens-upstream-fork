@@ -12,7 +12,7 @@
       v-model:sort-by="sortBy"
       v-model:expanded="expandedRows"
       :headers="headers"
-      :items="variants"
+      :items="renderRows"
       :items-length="totalCount"
       :loading="loading"
       :items-per-page-options="itemsPerPageOptions"
@@ -68,8 +68,8 @@
       <!-- Chromosome with dynamic link from store -->
       <template #[`item.chr`]="{ item, value }">
         <ExternalLinkCell
-          v-if="getLinkForColumn('chr') && resolveLink(getLinkForColumn('chr')!.id, item)"
-          :url="resolveLink(getLinkForColumn('chr')!.id, item)!"
+          v-if="item.render.links.chr"
+          :url="item.render.links.chr"
           :label="value"
           @click="openExternalLink"
         />
@@ -80,11 +80,7 @@
       <template #[`item.pos`]="{ item, value }">
         <PositionCell
           :position="value"
-          :url="
-            getLinkForColumn('pos') && resolveLink(getLinkForColumn('pos')!.id, item)
-              ? resolveLink(getLinkForColumn('pos')!.id, item)!
-              : null
-          "
+          :url="item.render.links.pos ?? null"
           @click="openExternalLink"
         />
       </template>
@@ -103,13 +99,7 @@
       <template #[`item.gene_symbol`]="{ item, value }">
         <GeneSymbolCell
           :value="value"
-          :link-url="
-            value &&
-            getLinkForColumn('gene_symbol') &&
-            resolveLink(getLinkForColumn('gene_symbol')!.id, item)
-              ? resolveLink(getLinkForColumn('gene_symbol')!.id, item)!
-              : null
-          "
+          :link-url="value ? (item.render.links.gene_symbol ?? null) : null"
           @click="openExternalLink"
         />
       </template>
@@ -138,13 +128,7 @@
       <template #[`item.clinvar`]="{ item, value }">
         <ClinVarCell
           :significance="value"
-          :url="
-            value &&
-            getLinkForColumn('clinvar') &&
-            resolveLink(getLinkForColumn('clinvar')!.id, item)
-              ? resolveLink(getLinkForColumn('clinvar')!.id, item)!
-              : null
-          "
+          :url="value ? (item.render.links.clinvar ?? null) : null"
           @click="openExternalLink"
         />
       </template>
@@ -198,6 +182,7 @@ import { useApiService } from '../../composables/useApiService'
 import { useTableScroll } from '../../composables/useTableScroll'
 import { useTableRowProps } from '../../composables/useTableRowProps'
 import { useCarriers } from '../../composables/useCarriers'
+import { useCohortRenderRows } from './useCohortRenderRows'
 import {
   PositionCell,
   AlleleCell,
@@ -221,9 +206,10 @@ import type {
 import type { ActiveFilter } from '../../../../shared/types/filters'
 import { buildActiveFiltersList } from '../../utils/filters/activeFilters'
 import { useDebounce } from '../../composables/useDebounce'
-import { useExternalLinksStore, type ExternalLinkConfig } from '../../stores/externalLinksStore'
+import { useExternalLinksStore } from '../../stores/externalLinksStore'
 import { APP_CONFIG } from '../../../../shared/config'
 import { resolveUrlTemplate, type VariantLinkData } from '../../utils/externalLinks'
+import { getAdaptiveRowScrollBehavior } from '../../utils/adaptiveRowScroll'
 
 interface Props {
   variants: CohortVariant[]
@@ -358,26 +344,25 @@ const getVariantLinkData = (item: CohortVariant): VariantLinkData => ({
   mim_number: null // Cohort variants don't have OMIM MIM numbers
 })
 
-/**
- * Resolve URL for a link and variant
- */
-const resolveLink = (linkId: string, item: CohortVariant): string | null => {
-  const link = linksStore.enabledLinks.find((l) => l.id === linkId)
-  if (link === undefined) return null
-  return resolveUrlTemplate(
-    link.urlTemplate,
-    getVariantLinkData(item),
-    linksStore.genomeBuild,
-    link.requiredFields
-  )
-}
-
-/**
- * Get link config for a column
- */
-const getLinkForColumn = (column: string): ExternalLinkConfig | null => {
-  return linksStore.enabledLinks.find((l) => l.column === column) ?? null
-}
+const linkConfig = computed<Record<string, (item: CohortVariant) => string | null>>(() => {
+  const config: Record<string, (item: CohortVariant) => string | null> = {}
+  for (const link of linksStore.enabledLinks) {
+    if (link.column === 'virtual') continue
+    const capturedLink = link
+    config[link.column] = (item: CohortVariant) =>
+      resolveUrlTemplate(
+        capturedLink.urlTemplate,
+        getVariantLinkData(item),
+        linksStore.genomeBuild,
+        capturedLink.requiredFields
+      )
+  }
+  return config
+})
+const { renderRows } = useCohortRenderRows(
+  computed(() => props.variants),
+  linkConfig
+)
 
 /**
  * Handle external link click
@@ -421,6 +406,8 @@ const handleTableOptions = (options: any): void => {
  * Handle row click
  */
 const handleRowClick = (_event: Event, data: { item: CohortVariant }): void => {
+  pendingScrollBehavior.value = 'smooth'
+  lastKeyboardMoveAtMs.value = null
   selectByClick(data.item)
   emit('row-click', data.item)
 }
@@ -435,11 +422,17 @@ onDeactivated(() => {
 })
 
 // Keyboard navigation handlers
+const lastKeyboardMoveAtMs = ref<number | null>(null)
+const pendingScrollBehavior = ref<ScrollBehavior>('smooth')
+
 onKeyStroke(
   'ArrowDown',
   (e: KeyboardEvent) => {
     if (!viewActive.value || isInputFocused()) return
     e.preventDefault()
+    const now = performance.now()
+    pendingScrollBehavior.value = getAdaptiveRowScrollBehavior(lastKeyboardMoveAtMs.value, now)
+    lastKeyboardMoveAtMs.value = now
     moveDown()
   },
   { dedupe: true }
@@ -450,6 +443,9 @@ onKeyStroke(
   (e: KeyboardEvent) => {
     if (!viewActive.value || isInputFocused()) return
     e.preventDefault()
+    const now = performance.now()
+    pendingScrollBehavior.value = getAdaptiveRowScrollBehavior(lastKeyboardMoveAtMs.value, now)
+    lastKeyboardMoveAtMs.value = now
     moveUp()
   },
   { dedupe: true }
@@ -536,7 +532,8 @@ watch(selectedIndex, async (newIndex) => {
   if (!tableEl) return
   const rows = tableEl.querySelectorAll('tbody tr')
   const row = rows[newIndex] as HTMLElement | undefined
-  row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  row?.scrollIntoView({ block: 'nearest', behavior: pendingScrollBehavior.value })
+  pendingScrollBehavior.value = 'smooth'
 })
 
 /**

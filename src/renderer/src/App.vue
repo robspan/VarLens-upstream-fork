@@ -135,6 +135,7 @@ const {
   variantTableRef,
   filterToolbarRef,
   dataGeneration,
+  closeSidebar,
   clearSelectedCase,
   resetCaseFilters,
   resetCaseContext,
@@ -180,7 +181,7 @@ const {
   maxWidth: 450,
   collapseThreshold: 180,
   onCollapse: () => {
-    sidebarOpen.value = false
+    closeSidebar()
   }
 })
 
@@ -216,7 +217,7 @@ const handleCaseSelected = (
   createdAt: number
 ): void => {
   selectCase({ caseId, caseName, variantCount, createdAt })
-  sidebarOpen.value = false
+  closeSidebar()
 }
 
 const handleEditCase = (

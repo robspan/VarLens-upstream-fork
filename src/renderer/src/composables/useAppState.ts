@@ -58,6 +58,7 @@ export interface AppStateReturn {
   dataGeneration: Ref<number>
 
   // Shell-owned reset actions
+  closeSidebar: () => void
   clearSelectedCase: () => void
   resetCaseFilters: () => void
   resetCaseContext: () => void
@@ -130,6 +131,10 @@ export function createAppState(): AppStateReturn {
     selectedCaseId.value = null
   }
 
+  function closeSidebar(): void {
+    sidebarOpen.value = false
+  }
+
   function resetCaseFilters(): void {
     currentFilters.value = {}
     hasSort.value = false
@@ -196,6 +201,7 @@ export function createAppState(): AppStateReturn {
     dataGeneration,
 
     // Shell-owned reset actions
+    closeSidebar,
     clearSelectedCase,
     resetCaseFilters,
     resetCaseContext,

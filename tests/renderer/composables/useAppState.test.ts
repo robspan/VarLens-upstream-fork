@@ -36,6 +36,16 @@ describe('createAppState', () => {
     expect(state.hasSort.value).toBe(false)
   })
 
+  it('closes the sidebar through an explicit shell action', () => {
+    const state = createAppState()
+
+    state.sidebarOpen.value = true
+
+    state.closeSidebar()
+
+    expect(state.sidebarOpen.value).toBe(false)
+  })
+
   it('resets case-scoped shell state together', () => {
     const state = createAppState()
 

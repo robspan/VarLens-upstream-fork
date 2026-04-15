@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { createCasesApi } from './domains/cases'
+import { unwrapIpcResult } from '../shared/types/errors'
 import type {
   ProgressUpdate,
   VariantFilter,
@@ -12,6 +13,7 @@ import type {
   GlobalAnnotationUpdates,
   PerCaseAnnotationUpdates,
   CaseMetadataUpdates,
+  CaseSearchParams,
   LogMessage
 } from '../shared/types'
 import type { CommentCategory, AnnotationChangeEvent } from '../shared/types/api'
@@ -30,9 +32,14 @@ import type { MainPerfSnapshot } from '../shared/types/perf'
  * - shell:openExternal
  */
 
+const casesDomain = createCasesApi()
+
 const api = {
   cases: {
-    ...createCasesApi(),
+    list: async () => unwrapIpcResult(await casesDomain.list()),
+    query: async (params: CaseSearchParams) => unwrapIpcResult(await casesDomain.query(params)),
+    delete: async (id: number) => unwrapIpcResult(await casesDomain.delete(id)),
+    deleteAll: async () => unwrapIpcResult(await casesDomain.deleteAll()),
     deleteBatch: (ids: number[]): Promise<number> => ipcRenderer.invoke('cases:deleteBatch', ids),
     availableBuilds: (): Promise<Array<{ build: string; caseCount: number }>> =>
       ipcRenderer.invoke('cases:availableBuilds')

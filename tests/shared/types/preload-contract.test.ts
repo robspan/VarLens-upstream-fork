@@ -189,6 +189,7 @@ describe('Preload contract alignment', () => {
   const preloadKeys = extractPreloadApiKeys()
   const mockApiKeys = extractMockApiKeys()
   const preloadSource = readFileSync(resolve(ROOT, 'src/preload/index.ts'), 'utf-8')
+  const casesDomainSource = readFileSync(resolve(ROOT, 'src/preload/domains/cases.ts'), 'utf-8')
 
   it('WindowAPI interface has expected keys', () => {
     expect(windowApiKeys.length).toBeGreaterThan(10)
@@ -200,6 +201,14 @@ describe('Preload contract alignment', () => {
 
   it('preload imports the cases domain factory', () => {
     expect(preloadSource).toContain("import { createCasesApi } from './domains/cases'")
+  })
+
+  it('cases preload domain uses the shared domain contract boundary', () => {
+    expect(casesDomainSource).toContain(
+      "import type { CasesDomainContract } from '../../shared/ipc/domains/cases'"
+    )
+    expect(casesDomainSource).toContain('export function createCasesApi(): CasesDomainContract')
+    expect(casesDomainSource).not.toContain('unwrapIpcResult')
   })
 
   it('mockApi type has expected keys', () => {

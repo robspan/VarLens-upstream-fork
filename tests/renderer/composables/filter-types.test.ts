@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ref, isReactive } from 'vue'
+import { FILTER_DEFAULTS } from '../../../src/shared/filters/filterDefaults'
 import {
   buildFilterFromState,
   type FilterState
@@ -29,6 +30,11 @@ const defaultState: FilterState = {
 }
 
 describe('buildFilterFromState', () => {
+  it('shared defaults start with case annotation scope and empty column filters', () => {
+    expect(FILTER_DEFAULTS.annotationScope).toBe('case')
+    expect(FILTER_DEFAULTS.columnFilters).toEqual({})
+  })
+
   it('returns empty filter for default state', () => {
     const result = buildFilterFromState(defaultState, [])
     expect(result).toEqual({})

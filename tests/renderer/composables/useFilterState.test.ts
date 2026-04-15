@@ -71,6 +71,7 @@ describe('useFilterState', () => {
       expect(result.filters.value.clinvars).toEqual([])
       expect(result.filters.value.tagIds).toEqual([])
       expect(result.filters.value.acmgClassifications).toEqual([])
+      expect(result.filters.value.columnFilters).toEqual({})
     })
 
     it('has null numeric filters', () => {

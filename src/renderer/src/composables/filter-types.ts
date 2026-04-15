@@ -2,6 +2,7 @@ import type { Ref, ComputedRef } from 'vue'
 import type { VariantFilter, FilterOptions } from '../../../shared/types/api'
 import type { Tag } from '../../../shared/types/database-entities'
 import type { FilterState, ActiveFilter } from '../../../shared/types/filters'
+import { FILTER_DEFAULTS } from '../../../shared/filters/filterDefaults'
 
 // Re-export for existing consumers
 export type { FilterState, ActiveFilter } from '../../../shared/types/filters'
@@ -77,17 +78,18 @@ export interface UseFilterStateReturn {
  * (resetForCaseSwitch) to avoid duplicating the field-by-field reset.
  */
 export function resetAdapterFields(filters: Ref<FilterState>): void {
-  filters.value.searchQuery = ''
-  filters.value.geneSymbol = ''
+  filters.value.searchQuery = FILTER_DEFAULTS.searchQuery
+  filters.value.geneSymbol = FILTER_DEFAULTS.geneSymbol
   filters.value.tagIds = []
-  filters.value.starredOnly = false
-  filters.value.hasCommentOnly = false
-  filters.value.annotationScope = 'case'
+  filters.value.starredOnly = FILTER_DEFAULTS.starredOnly
+  filters.value.hasCommentOnly = FILTER_DEFAULTS.hasCommentOnly
+  filters.value.annotationScope = FILTER_DEFAULTS.annotationScope
   filters.value.activePanelIds = []
-  filters.value.panelPaddingBp = 5000
+  filters.value.panelPaddingBp = FILTER_DEFAULTS.panelPaddingBp
   filters.value.inheritanceModes = []
-  filters.value.analysisGroupId = null
-  filters.value.considerPhasing = false
+  filters.value.analysisGroupId = FILTER_DEFAULTS.analysisGroupId
+  filters.value.considerPhasing = FILTER_DEFAULTS.considerPhasing
+  filters.value.columnFilters = { ...FILTER_DEFAULTS.columnFilters }
 }
 
 /**

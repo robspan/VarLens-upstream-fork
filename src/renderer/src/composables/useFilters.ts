@@ -17,10 +17,11 @@
 
 import { ref, computed, watch, inject } from 'vue'
 import type { Ref, ComputedRef, InjectionKey } from 'vue'
+import { createFilterState } from '../../../shared/filters/filterDefaults'
+import { buildFilterIpcParams } from '../../../shared/filters/filterSerialization'
 import {
   clearFilter as clearFilterUtil,
   buildActiveFiltersList,
-  buildIpcParams,
   type FilterId,
   type ActiveFilter,
   type FilterIpcParams
@@ -90,34 +91,6 @@ export interface UseFiltersReturn {
 export const FiltersKey: InjectionKey<UseFiltersReturn> = Symbol('filters')
 
 /**
- * Create initial filter state
- */
-function createInitialFilterState(): FilterState {
-  return {
-    geneSymbol: '',
-    searchQuery: '',
-    consequences: [],
-    funcs: [],
-    clinvars: [],
-    maxGnomadAf: null,
-    minCadd: null,
-    maxInternalAf: null,
-    minCarriers: null,
-    starredOnly: false,
-    hasCommentOnly: false,
-    acmgClassifications: [],
-    tagIds: [],
-    annotationScope: 'case',
-    activePanelIds: [],
-    panelPaddingBp: 5000,
-    inheritanceModes: [],
-    analysisGroupId: null,
-    considerPhasing: false,
-    columnFilters: {}
-  }
-}
-
-/**
  * Factory function that creates a new filter state instance.
  *
  * Call this in a parent component and provide it via FiltersKey.
@@ -152,7 +125,7 @@ export function createFilters(): UseFiltersReturn {
   }
 
   // Core filter state
-  const filters = ref<FilterState>(createInitialFilterState())
+  const filters = ref<FilterState>(createFilterState())
   const searchTerm = ref('')
 
   // Preset selections
@@ -333,7 +306,7 @@ export function createFilters(): UseFiltersReturn {
       ...filters.value,
       searchQuery: searchTerm.value
     }
-    return buildIpcParams(stateWithSearch)
+    return buildFilterIpcParams(stateWithSearch)
   }
 
   /**

@@ -31,6 +31,7 @@ describe('useFilters', () => {
       expect(result.filters.value.maxGnomadAf).toBeNull()
       expect(result.filters.value.minCadd).toBeNull()
       expect(result.filters.value.minCarriers).toBeNull()
+      expect(result.filters.value.columnFilters).toEqual({})
     })
 
     it('initializes with empty search term', () => {
@@ -426,6 +427,22 @@ describe('useFilters', () => {
       expect(params.gene_symbol).toBe('BRCA1')
       expect(params.consequences).toEqual(['missense_variant'])
       expect(params.gnomad_af_max).toBe(0.01)
+    })
+
+    it('clones column filters into IPC-safe params', () => {
+      const [result, appInstance] = withSetup(() => createFilters())
+      app = appInstance
+
+      result.filters.value.columnFilters = {
+        gene_symbol: { operator: 'like', value: 'BRCA%' }
+      }
+
+      const params = result.getIpcParams()
+
+      expect(params.column_filters).toEqual({
+        gene_symbol: { operator: 'like', value: 'BRCA%' }
+      })
+      expect(params.column_filters).not.toBe(result.filters.value.columnFilters)
     })
   })
 

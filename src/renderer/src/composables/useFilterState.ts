@@ -19,6 +19,7 @@ import { useDebounce } from './useDebounce'
 import { useTags } from './useTags'
 import { useApiService } from './useApiService'
 import { APP_CONFIG } from '../../../shared/config'
+import { createFilterState } from '../../../shared/filters/filterDefaults'
 import {
   buildFilterFromState,
   type FilterState,
@@ -65,28 +66,7 @@ export function useFilterState(
   // 2. Filter state
   // -------------------------------------------------------------------------
 
-  const filters = ref<FilterState>({
-    searchQuery: '',
-    geneSymbol: '',
-    consequences: [] as string[],
-    funcs: [] as string[],
-    clinvars: [] as string[],
-    maxGnomadAf: null as number | null,
-    minCadd: null as number | null,
-    maxInternalAf: null as number | null,
-    minCarriers: null as number | null,
-    tagIds: [] as number[],
-    starredOnly: false,
-    hasCommentOnly: false,
-    acmgClassifications: [] as string[],
-    annotationScope: 'case' as const,
-    activePanelIds: [] as number[],
-    panelPaddingBp: 5000,
-    inheritanceModes: [] as string[],
-    analysisGroupId: null as number | null,
-    considerPhasing: false,
-    columnFilters: {}
-  })
+  const filters = ref<FilterState>(createFilterState())
 
   // -------------------------------------------------------------------------
   // 3. Helpers: syncCoreToFilters and resetAdapterFields

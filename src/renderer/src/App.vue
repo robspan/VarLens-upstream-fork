@@ -154,6 +154,7 @@ const { tier } = useResponsiveLayout()
 
 // Database store
 const databaseStore = useDatabaseStore()
+const databasePath = toRef(databaseStore, 'currentPath')
 
 // Case metadata
 const { clearCache: clearMetadataCache } = useCaseMetadata()
@@ -252,16 +253,9 @@ watch(selectedCaseId, () => {
   resetCaseFilters()
 })
 
-// Clear UI state when database path changes
-watch(
-  () => databaseStore.currentPath,
-  () => {
-    resetForDatabaseSwitch()
-  }
-)
-
 const { handleDatabaseSwitched, handleImportComplete, handleBatchImportComplete } =
   useShellLifecycle({
+    currentDatabasePath: databasePath,
     currentDatabaseName: databaseName,
     dataGeneration,
     resetForDatabaseSwitch,

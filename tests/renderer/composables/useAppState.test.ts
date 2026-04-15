@@ -21,6 +21,14 @@ describe('createAppState', () => {
     expect(state.activeTab.value).toBe('case')
   })
 
+  it('switches tabs through an explicit shell action', () => {
+    const state = createAppState()
+
+    state.setActiveTab('cohort')
+
+    expect(state.activeTab.value).toBe('cohort')
+  })
+
   it('clears case selection and case filters through explicit shell actions', () => {
     const state = createAppState()
 
@@ -34,6 +42,22 @@ describe('createAppState', () => {
     expect(state.selectedCaseId.value).toBeNull()
     expect(state.currentFilters.value).toEqual({})
     expect(state.hasSort.value).toBe(false)
+  })
+
+  it('returns to case home through an explicit shell action', () => {
+    const state = createAppState()
+
+    state.selectedCaseId.value = 7
+    state.selectedCaseName.value = 'Case 7'
+    state.activeTab.value = 'cohort'
+    state.sidebarOpen.value = false
+
+    state.returnToCaseHome()
+
+    expect(state.selectedCaseId.value).toBeNull()
+    expect(state.selectedCaseName.value).toBe('')
+    expect(state.activeTab.value).toBe('case')
+    expect(state.sidebarOpen.value).toBe(true)
   })
 
   it('closes the sidebar through an explicit shell action', () => {

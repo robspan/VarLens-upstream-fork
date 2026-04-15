@@ -1,3 +1,4 @@
+import { watch } from 'vue'
 import type { Ref } from 'vue'
 import type { SelectedCaseInput } from './useAppState'
 
@@ -11,6 +12,7 @@ interface CaseListActions {
 }
 
 interface UseShellLifecycleOptions {
+  currentDatabasePath: Ref<string | null>
   currentDatabaseName: Ref<string>
   dataGeneration: Ref<number>
   resetForDatabaseSwitch: () => void
@@ -21,6 +23,7 @@ interface UseShellLifecycleOptions {
 }
 
 export function useShellLifecycle({
+  currentDatabasePath,
   currentDatabaseName,
   dataGeneration,
   resetForDatabaseSwitch,
@@ -29,6 +32,10 @@ export function useShellLifecycle({
   caseListRef,
   dialogHostRef
 }: UseShellLifecycleOptions) {
+  watch(currentDatabasePath, () => {
+    resetForDatabaseSwitch()
+  })
+
   const handleDatabaseSwitched = async (): Promise<void> => {
     resetForDatabaseSwitch()
     clearMetadataCache()

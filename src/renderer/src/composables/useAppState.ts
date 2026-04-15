@@ -21,8 +21,8 @@ import type CohortViewComponent from '../components/CohortView.vue'
 export interface SelectedCaseInput {
   caseId: number
   caseName: string
-  variantCount: number
-  createdAt: number
+  variantCount?: number
+  createdAt?: number
 }
 
 export interface AppStateReturn {
@@ -58,11 +58,14 @@ export interface AppStateReturn {
   dataGeneration: Ref<number>
 
   // Shell-owned reset actions
+  setActiveTab: (tab: 'case' | 'cohort') => void
+  openSidebar: () => void
   closeSidebar: () => void
   clearSelectedCase: () => void
   resetCaseFilters: () => void
   resetCaseContext: () => void
   resetForDatabaseSwitch: () => void
+  returnToCaseHome: () => void
   selectCase: (input: SelectedCaseInput) => void
 
   // Snackbar
@@ -131,6 +134,14 @@ export function createAppState(): AppStateReturn {
     selectedCaseId.value = null
   }
 
+  function setActiveTab(tab: 'case' | 'cohort'): void {
+    activeTab.value = tab
+  }
+
+  function openSidebar(): void {
+    sidebarOpen.value = true
+  }
+
   function closeSidebar(): void {
     sidebarOpen.value = false
   }
@@ -152,17 +163,24 @@ export function createAppState(): AppStateReturn {
 
   function resetForDatabaseSwitch(): void {
     resetCaseContext()
-    activeTab.value = 'case'
+    setActiveTab('case')
     panelOpen.value = false
     selectedPanelVariant.value = null
+  }
+
+  function returnToCaseHome(): void {
+    clearSelectedCase()
+    selectedCaseName.value = ''
+    setActiveTab('case')
+    openSidebar()
   }
 
   function selectCase(input: SelectedCaseInput): void {
     selectedCaseId.value = input.caseId
     selectedCaseName.value = input.caseName
-    selectedVariantCount.value = input.variantCount
-    selectedCreatedAt.value = input.createdAt
-    activeTab.value = 'case'
+    selectedVariantCount.value = input.variantCount ?? 0
+    selectedCreatedAt.value = input.createdAt ?? 0
+    setActiveTab('case')
   }
 
   // Computed
@@ -201,11 +219,14 @@ export function createAppState(): AppStateReturn {
     dataGeneration,
 
     // Shell-owned reset actions
+    setActiveTab,
+    openSidebar,
     closeSidebar,
     clearSelectedCase,
     resetCaseFilters,
     resetCaseContext,
     resetForDatabaseSwitch,
+    returnToCaseHome,
     selectCase,
 
     // Snackbar

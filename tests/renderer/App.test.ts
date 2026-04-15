@@ -123,5 +123,6 @@ describe('App.vue', () => {
     expect(wrapper.find('.v-navigation-drawer').exists()).toBe(true)
     expect(useShellNavigationSpy).toHaveBeenCalledTimes(1)
     expect(useShellLifecycleSpy).toHaveBeenCalledTimes(1)
+    expect(useShellLifecycleSpy.mock.calls[0]?.[0]).toHaveProperty('currentDatabasePath')
   })
 })

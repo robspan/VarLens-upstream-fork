@@ -77,7 +77,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, provide, nextTick, defineAsyncComponent } from 'vue'
+import { ref, watch, onMounted, onUnmounted, provide, defineAsyncComponent, toRef } from 'vue'
 import { useRouter } from 'vue-router'
 import AppToolbar from './components/AppToolbar.vue'
 import AppSidebar from './components/AppSidebar.vue'
@@ -93,6 +93,8 @@ import { useFilterPreferences } from './composables/useFilterPreferences'
 import { useResponsiveLayout } from './composables/useResponsiveLayout'
 import { logService } from './services/LogService'
 import { AppStateKey, createAppState } from './composables/useAppState'
+import { useShellNavigation } from './composables/useShellNavigation'
+import { useShellLifecycle } from './composables/useShellLifecycle'
 import { useApiService } from './composables/useApiService'
 import { useImportStatusStore } from './stores/importStatusStore'
 import {
@@ -124,9 +126,6 @@ provide(AppStateKey, appState)
 
 const {
   selectedCaseId,
-  selectedCaseName,
-  selectedVariantCount,
-  selectedCreatedAt,
   caseCount,
   activeTab,
   sidebarOpen,
@@ -139,7 +138,10 @@ const {
   panelMode,
   variantTableRef,
   filterToolbarRef,
-  dataGeneration
+  dataGeneration,
+  resetCaseContext,
+  resetForDatabaseSwitch,
+  selectCase
 } = appState
 
 // Keyboard shortcuts help dialog
@@ -165,6 +167,7 @@ const { resetToDefaults: resetFilterPreferences } = useFilterPreferences()
 // Component refs
 const dialogHostRef = ref<InstanceType<typeof AppDialogHostType> | null>(null)
 const caseListRef = ref<InstanceType<typeof CaseList> | null>(null)
+const databaseName = toRef(databaseStore, 'currentName')
 
 // Sidebar resize
 const {
@@ -197,8 +200,7 @@ const handleDeleteAllCases = async () => {
   const confirmed = await dialogHostRef.value?.showDeleteAllCases(caseCount.value)
   if (confirmed === true) {
     const deleted = await api.cases.deleteAll()
-    selectedCaseId.value = null
-    selectedCaseName.value = ''
+    resetCaseContext()
     dataGeneration.value++
     await caseListRef.value?.refreshCases()
     dialogHostRef.value?.showSnackbar(
@@ -215,13 +217,8 @@ const handleCaseSelected = (
   variantCount: number,
   createdAt: number
 ): void => {
-  selectedCaseId.value = caseId
-  selectedCaseName.value = caseName
-  selectedVariantCount.value = variantCount
-  selectedCreatedAt.value = createdAt
-  activeTab.value = 'case'
+  selectCase({ caseId, caseName, variantCount, createdAt })
   sidebarOpen.value = false
-  router.push('/case')
 }
 
 const handleEditCase = (
@@ -230,10 +227,7 @@ const handleEditCase = (
   variantCount: number,
   createdAt: number
 ): void => {
-  selectedCaseId.value = caseId
-  selectedCaseName.value = caseName
-  selectedVariantCount.value = variantCount
-  selectedCreatedAt.value = createdAt
+  selectCase({ caseId, caseName, variantCount, createdAt })
   dialogHostRef.value?.showCaseMetadata()
 }
 
@@ -245,39 +239,13 @@ const handleCaseDeleted = (caseId: number): void => {
   dataGeneration.value++
 }
 
-// Import handlers
-const handleImportComplete = async (result: {
-  caseId: number
-  variantCount: number
-  caseName: string
-}): Promise<void> => {
-  dataGeneration.value++
-  await caseListRef.value?.refreshCases()
-  caseListRef.value?.selectCase(result.caseId)
-}
-
-const handleBatchImportComplete = async (): Promise<void> => {
-  dataGeneration.value++
-  await caseListRef.value?.refreshCases()
-}
-
-// Tab/route sync
-watch(activeTab, async (newTab) => {
-  panelOpen.value = false
-  selectedPanelVariant.value = null
-  transitioning.value = true
-  try {
-    if (newTab === 'cohort') {
-      sidebarOpen.value = false
-      await router.push('/cohort')
-    } else {
-      await router.push('/case')
-    }
-  } finally {
-    // Allow a tick for onActivated to fire before hiding overlay
-    await nextTick()
-    transitioning.value = false
-  }
+useShellNavigation({
+  activeTab,
+  sidebarOpen,
+  panelOpen,
+  selectedPanelVariant,
+  transitioning,
+  router
 })
 
 // Clear filters on case change
@@ -290,28 +258,20 @@ watch(selectedCaseId, () => {
 watch(
   () => databaseStore.currentPath,
   () => {
-    selectedCaseId.value = null
-    selectedCaseName.value = ''
-    currentFilters.value = {}
-    filteredCount.value = 0
-    totalCount.value = 0
-    hasSort.value = false
-    activeTab.value = 'case'
+    resetForDatabaseSwitch()
   }
 )
 
-// Database switch handler
-const handleDatabaseSwitched = async (): Promise<void> => {
-  selectedCaseId.value = null
-  selectedCaseName.value = ''
-  currentFilters.value = {}
-  filteredCount.value = 0
-  totalCount.value = 0
-  hasSort.value = false
-  clearMetadataCache()
-  await caseListRef.value?.refreshCases()
-  dialogHostRef.value?.showSnackbar(`Switched to ${databaseStore.currentName}`, 'success')
-}
+const { handleDatabaseSwitched, handleImportComplete, handleBatchImportComplete } =
+  useShellLifecycle({
+    currentDatabaseName: databaseName,
+    dataGeneration,
+    resetForDatabaseSwitch,
+    clearMetadataCache,
+    selectCase,
+    caseListRef,
+    dialogHostRef
+  })
 
 const handleShowImportProgress = (): void => {
   dialogHostRef.value?.reopenImportDialog()

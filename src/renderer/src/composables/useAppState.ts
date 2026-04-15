@@ -18,6 +18,13 @@ import type FilterToolbar from '../components/FilterToolbar.vue'
 import type CohortViewComponent from '../components/CohortView.vue'
 
 /** Shape of the object returned by createAppState / useAppState. */
+export interface SelectedCaseInput {
+  caseId: number
+  caseName: string
+  variantCount: number
+  createdAt: number
+}
+
 export interface AppStateReturn {
   // Case selection
   selectedCaseId: Ref<number | null>
@@ -52,6 +59,8 @@ export interface AppStateReturn {
 
   // Shell-owned reset actions
   resetCaseContext: () => void
+  resetForDatabaseSwitch: () => void
+  selectCase: (input: SelectedCaseInput) => void
 
   // Snackbar
   setSnackbarHandler: (
@@ -126,6 +135,21 @@ export function createAppState(): AppStateReturn {
     hasSort.value = false
   }
 
+  function resetForDatabaseSwitch(): void {
+    resetCaseContext()
+    activeTab.value = 'case'
+    panelOpen.value = false
+    selectedPanelVariant.value = null
+  }
+
+  function selectCase(input: SelectedCaseInput): void {
+    selectedCaseId.value = input.caseId
+    selectedCaseName.value = input.caseName
+    selectedVariantCount.value = input.variantCount
+    selectedCreatedAt.value = input.createdAt
+    activeTab.value = 'case'
+  }
+
   // Computed
   const panelMode = computed(() => (activeTab.value === 'case' ? 'case' : 'cohort'))
 
@@ -163,6 +187,8 @@ export function createAppState(): AppStateReturn {
 
     // Shell-owned reset actions
     resetCaseContext,
+    resetForDatabaseSwitch,
+    selectCase,
 
     // Snackbar
     setSnackbarHandler,

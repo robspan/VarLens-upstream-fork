@@ -5,6 +5,20 @@ import { createPinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
+
+const { useShellNavigationSpy, useShellLifecycleSpy } = vi.hoisted(() => ({
+  useShellNavigationSpy: vi.fn(),
+  useShellLifecycleSpy: vi.fn()
+}))
+
+vi.mock('../../src/renderer/src/composables/useShellNavigation', () => ({
+  useShellNavigation: useShellNavigationSpy
+}), { virtual: true })
+
+vi.mock('../../src/renderer/src/composables/useShellLifecycle', () => ({
+  useShellLifecycle: useShellLifecycleSpy
+}), { virtual: true })
+
 import App from '../../src/renderer/src/App.vue'
 import { createMockApi } from '../utils/mock-api'
 
@@ -87,6 +101,14 @@ const asyncComponentStubs = {
 
 describe('App.vue', () => {
   it('mounts App without shell contract gaps', async () => {
+    useShellNavigationSpy.mockReset()
+    useShellLifecycleSpy.mockReset()
+    useShellLifecycleSpy.mockReturnValue({
+      handleDatabaseSwitched: vi.fn(),
+      handleImportComplete: vi.fn(),
+      handleBatchImportComplete: vi.fn()
+    })
+
     router.push('/case')
     await router.isReady()
 
@@ -99,5 +121,7 @@ describe('App.vue', () => {
 
     expect(wrapper.findComponent({ name: 'AppToolbar' }).exists()).toBe(true)
     expect(wrapper.find('.v-navigation-drawer').exists()).toBe(true)
+    expect(useShellNavigationSpy).toHaveBeenCalledTimes(1)
+    expect(useShellLifecycleSpy).toHaveBeenCalledTimes(1)
   })
 })

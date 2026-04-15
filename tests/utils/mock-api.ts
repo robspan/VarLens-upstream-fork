@@ -5,11 +5,13 @@
  * All methods return vi.fn() mocks with sensible default values.
  */
 
-import { vi } from 'vitest'
+import { vi, type Mock } from 'vitest'
 import type { WindowAPI } from '../../src/shared/types/api'
 
 type MockApiDomain<T extends Record<string, unknown>> = {
-  [K in keyof T]: ReturnType<typeof vi.fn>
+  [K in keyof T]: T[K] extends (...args: infer Args) => infer Result
+    ? Mock<(...args: Args) => Result>
+    : never
 }
 
 /**

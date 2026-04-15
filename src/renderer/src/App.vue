@@ -67,7 +67,6 @@
     <AppDialogHost
       ref="dialogHostRef"
       @import-complete="handleImportComplete"
-      @batch-import-complete="handleBatchImportComplete"
     />
 
     <KeyboardShortcutsDialog v-model="showKeyboardHelp" />
@@ -256,8 +255,7 @@ watch(selectedCaseId, () => {
 
 const {
   handleDatabaseSwitched,
-  handleImportComplete,
-  handleBatchImportComplete
+  handleImportComplete
 } =
   useShellLifecycle({
     api,

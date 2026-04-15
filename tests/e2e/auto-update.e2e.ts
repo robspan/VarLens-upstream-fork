@@ -34,8 +34,8 @@ test('app launches and footer renders with version', async ({}, testInfo) => {
     const versionBtn = footer.locator('button', { hasText: /v\d+\.\d+\.\d+/ })
     await expect(versionBtn).toBeVisible({ timeout: 5000 })
 
-    // Verify network status icon is visible
-    const networkIcon = footer.locator('.mdi-wifi, .mdi-wifi-off')
+    // Verify network status icon is visible via the footer's explicit test hook
+    const networkIcon = footer.getByTestId('network-status-indicator')
     await expect(networkIcon).toBeVisible()
 
     // Take a screenshot for visual verification

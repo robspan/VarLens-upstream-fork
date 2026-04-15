@@ -37,10 +37,10 @@ jobs:
             code:
               - 'src/**'
               - 'tests/**'
-              - '!tests/e2e/**'
               - 'package.json'
               - 'package-lock.json'
               - 'electron.vite.config.ts'
+              - 'playwright.config.ts'
               - 'tsconfig*.json'
               - 'eslint.config.js'
               - '.prettierignore'
@@ -148,6 +148,49 @@ jobs:
           path: coverage/coverage-summary.json
 
   # ── 3. Cross-platform compiled-build validation ────────────────────
+  startup-smoke:
+    name: Startup Smoke (Linux)
+    needs: [changes, checks]
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-dev build-essential git-restore-mtime
+
+      - name: Restore git mtimes
+        run: git restore-mtime
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Rebuild native modules for Electron
+        run: npm run rebuild:electron
+
+      - name: Build Electron app
+        run: npm run build
+
+      - name: Run startup smoke
+        run: npx playwright test tests/e2e/startup-smoke.e2e.ts --workers=1
+
+      - name: Upload startup smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: startup-smoke-linux
+          path: |
+            test-results/
+            .planning/artifacts/perf/phase1/baseline/startup-smoke/
+
+  # ── 4. Cross-platform compiled-build validation ────────────────────
   # Only runs after `checks` passes. Validates that electron-vite +
   # electron-builder can produce a working artifact on each target OS.
   # Uses `actions/checkout` + `setup-node` fresh on each runner — the
@@ -155,7 +198,7 @@ jobs:
   # job because it's a different Node environment.
   package:
     name: Package (${{ matrix.os }})
-    needs: [changes, checks]
+    needs: [changes, checks, startup-smoke]
     if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
@@ -209,14 +252,14 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
-  # ── 4. Required-status-check aggregator ────────────────────────────
+  # ── 5. Required-status-check aggregator ────────────────────────────
   # Branch protection should require THIS job (and secrets-scan) only.
   # It succeeds when all upstream jobs succeeded OR were correctly
   # skipped (docs-only PRs). This avoids the `paths-ignore` pending-
   # forever trap.
   ci:
     name: CI
-    needs: [changes, secrets-scan, checks, package]
+    needs: [changes, secrets-scan, checks, startup-smoke, package]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -224,6 +267,7 @@ jobs:
         run: |
           if [[ "${{ needs.secrets-scan.result }}" == "failure" ]] \
              || [[ "${{ needs.checks.result }}"       == "failure" ]] \
+             || [[ "${{ needs.startup-smoke.result }}" == "failure" ]] \
              || [[ "${{ needs.package.result }}"      == "failure" ]]; then
             echo "One or more required jobs failed"
             exit 1

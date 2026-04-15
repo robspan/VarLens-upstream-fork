@@ -20,14 +20,19 @@
           :text="isOnline ? 'Online - API enrichment available' : 'Offline - using cached data'"
         >
           <template #activator="{ props }">
-            <v-icon
+            <span
               v-bind="props"
-              :icon="isOnline ? mdiWifi : mdiWifiOff"
-              :color="isOnline ? 'success' : 'grey'"
-              size="x-small"
-              class="ml-1"
-              style="opacity: 0.7"
-            />
+              :aria-label="isOnline ? 'Network online' : 'Network offline'"
+              data-testid="network-status-indicator"
+              class="d-inline-flex ml-1"
+            >
+              <v-icon
+                :icon="isOnline ? mdiWifi : mdiWifiOff"
+                :color="isOnline ? 'success' : 'grey'"
+                size="x-small"
+                style="opacity: 0.7"
+              />
+            </span>
           </template>
         </v-tooltip>
 

@@ -56,7 +56,8 @@ interface ReadableMap<K, V> {
 export function buildRowViewModels(
   variants: Variant[],
   annotationCache: ReadableMap<string, AnnotationEntry>,
-  linkConfig: Record<string, LinkConfig>
+  linkConfig: Record<string, LinkConfig>,
+  previous: Map<string, RowViewModel> = new Map()
 ): Map<string, RowViewModel> {
   const map = new Map<string, RowViewModel>()
 
@@ -74,8 +75,7 @@ export function buildRowViewModels(
     // Support both the DB field names and the short 'comment' form used in tests
     const perCaseComment = perCase ? (perCase.per_case_comment ?? perCase.comment ?? null) : null
     const globalComment = global ? (global.global_comment ?? global.comment ?? null) : null
-
-    map.set(key, {
+    const nextModel: RowViewModel = {
       links,
       isStarred: (perCase?.starred ?? 0) === 1,
       isGlobalStarred: (global?.starred ?? 0) === 1,
@@ -83,10 +83,44 @@ export function buildRowViewModels(
       globalAcmgClassification: global?.acmg_classification ?? null,
       hasComment: perCaseComment !== null && perCaseComment !== '',
       hasGlobalComment: globalComment !== null && globalComment !== ''
-    })
+    }
+    const previousModel = previous.get(key)
+
+    if (
+      previousModel &&
+      previousModel.isStarred === nextModel.isStarred &&
+      previousModel.isGlobalStarred === nextModel.isGlobalStarred &&
+      previousModel.acmgClassification === nextModel.acmgClassification &&
+      previousModel.globalAcmgClassification === nextModel.globalAcmgClassification &&
+      previousModel.hasComment === nextModel.hasComment &&
+      previousModel.hasGlobalComment === nextModel.hasGlobalComment &&
+      sameLinks(previousModel.links, nextModel.links)
+    ) {
+      map.set(key, previousModel)
+      continue
+    }
+
+    map.set(key, nextModel)
   }
 
   return map
+}
+
+function sameLinks(
+  previousLinks: Record<string, string | null>,
+  nextLinks: Record<string, string | null>
+): boolean {
+  const previousKeys = Object.keys(previousLinks)
+  const nextKeys = Object.keys(nextLinks)
+  if (previousKeys.length !== nextKeys.length) return false
+
+  for (const key of nextKeys) {
+    if (previousLinks[key] !== nextLinks[key]) {
+      return false
+    }
+  }
+
+  return true
 }
 
 export function useVariantRowViewModel(
@@ -94,8 +128,9 @@ export function useVariantRowViewModel(
   annotationCache: ShallowRef<ReadableMap<string, AnnotationEntry>>,
   linkConfig: Ref<Record<string, LinkConfig>>
 ) {
-  const rowViewModels = computed(() =>
-    buildRowViewModels(variants.value, annotationCache.value, linkConfig.value)
+  const rowViewModels = computed<Map<string, RowViewModel>>(
+    (previous?: Map<string, RowViewModel>) =>
+      buildRowViewModels(variants.value, annotationCache.value, linkConfig.value, previous)
   )
 
   function getViewModel(

@@ -10,6 +10,17 @@ import { APP_CONFIG } from '../shared/config'
 import { isUrlSafeForExternal } from './utils/url-validation'
 import { markMilestone } from './services/MainPerfTrace'
 
+if (process.env.VARLENS_APP_DATA_DIR !== undefined && process.env.VARLENS_APP_DATA_DIR !== '') {
+  app.setPath('appData', process.env.VARLENS_APP_DATA_DIR)
+}
+
+if (
+  process.env.VARLENS_USER_DATA_DIR !== undefined &&
+  process.env.VARLENS_USER_DATA_DIR !== ''
+) {
+  app.setPath('userData', process.env.VARLENS_USER_DATA_DIR)
+}
+
 // Disable GPU hardware acceleration when --disable-gpu flag is passed.
 // This prevents blank/white windows on Windows systems with outdated or
 // incompatible GPU drivers. Users can add this flag to the shortcut target.

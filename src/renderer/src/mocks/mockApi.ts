@@ -1115,6 +1115,16 @@ export const mockApi: WindowAPI = {
   },
 
   perf: {
-    reportInteractive: () => {}
+    reportInteractive: () => {},
+    getSnapshot: async () => ({
+      capturedAt: new Date().toISOString(),
+      main: { elapsedMs: 0, milestones: {} },
+      renderer: {
+        traces: [],
+        longTasks: { count: 0, totalDurationMs: 0, maxDurationMs: 0 }
+      }
+    }),
+    resetSnapshot: async () => {},
+    isEnabled: () => false
   }
 }

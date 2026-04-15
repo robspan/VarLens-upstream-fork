@@ -48,6 +48,8 @@ export interface UseOffsetPaginationOptions<T> {
   }) => Promise<OffsetPageResult<T>>
   /** Called when sort state changes (e.g. to update "has sort" indicator) */
   onSortChange?: (hasSort: boolean) => void
+  /** Additional gate for background prefetch work while a kept-alive view is hidden. */
+  prefetchEnabled?: Ref<boolean>
   /**
    * Serialized filter key. When provided, it is included in prefetch cache keys
    * so that cached results from a previous filter set are never served after a
@@ -92,6 +94,7 @@ export function useOffsetPagination<T>(options: UseOffsetPaginationOptions<T>) {
   /** Fire-and-forget: pre-fetch the next page and store in cache. */
   function prefetchNextPage(): void {
     if (!settingsStore.prefetchEnabled) return
+    if (options.prefetchEnabled?.value === false) return
 
     const nextOffset = page.value * itemsPerPage.value
     if (nextOffset >= totalCount.value) return // no more pages

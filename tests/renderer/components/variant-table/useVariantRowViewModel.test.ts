@@ -58,4 +58,22 @@ describe('buildRowViewModels', () => {
     expect(vm!.links.chr).toBe('https://ucsc.edu/1:100')
     expect(vm!.links.gene_symbol).toBe('https://omim.org/BRCA1')
   })
+
+  it('reuses an existing row view model when the derived state is unchanged', () => {
+    const variants = [makeVariant('1', 100, 'A', 'T')]
+    const annotationCache = new Map([
+      [
+        '1:100:A:T',
+        {
+          perCase: { starred: 1, acmg_classification: 'LP' as const, comment: 'test' },
+          global: { starred: 0, acmg_classification: 'VUS' as const, comment: '' }
+        }
+      ]
+    ])
+    const previous = buildRowViewModels(variants, annotationCache, {})
+
+    const next = buildRowViewModels(variants, annotationCache, {}, previous)
+
+    expect(next.get('1:100:A:T')).toBe(previous.get('1:100:A:T'))
+  })
 })

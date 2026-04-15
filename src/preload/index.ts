@@ -17,6 +17,7 @@ import type {
 import type { CommentCategory, AnnotationChangeEvent } from '../shared/types/api'
 import type { ShortlistResult } from '../shared/types/shortlist'
 import type { ValidatedGetShortlistParams } from '../shared/types/ipc-schemas'
+import type { MainPerfSnapshot } from '../shared/types/perf'
 
 /**
  * Preload script - exposes typed API to renderer via contextBridge.
@@ -684,7 +685,23 @@ const api = {
   },
 
   perf: {
-    reportInteractive: () => ipcRenderer.send('perf:interactive')
+    reportInteractive: () => ipcRenderer.send('perf:interactive'),
+    getSnapshot: async () => {
+      const [mainSnapshot, rendererSnapshot] = await Promise.all([
+        ipcRenderer.invoke('perf:mainSnapshot') as Promise<MainPerfSnapshot>,
+        requestRendererPerfSnapshot('get')
+      ])
+
+      return {
+        capturedAt: new Date().toISOString(),
+        main: mainSnapshot,
+        renderer: rendererSnapshot
+      }
+    },
+    resetSnapshot: async () => {
+      await requestRendererPerfSnapshot('reset')
+    },
+    isEnabled: () => process.env.VARLENS_PERF_MODE === '1'
   },
 
   presets: {
@@ -714,6 +731,30 @@ const api = {
     reorder: (items: { id: number; sortOrder: number }[]) =>
       ipcRenderer.invoke('presets:reorder', items)
   }
+}
+
+type RendererPerfRequestAction = 'get' | 'reset'
+
+function requestRendererPerfSnapshot(action: RendererPerfRequestAction): Promise<unknown> {
+  return new Promise((resolve) => {
+    const requestId = `perf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const handleResponse = (event: Event) => {
+      const customEvent = event as CustomEvent<{ id: string; payload: unknown }>
+      if (customEvent.detail?.id !== requestId) return
+      window.removeEventListener('varlens:perf-response', handleResponse as EventListener)
+      resolve(customEvent.detail.payload)
+    }
+
+    window.addEventListener('varlens:perf-response', handleResponse as EventListener)
+    window.dispatchEvent(
+      new CustomEvent('varlens:perf-request', {
+        detail: {
+          id: requestId,
+          action
+        }
+      })
+    )
+  })
 }
 
 // Expose to renderer via contextBridge (secure)

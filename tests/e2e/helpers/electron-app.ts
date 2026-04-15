@@ -1,0 +1,80 @@
+import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
+import { mkdtempSync, mkdirSync } from 'fs'
+import { tmpdir } from 'os'
+import { join, resolve } from 'path'
+
+export interface LaunchElectronAppOptions {
+  perfMode?: boolean
+  env?: Record<string, string | undefined>
+}
+
+export interface LaunchElectronAppResult {
+  app: ElectronApplication
+  window: Page
+  isolationRoot: string
+  userDataDir: string
+  appDataDir: string
+  consoleMessages: string[]
+  cleanup: () => Promise<void>
+}
+
+export async function launchElectronApp(
+  options: LaunchElectronAppOptions = {}
+): Promise<LaunchElectronAppResult> {
+  const isolationRoot = mkdtempSync(join(tmpdir(), 'varlens-e2e-'))
+  const userDataDir = join(isolationRoot, 'user-data')
+  const appDataDir = join(isolationRoot, 'app-data')
+  mkdirSync(userDataDir, { recursive: true })
+  mkdirSync(appDataDir, { recursive: true })
+
+  const app = await electron.launch({
+    args: ['./out/main/index.js'],
+    env: {
+      ...process.env,
+      NODE_ENV: 'production',
+      HOME: isolationRoot,
+      XDG_CONFIG_HOME: appDataDir,
+      XDG_DATA_HOME: appDataDir,
+      VARLENS_APP_DATA_DIR: appDataDir,
+      VARLENS_USER_DATA_DIR: userDataDir,
+      VARLENS_PERF_MODE: options.perfMode ? '1' : process.env.VARLENS_PERF_MODE,
+      ...options.env
+    }
+  })
+
+  const window = await app.firstWindow()
+  const consoleMessages: string[] = []
+  window.on('console', (message) => {
+    consoleMessages.push(`[${message.type()}] ${message.text()}`)
+  })
+  window.on('pageerror', (error) => {
+    consoleMessages.push(`[pageerror] ${error.message}`)
+  })
+
+  return {
+    app,
+    window,
+    isolationRoot,
+    userDataDir,
+    appDataDir,
+    consoleMessages,
+    cleanup: async () => {
+      await app.close()
+    }
+  }
+}
+
+export async function waitForAppShell(window: Page): Promise<void> {
+  await window.waitForSelector('.v-application', { timeout: 15000 })
+}
+
+export async function dismissDisclaimerIfPresent(window: Page): Promise<void> {
+  const disclaimerButton = window.getByRole('button', { name: 'I Understand' })
+  if ((await disclaimerButton.count()) === 0) return
+  await disclaimerButton.click()
+  await window.waitForTimeout(300)
+}
+
+export function resolveAppPath(relativePath: string): string {
+  return resolve(process.cwd(), relativePath)
+}

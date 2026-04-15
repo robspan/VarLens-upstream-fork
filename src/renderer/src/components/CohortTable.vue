@@ -297,7 +297,8 @@ const {
   },
   onSortChange: (sorted) => {
     hasSort.value = sorted
-  }
+  },
+  prefetchEnabled: isActive
 })
 
 // Local state
@@ -492,6 +493,7 @@ const { debouncedFn: debouncedLoadAnnotations } = useDebounce(
   150
 )
 watch(variants, (newVariants) => {
+  if (!isActive.value) return
   debouncedLoadAnnotations(newVariants)
   // End flow trace when new data arrives (primary visual update)
   if (import.meta.env.DEV && activeFlowTraceId !== null) {

@@ -49,6 +49,9 @@ tmp/
 temp/
 *.tmp
 
+# Local performance artifacts
+.planning/artifacts/perf/
+
 # Vendor assets copied from node_modules at build time (see npm run copy:molstar)
 src/renderer/public/pdbe-molstar-component.js
 src/renderer/public/pdbe-molstar-light.css

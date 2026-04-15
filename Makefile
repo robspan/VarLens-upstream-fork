@@ -156,16 +156,19 @@ ci-package-linux: ## Run the Linux package validation job under Node $(CI_NODE_V
 	@echo "=== Package (ubuntu-latest) using Node $(CI_NODE_VERSION) ==="
 	$(ensure_ci_node)
 	@echo ""
-	@echo "Step 1/4: Installing dependencies..."
+	@echo "Step 1/5: Installing dependencies..."
 	npm ci
 	@echo ""
-	@echo "Step 2/4: Rebuilding native modules for Electron..."
+	@echo "Step 2/5: Rebuilding native modules for Electron..."
 	npm run rebuild:electron
 	@echo ""
-	@echo "Step 3/4: Building Electron app..."
+	@echo "Step 3/5: Building Electron app..."
 	npx electron-vite build
 	@echo ""
-	@echo "Step 4/4: Packaging Linux artifacts..."
+	@echo "Step 4/5: Running startup smoke..."
+	npx playwright test tests/e2e/startup-smoke.e2e.ts --workers=1
+	@echo ""
+	@echo "Step 5/5: Packaging Linux artifacts..."
 	CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --publish never
 	@echo ""
 	@echo "=== Package (ubuntu-latest) PASSED ==="

@@ -56,6 +56,7 @@ export function useShellLifecycle({
   }
 
   const handleBatchImportComplete = (): Promise<unknown> | unknown => {
+    incrementDataGeneration()
     return caseListRef.value?.refreshCases()
   }
 

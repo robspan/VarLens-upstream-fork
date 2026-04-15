@@ -1,5 +1,5 @@
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { mkdtempSync, mkdirSync } from 'fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 
@@ -42,7 +42,26 @@ export async function launchElectronApp(
     }
   })
 
-  const window = await app.firstWindow()
+  const logFilePath = join(userDataDir, 'logs', 'main.log')
+  let window: Page
+  try {
+    window = await app.firstWindow()
+  } catch (error) {
+    const mainLog = existsSync(logFilePath)
+      ? readFileSync(logFilePath, 'utf8').trim()
+      : 'Main log file was not created before Electron exited.'
+
+    throw new Error(
+      [
+        'Electron app closed before the first window became available.',
+        `Isolation root: ${isolationRoot}`,
+        `Main log: ${logFilePath}`,
+        mainLog
+      ].join('\n\n'),
+      { cause: error }
+    )
+  }
+
   const consoleMessages: string[] = []
   window.on('console', (message) => {
     consoleMessages.push(`[${message.type()}] ${message.text()}`)
@@ -65,7 +84,8 @@ export async function launchElectronApp(
 }
 
 export async function waitForAppShell(window: Page): Promise<void> {
-  await window.waitForSelector('.v-application', { timeout: 15000 })
+  const timeoutMs = process.env.CI === 'true' ? 45_000 : 15_000
+  await window.waitForSelector('.v-application', { timeout: timeoutMs })
 }
 
 export async function dismissDisclaimerIfPresent(window: Page): Promise<void> {

@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import {
+  type LaunchElectronAppResult,
   dismissDisclaimerIfPresent,
   launchElectronApp,
   waitForAppShell
@@ -8,9 +9,13 @@ import { ensureArtifactDir, writeJsonArtifact } from './helpers/perf-artifacts'
 
 test('startup smoke launches the app shell with isolated Electron state', async ({}, testInfo) => {
   const startupArtifactDir = ensureArtifactDir('startup-smoke')
-  const launched = await launchElectronApp({ perfMode: true })
+  test.setTimeout(process.env.CI === 'true' ? 120_000 : 45_000)
+
+  let launched: LaunchElectronAppResult | undefined
+  const launchStartedAt = Date.now()
 
   try {
+    launched = await launchElectronApp({ perfMode: true })
     await waitForAppShell(launched.window)
     await dismissDisclaimerIfPresent(launched.window)
 
@@ -37,13 +42,23 @@ test('startup smoke launches the app shell with isolated Electron state', async 
     })
     writeJsonArtifact('startup-smoke/perf-snapshot.json', snapshot)
   } catch (error) {
+    if (launched !== undefined) {
+      await launched.window.screenshot({
+        path: `${startupArtifactDir}/failure.png`
+      })
+    }
+
     writeJsonArtifact('startup-smoke/failure-context.json', {
       message: error instanceof Error ? error.message : String(error),
-      consoleMessages: launched.consoleMessages,
+      launchElapsedMs: Date.now() - launchStartedAt,
+      launchedWindow: launched !== undefined,
+      consoleMessages: launched?.consoleMessages ?? [],
       testOutputDir: testInfo.outputDir
     })
     throw error
   } finally {
-    await launched.cleanup()
+    if (launched !== undefined) {
+      await launched.cleanup()
+    }
   }
 })

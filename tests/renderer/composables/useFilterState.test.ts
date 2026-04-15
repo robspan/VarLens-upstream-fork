@@ -71,6 +71,7 @@ describe('useFilterState', () => {
       expect(result.filters.value.clinvars).toEqual([])
       expect(result.filters.value.tagIds).toEqual([])
       expect(result.filters.value.acmgClassifications).toEqual([])
+      expect(result.filters.value.columnFilters).toEqual({})
     })
 
     it('has null numeric filters', () => {
@@ -525,6 +526,22 @@ describe('useFilterState', () => {
 
       const emitted = onFiltersUpdate.mock.calls[0][0]
       expect(emitted).toEqual({})
+    })
+
+    it('emits cloned column_filters through the shared serialization path', () => {
+      const { result, onFiltersUpdate } = createState()
+
+      result.filters.value.columnFilters = {
+        gene_symbol: { operator: 'like', value: 'BRCA%' }
+      }
+
+      result.emitFilters()
+
+      const emitted = onFiltersUpdate.mock.calls[0][0]
+      expect(emitted.column_filters).toEqual({
+        gene_symbol: { operator: 'like', value: 'BRCA%' }
+      })
+      expect(emitted.column_filters).not.toBe(result.filters.value.columnFilters)
     })
 
     it('emitted consequences merges impact presets and custom consequences', async () => {

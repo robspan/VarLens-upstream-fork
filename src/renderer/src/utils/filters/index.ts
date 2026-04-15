@@ -9,13 +9,16 @@
 export type { FilterState, ActiveFilter, FilterIpcParams } from '../../../../shared/types/filters'
 
 // Default values
-export { FILTER_DEFAULTS } from './filterDefaults'
+export { FILTER_DEFAULTS } from '../../../../shared/filters/filterDefaults'
 
 // Clearing utilities
 export { clearFilter, clearAllFilters, type FilterId } from './filterClearing'
 
 // IPC serialization
-export { buildIpcParams } from './filterSerialization'
+export {
+  buildFilterIpcParams,
+  buildIpcParams
+} from '../../../../shared/filters/filterSerialization'
 
 // Active filters computation
 export { buildActiveFiltersList } from './activeFilters'

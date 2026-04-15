@@ -1,9 +1,18 @@
 import { describe, it, expect } from 'vitest'
 import { ref, isReactive } from 'vue'
+import { FILTER_DEFAULTS } from '../../../src/shared/filters/filterDefaults'
+import {
+  buildFilterIpcParams as sharedBuildFilterIpcParams,
+  buildVariantFilterFromState as sharedBuildVariantFilterFromState
+} from '../../../src/shared/filters/filterSerialization'
 import {
   buildFilterFromState,
   type FilterState
 } from '../../../src/renderer/src/composables/filter-types'
+import {
+  buildFilterIpcParams,
+  buildVariantFilterFromState
+} from '../../../src/renderer/src/utils/filters/filterSerialization'
 
 const defaultState: FilterState = {
   searchQuery: '',
@@ -29,6 +38,16 @@ const defaultState: FilterState = {
 }
 
 describe('buildFilterFromState', () => {
+  it('shared defaults start with case annotation scope and empty column filters', () => {
+    expect(FILTER_DEFAULTS.annotationScope).toBe('case')
+    expect(FILTER_DEFAULTS.columnFilters).toEqual({})
+  })
+
+  it('renderer filter serialization utilities re-export the shared builders', () => {
+    expect(buildFilterIpcParams).toBe(sharedBuildFilterIpcParams)
+    expect(buildVariantFilterFromState).toBe(sharedBuildVariantFilterFromState)
+  })
+
   it('returns empty filter for default state', () => {
     const result = buildFilterFromState(defaultState, [])
     expect(result).toEqual({})

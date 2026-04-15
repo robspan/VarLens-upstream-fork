@@ -1,8 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import { ref, reactive, isReactive } from 'vue'
 import { cloneForIpc } from '@renderer/utils/cloneForIpc'
+import { cloneForIpc as sharedCloneForIpc } from '../../../src/shared/utils/cloneForIpc'
 
 describe('cloneForIpc', () => {
+  it('re-exports the shared clone helper', () => {
+    expect(cloneForIpc).toBe(sharedCloneForIpc)
+  })
+
   it('returns a plain object from a plain object', () => {
     const input = { a: 1, b: 'two' }
     const result = cloneForIpc(input)

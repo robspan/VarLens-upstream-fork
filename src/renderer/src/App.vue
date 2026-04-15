@@ -134,7 +134,8 @@ const {
   panelMode,
   variantTableRef,
   filterToolbarRef,
-  dataGeneration,
+  setCaseCount,
+  incrementDataGeneration,
   closeSidebar,
   clearSelectedCase,
   resetCaseFilters,
@@ -201,7 +202,7 @@ const handleDeleteAllCases = async () => {
   if (confirmed === true) {
     const deleted = await api.cases.deleteAll()
     resetCaseContext()
-    dataGeneration.value++
+    incrementDataGeneration()
     await caseListRef.value?.refreshCases()
     dialogHostRef.value?.showSnackbar(
       `Deleted ${deleted} ${deleted === 1 ? 'case' : 'cases'}`,
@@ -232,11 +233,11 @@ const handleEditCase = (
 }
 
 const handleCasesLoaded = (count: number): void => {
-  caseCount.value = count
+  setCaseCount(count)
 }
 const handleCaseDeleted = (caseId: number): void => {
   if (selectedCaseId.value === caseId) clearSelectedCase()
-  dataGeneration.value++
+  incrementDataGeneration()
 }
 
 useShellNavigation({
@@ -253,16 +254,22 @@ watch(selectedCaseId, () => {
   resetCaseFilters()
 })
 
-const { handleDatabaseSwitched, handleImportComplete, handleBatchImportComplete } =
+const {
+  handleDatabaseSwitched,
+  handleImportComplete,
+  handleBatchImportComplete
+} =
   useShellLifecycle({
+    api,
     currentDatabasePath: databasePath,
     currentDatabaseName: databaseName,
-    dataGeneration,
+    incrementDataGeneration,
     resetForDatabaseSwitch,
     clearMetadataCache,
     selectCase,
     caseListRef,
-    dialogHostRef
+    dialogHostRef,
+    importStore
   })
 
 const handleShowImportProgress = (): void => {
@@ -295,9 +302,6 @@ useKeyboardShortcuts({
   onImport: () => dialogHostRef.value?.showImportDialog()
 })
 
-// Global listener for background import completion
-// This fires even when BatchImportDialog is closed via "Continue in Background"
-let cleanupImportComplete: (() => void) | null = null
 const perfModeEnabled = api?.perf?.isEnabled?.() === true
 
 type RendererPerfRequestEvent = CustomEvent<{ id: string; action: 'get' | 'reset' }>
@@ -349,26 +353,9 @@ onMounted(() => {
     startRendererLongTaskObserver()
     window.addEventListener('varlens:perf-request', handlePerfRequest as EventListener)
   }
-
-  if (api) {
-    cleanupImportComplete = api.batchImport.onComplete((result) => {
-      // Update the import store so the status bar reflects completion
-      importStore.importComplete({
-        ...result,
-        details: result.details.map((d) => ({
-          ...d,
-          caseName: d.caseName ?? d.fileName,
-          status: d.status === 'success' ? 'success' : d.status === 'failed' ? 'failed' : 'skipped'
-        }))
-      })
-      // Refresh the case list with newly imported cases
-      caseListRef.value?.refreshCases()
-    })
-  }
 })
 
 onUnmounted(() => {
-  cleanupImportComplete?.()
   if (perfModeEnabled) {
     window.removeEventListener('varlens:perf-request', handlePerfRequest as EventListener)
     stopRendererLongTaskObserver()

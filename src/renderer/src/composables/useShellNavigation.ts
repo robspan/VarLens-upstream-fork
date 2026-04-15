@@ -21,7 +21,27 @@ export function useShellNavigation({
   transitioning,
   router
 }: UseShellNavigationOptions): void {
+  let syncingFromRoute = false
+
+  watch(
+    () => router.currentRoute.value.path,
+    (path) => {
+      const routeTab = path.startsWith('/cohort') ? 'cohort' : 'case'
+      if (activeTab.value === routeTab) return
+
+      syncingFromRoute = true
+      activeTab.value = routeTab
+      syncingFromRoute = false
+    },
+    { immediate: true }
+  )
+
   watch(activeTab, async (newTab) => {
+    if (syncingFromRoute) return
+
+    const targetPath = newTab === 'cohort' ? '/cohort' : '/case'
+    if (router.currentRoute.value.path === targetPath) return
+
     panelOpen.value = false
     selectedPanelVariant.value = null
     transitioning.value = true

@@ -58,6 +58,8 @@ export interface AppStateReturn {
   dataGeneration: Ref<number>
 
   // Shell-owned reset actions
+  setCaseCount: (count: number) => void
+  incrementDataGeneration: () => void
   setActiveTab: (tab: 'case' | 'cohort') => void
   openSidebar: () => void
   closeSidebar: () => void
@@ -132,6 +134,14 @@ export function createAppState(): AppStateReturn {
 
   function clearSelectedCase(): void {
     selectedCaseId.value = null
+  }
+
+  function setCaseCount(count: number): void {
+    caseCount.value = count
+  }
+
+  function incrementDataGeneration(): void {
+    dataGeneration.value++
   }
 
   function setActiveTab(tab: 'case' | 'cohort'): void {
@@ -219,6 +229,8 @@ export function createAppState(): AppStateReturn {
     dataGeneration,
 
     // Shell-owned reset actions
+    setCaseCount,
+    incrementDataGeneration,
     setActiveTab,
     openSidebar,
     closeSidebar,

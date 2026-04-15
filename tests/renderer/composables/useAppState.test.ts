@@ -60,6 +60,16 @@ describe('createAppState', () => {
     expect(state.sidebarOpen.value).toBe(true)
   })
 
+  it('updates case count and data generation through explicit shell actions', () => {
+    const state = createAppState()
+
+    state.setCaseCount(12)
+    state.incrementDataGeneration()
+
+    expect(state.caseCount.value).toBe(12)
+    expect(state.dataGeneration.value).toBe(1)
+  })
+
   it('closes the sidebar through an explicit shell action', () => {
     const state = createAppState()
 

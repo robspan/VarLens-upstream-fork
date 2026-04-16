@@ -7,6 +7,7 @@
 
 import { useApiService } from './useApiService'
 import { logService } from '../services/LogService'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
 interface CaseInfo {
   id: number
@@ -26,7 +27,7 @@ export function useAssociation() {
 
   async function runAssociation(config: unknown): Promise<unknown> {
     if (!api) throw new Error('API not available')
-    return api.cohort.runAssociation(config)
+    return unwrapIpcResult(await api.cohort.runAssociation(config))
   }
 
   function cancelAssociation(): void {
@@ -51,14 +52,16 @@ export function useAssociation() {
     cohortGroups: CohortGroup[]
   }> {
     if (!api) return { cases: [], cohortGroups: [] }
-    const [caseList, cohorts] = await Promise.all([
+    const [caseListResult, cohortsResult] = await Promise.all([
       api.cases.list(),
       api.caseMetadata.listCohorts()
     ])
+    const caseList = unwrapIpcResult(caseListResult)
+    const cohorts = unwrapIpcResult(cohortsResult)
     const cases = await Promise.all(
       caseList.map(async (c: { id: number; name: string }) => {
         try {
-          const fullMeta = await api.caseMetadata.getFullMetadata(c.id)
+          const fullMeta = unwrapIpcResult(await api.caseMetadata.getFullMetadata(c.id))
           return {
             id: c.id,
             name: c.name,
@@ -69,7 +72,11 @@ export function useAssociation() {
         } catch (e) {
           logService.warn(
             `Failed to load metadata for case ${c.id}: ` +
-              (e instanceof Error ? e.message : String(e)),
+              (e instanceof Error
+                ? e.message
+                : isIpcError(e)
+                  ? (e.userMessage ?? e.message)
+                  : String(e)),
             'association'
           )
           return { id: c.id, name: c.name, status: null, sex: null, cohortIds: [] }

@@ -197,7 +197,7 @@ import type { VcfPreviewResult } from '../../../../shared/types/vcf'
 import { useApiService } from '../../composables/useApiService'
 import { useImportStatusStore } from '../../stores/importStatusStore'
 import { logService } from '../../services/LogService'
-import { isIpcError } from '../../../../shared/types/errors'
+import { isIpcError, unwrapIpcResult } from '../../../../shared/types/errors'
 import BatchReviewPhase from '../batch-import/BatchReviewPhase.vue'
 import BatchProgressPhase from '../batch-import/BatchProgressPhase.vue'
 import BatchSummaryPhase from '../batch-import/BatchSummaryPhase.vue'
@@ -470,30 +470,21 @@ async function startVcfImport(): Promise<void> {
       overallPercent.value = Math.round(((i + 1) / vcfSelectedSamples.value.length) * 100)
 
       try {
-        const result = await api!.import.start(vcfFilePath.value, caseName, {
-          selectedSample: sample,
-          genomeBuild: vcfGenomeBuild.value ?? undefined
-        })
+        const result = unwrapIpcResult(
+          await api!.import.start(vcfFilePath.value, caseName, {
+            selectedSample: sample,
+            genomeBuild: vcfGenomeBuild.value ?? undefined
+          })
+        )
 
-        if (isIpcError(result)) {
-          results.failed++
-          results.details.push({
-            filePath: vcfFilePath.value,
-            fileName: caseName,
-            caseName,
-            status: 'failed' as const,
-            error: result.userMessage
-          })
-        } else {
-          results.succeeded++
-          results.details.push({
-            filePath: vcfFilePath.value,
-            fileName: caseName,
-            caseName,
-            status: 'success' as const,
-            variantCount: (result as { variantCount: number }).variantCount
-          })
-        }
+        results.succeeded++
+        results.details.push({
+          filePath: vcfFilePath.value,
+          fileName: caseName,
+          caseName,
+          status: 'success' as const,
+          variantCount: (result as { variantCount: number }).variantCount
+        })
       } catch (err) {
         results.failed++
         results.details.push({

@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { withSetup } from '../../utils/test-helpers'
 import { useFilterOptionsCache } from '@renderer/composables/useFilterOptionsCache'
 import type { WindowAPI, FilterOptions } from '../../../src/shared/types/api'
+import { ErrorCode } from '../../../src/shared/types/errors'
 
 vi.mock('../../../src/renderer/src/services/LogService', () => ({
   logService: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() }
@@ -148,6 +149,26 @@ describe('useFilterOptionsCache', () => {
     await result.loadFilterOptions(1)
 
     expect(logService.error).toHaveBeenCalledWith(expect.stringContaining('DB error'), 'filters')
+  })
+
+  it('handles SerializableError filter option responses gracefully', async () => {
+    const { logService } = await import('../../../src/renderer/src/services/LogService')
+    const api = makeMockApi(async () => ({
+      code: ErrorCode.DB_ERROR,
+      message: 'filterOptions failed',
+      userMessage: 'Could not load filter options'
+    } as unknown as FilterOptions))
+
+    const [result, appInstance] = withSetup(() => useFilterOptionsCache(api))
+    app = appInstance
+
+    await result.loadFilterOptions(1)
+
+    expect(logService.error).toHaveBeenCalledWith(
+      expect.stringContaining('Could not load filter options'),
+      'filters'
+    )
+    expect(result.filterOptions.value.consequences).toEqual([])
   })
 
   describe('loadFilterOptionsAndTags', () => {

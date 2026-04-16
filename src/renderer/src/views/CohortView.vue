@@ -5,6 +5,7 @@ import { useApiService } from '../composables/useApiService'
 import type { Variant } from '../../../shared/types/api'
 import type { CohortVariant } from '../../../shared/types/cohort'
 import { logService } from '../services/LogService'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
 const { api } = useApiService()
 const { initialSearch, panelOpen, selectedPanelVariant, cohortViewRef, selectCase } = useAppState()
@@ -38,14 +39,19 @@ async function handleNavigateToCase(payload: {
 
   // Look up case name
   try {
-    const cases = await api.cases.list()
+    const cases = unwrapIpcResult(await api.cases.list())
     const selectedCase = cases.find((c) => c.id === payload.caseId)
     if (selectedCase !== undefined) {
       caseName = selectedCase.name
     }
   } catch (error) {
     logService.error(
-      'Failed to fetch case name: ' + (error instanceof Error ? error.message : String(error)),
+      'Failed to fetch case name: ' +
+        (error instanceof Error
+          ? error.message
+          : isIpcError(error)
+            ? (error.userMessage ?? error.message)
+            : String(error)),
       'cohort'
     )
   }

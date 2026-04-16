@@ -2,7 +2,7 @@ import { type Ref } from 'vue'
 import { useApiService } from './useApiService'
 import { buildFilterFromState, type FilterState, type ExportResult } from './filter-types'
 import { logService } from '../services/LogService'
-import { isIpcError } from '../../../shared/types/errors'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
 /**
  * Composable for variant export functionality.
@@ -25,18 +25,9 @@ export function useFilterExport(
     try {
       const exportFilters = buildFilterFromState(filters.value, selectedImpactPresets.value)
 
-      const result = await api.export.variants(
-        caseId,
-        exportFilters,
-        caseName !== '' ? caseName : `case_${caseId}`
+      const result = unwrapIpcResult(
+        await api.export.variants(caseId, exportFilters, caseName !== '' ? caseName : `case_${caseId}`)
       )
-
-      if (isIpcError(result)) {
-        return {
-          success: false,
-          error: result.userMessage ?? result.message ?? 'Unknown error'
-        }
-      }
 
       if (result !== null && result !== undefined && result.success === true) {
         return { success: true, filePath: result.filePath }
@@ -52,7 +43,12 @@ export function useFilterExport(
       return result?.error === 'Export cancelled' ? { success: false, cancelled: true } : null
     } catch (error) {
       logService.error(
-        'Export error: ' + (error instanceof Error ? error.message : String(error)),
+        'Export error: ' +
+          (error instanceof Error
+            ? error.message
+            : isIpcError(error)
+              ? (error.userMessage ?? error.message)
+              : String(error)),
         'export'
       )
       return null

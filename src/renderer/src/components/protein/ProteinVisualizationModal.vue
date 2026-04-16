@@ -154,6 +154,7 @@ import {
   getConsequenceColor
 } from '../../../../shared/utils/protein-utils'
 import { logService } from '../../services/LogService'
+import { unwrapIpcResult } from '../../../../shared/types/errors'
 
 interface Props {
   modelValue: boolean
@@ -333,11 +334,8 @@ async function handleToggleCaseVariants(): Promise<void> {
   ) {
     caseVariantsLoading.value = true
     try {
-      const result = await api.variants.query(
-        props.caseId,
-        { gene_symbol: geneSymbol.value },
-        0,
-        1000
+      const result = unwrapIpcResult(
+        await api.variants.query(props.caseId, { gene_symbol: geneSymbol.value }, 0, 1000)
       )
       caseVariants.value = result.data
     } catch (err) {

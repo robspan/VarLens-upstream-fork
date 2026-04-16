@@ -172,9 +172,9 @@ export interface VariantsAPI {
     sortBy?: SortItem[],
     skipCount?: boolean,
     includeUnfilteredCount?: boolean
-  ) => Promise<PaginatedResult<Variant> & { unfiltered_count?: number }>
-  getFilterOptions: (caseId: number) => Promise<FilterOptions>
-  search: (caseId: number, query: string, limit?: number) => Promise<Variant[]>
+  ) => Promise<IpcResult<PaginatedResult<Variant> & { unfiltered_count?: number }>>
+  getFilterOptions: (caseId: number) => Promise<IpcResult<FilterOptions>>
+  search: (caseId: number, query: string, limit?: number) => Promise<IpcResult<Variant[]>>
   geneSymbols: (caseId: number, query: string, limit?: number) => Promise<string[]>
   /** Get variant type counts per case for tab badges (snv/indel/sv/cnv/str) */
   typeCounts: (caseId: number) => Promise<Record<string, number>>
@@ -254,7 +254,7 @@ export interface ImportAPI {
     filePath: string,
     caseName: string,
     vcfOptions?: { selectedSample?: string; genomeBuild?: string }
-  ) => Promise<ImportResult | SerializableError>
+  ) => Promise<IpcResult<ImportResult>>
   startMultiFile: (
     caseName: string,
     files: MultiFileImportSpec[],
@@ -267,9 +267,9 @@ export interface ImportAPI {
       minGq?: number | null
       minDp?: number | null
     }
-  ) => Promise<MultiFileImportResult | SerializableError>
+  ) => Promise<IpcResult<MultiFileImportResult>>
   vcfPreview: (filePath: string) => Promise<VcfPreviewResult>
-  vcfMultiPreview: (filePaths: string[]) => Promise<import('./import').VcfMultiPreviewResult>
+  vcfMultiPreview: (filePaths: string[]) => Promise<IpcResult<import('./import').VcfMultiPreviewResult>>
   onProgress: (callback: (progress: ProgressUpdate) => void) => () => void
   cancel: () => Promise<void>
 }
@@ -306,8 +306,8 @@ export interface ExportAPI {
     caseId: number,
     filters: Omit<VariantFilter, 'case_id'>,
     caseName: string
-  ) => Promise<ExportResult | SerializableError>
-  cohort: (params: CohortSearchParams) => Promise<ExportResult | SerializableError>
+  ) => Promise<IpcResult<ExportResult>>
+  cohort: (params: CohortSearchParams) => Promise<IpcResult<ExportResult>>
 }
 
 export interface DatabaseAPI {
@@ -387,12 +387,12 @@ export interface BatchImportAPI {
 export interface CohortAPI {
   getVariants: (
     params: CohortSearchParams
-  ) => Promise<{ data: CohortVariant[]; total_count: number }>
+  ) => Promise<IpcResult<{ data: CohortVariant[]; total_count: number }>>
   getSummary: () => Promise<IpcResult<CohortSummary>>
   getCarriers: (chr: string, pos: number, ref: string, alt: string) => Promise<CohortCarrier[]>
   getGeneBurden: () => Promise<GeneBurden[]>
-  getColumnMeta: () => Promise<ColumnFilterMeta[]>
-  getSummaryStatus: () => Promise<{ is_stale: boolean; last_rebuilt_at: number }>
+  getColumnMeta: () => Promise<IpcResult<ColumnFilterMeta[]>>
+  getSummaryStatus: () => Promise<IpcResult<{ is_stale: boolean; last_rebuilt_at: number }>>
   rebuildSummary: () => Promise<void>
   /**
    * Subscribe to cohort summary rebuild events.
@@ -530,12 +530,12 @@ export interface FullCaseMetadata {
 }
 
 export interface CaseMetadataAPI {
-  get: (caseId: number) => Promise<CaseMetadata | null>
+  get: (caseId: number) => Promise<IpcResult<CaseMetadata | null>>
   upsert: (caseId: number, updates: CaseMetadataUpdates) => Promise<CaseMetadata>
-  getFullMetadata: (caseId: number) => Promise<FullCaseMetadata>
+  getFullMetadata: (caseId: number) => Promise<IpcResult<FullCaseMetadata>>
 
   // Cohort groups
-  listCohorts: () => Promise<CohortGroup[]>
+  listCohorts: () => Promise<IpcResult<CohortGroup[]>>
   createCohort: (name: string, description?: string | null) => Promise<CohortGroup>
   updateCohort: (
     cohortId: number,

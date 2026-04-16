@@ -241,7 +241,7 @@ import type {
   ProgressUpdate
 } from '../../../../shared/types/api'
 import type { VcfMultiPreviewResult } from '../../../../shared/types/import'
-import { isIpcError } from '../../../../shared/types/errors'
+import { unwrapIpcResult } from '../../../../shared/types/errors'
 import { useApiService } from '../../composables/useApiService'
 import { useAppState } from '../../composables/useAppState'
 import { useImportStatusStore } from '../../stores/importStatusStore'
@@ -557,11 +557,7 @@ async function loadPreview(filePaths: string[]): Promise<void> {
   pendingFileCount.value = filePaths.length
 
   try {
-    const result = await api.import.vcfMultiPreview(filePaths)
-    if (isIpcError(result)) {
-      throw new Error(result.userMessage ?? 'Failed to preview VCF files')
-    }
-
+    const result = unwrapIpcResult(await api.import.vcfMultiPreview(filePaths))
     previewResult.value = result
     caseName.value = result.suggestedCaseName
 
@@ -632,19 +628,17 @@ async function startImport(): Promise<void> {
       minDp: filters.value.minDp
     }
 
-    const result = await api.import.startMultiFile(
-      caseName.value.trim(),
-      specs,
-      previewResult.value.files[0].detectedGenomeBuild !== null &&
-        previewResult.value.files[0].detectedGenomeBuild !== ''
-        ? { genomeBuild: previewResult.value.files[0].detectedGenomeBuild }
-        : undefined,
-      filtersPayload
+    const result = unwrapIpcResult(
+      await api.import.startMultiFile(
+        caseName.value.trim(),
+        specs,
+        previewResult.value.files[0].detectedGenomeBuild !== null &&
+          previewResult.value.files[0].detectedGenomeBuild !== ''
+          ? { genomeBuild: previewResult.value.files[0].detectedGenomeBuild }
+          : undefined,
+        filtersPayload
+      )
     )
-
-    if (isIpcError(result)) {
-      throw new Error(result.userMessage ?? 'Multi-file import failed')
-    }
 
     // Reconcile final per-file statuses with server results
     const serverResult = result as MultiFileImportResult

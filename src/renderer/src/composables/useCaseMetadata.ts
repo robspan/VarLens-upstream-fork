@@ -27,6 +27,7 @@ import type {
   CaseSex,
   FullCaseMetadata
 } from '../../../shared/types/api'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
 /** Maximum cached case metadata entries — evicts oldest on overflow */
 const MAX_METADATA_CACHE_SIZE = 200
@@ -74,12 +75,17 @@ export function useCaseMetadata() {
     loadingStates.value.set(caseId, true)
     triggerRef(loadingStates)
     try {
-      const result = await api.caseMetadata.getFullMetadata(caseId)
+      const result = unwrapIpcResult(await api.caseMetadata.getFullMetadata(caseId))
       metadataCache.value.set(caseId, result)
       triggerCacheUpdate()
     } catch (error) {
       logService.error(
-        'Failed to load case metadata: ' + (error instanceof Error ? error.message : String(error)),
+        'Failed to load case metadata: ' +
+          (error instanceof Error
+            ? error.message
+            : isIpcError(error)
+              ? (error.userMessage ?? error.message)
+              : String(error)),
         'case-metadata'
       )
     } finally {
@@ -92,11 +98,16 @@ export function useCaseMetadata() {
   async function loadCohortGroups(): Promise<void> {
     if (!api) return
     try {
-      const cohorts = await api.caseMetadata.listCohorts()
+      const cohorts = unwrapIpcResult(await api.caseMetadata.listCohorts())
       cohortGroupsCache.value = cohorts
     } catch (error) {
       logService.error(
-        'Failed to load cohort groups: ' + (error instanceof Error ? error.message : String(error)),
+        'Failed to load cohort groups: ' +
+          (error instanceof Error
+            ? error.message
+            : isIpcError(error)
+              ? (error.userMessage ?? error.message)
+              : String(error)),
         'case-metadata'
       )
     }

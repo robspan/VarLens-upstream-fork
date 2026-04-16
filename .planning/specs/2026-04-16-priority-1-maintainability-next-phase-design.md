@@ -240,6 +240,14 @@ Priority 1 maintainability is considered complete for this phase when all of the
 5. Already-completed Priority 1 work is explicitly preserved as closed/out of scope.
 6. Filter query-shaping ownership consolidation is recorded as the next maintainability phase rather than left ambiguous.
 
+## Implementation Note
+
+Implementation completed on `feat/priority-1-maintainability` using the split sub-phase rollout from the frozen inventory.
+
+- The renderer-facing scoped `wrapHandler` surface now standardizes on `unwrapIpcResult(...)` at the transport boundary.
+- Ad hoc renderer result-guard branching was removed from the migrated call sites; remaining `isIpcError(...)` usage is for error-message formatting or shared helpers.
+- Final verification used `npm test` for the full regression pass because the plan's `vitest --runInBand` form is not supported by the current Vitest version in this repository.
+
 ---
 
 ## Deferred Follow-Up

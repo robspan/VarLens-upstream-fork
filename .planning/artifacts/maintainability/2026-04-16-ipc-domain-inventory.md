@@ -87,3 +87,36 @@
 - Active domains in Buckets B + C + D: `26`
 - Result: circuit-breaker remains active
 - Execution stays split into Foundation, Sub-phase A, Sub-phase B, and Sub-phase C
+
+## Final Disposition
+
+- `analysis-groups` — complete in Sub-phase C
+- `annotations` — complete in Sub-phase A
+- `audit-log` — complete in Sub-phase C
+- `auth` — complete in Sub-phase B
+- `batch-import` — complete in Sub-phase B
+- `case-comments` — complete in Sub-phase C
+- `case-metadata` — complete in Sub-phase A
+- `case-metrics` — complete in Sub-phase C
+- `cases` — complete in Sub-phase A
+- `cohort` — complete in Sub-phase A
+- `database` — complete in Sub-phase B
+- `export` — complete in Sub-phase A
+- `filter-presets` — complete in Sub-phase C
+- `gene-lists` — complete in Sub-phase C
+- `gene-ref` — complete in Sub-phase C
+- `gnomad` — complete in Sub-phase C
+- `hpo` — complete in Sub-phase C
+- `import` — complete in Sub-phase A
+- `myvariant` — complete in Sub-phase C
+- `panels` — complete across Sub-phases B and C
+- `protein` — complete in Sub-phase C
+- `shell` — closed from start, untouched
+- `shortlist` — closed from start, untouched
+- `spliceai` — complete in Sub-phase C
+- `system` — closed from start, untouched
+- `tags` — complete in Sub-phase B
+- `transcripts` — complete in Sub-phase C
+- `updater` — closed from start, untouched
+- `variants` — complete in Sub-phase A
+- `vep` — complete in Sub-phase C

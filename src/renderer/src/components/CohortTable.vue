@@ -352,7 +352,7 @@ const exportToExcel = async (): Promise<void> => {
             api.shell.showItemInFolder(result.filePath)
         }
       }
-    } else if (result?.error) {
+    } else if (result?.error != null && result.error !== '') {
       snackbar.value = {
         visible: true,
         message: `Export failed: ${result.error}`,

@@ -189,7 +189,10 @@ watch(stripText, () => {
   recheckTimeout = setTimeout(async () => {
     if (selectedFilePaths.value.length === 0) return
     const checkResult = unwrapIpcResult(
-      await api!.batchImport.checkDuplicates([...selectedFilePaths.value], stripText.value || undefined)
+      await api!.batchImport.checkDuplicates(
+        [...selectedFilePaths.value],
+        stripText.value || undefined
+      )
     )
     duplicateCheckFiles.value = checkResult.files
     duplicateCount.value = checkResult.duplicateCount

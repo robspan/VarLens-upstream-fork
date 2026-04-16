@@ -269,7 +269,9 @@ export interface ImportAPI {
     }
   ) => Promise<IpcResult<MultiFileImportResult>>
   vcfPreview: (filePath: string) => Promise<VcfPreviewResult>
-  vcfMultiPreview: (filePaths: string[]) => Promise<IpcResult<import('./import').VcfMultiPreviewResult>>
+  vcfMultiPreview: (
+    filePaths: string[]
+  ) => Promise<IpcResult<import('./import').VcfMultiPreviewResult>>
   onProgress: (callback: (progress: ProgressUpdate) => void) => () => void
   cancel: () => Promise<void>
 }
@@ -369,7 +371,10 @@ export interface DuplicateCheckResult {
 export interface BatchImportAPI {
   selectFiles: () => Promise<string[]>
   selectFolder: () => Promise<string[]>
-  checkDuplicates: (filePaths: string[], stripText?: string) => Promise<IpcResult<DuplicateCheckResult>>
+  checkDuplicates: (
+    filePaths: string[],
+    stripText?: string
+  ) => Promise<IpcResult<DuplicateCheckResult>>
   start: (
     filePaths: string[],
     duplicateStrategy: DuplicateChoice,
@@ -471,7 +476,10 @@ export interface AnnotationsAPI {
     updates: GlobalAnnotationUpdates
   ) => Promise<IpcResult<VariantAnnotation>>
   deleteGlobal: (chr: string, pos: number, ref: string, alt: string) => Promise<IpcResult<void>>
-  getPerCase: (caseId: number, variantId: number) => Promise<IpcResult<CaseVariantAnnotation | null>>
+  getPerCase: (
+    caseId: number,
+    variantId: number
+  ) => Promise<IpcResult<CaseVariantAnnotation | null>>
   upsertPerCase: (
     caseId: number,
     variantId: number,
@@ -583,7 +591,11 @@ export interface CaseMetadataAPI {
 
 export interface CaseCommentsAPI {
   list: (caseId: number) => Promise<IpcResult<CaseComment[]>>
-  create: (caseId: number, category: CommentCategory, content: string) => Promise<IpcResult<CaseComment>>
+  create: (
+    caseId: number,
+    category: CommentCategory,
+    content: string
+  ) => Promise<IpcResult<CaseComment>>
   update: (commentId: number, content: string) => Promise<IpcResult<CaseComment>>
   delete: (commentId: number) => Promise<IpcResult<void>>
 }
@@ -859,7 +871,11 @@ export interface AuthAPI {
   logout: () => Promise<void>
   currentUser: () => Promise<IpcResult<{ id: number; username: string; role: string } | null>>
   isAccountsEnabled: () => Promise<IpcResult<boolean>>
-  createUser: (username: string, displayName: string, tempPassword: string) => Promise<IpcResult<void>>
+  createUser: (
+    username: string,
+    displayName: string,
+    tempPassword: string
+  ) => Promise<IpcResult<void>>
   listUsers: () => Promise<
     IpcResult<
       Array<{

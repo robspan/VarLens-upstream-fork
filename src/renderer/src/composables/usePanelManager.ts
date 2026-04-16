@@ -106,7 +106,8 @@ export function usePanelManager(): UsePanelManagerReturn {
     try {
       panels.value = unwrapIpcResult(await api.panels.list())
     } catch (e) {
-      const message = e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
+      const message =
+        e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
       error.value = message
       logService.error('Failed to load panels: ' + message, 'panels')
     } finally {
@@ -136,7 +137,8 @@ export function usePanelManager(): UsePanelManagerReturn {
       await loadPanels()
       return result?.id ?? result
     } catch (e) {
-      const message = e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
+      const message =
+        e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
       error.value = message
       logService.error('Failed to create panel: ' + message, 'panels')
       return undefined
@@ -157,7 +159,8 @@ export function usePanelManager(): UsePanelManagerReturn {
       unwrapIpcResult(await api.panels.update({ id, ...updates }))
       await loadPanels()
     } catch (e) {
-      const message = e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
+      const message =
+        e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
       error.value = message
       logService.error('Failed to update panel: ' + message, 'panels')
     }
@@ -174,7 +177,8 @@ export function usePanelManager(): UsePanelManagerReturn {
       unwrapIpcResult(await api.panels.delete(id))
       await loadPanels()
     } catch (e) {
-      const message = e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
+      const message =
+        e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
       error.value = message
       logService.error('Failed to delete panel: ' + message, 'panels')
     }
@@ -193,7 +197,8 @@ export function usePanelManager(): UsePanelManagerReturn {
       await loadPanels()
       return result?.id ?? result
     } catch (e) {
-      const message = e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
+      const message =
+        e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
       error.value = message
       logService.error('Failed to duplicate panel: ' + message, 'panels')
       return undefined
@@ -211,7 +216,8 @@ export function usePanelManager(): UsePanelManagerReturn {
       unwrapIpcResult(await api.panels.setGenes(panelId, genes))
       await loadPanels()
     } catch (e) {
-      const message = e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
+      const message =
+        e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
       error.value = message
       logService.error('Failed to set panel genes: ' + message, 'panels')
     }
@@ -227,7 +233,8 @@ export function usePanelManager(): UsePanelManagerReturn {
       const rows = unwrapIpcResult(await api.panels.getGenes(panelId))
       return rows.map((r) => ({ hgncId: r.hgnc_id, symbol: r.symbol }))
     } catch (e) {
-      const message = e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
+      const message =
+        e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
       logService.error('Failed to get panel genes: ' + message, 'panels')
       return []
     }

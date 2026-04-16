@@ -118,7 +118,9 @@ export function useCaseMetrics() {
     category: string
   ): Promise<MetricDefinition | null> {
     if (!api) return null
-    const def = unwrapIpcResult(await api.caseMetrics.createDefinition(name, valueType, unit, category))
+    const def = unwrapIpcResult(
+      await api.caseMetrics.createDefinition(name, valueType, unit, category)
+    )
     definitionsCache.value.push(def)
     // Re-sort
     definitionsCache.value.sort(

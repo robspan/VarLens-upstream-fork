@@ -206,7 +206,7 @@ const api: WindowAPI = {
     showItemInFolder: (filePath: string) => ipcRenderer.invoke('shell:showItemInFolder', filePath)
   },
 
-  database: ({
+  database: {
     selectFile: () => databaseDomain.selectFile(),
     selectSaveLocation: (defaultName: string) => databaseDomain.selectSaveLocation(defaultName),
     open: (path: string, password?: string) => databaseDomain.open(path, password),
@@ -218,7 +218,7 @@ const api: WindowAPI = {
     removeRecent: (path: string) => databaseDomain.removeRecent(path),
     deleteFile: (path: string) => databaseDomain.deleteFile(path),
     showInFolder: (path: string) => databaseDomain.showInFolder(path)
-  }) as WindowAPI['database'],
+  } as WindowAPI['database'],
 
   batchImport: {
     selectFiles: () => ipcRenderer.invoke('batch-import:selectFiles'),
@@ -484,13 +484,13 @@ const api: WindowAPI = {
       ipcRenderer.invoke('case-metrics:delete', caseId, metricId)
   },
 
-  transcripts: ({
+  transcripts: {
     list: (variantId: number) => ipcRenderer.invoke('transcripts:list', variantId),
     switch: (variantId: number, transcriptId: string) =>
       ipcRenderer.invoke('transcripts:switch', variantId, transcriptId),
     insertAndSwitch: (variantId: number, transcript: TranscriptInsertRow) =>
       ipcRenderer.invoke('transcripts:insertAndSwitch', variantId, transcript)
-  }) as WindowAPI['transcripts'],
+  } as WindowAPI['transcripts'],
 
   tags: {
     // Tag CRUD
@@ -692,7 +692,7 @@ const api: WindowAPI = {
       ipcRenderer.invoke('gnomad:clinvar', geneSymbol, dataset)
   },
 
-  perf: ({
+  perf: {
     reportInteractive: () => ipcRenderer.send('perf:interactive'),
     getSnapshot: async () => {
       const [mainSnapshot, rendererSnapshot] = await Promise.all([
@@ -710,15 +710,15 @@ const api: WindowAPI = {
       await requestRendererPerfSnapshot('reset')
     },
     isEnabled: () => process.env.VARLENS_PERF_MODE === '1'
-  }) as WindowAPI['perf'],
+  } as WindowAPI['perf'],
 
-  presets: ({
+  presets: {
     list: () => filterPresetsDomain.list(),
     create: (params: FilterPresetCreate) => filterPresetsDomain.create(params),
     update: (id: number, updates: FilterPresetUpdate) => filterPresetsDomain.update(id, updates),
     delete: (id: number) => filterPresetsDomain.delete(id),
     reorder: (items: FilterPresetReorderItem[]) => filterPresetsDomain.reorder(items)
-  }) as WindowAPI['presets']
+  } as WindowAPI['presets']
 }
 
 type RendererPerfRequestAction = 'get' | 'reset'

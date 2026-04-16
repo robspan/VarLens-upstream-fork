@@ -61,7 +61,11 @@ async function handleCreateUser(): Promise<void> {
     await loadUsers()
   } catch (e) {
     error.value =
-      e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : 'Failed to create user'
+      e instanceof Error
+        ? e.message
+        : isIpcError(e)
+          ? (e.userMessage ?? e.message)
+          : 'Failed to create user'
   } finally {
     loading.value = false
   }
@@ -74,7 +78,11 @@ async function handleDeactivateUser(username: string): Promise<void> {
     await loadUsers()
   } catch (e) {
     error.value =
-      e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : 'Failed to deactivate user'
+      e instanceof Error
+        ? e.message
+        : isIpcError(e)
+          ? (e.userMessage ?? e.message)
+          : 'Failed to deactivate user'
   }
 }
 
@@ -92,7 +100,11 @@ async function handleResetPassword(): Promise<void> {
     success.value = 'Password reset successfully'
   } catch (e) {
     error.value =
-      e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : 'Failed to reset password'
+      e instanceof Error
+        ? e.message
+        : isIpcError(e)
+          ? (e.userMessage ?? e.message)
+          : 'Failed to reset password'
   } finally {
     loading.value = false
   }

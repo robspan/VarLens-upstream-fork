@@ -22,7 +22,8 @@ export function useTranscripts(variantId: Ref<number | null>) {
     try {
       transcripts.value = unwrapIpcResult(await api.transcripts.list(id))
     } catch (e) {
-      error.value = e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
+      error.value =
+        e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
       transcripts.value = []
     } finally {
       loading.value = false
@@ -37,7 +38,8 @@ export function useTranscripts(variantId: Ref<number | null>) {
       await loadTranscripts(variantId.value)
       return true
     } catch (e) {
-      error.value = e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
+      error.value =
+        e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
       return false
     }
   }
@@ -49,7 +51,8 @@ export function useTranscripts(variantId: Ref<number | null>) {
       await loadTranscripts(variantId.value)
       return true
     } catch (e) {
-      error.value = e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
+      error.value =
+        e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
       return false
     }
   }

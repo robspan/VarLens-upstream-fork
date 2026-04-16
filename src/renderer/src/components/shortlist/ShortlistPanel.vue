@@ -60,9 +60,11 @@ async function onToggleStar(row: ShortlistRow): Promise<void> {
     return
   }
   try {
-    unwrapIpcResult(await api.annotations.upsertPerCase(row.case_id, row.id, {
-      starred: !row.is_starred
-    }))
+    unwrapIpcResult(
+      await api.annotations.upsertPerCase(row.case_id, row.id, {
+        starred: !row.is_starred
+      })
+    )
     // No manual refresh — the variants:annotationChanged broadcast
     // triggers a refetch via useShortlistQuery's subscription.
   } catch (e) {

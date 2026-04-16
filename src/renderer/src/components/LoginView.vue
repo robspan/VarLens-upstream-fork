@@ -61,7 +61,11 @@ async function handleChangePassword(): Promise<void> {
     mustChangePassword.value = false
   } catch (e) {
     error.value =
-      e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : 'Failed to change password.'
+      e instanceof Error
+        ? e.message
+        : isIpcError(e)
+          ? (e.userMessage ?? e.message)
+          : 'Failed to change password.'
   } finally {
     loading.value = false
   }

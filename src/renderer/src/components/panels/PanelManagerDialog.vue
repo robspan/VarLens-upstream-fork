@@ -304,7 +304,11 @@ watch(
       } catch (e) {
         logService.warn(
           'Failed to load gene reference info: ' +
-            (e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)),
+            (e instanceof Error
+              ? e.message
+              : isIpcError(e)
+                ? (e.userMessage ?? e.message)
+                : String(e)),
           'panels'
         )
       }

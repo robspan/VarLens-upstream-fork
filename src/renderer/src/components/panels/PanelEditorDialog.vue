@@ -291,11 +291,12 @@ watch(
           }
         } catch (e) {
           const message =
-            e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
-          logService.error(
-            'Failed to load panel metadata: ' + message,
-            'panels'
-          )
+            e instanceof Error
+              ? e.message
+              : isIpcError(e)
+                ? (e.userMessage ?? e.message)
+                : String(e)
+          logService.error('Failed to load panel metadata: ' + message, 'panels')
         }
       }
       const genes = await getGenes(props.editPanelId)

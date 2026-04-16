@@ -496,11 +496,7 @@ async function loadCohortCaseIds(): Promise<void> {
   } catch (e) {
     logService.warn(
       'Failed to load cohort case IDs: ' +
-        (e instanceof Error
-          ? e.message
-          : isIpcError(e)
-            ? (e.userMessage ?? e.message)
-            : String(e)),
+        (e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)),
       'filters'
     )
     cohortCaseIds.value = []

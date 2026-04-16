@@ -435,9 +435,10 @@ export function useCohortData(): UseCohortDataReturn {
       }
     } catch (err) {
       if (thisGeneration !== requestGeneration) return
-      error.value = err instanceof Error
-        ? err
-        : new Error(isIpcError(err) ? (err.userMessage ?? err.message) : String(err))
+      error.value =
+        err instanceof Error
+          ? err
+          : new Error(isIpcError(err) ? (err.userMessage ?? err.message) : String(err))
       variants.value = []
       totalCount.value = 0
     } finally {

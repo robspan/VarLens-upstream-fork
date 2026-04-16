@@ -153,11 +153,14 @@ describe('useFilterOptionsCache', () => {
 
   it('handles SerializableError filter option responses gracefully', async () => {
     const { logService } = await import('../../../src/renderer/src/services/LogService')
-    const api = makeMockApi(async () => ({
-      code: ErrorCode.DB_ERROR,
-      message: 'filterOptions failed',
-      userMessage: 'Could not load filter options'
-    } as unknown as FilterOptions))
+    const api = makeMockApi(
+      async () =>
+        ({
+          code: ErrorCode.DB_ERROR,
+          message: 'filterOptions failed',
+          userMessage: 'Could not load filter options'
+        }) as unknown as FilterOptions
+    )
 
     const [result, appInstance] = withSetup(() => useFilterOptionsCache(api))
     app = appInstance

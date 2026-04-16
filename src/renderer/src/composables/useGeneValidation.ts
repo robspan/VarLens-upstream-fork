@@ -119,13 +119,19 @@ export function useGeneValidation(): UseGeneValidationReturn {
 
     validating.value = true
     try {
-      const results = unwrapIpcResult(await api.panels.validateSymbols(symbols)) as ValidationResult[]
+      const results = unwrapIpcResult(
+        await api.panels.validateSymbols(symbols)
+      ) as ValidationResult[]
       validationResults.value = results
       return results
     } catch (e) {
       logService.error(
         'Failed to validate gene symbols: ' +
-          (e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)),
+          (e instanceof Error
+            ? e.message
+            : isIpcError(e)
+              ? (e.userMessage ?? e.message)
+              : String(e)),
         'gene-validation'
       )
       validationResults.value = []
@@ -154,7 +160,11 @@ export function useGeneValidation(): UseGeneValidationReturn {
     } catch (e) {
       logService.error(
         'Failed to autocomplete gene: ' +
-          (e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)),
+          (e instanceof Error
+            ? e.message
+            : isIpcError(e)
+              ? (e.userMessage ?? e.message)
+              : String(e)),
         'gene-validation'
       )
       suggestions.value = []

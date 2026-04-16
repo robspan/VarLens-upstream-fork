@@ -201,7 +201,9 @@ export function useAnnotations() {
 
     setLoading(key, true)
     try {
-      const result = unwrapIpcResult(await api.annotations.getForVariant(caseId, chr, pos, ref, alt))
+      const result = unwrapIpcResult(
+        await api.annotations.getForVariant(caseId, chr, pos, ref, alt)
+      )
 
       // Guard against db/case switch during await
       const currentDbPath = getCurrentDbPath()
@@ -248,9 +250,11 @@ export function useAnnotations() {
     }
 
     try {
-      const updated = unwrapIpcResult(await api.annotations.upsertPerCase(caseId, variantId, {
-        starred: newStarred
-      }))
+      const updated = unwrapIpcResult(
+        await api.annotations.upsertPerCase(caseId, variantId, {
+          starred: newStarred
+        })
+      )
       // Guard against db/case switch during await
       const currentDbPath = getCurrentDbPath()
       if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
@@ -261,10 +265,7 @@ export function useAnnotations() {
         perCase: updated
       })
     } catch (error) {
-      logService.error(
-        'Failed to toggle star: ' + getTransportErrorMessage(error),
-        'annotations'
-      )
+      logService.error('Failed to toggle star: ' + getTransportErrorMessage(error), 'annotations')
       // Revert optimistic update
       if (current) {
         current.perCase = {
@@ -437,9 +438,11 @@ export function useAnnotations() {
     }
 
     try {
-      const updated = unwrapIpcResult(await api.annotations.upsertGlobal(chr, pos, ref, alt, {
-        starred: newStarred
-      }))
+      const updated = unwrapIpcResult(
+        await api.annotations.upsertGlobal(chr, pos, ref, alt, {
+          starred: newStarred
+        })
+      )
       // Guard against db switch during await
       const currentDbPath = getCurrentDbPath()
       if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
@@ -489,9 +492,11 @@ export function useAnnotations() {
     }
 
     try {
-      const updated = unwrapIpcResult(await api.annotations.upsertGlobal(chr, pos, ref, alt, {
-        acmg_classification: classification
-      }))
+      const updated = unwrapIpcResult(
+        await api.annotations.upsertGlobal(chr, pos, ref, alt, {
+          acmg_classification: classification
+        })
+      )
       // Guard against db switch during await
       const currentDbPath = getCurrentDbPath()
       if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
@@ -553,9 +558,11 @@ export function useAnnotations() {
     }
 
     try {
-      const updated = unwrapIpcResult(await api.annotations.upsertGlobal(chr, pos, ref, alt, {
-        global_comment: comment
-      }))
+      const updated = unwrapIpcResult(
+        await api.annotations.upsertGlobal(chr, pos, ref, alt, {
+          global_comment: comment
+        })
+      )
       // Guard against db switch during await
       const currentDbPath = getCurrentDbPath()
       if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
@@ -609,9 +616,11 @@ export function useAnnotations() {
     }
 
     try {
-      const updated = unwrapIpcResult(await api.annotations.upsertPerCase(caseId, variantId, {
-        per_case_comment: comment
-      }))
+      const updated = unwrapIpcResult(
+        await api.annotations.upsertPerCase(caseId, variantId, {
+          per_case_comment: comment
+        })
+      )
       // Guard against db/case switch during await
       const currentDbPath = getCurrentDbPath()
       if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
@@ -688,9 +697,11 @@ export function useAnnotations() {
     }
 
     try {
-      const updated = unwrapIpcResult(await api.annotations.upsertPerCase(caseId, variantId, {
-        acmg_classification: classification
-      }))
+      const updated = unwrapIpcResult(
+        await api.annotations.upsertPerCase(caseId, variantId, {
+          acmg_classification: classification
+        })
+      )
       // Guard against db/case switch during await
       const currentDbPath = getCurrentDbPath()
       if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
@@ -766,11 +777,13 @@ export function useAnnotations() {
     }
 
     try {
-      const updated = unwrapIpcResult(await api.annotations.upsertPerCase(caseId, variantId, {
-        acmg_classification: classification,
-        acmg_evidence: evidenceJson,
-        user_name: getUserName()
-      }))
+      const updated = unwrapIpcResult(
+        await api.annotations.upsertPerCase(caseId, variantId, {
+          acmg_classification: classification,
+          acmg_evidence: evidenceJson,
+          user_name: getUserName()
+        })
+      )
       // Guard against db/case switch during await
       const currentDbPath = getCurrentDbPath()
       if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
@@ -820,11 +833,13 @@ export function useAnnotations() {
     }
 
     try {
-      const updated = unwrapIpcResult(await api.annotations.upsertGlobal(chr, pos, ref, alt, {
-        acmg_classification: classification,
-        acmg_evidence: evidenceJson,
-        user_name: getUserName()
-      }))
+      const updated = unwrapIpcResult(
+        await api.annotations.upsertGlobal(chr, pos, ref, alt, {
+          acmg_classification: classification,
+          acmg_evidence: evidenceJson,
+          user_name: getUserName()
+        })
+      )
       // Guard against db switch during await
       const currentDbPath = getCurrentDbPath()
       if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return

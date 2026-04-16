@@ -26,7 +26,11 @@ export function useFilterExport(
       const exportFilters = buildFilterFromState(filters.value, selectedImpactPresets.value)
 
       const result = unwrapIpcResult(
-        await api.export.variants(caseId, exportFilters, caseName !== '' ? caseName : `case_${caseId}`)
+        await api.export.variants(
+          caseId,
+          exportFilters,
+          caseName !== '' ? caseName : `case_${caseId}`
+        )
       )
 
       if (result !== null && result !== undefined && result.success === true) {

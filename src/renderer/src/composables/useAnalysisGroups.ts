@@ -22,7 +22,11 @@ export function useAnalysisGroups() {
       groups.value = unwrapIpcResult(await api.analysisGroups.list()) as AnalysisGroupOption[]
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : isIpcError(error) ? (error.userMessage ?? error.message) : String(error)
+        error instanceof Error
+          ? error.message
+          : isIpcError(error)
+            ? (error.userMessage ?? error.message)
+            : String(error)
       logService.error(`Failed to load analysis groups: ${message}`, 'useAnalysisGroups')
       groups.value = []
     } finally {

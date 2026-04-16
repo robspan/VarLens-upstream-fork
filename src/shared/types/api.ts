@@ -63,7 +63,6 @@ import type {
   RegionFile
 } from './database'
 import type { ProgressUpdate, ImportResult, VcfPreviewResult } from './import'
-import type { SerializableError } from './errors'
 import type { IpcResult } from './errors'
 import type {
   CohortVariant,
@@ -162,15 +161,7 @@ export type {
   PanelAppSearchResult
 }
 
-type UnwrapDomainResult<T> = T extends Promise<IpcResult<infer TValue>> ? Promise<TValue> : T
-
-type RendererApiFromDomain<TDomain> = {
-  [TKey in keyof TDomain]: TDomain[TKey] extends (...args: infer TArgs) => infer TResult
-    ? (...args: TArgs) => UnwrapDomainResult<TResult>
-    : never
-}
-
-export type CasesAPI = RendererApiFromDomain<CasesDomainContract>
+export type CasesAPI = CasesDomainContract
 
 export interface VariantsAPI {
   query: (
@@ -397,7 +388,7 @@ export interface CohortAPI {
   getVariants: (
     params: CohortSearchParams
   ) => Promise<{ data: CohortVariant[]; total_count: number }>
-  getSummary: () => Promise<CohortSummary>
+  getSummary: () => Promise<IpcResult<CohortSummary>>
   getCarriers: (chr: string, pos: number, ref: string, alt: string) => Promise<CohortCarrier[]>
   getGeneBurden: () => Promise<GeneBurden[]>
   getColumnMeta: () => Promise<ColumnFilterMeta[]>
@@ -426,7 +417,7 @@ export interface CohortAPI {
       label?: string
     }) => void
   ) => () => void
-  runAssociation: (config: unknown) => Promise<unknown>
+  runAssociation: (config: unknown) => Promise<IpcResult<unknown>>
   cancelAssociation: () => Promise<void>
   onAssociationProgress: (
     callback: (progress: { completed: number; total: number }) => void

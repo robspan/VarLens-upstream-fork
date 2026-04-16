@@ -10,10 +10,12 @@
  * that would pull in Electron dependencies.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, expectTypeOf, vi, beforeEach, afterEach } from 'vitest'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { ErrorCode } from '../../../src/shared/types/errors'
+import type { WindowAPI, Case } from '../../../src/shared/types/api'
+import type { IpcResult } from '../../../src/shared/types/errors'
 
 const ROOT = resolve(__dirname, '..', '..', '..')
 
@@ -47,9 +49,11 @@ function extractWindowApiKeys(): string[] {
 function extractPreloadApiKeys(): string[] {
   const content = readFileSync(resolve(ROOT, 'src/preload/index.ts'), 'utf-8')
 
-  // Find `const api = {` and extract until the matching closing brace
-  const startIdx = content.indexOf('const api = {')
-  if (startIdx === -1) throw new Error('Could not find `const api = {` in preload/index.ts')
+  // Find `const api = {` or `const api: WindowAPI = {`
+  const match = content.match(/const api(?::\s*WindowAPI)?\s*=\s*\{/)
+  if (!match) throw new Error('Could not find preload api object in preload/index.ts')
+  const startIdx = match.index ?? -1
+  if (startIdx === -1) throw new Error('Could not find preload api object in preload/index.ts')
 
   // Track brace depth to find the matching closing brace
   let depth = 0
@@ -134,6 +138,16 @@ function extractSubInterfaceKeys(interfaceName: string): string[] {
   const startMarker = `export interface ${interfaceName}`
   const startIdx = content.indexOf(startMarker)
   if (startIdx === -1) {
+    const directAliasMatch = content.match(
+      new RegExp(`export type ${interfaceName}\\s*=\\s*(\\w+)`)
+    )
+    if (directAliasMatch) {
+      const domainPath = DOMAIN_CONTRACT_PATHS[directAliasMatch[1]]
+      if (!domainPath) return []
+
+      return extractInterfaceKeysFromFile(domainPath, directAliasMatch[1])
+    }
+
     const typeAliasMatch = content.match(
       new RegExp(`export type ${interfaceName}\\s*=\\s*RendererApiFromDomain<(\\w+)>`)
     )
@@ -360,6 +374,19 @@ describe('Preload contract alignment', () => {
   it('mockApi keys match WindowAPI interface keys exactly', () => {
     expect(mockApiKeys).toEqual(windowApiKeys)
   })
+
+  it('exposes IpcResult for scoped wrapHandler-backed methods', () => {
+    type CasesListReturn = Awaited<ReturnType<WindowAPI['cases']['list']>>
+    type CohortRunAssociationReturn = Awaited<ReturnType<WindowAPI['cohort']['runAssociation']>>
+    const apiSource = readFileSync(resolve(ROOT, 'src/shared/types/api.ts'), 'utf-8')
+
+    expectTypeOf<CasesListReturn>().toEqualTypeOf<IpcResult<Case[]>>()
+    expectTypeOf<CohortRunAssociationReturn>().toEqualTypeOf<IpcResult<unknown>>()
+
+    expect(apiSource).toContain('export type CasesAPI = CasesDomainContract')
+    expect(apiSource).toContain('getSummary: () => Promise<IpcResult<CohortSummary>>')
+    expect(apiSource).toContain('runAssociation: (config: unknown) => Promise<IpcResult<unknown>>')
+  })
 })
 
 describe('cases preload domain behavior', () => {
@@ -413,7 +440,7 @@ describe('cases preload domain behavior', () => {
     expect(invoke).toHaveBeenNthCalledWith(6, 'cases:availableBuilds')
   })
 
-  it('preload index unwraps all cases methods before exposing window.api', async () => {
+  it('preload index preserves cases transport results when exposing window.api', async () => {
     const invoke = vi.fn(async (channel: string) => {
       if (channel === 'cases:list' || channel === 'cases:deleteBatch') {
         return {
@@ -450,11 +477,11 @@ describe('cases preload domain behavior', () => {
       }
     }
 
-    await expect(api.cases.list()).rejects.toMatchObject({
+    await expect(api.cases.list()).resolves.toMatchObject({
       code: ErrorCode.DB_ERROR,
       message: 'cases:list failed'
     })
-    await expect(api.cases.deleteBatch([8, 9])).rejects.toMatchObject({
+    await expect(api.cases.deleteBatch([8, 9])).resolves.toMatchObject({
       code: ErrorCode.DB_ERROR,
       message: 'cases:deleteBatch failed'
     })

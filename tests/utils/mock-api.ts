@@ -65,7 +65,7 @@ export type MockApi = {
  * ```
  */
 export function createMockApi(): MockApi {
-  return {
+  const api: MockApi = {
     cases: {
       list: vi.fn().mockResolvedValue([]),
       delete: vi.fn().mockResolvedValue(undefined),
@@ -341,4 +341,9 @@ export function createMockApi(): MockApi {
       isEnabled: vi.fn().mockReturnValue(false)
     }
   }
+
+  const windowApi: WindowAPI = api
+  void windowApi
+
+  return api
 }

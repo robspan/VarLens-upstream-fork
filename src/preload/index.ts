@@ -2,7 +2,6 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { createCasesApi } from './domains/cases'
 import { createDatabaseApi } from './domains/database'
 import { createFilterPresetsApi } from './domains/filter-presets'
-import { unwrapIpcResult } from '../shared/types/errors'
 import type {
   ProgressUpdate,
   VariantFilter,
@@ -24,6 +23,7 @@ import type { ShortlistResult } from '../shared/types/shortlist'
 import type { ValidatedGetShortlistParams } from '../shared/types/ipc-schemas'
 import type { MainPerfSnapshot } from '../shared/types/perf'
 import type { FilterPresetReorderItem } from '../shared/ipc/domains/filter-presets'
+import type { WindowAPI } from '../shared/types/api'
 
 /**
  * Preload script - exposes typed API to renderer via contextBridge.
@@ -40,14 +40,14 @@ const casesDomain = createCasesApi()
 const databaseDomain = createDatabaseApi()
 const filterPresetsDomain = createFilterPresetsApi()
 
-const api = {
+const api: WindowAPI = {
   cases: {
-    list: async () => unwrapIpcResult(await casesDomain.list()),
-    query: async (params: CaseSearchParams) => unwrapIpcResult(await casesDomain.query(params)),
-    delete: async (id: number) => unwrapIpcResult(await casesDomain.delete(id)),
-    deleteAll: async () => unwrapIpcResult(await casesDomain.deleteAll()),
-    deleteBatch: async (ids: number[]) => unwrapIpcResult(await casesDomain.deleteBatch(ids)),
-    availableBuilds: async () => unwrapIpcResult(await casesDomain.availableBuilds())
+    list: () => casesDomain.list(),
+    query: (params: CaseSearchParams) => casesDomain.query(params),
+    delete: (id: number) => casesDomain.delete(id),
+    deleteAll: () => casesDomain.deleteAll(),
+    deleteBatch: (ids: number[]) => casesDomain.deleteBatch(ids),
+    availableBuilds: () => casesDomain.availableBuilds()
   },
 
   variants: {

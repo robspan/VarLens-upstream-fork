@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { createCasesApi } from './domains/cases'
+import { createDatabaseApi } from './domains/database'
+import { createFilterPresetsApi } from './domains/filter-presets'
 import { unwrapIpcResult } from '../shared/types/errors'
 import type {
   ProgressUpdate,
@@ -17,9 +19,14 @@ import type {
   LogMessage
 } from '../shared/types'
 import type { CommentCategory, AnnotationChangeEvent } from '../shared/types/api'
+import type {
+  FilterPresetCreate,
+  FilterPresetUpdate
+} from '../shared/types/filter-presets'
 import type { ShortlistResult } from '../shared/types/shortlist'
 import type { ValidatedGetShortlistParams } from '../shared/types/ipc-schemas'
 import type { MainPerfSnapshot } from '../shared/types/perf'
+import type { FilterPresetReorderItem } from '../shared/ipc/domains/filter-presets'
 
 /**
  * Preload script - exposes typed API to renderer via contextBridge.
@@ -33,6 +40,8 @@ import type { MainPerfSnapshot } from '../shared/types/perf'
  */
 
 const casesDomain = createCasesApi()
+const databaseDomain = createDatabaseApi()
+const filterPresetsDomain = createFilterPresetsApi()
 
 const api = {
   cases: {
@@ -200,19 +209,17 @@ const api = {
   },
 
   database: {
-    selectFile: () => ipcRenderer.invoke('database:selectFile'),
-    selectSaveLocation: (defaultName: string) =>
-      ipcRenderer.invoke('database:selectSaveLocation', defaultName),
-    open: (path: string, password?: string) => ipcRenderer.invoke('database:open', path, password),
-    create: (path: string, password?: string) =>
-      ipcRenderer.invoke('database:create', path, password),
-    rekey: (newPassword: string) => ipcRenderer.invoke('database:rekey', newPassword),
-    info: () => ipcRenderer.invoke('database:info'),
-    recentList: () => ipcRenderer.invoke('database:recentList'),
-    getOverview: () => ipcRenderer.invoke('database:overview'),
-    removeRecent: (path: string) => ipcRenderer.invoke('database:removeRecent', path),
-    deleteFile: (path: string) => ipcRenderer.invoke('database:deleteFile', path),
-    showInFolder: (path: string) => ipcRenderer.invoke('database:showInFolder', path)
+    selectFile: () => databaseDomain.selectFile(),
+    selectSaveLocation: (defaultName: string) => databaseDomain.selectSaveLocation(defaultName),
+    open: (path: string, password?: string) => databaseDomain.open(path, password),
+    create: (path: string, password?: string) => databaseDomain.create(path, password),
+    rekey: (newPassword: string) => databaseDomain.rekey(newPassword),
+    info: () => databaseDomain.info(),
+    recentList: () => databaseDomain.recentList(),
+    getOverview: () => databaseDomain.getOverview(),
+    removeRecent: (path: string) => databaseDomain.removeRecent(path),
+    deleteFile: (path: string) => databaseDomain.deleteFile(path),
+    showInFolder: (path: string) => databaseDomain.showInFolder(path)
   },
 
   batchImport: {
@@ -708,31 +715,11 @@ const api = {
   },
 
   presets: {
-    list: () => ipcRenderer.invoke('presets:list'),
-
-    create: (params: {
-      name: string
-      description?: string | null
-      filterJson: Record<string, unknown>
-      isVisible?: boolean
-      sortOrder?: number
-    }) => ipcRenderer.invoke('presets:create', params),
-
-    update: (
-      id: number,
-      updates: {
-        name?: string
-        description?: string | null
-        filterJson?: Record<string, unknown>
-        isVisible?: boolean
-        sortOrder?: number
-      }
-    ) => ipcRenderer.invoke('presets:update', id, updates),
-
-    delete: (id: number) => ipcRenderer.invoke('presets:delete', id),
-
-    reorder: (items: { id: number; sortOrder: number }[]) =>
-      ipcRenderer.invoke('presets:reorder', items)
+    list: () => filterPresetsDomain.list(),
+    create: (params: FilterPresetCreate) => filterPresetsDomain.create(params),
+    update: (id: number, updates: FilterPresetUpdate) => filterPresetsDomain.update(id, updates),
+    delete: (id: number) => filterPresetsDomain.delete(id),
+    reorder: (items: FilterPresetReorderItem[]) => filterPresetsDomain.reorder(items)
   }
 }
 

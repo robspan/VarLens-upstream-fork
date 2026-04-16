@@ -162,18 +162,43 @@ function extractSubInterfaceKeys(interfaceName: string): string[] {
   const extendsMatch = content
     .slice(startIdx)
     .match(new RegExp(`export interface ${interfaceName}\\s+extends\\s+RendererApiFromDomain<(\\w+)>`))
-  if (keys.length === 0 && extendsMatch) {
-    const domainContent = readFileSync(resolve(ROOT, 'src/shared/ipc/domains/cases.ts'), 'utf-8')
-    const domainMatch = domainContent.match(
-      new RegExp(`export interface ${extendsMatch[1]}\\s*\\{([\\s\\S]*?)\\}`)
-    )
-    if (!domainMatch) return []
+  if (extendsMatch) {
+    const domainPath = DOMAIN_CONTRACT_PATHS[extendsMatch[1]]
+    if (!domainPath) return keys.sort()
 
-    return domainMatch[1]
-      .split('\n')
-      .map((line) => line.match(/^\s+(\w+)\s*:/)?.[1])
-      .filter((key): key is string => Boolean(key))
-      .sort()
+    const inheritedKeys = extractInterfaceKeysFromFile(domainPath, extendsMatch[1])
+    return [...new Set([...keys, ...inheritedKeys])].sort()
+  }
+
+  return keys.sort()
+}
+
+function extractInterfaceKeysFromFile(filePath: string, interfaceName: string): string[] {
+  const content = readFileSync(resolve(ROOT, filePath), 'utf-8')
+  const startMarker = `export interface ${interfaceName}`
+  const startIdx = content.indexOf(startMarker)
+  if (startIdx === -1) return []
+
+  const lines = content.slice(startIdx).split('\n')
+  let depth = 0
+  let inBlock = false
+  const keys: string[] = []
+
+  for (const line of lines) {
+    if (depth === 1) {
+      const match = line.match(/^\s+(\w+)\s*:/)
+      if (match) keys.push(match[1])
+    }
+
+    for (const ch of line) {
+      if (ch === '{') {
+        depth++
+        inBlock = true
+      }
+      if (ch === '}') depth--
+    }
+
+    if (inBlock && depth === 0) break
   }
 
   return keys.sort()
@@ -208,6 +233,11 @@ describe('Preload contract alignment', () => {
   const mockApiKeys = extractMockApiKeys()
   const preloadSource = readFileSync(resolve(ROOT, 'src/preload/index.ts'), 'utf-8')
   const casesDomainSource = readFileSync(resolve(ROOT, 'src/preload/domains/cases.ts'), 'utf-8')
+  const databaseDomainSource = readFileSync(resolve(ROOT, 'src/preload/domains/database.ts'), 'utf-8')
+  const filterPresetsDomainSource = readFileSync(
+    resolve(ROOT, 'src/preload/domains/filter-presets.ts'),
+    'utf-8'
+  )
 
   it('WindowAPI interface has expected keys', () => {
     expect(windowApiKeys.length).toBeGreaterThan(10)
@@ -221,6 +251,13 @@ describe('Preload contract alignment', () => {
     expect(preloadSource).toContain("import { createCasesApi } from './domains/cases'")
   })
 
+  it('preload imports the database and filter presets domain factories', () => {
+    expect(preloadSource).toContain("import { createDatabaseApi } from './domains/database'")
+    expect(preloadSource).toContain(
+      "import { createFilterPresetsApi } from './domains/filter-presets'"
+    )
+  })
+
   it('cases preload domain uses the shared domain contract boundary', () => {
     expect(casesDomainSource).toContain(
       "import type { CasesDomainContract } from '../../shared/ipc/domains/cases'"
@@ -231,6 +268,36 @@ describe('Preload contract alignment', () => {
     expect(casesDomainSource).toContain(
       "availableBuilds: () => ipcRenderer.invoke('cases:availableBuilds')"
     )
+  })
+
+  it('database preload domain uses the shared domain contract boundary', () => {
+    expect(databaseDomainSource).toContain(
+      "import type { DatabaseDomainContract } from '../../shared/ipc/domains/database'"
+    )
+    expect(databaseDomainSource).toContain(
+      'export function createDatabaseApi(): DatabaseDomainContract'
+    )
+    expect(databaseDomainSource).not.toContain('unwrapIpcResult')
+    expect(databaseDomainSource).toContain("info: () => ipcRenderer.invoke('database:info')")
+    expect(databaseDomainSource).toContain(
+      "showInFolder: (path) => ipcRenderer.invoke('database:showInFolder', path)"
+    )
+    expect(preloadSource).not.toContain('unwrapIpcResult(await databaseDomain.open')
+  })
+
+  it('filter presets preload domain uses the shared domain contract boundary', () => {
+    expect(filterPresetsDomainSource).toContain(
+      "import type { FilterPresetsDomainContract } from '../../shared/ipc/domains/filter-presets'"
+    )
+    expect(filterPresetsDomainSource).toContain(
+      'export function createFilterPresetsApi(): FilterPresetsDomainContract'
+    )
+    expect(filterPresetsDomainSource).not.toContain('unwrapIpcResult')
+    expect(filterPresetsDomainSource).toContain("list: () => ipcRenderer.invoke('presets:list')")
+    expect(filterPresetsDomainSource).toContain(
+      "reorder: (items) => ipcRenderer.invoke('presets:reorder', items)"
+    )
+    expect(preloadSource).not.toContain('unwrapIpcResult(await filterPresetsDomain.list')
   })
 
   it('mockApi type has expected keys', () => {
@@ -382,3 +449,8 @@ describe('cases preload domain behavior', () => {
     expect(invoke).toHaveBeenCalledWith('cases:availableBuilds')
   })
 })
+const DOMAIN_CONTRACT_PATHS: Record<string, string> = {
+  CasesDomainContract: 'src/shared/ipc/domains/cases.ts',
+  DatabaseDomainContract: 'src/shared/ipc/domains/database.ts',
+  FilterPresetsDomainContract: 'src/shared/ipc/domains/filter-presets.ts'
+}

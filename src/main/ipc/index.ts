@@ -5,12 +5,13 @@ import type { HandlerDependencies } from './types'
 import { getDbPool } from './dbPoolManager'
 
 import { registerCasesDomain } from './domains/cases'
+import { registerDatabaseDomain } from './domains/database'
+import { registerFilterPresetsDomain } from './domains/filter-presets'
 import { registerVariantHandlers } from './handlers/variants'
 import { registerImportHandlers } from './handlers/import'
 import { registerSystemHandlers } from './handlers/system'
 import { registerExportHandlers } from './handlers/export'
 import { registerShellHandlers } from './handlers/shell'
-import { registerDatabaseHandlers } from './handlers/database'
 import { registerBatchImportHandlers } from './handlers/batch-import'
 import { registerCohortHandlers } from './handlers/cohort'
 import { registerAnnotationHandlers } from './handlers/annotations'
@@ -27,7 +28,6 @@ import { registerUpdaterHandlers } from './handlers/updater'
 import { registerAuditLogHandlers } from './handlers/audit-log'
 import { registerGeneListHandlers } from './handlers/gene-lists'
 import { registerAuthHandlers } from './handlers/auth'
-import { registerFilterPresetHandlers } from './handlers/filter-presets'
 import { registerPanelHandlers } from './handlers/panels'
 import { registerGeneRefHandlers } from './handlers/gene-ref'
 import { registerAnalysisGroupHandlers } from './handlers/analysis-groups'
@@ -59,7 +59,7 @@ export function registerIpcHandlers(): void {
   registerSystemHandlers(deps)
   registerExportHandlers(deps)
   registerShellHandlers(deps)
-  registerDatabaseHandlers(deps)
+  registerDatabaseDomain(ipcMain)
   registerBatchImportHandlers(deps)
   registerCohortHandlers(deps)
   registerAnnotationHandlers(deps)
@@ -76,7 +76,7 @@ export function registerIpcHandlers(): void {
   registerAuditLogHandlers(deps)
   registerGeneListHandlers(deps)
   registerAuthHandlers(deps)
-  registerFilterPresetHandlers(deps)
+  registerFilterPresetsDomain(ipcMain)
   registerPanelHandlers(deps)
   registerGeneRefHandlers(deps)
   registerAnalysisGroupHandlers(deps)

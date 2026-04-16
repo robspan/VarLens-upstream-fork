@@ -111,6 +111,12 @@ import type {
 } from './protein'
 import type { PerfSnapshot } from './perf'
 import type { CasesDomainContract } from '../ipc/domains/cases'
+import type {
+  DatabaseInfo,
+  DatabaseOpenResult,
+  RecentDatabase
+} from '../ipc/domains/database'
+export type { DatabaseInfo, DatabaseOpenResult, RecentDatabase } from '../ipc/domains/database'
 
 // Re-export for convenience
 export type {
@@ -315,25 +321,6 @@ export interface ExportAPI {
     caseName: string
   ) => Promise<ExportResult | SerializableError>
   cohort: (params: CohortSearchParams) => Promise<ExportResult | SerializableError>
-}
-
-export interface DatabaseInfo {
-  path: string
-  name: string
-  encrypted: boolean
-}
-
-export interface DatabaseOpenResult {
-  success: boolean
-  needsPassword?: boolean
-  error?: string
-  info?: DatabaseInfo
-}
-
-export interface RecentDatabase {
-  path: string
-  name: string
-  lastOpened: number
 }
 
 export interface DatabaseAPI {

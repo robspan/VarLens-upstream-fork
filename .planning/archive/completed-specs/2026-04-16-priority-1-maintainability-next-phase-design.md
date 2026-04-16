@@ -1,5 +1,7 @@
 # Priority 1 Maintainability Next Phase — Design Spec
 
+> Status: Completed on `feat/priority-1-maintainability` and archived after merge to `main`. See [priority-1-closeout.md](../../artifacts/maintainability/2026-04-16-priority-1-closeout.md) and [ipc-domain-inventory.md](../../artifacts/maintainability/2026-04-16-ipc-domain-inventory.md).
+
 **Date:** 2026-04-16
 **Primary driver:** `.planning/code-review/CODEBASE-REVIEW-2026-04-15.md`
 **Supporting inventory:** `.planning/plans/2026-04-02-ipc-testability-error-standardization.md`

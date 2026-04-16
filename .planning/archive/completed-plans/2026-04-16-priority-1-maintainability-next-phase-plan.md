@@ -1,5 +1,7 @@
 # Priority 1 Maintainability Next Phase Implementation Plan
 
+> Status: Completed on `feat/priority-1-maintainability` and archived after merge to `main`. See [priority-1-closeout.md](../../artifacts/maintainability/2026-04-16-priority-1-closeout.md) and [ipc-domain-inventory.md](../../artifacts/maintainability/2026-04-16-ipc-domain-inventory.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Finish the remaining Priority 1 maintainability work by inventorying the live IPC surface, tightening the preload/shared contract for `wrapHandler`-backed channels, standardizing renderer transport-error handling on `unwrapIpcResult(...)`, and completing the remaining domain-first IPC rollout without reopening already-completed work.
@@ -8,7 +10,7 @@
 
 **Tech Stack:** TypeScript, Electron 40, Vue 3, Pinia, Vitest, existing preload bridge, existing `wrapHandler`, existing `unwrapIpcResult`, existing `*-logic.ts` handler pattern
 
-**Spec:** [2026-04-16-priority-1-maintainability-next-phase-design.md](../specs/2026-04-16-priority-1-maintainability-next-phase-design.md)
+**Spec:** [2026-04-16-priority-1-maintainability-next-phase-design.md](../completed-specs/2026-04-16-priority-1-maintainability-next-phase-design.md)
 
 ---
 

@@ -1,4 +1,4 @@
-import type { GeneRefInfo, AssemblyInfo, GeneRefCheckUpdatesResult, GeneRefUpdateResult, GeneRefAPI } from '../../types/api'
+import type { GeneRefInfo, AssemblyInfo, GeneRefCheckUpdatesResult, GeneRefUpdateResult } from '../../types/api'
 import type { IpcResult } from '../../types/errors'
 
 export interface GeneRefDomainContract {

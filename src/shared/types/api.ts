@@ -462,33 +462,33 @@ export interface AnnotationsAPI {
     pos: number,
     ref: string,
     alt: string
-  ) => Promise<VariantAnnotation | null>
+  ) => Promise<IpcResult<VariantAnnotation | null>>
   upsertGlobal: (
     chr: string,
     pos: number,
     ref: string,
     alt: string,
     updates: GlobalAnnotationUpdates
-  ) => Promise<VariantAnnotation>
-  deleteGlobal: (chr: string, pos: number, ref: string, alt: string) => Promise<void>
-  getPerCase: (caseId: number, variantId: number) => Promise<CaseVariantAnnotation | null>
+  ) => Promise<IpcResult<VariantAnnotation>>
+  deleteGlobal: (chr: string, pos: number, ref: string, alt: string) => Promise<IpcResult<void>>
+  getPerCase: (caseId: number, variantId: number) => Promise<IpcResult<CaseVariantAnnotation | null>>
   upsertPerCase: (
     caseId: number,
     variantId: number,
     updates: PerCaseAnnotationUpdates
-  ) => Promise<CaseVariantAnnotation>
-  deletePerCase: (caseId: number, variantId: number) => Promise<void>
+  ) => Promise<IpcResult<CaseVariantAnnotation>>
+  deletePerCase: (caseId: number, variantId: number) => Promise<IpcResult<void>>
   getForVariant: (
     caseId: number,
     chr: string,
     pos: number,
     ref: string,
     alt: string
-  ) => Promise<VariantAnnotationsResult>
+  ) => Promise<IpcResult<VariantAnnotationsResult>>
   batchGet: (
     caseId: number | null,
     variantKeys: VariantKey[]
-  ) => Promise<Record<string, VariantAnnotationsResult>>
+  ) => Promise<IpcResult<Record<string, VariantAnnotationsResult>>>
 }
 
 export interface VepAPI {

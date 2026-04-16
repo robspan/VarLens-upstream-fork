@@ -31,6 +31,7 @@ import { useShortlistQuery } from '../../composables/useShortlistQuery'
 import { useApiService } from '../../composables/useApiService'
 import { logService } from '../../services/LogService'
 import type { ShortlistRow, PerTypeTab } from '../../../../shared/types/shortlist'
+import { isIpcError, unwrapIpcResult } from '../../../../shared/types/errors'
 
 const props = defineProps<{
   caseId: number
@@ -59,14 +60,16 @@ async function onToggleStar(row: ShortlistRow): Promise<void> {
     return
   }
   try {
-    await api.annotations.upsertPerCase(row.case_id, row.id, {
+    unwrapIpcResult(await api.annotations.upsertPerCase(row.case_id, row.id, {
       starred: !row.is_starred
-    })
+    }))
     // No manual refresh — the variants:annotationChanged broadcast
     // triggers a refetch via useShortlistQuery's subscription.
   } catch (e) {
     logService.error(
-      `toggle star failed: ${e instanceof Error ? e.message : String(e)}`,
+      `toggle star failed: ${
+        e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
+      }`,
       'shortlist.panel'
     )
   }

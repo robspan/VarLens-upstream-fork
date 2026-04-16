@@ -16,6 +16,7 @@ import { useSettingsStore } from '../stores/settingsStore'
 import { useDatabaseStore } from '../stores/databaseStore'
 import { useApiService } from './useApiService'
 import { LruMap } from '../../../shared/utils/lru-map'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
 interface AnnotationCache {
   global: VariantAnnotation | null
@@ -98,6 +99,12 @@ function ensureScopeOrClear(dbPath: string | null, caseId: number | null): void 
 
   if (dbPath !== null) lastDbPath = dbPath
   if (caseId !== null) lastCaseId = caseId
+}
+
+function getTransportErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (isIpcError(error)) return error.userMessage ?? error.message
+  return String(error)
 }
 
 export function useAnnotations() {
@@ -194,7 +201,7 @@ export function useAnnotations() {
 
     setLoading(key, true)
     try {
-      const result = await api.annotations.getForVariant(caseId, chr, pos, ref, alt)
+      const result = unwrapIpcResult(await api.annotations.getForVariant(caseId, chr, pos, ref, alt))
 
       // Guard against db/case switch during await
       const currentDbPath = getCurrentDbPath()
@@ -204,7 +211,7 @@ export function useAnnotations() {
       cacheSet(key, result)
     } catch (error) {
       logService.error(
-        'Failed to load annotations: ' + (error instanceof Error ? error.message : String(error)),
+        'Failed to load annotations: ' + getTransportErrorMessage(error),
         'annotations'
       )
     } finally {
@@ -241,9 +248,9 @@ export function useAnnotations() {
     }
 
     try {
-      const updated = await api.annotations.upsertPerCase(caseId, variantId, {
+      const updated = unwrapIpcResult(await api.annotations.upsertPerCase(caseId, variantId, {
         starred: newStarred
-      })
+      }))
       // Guard against db/case switch during await
       const currentDbPath = getCurrentDbPath()
       if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
@@ -255,7 +262,7 @@ export function useAnnotations() {
       })
     } catch (error) {
       logService.error(
-        'Failed to toggle star: ' + (error instanceof Error ? error.message : String(error)),
+        'Failed to toggle star: ' + getTransportErrorMessage(error),
         'annotations'
       )
       // Revert optimistic update
@@ -298,7 +305,7 @@ export function useAnnotations() {
     }
 
     try {
-      const results = await api.annotations.batchGet(caseId, uncached)
+      const results = unwrapIpcResult(await api.annotations.batchGet(caseId, uncached))
 
       // Discard results if user navigated to a new page while this was in-flight
       if (currentGeneration !== annotationGeneration) return
@@ -314,8 +321,7 @@ export function useAnnotations() {
       }
     } catch (error) {
       logService.warn(
-        'Failed to load annotation batch: ' +
-          (error instanceof Error ? error.message : String(error)),
+        'Failed to load annotation batch: ' + getTransportErrorMessage(error),
         'annotations'
       )
     } finally {
@@ -344,7 +350,7 @@ export function useAnnotations() {
 
     setLoading(key, true)
     try {
-      const global = await api.annotations.getGlobal(chr, pos, ref, alt)
+      const global = unwrapIpcResult(await api.annotations.getGlobal(chr, pos, ref, alt))
 
       // Guard against db switch during await
       const currentDbPath = getCurrentDbPath()
@@ -352,8 +358,7 @@ export function useAnnotations() {
       cacheSet(key, { global, perCase: null })
     } catch (error) {
       logService.error(
-        'Failed to load global annotations: ' +
-          (error instanceof Error ? error.message : String(error)),
+        'Failed to load global annotations: ' + getTransportErrorMessage(error),
         'annotations'
       )
     } finally {
@@ -386,7 +391,7 @@ export function useAnnotations() {
     }
 
     try {
-      const results = await api.annotations.batchGet(null, uncached)
+      const results = unwrapIpcResult(await api.annotations.batchGet(null, uncached))
 
       // Discard results if db switched during the async call
       const currentDbPath = getCurrentDbPath()
@@ -397,8 +402,7 @@ export function useAnnotations() {
       }
     } catch (error) {
       logService.warn(
-        'Failed to load global annotation batch: ' +
-          (error instanceof Error ? error.message : String(error)),
+        'Failed to load global annotation batch: ' + getTransportErrorMessage(error),
         'annotations'
       )
     } finally {
@@ -433,9 +437,9 @@ export function useAnnotations() {
     }
 
     try {
-      const updated = await api.annotations.upsertGlobal(chr, pos, ref, alt, {
+      const updated = unwrapIpcResult(await api.annotations.upsertGlobal(chr, pos, ref, alt, {
         starred: newStarred
-      })
+      }))
       // Guard against db switch during await
       const currentDbPath = getCurrentDbPath()
       if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
@@ -446,7 +450,7 @@ export function useAnnotations() {
       })
     } catch (error) {
       logService.error(
-        'Failed to toggle global star: ' + (error instanceof Error ? error.message : String(error)),
+        'Failed to toggle global star: ' + getTransportErrorMessage(error),
         'annotations'
       )
       // Revert optimistic update
@@ -485,9 +489,9 @@ export function useAnnotations() {
     }
 
     try {
-      const updated = await api.annotations.upsertGlobal(chr, pos, ref, alt, {
+      const updated = unwrapIpcResult(await api.annotations.upsertGlobal(chr, pos, ref, alt, {
         acmg_classification: classification
-      })
+      }))
       // Guard against db switch during await
       const currentDbPath = getCurrentDbPath()
       if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
@@ -498,8 +502,7 @@ export function useAnnotations() {
       })
     } catch (error) {
       logService.error(
-        'Failed to set global ACMG classification: ' +
-          (error instanceof Error ? error.message : String(error)),
+        'Failed to set global ACMG classification: ' + getTransportErrorMessage(error),
         'annotations'
       )
       // Revert optimistic update
@@ -550,9 +553,9 @@ export function useAnnotations() {
     }
 
     try {
-      const updated = await api.annotations.upsertGlobal(chr, pos, ref, alt, {
+      const updated = unwrapIpcResult(await api.annotations.upsertGlobal(chr, pos, ref, alt, {
         global_comment: comment
-      })
+      }))
       // Guard against db switch during await
       const currentDbPath = getCurrentDbPath()
       if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
@@ -563,8 +566,7 @@ export function useAnnotations() {
       })
     } catch (error) {
       logService.error(
-        'Failed to upsert global comment: ' +
-          (error instanceof Error ? error.message : String(error)),
+        'Failed to upsert global comment: ' + getTransportErrorMessage(error),
         'annotations'
       )
       // Revert optimistic update
@@ -607,9 +609,9 @@ export function useAnnotations() {
     }
 
     try {
-      const updated = await api.annotations.upsertPerCase(caseId, variantId, {
+      const updated = unwrapIpcResult(await api.annotations.upsertPerCase(caseId, variantId, {
         per_case_comment: comment
-      })
+      }))
       // Guard against db/case switch during await
       const currentDbPath = getCurrentDbPath()
       if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
@@ -621,8 +623,7 @@ export function useAnnotations() {
       })
     } catch (error) {
       logService.error(
-        'Failed to upsert per-case comment: ' +
-          (error instanceof Error ? error.message : String(error)),
+        'Failed to upsert per-case comment: ' + getTransportErrorMessage(error),
         'annotations'
       )
       // Revert optimistic update
@@ -687,9 +688,9 @@ export function useAnnotations() {
     }
 
     try {
-      const updated = await api.annotations.upsertPerCase(caseId, variantId, {
+      const updated = unwrapIpcResult(await api.annotations.upsertPerCase(caseId, variantId, {
         acmg_classification: classification
-      })
+      }))
       // Guard against db/case switch during await
       const currentDbPath = getCurrentDbPath()
       if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
@@ -701,8 +702,7 @@ export function useAnnotations() {
       })
     } catch (error) {
       logService.error(
-        'Failed to set ACMG classification: ' +
-          (error instanceof Error ? error.message : String(error)),
+        'Failed to set ACMG classification: ' + getTransportErrorMessage(error),
         'annotations'
       )
       // Revert optimistic update
@@ -766,11 +766,11 @@ export function useAnnotations() {
     }
 
     try {
-      const updated = await api.annotations.upsertPerCase(caseId, variantId, {
+      const updated = unwrapIpcResult(await api.annotations.upsertPerCase(caseId, variantId, {
         acmg_classification: classification,
         acmg_evidence: evidenceJson,
         user_name: getUserName()
-      })
+      }))
       // Guard against db/case switch during await
       const currentDbPath = getCurrentDbPath()
       if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
@@ -781,8 +781,7 @@ export function useAnnotations() {
       })
     } catch (error) {
       logService.error(
-        'Failed to set ACMG classification with evidence: ' +
-          (error instanceof Error ? error.message : String(error)),
+        'Failed to set ACMG classification with evidence: ' + getTransportErrorMessage(error),
         'annotations'
       )
       // Rollback optimistic update
@@ -821,11 +820,11 @@ export function useAnnotations() {
     }
 
     try {
-      const updated = await api.annotations.upsertGlobal(chr, pos, ref, alt, {
+      const updated = unwrapIpcResult(await api.annotations.upsertGlobal(chr, pos, ref, alt, {
         acmg_classification: classification,
         acmg_evidence: evidenceJson,
         user_name: getUserName()
-      })
+      }))
       // Guard against db switch during await
       const currentDbPath = getCurrentDbPath()
       if (currentDbPath !== null && dbPath !== null && currentDbPath !== dbPath) return
@@ -836,7 +835,7 @@ export function useAnnotations() {
     } catch (error) {
       logService.error(
         'Failed to set global ACMG classification with evidence: ' +
-          (error instanceof Error ? error.message : String(error)),
+          getTransportErrorMessage(error),
         'annotations'
       )
       // Rollback optimistic update

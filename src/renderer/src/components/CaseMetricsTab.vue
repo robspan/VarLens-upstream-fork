@@ -196,6 +196,7 @@ interface AutocompleteItem {
 import { EMPTY_VALUE_PLACEHOLDER } from '../utils/formatters'
 import { mdiDeleteOutline } from '@mdi/js'
 import { logService } from '../services/LogService'
+import { isIpcError } from '../../../shared/types/errors'
 
 const props = defineProps<{
   caseId: number
@@ -294,7 +295,12 @@ async function handleSave(): Promise<void> {
     dateInput.value = ''
   } catch (error) {
     logService.error(
-      'Failed to save metric: ' + (error instanceof Error ? error.message : String(error)),
+      'Failed to save metric: ' +
+        (error instanceof Error
+          ? error.message
+          : isIpcError(error)
+            ? (error.userMessage ?? error.message)
+            : String(error)),
       'metrics'
     )
   } finally {
@@ -307,7 +313,12 @@ async function handleDelete(metricId: number): Promise<void> {
     await deleteMetric(props.caseId, metricId)
   } catch (error) {
     logService.error(
-      'Failed to delete metric: ' + (error instanceof Error ? error.message : String(error)),
+      'Failed to delete metric: ' +
+        (error instanceof Error
+          ? error.message
+          : isIpcError(error)
+            ? (error.userMessage ?? error.message)
+            : String(error)),
       'metrics'
     )
   }
@@ -341,7 +352,11 @@ async function handleCreateDefinition(): Promise<void> {
   } catch (error) {
     logService.error(
       'Failed to create metric definition: ' +
-        (error instanceof Error ? error.message : String(error)),
+        (error instanceof Error
+          ? error.message
+          : isIpcError(error)
+            ? (error.userMessage ?? error.message)
+            : String(error)),
       'metrics'
     )
   }

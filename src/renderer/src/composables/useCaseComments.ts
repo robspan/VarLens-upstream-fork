@@ -9,6 +9,7 @@ import { ref } from 'vue'
 import type { CaseComment, CommentCategory } from '../../../shared/types/api'
 import { useApiService } from './useApiService'
 import { logService } from '../services/LogService'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 import {
   mdiCalendarCheck,
   mdiFamilyTree,
@@ -58,11 +59,16 @@ export function useCaseComments() {
 
     loadingStates.value.set(caseId, true)
     try {
-      const comments = await api.caseComments.list(caseId)
+      const comments = unwrapIpcResult(await api.caseComments.list(caseId))
       commentsCache.value.set(caseId, comments)
     } catch (error) {
       logService.error(
-        'Failed to load comments: ' + (error instanceof Error ? error.message : String(error)),
+        'Failed to load comments: ' +
+          (error instanceof Error
+            ? error.message
+            : isIpcError(error)
+              ? (error.userMessage ?? error.message)
+              : String(error)),
         'comments'
       )
     } finally {
@@ -84,7 +90,7 @@ export function useCaseComments() {
     content: string
   ): Promise<CaseComment | null> {
     if (!api) return null
-    const comment = await api.caseComments.create(caseId, category, content)
+    const comment = unwrapIpcResult(await api.caseComments.create(caseId, category, content))
 
     // Add to cache (newest first)
     const cached = commentsCache.value.get(caseId) ?? []
@@ -96,7 +102,7 @@ export function useCaseComments() {
 
   async function updateComment(caseId: number, commentId: number, content: string): Promise<void> {
     if (!api) return
-    const updated = await api.caseComments.update(commentId, content)
+    const updated = unwrapIpcResult(await api.caseComments.update(commentId, content))
 
     // Update in cache
     const cached = commentsCache.value.get(caseId)
@@ -112,7 +118,7 @@ export function useCaseComments() {
 
   async function deleteComment(caseId: number, commentId: number): Promise<void> {
     if (!api) return
-    await api.caseComments.delete(commentId)
+    unwrapIpcResult(await api.caseComments.delete(commentId))
 
     // Remove from cache
     const cached = commentsCache.value.get(caseId)

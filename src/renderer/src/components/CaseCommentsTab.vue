@@ -144,6 +144,7 @@ import {
 import type { CaseComment, CommentCategory } from '../../../shared/types/api'
 import { mdiDeleteOutline, mdiPencilOutline } from '@mdi/js'
 import { logService } from '../services/LogService'
+import { isIpcError } from '../../../shared/types/errors'
 
 const props = defineProps<{
   caseId: number
@@ -183,7 +184,12 @@ async function handleCreate(): Promise<void> {
     newContent.value = ''
   } catch (error) {
     logService.error(
-      'Failed to create comment: ' + (error instanceof Error ? error.message : String(error)),
+      'Failed to create comment: ' +
+        (error instanceof Error
+          ? error.message
+          : isIpcError(error)
+            ? (error.userMessage ?? error.message)
+            : String(error)),
       'comments'
     )
   } finally {
@@ -210,7 +216,12 @@ async function handleUpdate(commentId: number): Promise<void> {
     editContent.value = ''
   } catch (error) {
     logService.error(
-      'Failed to update comment: ' + (error instanceof Error ? error.message : String(error)),
+      'Failed to update comment: ' +
+        (error instanceof Error
+          ? error.message
+          : isIpcError(error)
+            ? (error.userMessage ?? error.message)
+            : String(error)),
       'comments'
     )
   } finally {
@@ -223,7 +234,12 @@ async function handleDelete(commentId: number): Promise<void> {
     await deleteComment(props.caseId, commentId)
   } catch (error) {
     logService.error(
-      'Failed to delete comment: ' + (error instanceof Error ? error.message : String(error)),
+      'Failed to delete comment: ' +
+        (error instanceof Error
+          ? error.message
+          : isIpcError(error)
+            ? (error.userMessage ?? error.message)
+            : String(error)),
       'comments'
     )
   }

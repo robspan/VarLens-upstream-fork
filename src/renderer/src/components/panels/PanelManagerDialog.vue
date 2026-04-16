@@ -250,6 +250,7 @@ import StringDbGenerateDialog from './StringDbGenerateDialog.vue'
 import { usePanelManager } from '../../composables/usePanelManager'
 import type { PanelListItem } from '../../composables/usePanelManager'
 import { useApiService } from '../../composables/useApiService'
+import { isIpcError, unwrapIpcResult } from '../../../../shared/types/errors'
 import {
   mdiClose,
   mdiContentCopy,
@@ -412,11 +413,14 @@ function exportBed(panel: PanelListItem): void {
 }
 
 async function doExportBed(): Promise<void> {
-  if (!exportingPanel.value) return
+  if (!exportingPanel.value || !api) return
   try {
-    await api?.panels.exportBed(exportingPanel.value.id, exportAssembly.value, exportPadding.value)
+    unwrapIpcResult(
+      await api.panels.exportBed(exportingPanel.value.id, exportAssembly.value, exportPadding.value)
+    )
   } catch (e) {
-    errorSnackbarText.value = e instanceof Error ? e.message : String(e)
+    errorSnackbarText.value =
+      e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
     errorSnackbar.value = true
   }
   exportAssemblyDialogOpen.value = false

@@ -572,10 +572,10 @@ export interface CaseMetadataAPI {
 }
 
 export interface CaseCommentsAPI {
-  list: (caseId: number) => Promise<CaseComment[]>
-  create: (caseId: number, category: CommentCategory, content: string) => Promise<CaseComment>
-  update: (commentId: number, content: string) => Promise<CaseComment>
-  delete: (commentId: number) => Promise<void>
+  list: (caseId: number) => Promise<IpcResult<CaseComment[]>>
+  create: (caseId: number, category: CommentCategory, content: string) => Promise<IpcResult<CaseComment>>
+  update: (commentId: number, content: string) => Promise<IpcResult<CaseComment>>
+  delete: (commentId: number) => Promise<IpcResult<void>>
 }
 
 export interface MetricValue {
@@ -585,16 +585,16 @@ export interface MetricValue {
 }
 
 export interface CaseMetricsAPI {
-  listDefinitions: () => Promise<MetricDefinition[]>
+  listDefinitions: () => Promise<IpcResult<MetricDefinition[]>>
   createDefinition: (
     name: string,
     valueType: 'numeric' | 'text' | 'date',
     unit: string,
     category: string
-  ) => Promise<MetricDefinition>
-  listForCase: (caseId: number) => Promise<CaseMetricWithDefinition[]>
-  upsert: (caseId: number, metricId: number, value: MetricValue) => Promise<CaseMetric>
-  delete: (caseId: number, metricId: number) => Promise<void>
+  ) => Promise<IpcResult<MetricDefinition>>
+  listForCase: (caseId: number) => Promise<IpcResult<CaseMetricWithDefinition[]>>
+  upsert: (caseId: number, metricId: number, value: MetricValue) => Promise<IpcResult<CaseMetric>>
+  delete: (caseId: number, metricId: number) => Promise<IpcResult<void>>
 }
 
 export interface TagsAPI {
@@ -613,7 +613,7 @@ export interface TagsAPI {
 }
 
 export interface TranscriptsAPI {
-  list: (variantId: number) => Promise<TranscriptAnnotation[]>
+  list: (variantId: number) => Promise<IpcResult<TranscriptAnnotation[]>>
   switch: (variantId: number, transcriptId: string) => Promise<{ success: boolean }>
   insertAndSwitch: (
     variantId: number,
@@ -626,7 +626,7 @@ export interface LogsAPI {
 }
 
 export interface AuditLogAPI {
-  getByEntity: (entityKey: string) => Promise<AuditLogEntry[]>
+  getByEntity: (entityKey: string) => Promise<IpcResult<AuditLogEntry[]>>
   query: (params: {
     action_type?: string
     entity_type?: string
@@ -685,24 +685,24 @@ export interface PanelsAPI {
   searchPanelApp: (
     keyword: string,
     region: 'uk' | 'aus' | 'both'
-  ) => Promise<PanelAppSearchResult[]>
+  ) => Promise<IpcResult<PanelAppSearchResult[]>>
   importPanelApp: (params: {
     panelId: number
     region: 'uk' | 'aus'
     confidenceThreshold: 'green' | 'green_amber' | 'all'
     name?: string
-  }) => Promise<PanelRow>
+  }) => Promise<IpcResult<PanelRow>>
   generateStringDb: (params: {
     seedGenes: string[]
     requiredScore: number
     networkType: 'physical' | 'functional'
     name?: string
-  }) => Promise<PanelRow>
+  }) => Promise<IpcResult<PanelRow>>
   exportBed: (
     panelId: number,
     assembly: string,
     paddingBp: number
-  ) => Promise<{ success: boolean; path?: string }>
+  ) => Promise<IpcResult<{ success: boolean; path?: string }>>
 }
 
 export interface GeneRefCheckUpdatesResult {
@@ -742,7 +742,7 @@ export interface AnalysisGroupMember {
 }
 
 export interface AnalysisGroupsAPI {
-  list: () => Promise<AnalysisGroup[]>
+  list: () => Promise<IpcResult<AnalysisGroup[]>>
   get: (id: number) => Promise<AnalysisGroup & { members: AnalysisGroupMember[] }>
   create: (params: {
     name: string
@@ -823,11 +823,11 @@ export interface WindowAPI {
 }
 
 export interface PresetsAPI {
-  list: () => Promise<FilterPreset[]>
-  create: (params: FilterPresetCreate) => Promise<FilterPreset>
-  update: (id: number, updates: FilterPresetUpdate) => Promise<FilterPreset>
-  delete: (id: number) => Promise<void>
-  reorder: (items: { id: number; sortOrder: number }[]) => Promise<void>
+  list: () => Promise<IpcResult<FilterPreset[]>>
+  create: (params: FilterPresetCreate) => Promise<IpcResult<FilterPreset>>
+  update: (id: number, updates: FilterPresetUpdate) => Promise<IpcResult<FilterPreset>>
+  delete: (id: number) => Promise<IpcResult<void>>
+  reorder: (items: { id: number; sortOrder: number }[]) => Promise<IpcResult<void>>
 }
 
 export interface AuthAPI {

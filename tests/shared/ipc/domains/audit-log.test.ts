@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { ErrorCode } from '../../../../src/shared/types/errors'
 
 describe('audit-log preload domain behavior', () => {
   beforeEach(() => {

@@ -10,6 +10,14 @@
 
 **Spec:** [2026-04-02-ipc-testability-error-standardization-design.md](../specs/2026-04-02-ipc-testability-error-standardization-design.md)
 
+## Reconciliation Update (2026-04-16)
+
+- Cases domain contract migrated into `src/shared/ipc/domains/cases.ts`
+- Database and filter preset domains followed the same shared/preload/main domain layout
+- Main IPC registration now mixes handler registration with domain registration modules under `src/main/ipc/domains/`
+- Renderer error handling now has a shared boundary helper from the Priority 1 maintainability work
+- Remaining handler extraction and renderer-wide error-check cleanup in this plan stay valid, but should build on the new domain-module layout rather than the older flat registration shape
+
 ---
 
 ## Task 1 (Wave 0): Fix GeneBurdenView.vue bug

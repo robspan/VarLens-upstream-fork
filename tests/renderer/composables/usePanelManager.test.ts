@@ -10,6 +10,7 @@ import { createMockApi } from '../../utils/mock-api'
 import { usePanelManager, _resetPanelManagerState } from '@renderer/composables/usePanelManager'
 import type { PanelListItem } from '@renderer/composables/usePanelManager'
 import { logService } from '../../../src/renderer/src/services/LogService'
+import { ErrorCode } from '../../../src/shared/types/errors'
 
 vi.mock('../../../src/renderer/src/services/LogService', () => ({
   logService: {
@@ -116,6 +117,26 @@ describe('usePanelManager', () => {
     expect(result.panels.value).toEqual([])
     expect(logService.error).toHaveBeenCalledWith(
       expect.stringContaining('Failed to load panels:'),
+      'panels'
+    )
+  })
+
+  it('surfaces SerializableError messages from loadPanels', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(window.api as any).panels.list.mockResolvedValue({
+      code: ErrorCode.DB_ERROR,
+      message: 'list failed',
+      userMessage: 'Could not load panels'
+    })
+
+    const [result, appInstance] = withSetup(() => usePanelManager())
+    app = appInstance
+
+    await result.loadPanels()
+
+    expect(result.error.value).toBe('Could not load panels')
+    expect(logService.error).toHaveBeenCalledWith(
+      expect.stringContaining('Could not load panels'),
       'panels'
     )
   })

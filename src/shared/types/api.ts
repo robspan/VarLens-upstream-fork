@@ -313,15 +313,15 @@ export interface ExportAPI {
 export interface DatabaseAPI {
   selectFile: () => Promise<string | null>
   selectSaveLocation: (defaultName: string) => Promise<string | null>
-  open: (path: string, password?: string) => Promise<DatabaseOpenResult>
-  create: (path: string, password?: string) => Promise<DatabaseOpenResult>
-  rekey: (newPassword: string) => Promise<{ success: boolean; error?: string }>
-  info: () => Promise<DatabaseInfo | null>
-  recentList: () => Promise<RecentDatabase[]>
-  getOverview: () => Promise<DatabaseOverview>
-  removeRecent: (path: string) => Promise<{ success: boolean }>
-  deleteFile: (path: string) => Promise<{ success: boolean }>
-  showInFolder: (path: string) => Promise<{ success: boolean }>
+  open: (path: string, password?: string) => Promise<IpcResult<DatabaseOpenResult>>
+  create: (path: string, password?: string) => Promise<IpcResult<DatabaseOpenResult>>
+  rekey: (newPassword: string) => Promise<IpcResult<{ success: boolean; error?: string }>>
+  info: () => Promise<IpcResult<DatabaseInfo | null>>
+  recentList: () => Promise<IpcResult<RecentDatabase[]>>
+  getOverview: () => Promise<IpcResult<DatabaseOverview>>
+  removeRecent: (path: string) => Promise<IpcResult<{ success: boolean }>>
+  deleteFile: (path: string) => Promise<IpcResult<{ success: boolean }>>
+  showInFolder: (path: string) => Promise<IpcResult<{ success: boolean }>>
 }
 
 // Batch import types
@@ -369,19 +369,22 @@ export interface DuplicateCheckResult {
 export interface BatchImportAPI {
   selectFiles: () => Promise<string[]>
   selectFolder: () => Promise<string[]>
-  checkDuplicates: (filePaths: string[], stripText?: string) => Promise<DuplicateCheckResult>
+  checkDuplicates: (filePaths: string[], stripText?: string) => Promise<IpcResult<DuplicateCheckResult>>
   start: (
     filePaths: string[],
     duplicateStrategy: DuplicateChoice,
     stripText?: string
-  ) => Promise<BatchResult>
+  ) => Promise<IpcResult<BatchResult>>
   cancel: () => Promise<void>
   onProgress: (callback: (progress: BatchProgress) => void) => () => void
   onComplete: (callback: (result: BatchResult) => void) => () => void
-  selectZip: () => Promise<{ filePath: string; isEncrypted: boolean } | null>
-  testZipPassword: (zipPath: string, password: string) => Promise<{ success: boolean }>
-  extractZip: (zipPath: string, password?: string) => Promise<{ files: string[]; errors: string[] }>
-  cleanupZipTemp: () => Promise<void>
+  selectZip: () => Promise<IpcResult<{ filePath: string; isEncrypted: boolean } | null>>
+  testZipPassword: (zipPath: string, password: string) => Promise<IpcResult<{ success: boolean }>>
+  extractZip: (
+    zipPath: string,
+    password?: string
+  ) => Promise<IpcResult<{ files: string[]; errors: string[] }>>
+  cleanupZipTemp: () => Promise<IpcResult<void>>
 }
 
 export interface CohortAPI {
@@ -596,17 +599,17 @@ export interface CaseMetricsAPI {
 
 export interface TagsAPI {
   // Tag CRUD
-  list: () => Promise<Tag[]>
-  create: (name: string, color: string) => Promise<Tag>
-  update: (id: number, updates: { name?: string; color?: string }) => Promise<Tag>
-  delete: (id: number) => Promise<void>
-  getUsageCount: (tagId: number) => Promise<number>
+  list: () => Promise<IpcResult<Tag[]>>
+  create: (name: string, color: string) => Promise<IpcResult<Tag>>
+  update: (id: number, updates: { name?: string; color?: string }) => Promise<IpcResult<Tag>>
+  delete: (id: number) => Promise<IpcResult<void>>
+  getUsageCount: (tagId: number) => Promise<IpcResult<number>>
 
   // Variant tag assignments
-  getVariantTags: (caseId: number, variantId: number) => Promise<Tag[]>
-  assignVariantTag: (caseId: number, variantId: number, tagId: number) => Promise<void>
-  removeVariantTag: (caseId: number, variantId: number, tagId: number) => Promise<void>
-  setVariantTags: (caseId: number, variantId: number, tagIds: number[]) => Promise<void>
+  getVariantTags: (caseId: number, variantId: number) => Promise<IpcResult<Tag[]>>
+  assignVariantTag: (caseId: number, variantId: number, tagId: number) => Promise<IpcResult<void>>
+  removeVariantTag: (caseId: number, variantId: number, tagId: number) => Promise<IpcResult<void>>
+  setVariantTags: (caseId: number, variantId: number, tagIds: number[]) => Promise<IpcResult<void>>
 }
 
 export interface TranscriptsAPI {
@@ -651,8 +654,8 @@ export interface RegionFilesAPI {
 }
 
 export interface PanelsAPI {
-  list: () => Promise<PanelWithCount[]>
-  get: (id: number) => Promise<(PanelRow & { genes: PanelGeneRow[] }) | null>
+  list: () => Promise<IpcResult<PanelWithCount[]>>
+  get: (id: number) => Promise<IpcResult<(PanelRow & { genes: PanelGeneRow[] }) | null>>
   create: (params: {
     name: string
     description?: string | null
@@ -660,20 +663,20 @@ export interface PanelsAPI {
     source?: string
     sourceId?: string | null
     sourceMetadata?: Record<string, unknown> | null
-  }) => Promise<PanelRow>
+  }) => Promise<IpcResult<PanelRow>>
   update: (params: {
     id: number
     name?: string
     description?: string | null
     version?: string | null
-  }) => Promise<PanelRow>
-  delete: (id: number) => Promise<{ success: boolean }>
-  duplicate: (id: number, newName: string) => Promise<PanelRow>
+  }) => Promise<IpcResult<PanelRow>>
+  delete: (id: number) => Promise<IpcResult<{ success: boolean }>>
+  duplicate: (id: number, newName: string) => Promise<IpcResult<PanelRow>>
   setGenes: (
     panelId: number,
     genes: Array<{ hgncId: string; symbol: string }>
-  ) => Promise<{ success: boolean }>
-  getGenes: (panelId: number) => Promise<PanelGeneRow[]>
+  ) => Promise<IpcResult<{ success: boolean }>>
+  getGenes: (panelId: number) => Promise<IpcResult<PanelGeneRow[]>>
   activate: (caseId: number, panelId: number, paddingBp?: number) => Promise<{ success: boolean }>
   deactivate: (caseId: number, panelId: number) => Promise<{ success: boolean }>
   activeForCase: (caseId: number) => Promise<ActivePanelRow[]>
@@ -838,24 +841,26 @@ export interface AuthAPI {
     locked?: boolean
   }>
   logout: () => Promise<void>
-  currentUser: () => Promise<{ id: number; username: string; role: string } | null>
-  isAccountsEnabled: () => Promise<boolean>
-  createUser: (username: string, displayName: string, tempPassword: string) => Promise<void>
+  currentUser: () => Promise<IpcResult<{ id: number; username: string; role: string } | null>>
+  isAccountsEnabled: () => Promise<IpcResult<boolean>>
+  createUser: (username: string, displayName: string, tempPassword: string) => Promise<IpcResult<void>>
   listUsers: () => Promise<
-    Array<{
-      id: number
-      username: string
-      display_name: string | null
-      role: string
-      is_active: number
-      must_change_password: number
-      failed_login_count: number
-      created_at: string
-    }>
+    IpcResult<
+      Array<{
+        id: number
+        username: string
+        display_name: string | null
+        role: string
+        is_active: number
+        must_change_password: number
+        failed_login_count: number
+        created_at: string
+      }>
+    >
   >
-  deactivateUser: (username: string) => Promise<void>
-  resetPassword: (username: string, newPassword: string) => Promise<void>
-  changePassword: (oldPassword: string, newPassword: string) => Promise<void>
+  deactivateUser: (username: string) => Promise<IpcResult<void>>
+  resetPassword: (username: string, newPassword: string) => Promise<IpcResult<void>>
+  changePassword: (oldPassword: string, newPassword: string) => Promise<IpcResult<void>>
 }
 
 /**

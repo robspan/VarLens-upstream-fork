@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useApiService } from '../composables/useApiService'
 import { logService } from '../services/LogService'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
 export const useAuthStore = defineStore('auth', () => {
   const { api } = useApiService()
@@ -15,15 +16,23 @@ export const useAuthStore = defineStore('auth', () => {
   async function checkAccountsEnabled(): Promise<void> {
     if (!api) return
     try {
-      accountsEnabled.value = await api.auth.isAccountsEnabled()
+      accountsEnabled.value = unwrapIpcResult(await api.auth.isAccountsEnabled())
       if (accountsEnabled.value) {
-        const user = await api.auth.currentUser()
+        const user = unwrapIpcResult(await api.auth.currentUser())
         if (user !== null && user !== undefined) {
           currentUser.value = user
         }
       }
     } catch (e) {
-      logService.warn('Auth check failed: ' + (e instanceof Error ? e.message : String(e)), 'auth')
+      logService.warn(
+        'Auth check failed: ' +
+          (e instanceof Error
+            ? e.message
+            : isIpcError(e)
+              ? (e.userMessage ?? e.message)
+              : String(e)),
+        'auth'
+      )
     }
   }
 

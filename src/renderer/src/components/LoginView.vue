@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useAuthStore } from '../stores/authStore'
 import { useApiService } from '../composables/useApiService'
 import { mdiAccount, mdiEye, mdiEyeOff, mdiLock, mdiLockCheck, mdiLockReset } from '@mdi/js'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
 const authStore = useAuthStore()
 const { api } = useApiService()
@@ -56,10 +57,11 @@ async function handleChangePassword(): Promise<void> {
   if (!api) return
 
   try {
-    await api.auth.changePassword(password.value, newPassword.value)
+    unwrapIpcResult(await api.auth.changePassword(password.value, newPassword.value))
     mustChangePassword.value = false
-  } catch {
-    error.value = 'Failed to change password.'
+  } catch (e) {
+    error.value =
+      e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : 'Failed to change password.'
   } finally {
     loading.value = false
   }

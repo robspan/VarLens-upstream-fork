@@ -1,13 +1,13 @@
 import type { IpcMain } from 'electron'
+import { getDatabaseService, getDatabaseManager } from '../../database'
+import { getDbPool } from '../dbPoolManager'
 import { registerVepHandlers } from '../handlers/vep'
-import type { HandlerDependencies } from '../types'
 
-export function registerVepDomain(
-  ipcMain: IpcMain,
-  deps: Omit<HandlerDependencies, 'ipcMain'>
-): void {
+export function registerVepDomain(ipcMain: IpcMain): void {
   registerVepHandlers({
     ipcMain,
-    ...deps
+    getDb: getDatabaseService,
+    getDbManager: getDatabaseManager,
+    getDbPool
   })
 }

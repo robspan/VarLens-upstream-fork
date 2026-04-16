@@ -1,10 +1,13 @@
 import type { IpcMain } from 'electron'
-import type { HandlerDependencies } from '../types'
+import { getDatabaseService, getDatabaseManager } from '../../database'
+import { getDbPool } from '../dbPoolManager'
 import { registerMyVariantHandlers } from '../handlers/myvariant'
 
-export function registerMyvariantDomain(ipcMain: IpcMain, deps: HandlerDependencies): void {
+export function registerMyvariantDomain(ipcMain: IpcMain): void {
   registerMyVariantHandlers({
     ipcMain,
-    getDb: deps.getDb
+    getDb: getDatabaseService,
+    getDbManager: getDatabaseManager,
+    getDbPool
   })
 }

@@ -2,7 +2,6 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { createCasesApi } from './domains/cases'
 import { createDatabaseApi } from './domains/database'
 import { createFilterPresetsApi } from './domains/filter-presets'
-import { createMyvariantApi } from './domains/myvariant'
 import type {
   ProgressUpdate,
   VariantFilter,
@@ -41,7 +40,6 @@ import type { WindowAPI } from '../shared/types/api'
 const casesDomain = createCasesApi()
 const databaseDomain = createDatabaseApi()
 const filterPresetsDomain = createFilterPresetsApi()
-const myvariantDomain = createMyvariantApi()
 
 const api: WindowAPI = {
   cases: {
@@ -361,8 +359,8 @@ const api: WindowAPI = {
 
   myvariant: {
     fetch: (chr: string, pos: number, ref: string, alt: string) =>
-      myvariantDomain.fetch(chr, pos, ref, alt),
-    clearCache: () => myvariantDomain.clearCache()
+      ipcRenderer.invoke('myvariant:fetch', chr, pos, ref, alt),
+    clearCache: () => ipcRenderer.invoke('myvariant:clearCache')
   },
 
   spliceai: {

@@ -7,7 +7,6 @@ import { getDbPool } from './dbPoolManager'
 import { registerCasesDomain } from './domains/cases'
 import { registerDatabaseDomain } from './domains/database'
 import { registerFilterPresetsDomain } from './domains/filter-presets'
-import { registerMyvariantDomain } from './domains/myvariant'
 import { registerVariantHandlers } from './handlers/variants'
 import { registerImportHandlers } from './handlers/import'
 import { registerSystemHandlers } from './handlers/system'
@@ -18,8 +17,8 @@ import { registerCohortHandlers } from './handlers/cohort'
 import { registerAnnotationHandlers } from './handlers/annotations'
 import { registerVepHandlers } from './handlers/vep'
 import { registerHpoHandlers } from './handlers/hpo'
+import { registerMyVariantHandlers } from './handlers/myvariant'
 import { registerSpliceAIHandlers } from './handlers/spliceai'
-import { registerGnomadDomain } from './domains/gnomad'
 import { registerCaseMetadataHandlers } from './handlers/case-metadata'
 import { registerCaseCommentHandlers } from './handlers/case-comments'
 import { registerCaseMetricHandlers } from './handlers/case-metrics'
@@ -33,6 +32,7 @@ import { registerPanelHandlers } from './handlers/panels'
 import { registerGeneRefHandlers } from './handlers/gene-ref'
 import { registerAnalysisGroupHandlers } from './handlers/analysis-groups'
 import { registerProteinHandlers } from './handlers/protein'
+import { registerGnomadHandlers } from './handlers/gnomad'
 import { registerShortlistHandlers } from './handlers/shortlist'
 
 // Re-export pool lifecycle for external callers (e.g. app shutdown)
@@ -65,7 +65,7 @@ export function registerIpcHandlers(): void {
   registerAnnotationHandlers(deps)
   registerVepHandlers(deps)
   registerHpoHandlers(deps)
-  registerMyvariantDomain(ipcMain, deps)
+  registerMyVariantHandlers(deps)
   registerSpliceAIHandlers(deps)
   registerCaseMetadataHandlers(deps)
   registerCaseCommentHandlers(deps)
@@ -81,7 +81,7 @@ export function registerIpcHandlers(): void {
   registerGeneRefHandlers(deps)
   registerAnalysisGroupHandlers(deps)
   registerProteinHandlers(deps)
-  registerGnomadDomain(ipcMain)
+  registerGnomadHandlers(deps)
   registerShortlistHandlers(deps)
 
   mainLogger.info('IPC handlers registered', 'ipc')

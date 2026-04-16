@@ -71,6 +71,7 @@ import { ref, computed, watch } from 'vue'
 import { useApiService } from '../../composables/useApiService'
 import { mdiClose } from '@mdi/js'
 import { logService } from '../../services/LogService'
+import { isIpcError, unwrapIpcResult } from '../../../../shared/types/errors'
 
 interface GeneListItem {
   id: number
@@ -121,7 +122,8 @@ watch(
         geneListName.value = gl.name
         geneListDescription.value = ''
         if (api) {
-          api.geneLists.getGenes(gl.id).then((genes: string[]) => {
+          api.geneLists.getGenes(gl.id).then((result) => {
+            const genes = unwrapIpcResult(result)
             geneListGenesText.value = genes.join('\n')
           })
         }
@@ -145,18 +147,21 @@ async function saveGeneList(): Promise<void> {
     if (editingGeneList.value != null) {
       listId = editingGeneList.value
     } else {
-      const created = await geneListsApi.create(name, geneListDescription.value.trim() || null)
+      const created = unwrapIpcResult(
+        await geneListsApi.create(name, geneListDescription.value.trim() || null)
+      )
       listId = created.id
     }
     const genes = parseGeneText(geneListGenesText.value)
-    await geneListsApi.setGenes(listId, genes)
+    unwrapIpcResult(await geneListsApi.setGenes(listId, genes))
 
-    const updatedLists = await geneListsApi.list()
+    const updatedLists = unwrapIpcResult(await geneListsApi.list())
     emit('saved', { listId, geneLists: updatedLists })
     emit('update:modelValue', false)
   } catch (e) {
     logService.error(
-      'Failed to save gene list: ' + (e instanceof Error ? e.message : String(e)),
+      'Failed to save gene list: ' +
+        (e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)),
       'gene-list'
     )
   } finally {
@@ -167,13 +172,14 @@ async function saveGeneList(): Promise<void> {
 async function deleteCurrentGeneList(): Promise<void> {
   if (editingGeneList.value == null || !api) return
   try {
-    await api.geneLists.delete(editingGeneList.value)
-    const updatedLists = await api.geneLists.list()
+    unwrapIpcResult(await api.geneLists.delete(editingGeneList.value))
+    const updatedLists = unwrapIpcResult(await api.geneLists.list())
     emit('deleted', { geneLists: updatedLists })
     emit('update:modelValue', false)
   } catch (e) {
     logService.error(
-      'Failed to delete gene list: ' + (e instanceof Error ? e.message : String(e)),
+      'Failed to delete gene list: ' +
+        (e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)),
       'gene-list'
     )
   }

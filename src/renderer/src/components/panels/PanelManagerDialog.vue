@@ -300,10 +300,11 @@ watch(
     if (visible) {
       await loadPanels()
       try {
-        geneRefInfo.value = (await api?.geneRef.info()) ?? null
+        geneRefInfo.value = api ? unwrapIpcResult(await api.geneRef.info()) : null
       } catch (e) {
         logService.warn(
-          'Failed to load gene reference info: ' + (e instanceof Error ? e.message : String(e)),
+          'Failed to load gene reference info: ' +
+            (e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)),
           'panels'
         )
       }
@@ -388,17 +389,19 @@ function onExternalImport(): void {
 }
 
 async function updateGeneRef(): Promise<void> {
+  if (!api) return
   geneRefUpdating.value = true
   try {
-    const result = await api?.geneRef.update()
-    if (result?.success === true) {
-      geneRefInfo.value = (await api?.geneRef.info()) ?? null
+    const result = unwrapIpcResult(await api.geneRef.update())
+    if (result.success === true) {
+      geneRefInfo.value = unwrapIpcResult(await api.geneRef.info())
     } else {
-      errorSnackbarText.value = result?.message ?? 'API not available'
+      errorSnackbarText.value = result.message
       errorSnackbar.value = true
     }
   } catch (e) {
-    errorSnackbarText.value = e instanceof Error ? e.message : String(e)
+    errorSnackbarText.value =
+      e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
     errorSnackbar.value = true
   } finally {
     geneRefUpdating.value = false

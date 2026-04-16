@@ -67,6 +67,7 @@ import { ref, watch, onMounted } from 'vue'
 import { useDebounce } from '../composables/useDebounce'
 import { useApiService } from '../composables/useApiService'
 import { logService } from '../services/LogService'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 import type { CaseHpoTerm } from '../../../shared/types/api'
 
 interface HpoSearchResult {
@@ -107,7 +108,7 @@ async function performSearch(query: string) {
 
   loading.value = true
   try {
-    const result = await api!.hpo.search(query, 20)
+    const result = unwrapIpcResult(await api!.hpo.search(query, 20))
     if (result.success) {
       // Filter out already assigned terms
       const assignedIds = new Set(props.modelValue.map((t) => t.hpo_id))
@@ -117,7 +118,12 @@ async function performSearch(query: string) {
     }
   } catch (error) {
     logService.error(
-      'HPO search failed: ' + (error instanceof Error ? error.message : String(error)),
+      'HPO search failed: ' +
+        (error instanceof Error
+          ? error.message
+          : isIpcError(error)
+            ? (error.userMessage ?? error.message)
+            : String(error)),
       'hpo'
     )
     searchResults.value = []

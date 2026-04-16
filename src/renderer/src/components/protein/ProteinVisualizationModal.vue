@@ -154,7 +154,7 @@ import {
   getConsequenceColor
 } from '../../../../shared/utils/protein-utils'
 import { logService } from '../../services/LogService'
-import { unwrapIpcResult } from '../../../../shared/types/errors'
+import { isIpcError, unwrapIpcResult } from '../../../../shared/types/errors'
 
 interface Props {
   modelValue: boolean
@@ -224,7 +224,7 @@ watch(
     if (gene !== null && gene !== '' && api !== undefined) {
       clinvarLoading.value = true
       try {
-        const result = await api.gnomad.getClinVarVariants(gene)
+        const result = unwrapIpcResult(await api.gnomad.getClinVarVariants(gene))
         if (result.success) {
           clinvarVariants.value = result.variants
         } else {
@@ -232,7 +232,13 @@ watch(
         }
       } catch (err) {
         logService.error(
-          `ClinVar fetch error: ${err instanceof Error ? err.message : 'Unknown'}`,
+          `ClinVar fetch error: ${
+            err instanceof Error
+              ? err.message
+              : isIpcError(err)
+                ? (err.userMessage ?? err.message)
+                : 'Unknown'
+          }`,
           'ProteinVisualizationModal'
         )
       } finally {

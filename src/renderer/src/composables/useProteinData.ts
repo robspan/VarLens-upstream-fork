@@ -14,6 +14,7 @@ import type {
 } from '../../../shared/types/protein'
 import { useApiService } from './useApiService'
 import { logService } from '../services/LogService'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
 export function useProteinData(geneSymbol: Ref<string | null>) {
   const { api } = useApiService()
@@ -48,7 +49,7 @@ export function useProteinData(geneSymbol: Ref<string | null>) {
 
     try {
       // Step 1: Get UniProt mapping
-      const mappingResult = await api.protein.getMapping(gene)
+      const mappingResult = unwrapIpcResult(await api.protein.getMapping(gene))
 
       if (fetchGeneration !== thisGeneration) return
 
@@ -65,8 +66,9 @@ export function useProteinData(geneSymbol: Ref<string | null>) {
       geneStructureLoading.value = true
       api.protein
         .getGeneStructure(gene)
-        .then((result) => {
+        .then((ipcResult) => {
           if (fetchGeneration !== thisGeneration) return
+          const result = unwrapIpcResult(ipcResult)
           if (result.success) {
             geneStructure.value = result.geneStructure
           } else {
@@ -76,7 +78,12 @@ export function useProteinData(geneSymbol: Ref<string | null>) {
         })
         .catch((err) => {
           if (fetchGeneration !== thisGeneration) return
-          geneStructureError.value = err instanceof Error ? err.message : 'Unknown error'
+          geneStructureError.value =
+            err instanceof Error
+              ? err.message
+              : isIpcError(err)
+                ? (err.userMessage ?? err.message)
+                : 'Unknown error'
         })
         .finally(() => {
           if (fetchGeneration === thisGeneration) {
@@ -93,9 +100,14 @@ export function useProteinData(geneSymbol: Ref<string | null>) {
       if (fetchGeneration !== thisGeneration) return
 
       // Process domains
-      if (domainsResult.status === 'fulfilled' && domainsResult.value.success) {
-        domains.value = domainsResult.value.domains
-        proteinLength.value = domainsResult.value.proteinLength
+      if (domainsResult.status === 'fulfilled') {
+        const domainResult = unwrapIpcResult(domainsResult.value)
+        if (domainResult.success) {
+          domains.value = domainResult.domains
+          proteinLength.value = domainResult.proteinLength
+        } else {
+          proteinLength.value = mappingResult.mapping.proteinLength
+        }
       } else {
         // Fall back to mapping protein length
         proteinLength.value = mappingResult.mapping.proteinLength
@@ -105,12 +117,20 @@ export function useProteinData(geneSymbol: Ref<string | null>) {
       }
 
       // Process structure
-      if (structureResult.status === 'fulfilled' && structureResult.value.success) {
-        structureInfo.value = structureResult.value.structure
+      if (structureResult.status === 'fulfilled') {
+        const resolvedStructureResult = unwrapIpcResult(structureResult.value)
+        if (resolvedStructureResult.success) {
+          structureInfo.value = resolvedStructureResult.structure
+        }
       }
     } catch (err) {
       if (fetchGeneration !== thisGeneration) return
-      error.value = err instanceof Error ? err.message : 'Unknown error'
+      error.value =
+        err instanceof Error
+          ? err.message
+          : isIpcError(err)
+            ? (err.userMessage ?? err.message)
+            : 'Unknown error'
     } finally {
       if (fetchGeneration === thisGeneration) {
         loading.value = false

@@ -492,25 +492,35 @@ export interface AnnotationsAPI {
 }
 
 export interface VepAPI {
-  fetch: (chr: string, pos: number, ref: string, alt: string) => Promise<VepFetchResult>
-  cancel: () => Promise<void>
-  clearCache: () => Promise<{ success: boolean }>
-  getCacheStats: () => Promise<CacheSizeInfo>
+  fetch: (chr: string, pos: number, ref: string, alt: string) => Promise<IpcResult<VepFetchResult>>
+  cancel: () => Promise<IpcResult<void>>
+  clearCache: () => Promise<IpcResult<{ success: boolean }>>
+  getCacheStats: () => Promise<IpcResult<CacheSizeInfo>>
 }
 
 export interface HpoAPI {
-  search: (query: string, maxResults?: number) => Promise<HpoSearchResult>
-  clearCache: () => Promise<{ success: boolean }>
+  search: (query: string, maxResults?: number) => Promise<IpcResult<HpoSearchResult>>
+  clearCache: () => Promise<IpcResult<{ success: boolean }>>
 }
 
 export interface MyVariantAPI {
-  fetch: (chr: string, pos: number, ref: string, alt: string) => Promise<MyVariantFetchResult>
-  clearCache: () => Promise<{ success: boolean }>
+  fetch: (
+    chr: string,
+    pos: number,
+    ref: string,
+    alt: string
+  ) => Promise<IpcResult<MyVariantFetchResult>>
+  clearCache: () => Promise<IpcResult<{ success: boolean }>>
 }
 
 export interface SpliceAIAPI {
-  fetch: (chr: string, pos: number, ref: string, alt: string) => Promise<SpliceAIFetchResult>
-  clearCache: () => Promise<{ success: boolean }>
+  fetch: (
+    chr: string,
+    pos: number,
+    ref: string,
+    alt: string
+  ) => Promise<IpcResult<SpliceAIFetchResult>>
+  clearCache: () => Promise<IpcResult<{ success: boolean }>>
 }
 
 // Case metadata types
@@ -639,11 +649,11 @@ export interface AuditLogAPI {
 }
 
 export interface GeneListsAPI {
-  list: () => Promise<GeneListWithCount[]>
-  create: (name: string, description?: string | null) => Promise<GeneList>
-  delete: (id: number) => Promise<void>
-  getGenes: (listId: number) => Promise<string[]>
-  setGenes: (listId: number, genes: string[]) => Promise<string[]>
+  list: () => Promise<IpcResult<GeneListWithCount[]>>
+  create: (name: string, description?: string | null) => Promise<IpcResult<GeneList>>
+  delete: (id: number) => Promise<IpcResult<void>>
+  getGenes: (listId: number) => Promise<IpcResult<string[]>>
+  setGenes: (listId: number, genes: string[]) => Promise<IpcResult<string[]>>
 }
 
 export interface RegionFilesAPI {
@@ -680,8 +690,8 @@ export interface PanelsAPI {
   activate: (caseId: number, panelId: number, paddingBp?: number) => Promise<{ success: boolean }>
   deactivate: (caseId: number, panelId: number) => Promise<{ success: boolean }>
   activeForCase: (caseId: number) => Promise<ActivePanelRow[]>
-  validateSymbols: (symbols: string[]) => Promise<GeneValidationResult[]>
-  autocomplete: (query: string, limit?: number) => Promise<GeneAutocompleteResult[]>
+  validateSymbols: (symbols: string[]) => Promise<IpcResult<GeneValidationResult[]>>
+  autocomplete: (query: string, limit?: number) => Promise<IpcResult<GeneAutocompleteResult[]>>
   searchPanelApp: (
     keyword: string,
     region: 'uk' | 'aus' | 'both'
@@ -717,10 +727,10 @@ export interface GeneRefUpdateResult {
 }
 
 export interface GeneRefAPI {
-  info: () => Promise<GeneRefInfo>
-  assemblies: () => Promise<AssemblyInfo[]>
-  checkUpdates: () => Promise<GeneRefCheckUpdatesResult>
-  update: () => Promise<GeneRefUpdateResult>
+  info: () => Promise<IpcResult<GeneRefInfo>>
+  assemblies: () => Promise<IpcResult<AssemblyInfo[]>>
+  checkUpdates: () => Promise<IpcResult<GeneRefCheckUpdatesResult>>
+  update: () => Promise<IpcResult<GeneRefUpdateResult>>
 }
 
 export interface AnalysisGroup {
@@ -763,21 +773,27 @@ export interface AnalysisGroupsAPI {
 }
 
 export interface ProteinAPI {
-  getMapping: (geneSymbol: string) => Promise<ProteinMappingResult | ProteinApiError>
-  getDomains: (uniprotAccession: string) => Promise<ProteinDomainResult | ProteinApiError>
-  getStructure: (uniprotAccession: string) => Promise<ProteinStructureResult | ProteinApiError>
-  getGeneStructure: (geneSymbol: string) => Promise<GeneStructureResult | ProteinApiError>
+  getMapping: (geneSymbol: string) => Promise<IpcResult<ProteinMappingResult | ProteinApiError>>
+  getDomains: (
+    uniprotAccession: string
+  ) => Promise<IpcResult<ProteinDomainResult | ProteinApiError>>
+  getStructure: (
+    uniprotAccession: string
+  ) => Promise<IpcResult<ProteinStructureResult | ProteinApiError>>
+  getGeneStructure: (
+    geneSymbol: string
+  ) => Promise<IpcResult<GeneStructureResult | ProteinApiError>>
 }
 
 export interface GnomadAPI {
   getVariants: (
     geneSymbol: string,
     dataset?: string
-  ) => Promise<GnomadFetchResult | ProteinApiError>
+  ) => Promise<IpcResult<GnomadFetchResult | ProteinApiError>>
   getClinVarVariants: (
     geneSymbol: string,
     dataset?: string
-  ) => Promise<ClinVarFetchResult | ProteinApiError>
+  ) => Promise<IpcResult<ClinVarFetchResult | ProteinApiError>>
 }
 
 export interface PerfAPI {

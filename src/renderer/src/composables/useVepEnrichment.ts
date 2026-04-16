@@ -19,9 +19,17 @@ import type {
 } from '../../../shared/types/api-enrichment'
 import type { VepTranscriptConsequence, VepColocatedVariant } from '../../../shared/types/vep'
 import { useApiService } from './useApiService'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
 export function useVepEnrichment() {
   const { api } = useApiService()
+
+  function formatError(error: unknown, fallback: string): string {
+    if (isIpcError(error)) {
+      return error.userMessage ?? error.message
+    }
+    return error instanceof Error ? error.message : fallback
+  }
 
   // VEP data
   const vepData = ref<VepFetchResult | null>(null)
@@ -155,24 +163,36 @@ export function useVepEnrichment() {
 
     // Process VEP result
     if (vepResult.status === 'fulfilled') {
-      vepData.value = vepResult.value
-      if (!vepResult.value.success) {
-        vepError.value = vepResult.value.error
+      try {
+        vepData.value = unwrapIpcResult(vepResult.value)
+        if (!vepData.value.success) {
+          vepError.value = vepData.value.error
+        }
+      } catch (error) {
+        vepError.value = formatError(error, 'VEP fetch failed')
       }
     } else {
-      vepError.value = vepResult.reason?.message ?? 'VEP fetch failed'
+      vepError.value = formatError(vepResult.reason, 'VEP fetch failed')
     }
     vepLoading.value = false
 
     // Process myvariant result
     if (myvariantResult.status === 'fulfilled') {
-      myvariantData.value = myvariantResult.value
+      try {
+        myvariantData.value = unwrapIpcResult(myvariantResult.value)
+      } catch {
+        myvariantData.value = null
+      }
     }
     myvariantLoading.value = false
 
     // Process SpliceAI result
     if (spliceaiResult.status === 'fulfilled') {
-      spliceaiData.value = spliceaiResult.value
+      try {
+        spliceaiData.value = unwrapIpcResult(spliceaiResult.value)
+      } catch {
+        spliceaiData.value = null
+      }
     }
     spliceaiLoading.value = false
   }

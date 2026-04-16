@@ -21,6 +21,7 @@ import type {
 } from '../../../shared/types/filter-presets'
 import type { FilterState } from '../../../shared/types/filters'
 import { useApiService } from './useApiService'
+import { unwrapIpcResult } from '../../../shared/types/errors'
 
 // ─── Module-level shared state ────────────────────────────────────────────────
 // These refs are intentionally defined outside the composable factory so every
@@ -50,8 +51,7 @@ export function useFilterPresetStore() {
     if (!api) return
     loading.value = true
     try {
-      const result = await api.presets.list()
-      presets.value = Array.isArray(result) ? result : []
+      presets.value = unwrapIpcResult(await api.presets.list())
     } finally {
       loading.value = false
     }
@@ -117,7 +117,7 @@ export function useFilterPresetStore() {
 
   async function savePreset(params: FilterPresetCreate): Promise<FilterPreset | null> {
     if (!api) return null
-    const created = await api.presets.create(params)
+    const created = unwrapIpcResult(await api.presets.create(params))
     await loadPresets()
     return created
   }
@@ -127,14 +127,14 @@ export function useFilterPresetStore() {
     updates: FilterPresetUpdate
   ): Promise<FilterPreset | null> {
     if (!api) return null
-    const updated = await api.presets.update(id, updates)
+    const updated = unwrapIpcResult(await api.presets.update(id, updates))
     await loadPresets()
     return updated
   }
 
   async function deletePreset(id: number): Promise<void> {
     if (!api) return
-    await api.presets.delete(id)
+    unwrapIpcResult(await api.presets.delete(id))
     // Reassign Set to trigger Vue reactivity (in-place Set.delete doesn't)
     const newSet = new Set(activePresetIds.value)
     newSet.delete(id)
@@ -144,7 +144,7 @@ export function useFilterPresetStore() {
 
   async function reorderPresets(items: { id: number; sortOrder: number }[]): Promise<void> {
     if (!api) return
-    await api.presets.reorder(items)
+    unwrapIpcResult(await api.presets.reorder(items))
     await loadPresets()
   }
 

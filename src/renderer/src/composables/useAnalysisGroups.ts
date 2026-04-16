@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import { useApiService } from './useApiService'
 import { logService } from '../services/LogService'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
 interface AnalysisGroupOption {
   id: number
@@ -18,9 +19,15 @@ export function useAnalysisGroups() {
     if (!api) return
     loading.value = true
     try {
-      groups.value = (await api.analysisGroups.list()) as AnalysisGroupOption[]
+      groups.value = unwrapIpcResult(await api.analysisGroups.list()) as AnalysisGroupOption[]
     } catch (error) {
-      logService.error(`Failed to load analysis groups: ${error}`, 'useAnalysisGroups')
+      const message =
+        error instanceof Error
+          ? error.message
+          : isIpcError(error)
+            ? (error.userMessage ?? error.message)
+            : String(error)
+      logService.error(`Failed to load analysis groups: ${message}`, 'useAnalysisGroups')
       groups.value = []
     } finally {
       loading.value = false

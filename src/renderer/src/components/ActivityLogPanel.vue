@@ -37,6 +37,7 @@ import { ref, watch } from 'vue'
 import type { AuditLogEntry, AuditActionType } from '../../../shared/types/database-entities'
 import { useApiService } from '../composables/useApiService'
 import { logService } from '../services/LogService'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
 const props = defineProps<{
   entityKey: string | null
@@ -55,10 +56,15 @@ async function loadEntries(): Promise<void> {
 
   loading.value = true
   try {
-    entries.value = await api!.audit.getByEntity(props.entityKey)
+    entries.value = unwrapIpcResult(await api!.audit.getByEntity(props.entityKey))
   } catch (error) {
     logService.error(
-      'Failed to load audit entries: ' + (error instanceof Error ? error.message : String(error)),
+      'Failed to load audit entries: ' +
+        (error instanceof Error
+          ? error.message
+          : isIpcError(error)
+            ? (error.userMessage ?? error.message)
+            : String(error)),
       'audit'
     )
     entries.value = []

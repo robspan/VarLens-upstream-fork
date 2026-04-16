@@ -250,6 +250,7 @@ import StringDbGenerateDialog from './StringDbGenerateDialog.vue'
 import { usePanelManager } from '../../composables/usePanelManager'
 import type { PanelListItem } from '../../composables/usePanelManager'
 import { useApiService } from '../../composables/useApiService'
+import { isIpcError, unwrapIpcResult } from '../../../../shared/types/errors'
 import {
   mdiClose,
   mdiContentCopy,
@@ -299,10 +300,15 @@ watch(
     if (visible) {
       await loadPanels()
       try {
-        geneRefInfo.value = (await api?.geneRef.info()) ?? null
+        geneRefInfo.value = api ? unwrapIpcResult(await api.geneRef.info()) : null
       } catch (e) {
         logService.warn(
-          'Failed to load gene reference info: ' + (e instanceof Error ? e.message : String(e)),
+          'Failed to load gene reference info: ' +
+            (e instanceof Error
+              ? e.message
+              : isIpcError(e)
+                ? (e.userMessage ?? e.message)
+                : String(e)),
           'panels'
         )
       }
@@ -387,17 +393,19 @@ function onExternalImport(): void {
 }
 
 async function updateGeneRef(): Promise<void> {
+  if (!api) return
   geneRefUpdating.value = true
   try {
-    const result = await api?.geneRef.update()
-    if (result?.success === true) {
-      geneRefInfo.value = (await api?.geneRef.info()) ?? null
+    const result = unwrapIpcResult(await api.geneRef.update())
+    if (result.success === true) {
+      geneRefInfo.value = unwrapIpcResult(await api.geneRef.info())
     } else {
-      errorSnackbarText.value = result?.message ?? 'API not available'
+      errorSnackbarText.value = result.message
       errorSnackbar.value = true
     }
   } catch (e) {
-    errorSnackbarText.value = e instanceof Error ? e.message : String(e)
+    errorSnackbarText.value =
+      e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
     errorSnackbar.value = true
   } finally {
     geneRefUpdating.value = false
@@ -412,11 +420,14 @@ function exportBed(panel: PanelListItem): void {
 }
 
 async function doExportBed(): Promise<void> {
-  if (!exportingPanel.value) return
+  if (!exportingPanel.value || !api) return
   try {
-    await api?.panels.exportBed(exportingPanel.value.id, exportAssembly.value, exportPadding.value)
+    unwrapIpcResult(
+      await api.panels.exportBed(exportingPanel.value.id, exportAssembly.value, exportPadding.value)
+    )
   } catch (e) {
-    errorSnackbarText.value = e instanceof Error ? e.message : String(e)
+    errorSnackbarText.value =
+      e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
     errorSnackbar.value = true
   }
   exportAssemblyDialogOpen.value = false

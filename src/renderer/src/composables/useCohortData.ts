@@ -23,6 +23,7 @@ import type { ColumnFiltersParam } from '../../../shared/types/column-filters'
 import { useApiService } from './useApiService'
 import { cloneForIpc } from '../utils/cloneForIpc'
 import { logService } from '../services/LogService'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
 /** A single entry in the available genome builds list returned by cases:availableBuilds */
 export interface AvailableBuild {
@@ -238,12 +239,18 @@ export function useCohortData(): UseCohortDataReturn {
     if (typeof cohortApi.getSummaryStatus === 'function') {
       cohortApi
         .getSummaryStatus()
-        .then((status: { is_stale: boolean }) => {
+        .then((statusResult) => {
+          const status = unwrapIpcResult(statusResult)
           summaryStale.value = status.is_stale
         })
         .catch((e: unknown) => {
           logService.warn(
-            'Failed to get cohort summary status: ' + (e instanceof Error ? e.message : String(e)),
+            'Failed to get cohort summary status: ' +
+              (e instanceof Error
+                ? e.message
+                : isIpcError(e)
+                  ? (e.userMessage ?? e.message)
+                  : String(e)),
             'cohort'
           )
         })
@@ -348,7 +355,7 @@ export function useCohortData(): UseCohortDataReturn {
   const loadAvailableBuilds = async (): Promise<void> => {
     if (!api) return
     try {
-      const result = await api.cases.availableBuilds()
+      const result = unwrapIpcResult(await api.cases.availableBuilds())
       availableBuilds.value = result ?? []
       // Only auto-seed on first load (when the user hasn't picked a build yet)
       if (
@@ -359,7 +366,12 @@ export function useCohortData(): UseCohortDataReturn {
       }
     } catch (err) {
       logService.error(
-        'Failed to load available builds: ' + (err instanceof Error ? err.message : String(err)),
+        'Failed to load available builds: ' +
+          (err instanceof Error
+            ? err.message
+            : isIpcError(err)
+              ? (err.userMessage ?? err.message)
+              : String(err)),
         'cohort'
       )
     }
@@ -411,7 +423,7 @@ export function useCohortData(): UseCohortDataReturn {
       }
 
       // No structuredClone — buildIpcParams already strips Vue Proxies via spread
-      const result = await api.cohort.getVariants(ipcParams)
+      const result = unwrapIpcResult(await api.cohort.getVariants(ipcParams))
 
       // Discard stale responses from superseded requests
       if (thisGeneration !== requestGeneration) return
@@ -423,7 +435,10 @@ export function useCohortData(): UseCohortDataReturn {
       }
     } catch (err) {
       if (thisGeneration !== requestGeneration) return
-      error.value = err instanceof Error ? err : new Error(String(err))
+      error.value =
+        err instanceof Error
+          ? err
+          : new Error(isIpcError(err) ? (err.userMessage ?? err.message) : String(err))
       variants.value = []
       totalCount.value = 0
     } finally {
@@ -443,11 +458,16 @@ export function useCohortData(): UseCohortDataReturn {
     }
 
     try {
-      const result = await api.cohort.getSummary()
+      const result = unwrapIpcResult(await api.cohort.getSummary())
       summary.value = result
     } catch (err) {
       logService.error(
-        'Failed to load cohort summary: ' + (err instanceof Error ? err.message : String(err)),
+        'Failed to load cohort summary: ' +
+          (err instanceof Error
+            ? err.message
+            : isIpcError(err)
+              ? (err.userMessage ?? err.message)
+              : String(err)),
         'cohort'
       )
     }
@@ -460,11 +480,16 @@ export function useCohortData(): UseCohortDataReturn {
     if (!api) return
 
     try {
-      const result = await api.cohort.getColumnMeta()
+      const result = unwrapIpcResult(await api.cohort.getColumnMeta())
       columnMeta.value = result ?? []
     } catch (e) {
       logService.warn(
-        'Failed to load column metadata: ' + (e instanceof Error ? e.message : String(e)),
+        'Failed to load column metadata: ' +
+          (e instanceof Error
+            ? e.message
+            : isIpcError(e)
+              ? (e.userMessage ?? e.message)
+              : String(e)),
         'cohort'
       )
       columnMeta.value = []

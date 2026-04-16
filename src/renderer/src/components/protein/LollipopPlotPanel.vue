@@ -88,6 +88,7 @@ import {
 } from '../../../../shared/utils/protein-utils'
 import { useApiService } from '../../composables/useApiService'
 import { logService } from '../../services/LogService'
+import { isIpcError, unwrapIpcResult } from '../../../../shared/types/errors'
 
 interface Props {
   proteinLength: number
@@ -182,7 +183,7 @@ async function fetchGnomad(gene: string, generation?: number): Promise<void> {
   if (api === undefined) return
   gnomadLoading.value = true
   try {
-    const result = await api.gnomad.getVariants(gene)
+    const result = unwrapIpcResult(await api.gnomad.getVariants(gene))
     // Discard stale results if gene changed while fetching
     if (generation !== undefined && generation !== gnomadGeneration) return
     if (result.success) {
@@ -192,7 +193,13 @@ async function fetchGnomad(gene: string, generation?: number): Promise<void> {
     }
   } catch (err) {
     logService.error(
-      `gnomAD fetch error: ${err instanceof Error ? err.message : 'Unknown'}`,
+      `gnomAD fetch error: ${
+        err instanceof Error
+          ? err.message
+          : isIpcError(err)
+            ? (err.userMessage ?? err.message)
+            : 'Unknown'
+      }`,
       'LollipopPlotPanel'
     )
   } finally {

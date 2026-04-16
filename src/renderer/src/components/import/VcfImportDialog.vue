@@ -235,14 +235,13 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
 import type {
   MultiFileImportResult,
   MultiFileImportSpec,
   ProgressUpdate
 } from '../../../../shared/types/api'
 import type { VcfMultiPreviewResult } from '../../../../shared/types/import'
-import { isIpcError } from '../../../../shared/types/errors'
+import { unwrapIpcResult } from '../../../../shared/types/errors'
 import { useApiService } from '../../composables/useApiService'
 import { useAppState } from '../../composables/useAppState'
 import { useImportStatusStore } from '../../stores/importStatusStore'
@@ -279,9 +278,7 @@ const emit = defineEmits<{
 }>()
 
 const { api } = useApiService()
-const router = useRouter()
-const { selectedCaseId, selectedCaseName, selectedVariantCount, selectedCreatedAt, activeTab } =
-  useAppState()
+const { selectCase } = useAppState()
 // Shared store that drives the bottom `ImportStatusBar` pill. Wiring the VCF
 // wizard into the same store gives the multi-file import the same "Continue
 // in Background" capability the JSON batch importer already has: once the
@@ -560,11 +557,7 @@ async function loadPreview(filePaths: string[]): Promise<void> {
   pendingFileCount.value = filePaths.length
 
   try {
-    const result = await api.import.vcfMultiPreview(filePaths)
-    if (isIpcError(result)) {
-      throw new Error(result.userMessage ?? 'Failed to preview VCF files')
-    }
-
+    const result = unwrapIpcResult(await api.import.vcfMultiPreview(filePaths))
     previewResult.value = result
     caseName.value = result.suggestedCaseName
 
@@ -635,19 +628,17 @@ async function startImport(): Promise<void> {
       minDp: filters.value.minDp
     }
 
-    const result = await api.import.startMultiFile(
-      caseName.value.trim(),
-      specs,
-      previewResult.value.files[0].detectedGenomeBuild !== null &&
-        previewResult.value.files[0].detectedGenomeBuild !== ''
-        ? { genomeBuild: previewResult.value.files[0].detectedGenomeBuild }
-        : undefined,
-      filtersPayload
+    const result = unwrapIpcResult(
+      await api.import.startMultiFile(
+        caseName.value.trim(),
+        specs,
+        previewResult.value.files[0].detectedGenomeBuild !== null &&
+          previewResult.value.files[0].detectedGenomeBuild !== ''
+          ? { genomeBuild: previewResult.value.files[0].detectedGenomeBuild }
+          : undefined,
+        filtersPayload
+      )
     )
-
-    if (isIpcError(result)) {
-      throw new Error(result.userMessage ?? 'Multi-file import failed')
-    }
 
     // Reconcile final per-file statuses with server results
     const serverResult = result as MultiFileImportResult
@@ -791,12 +782,12 @@ function markFileStatus(filePath: string, entry: Partial<FileStatusEntry>): void
 // ---------------------------------------------------------------------------
 function handleViewCase(): void {
   if (importResult.value === null) return
-  selectedCaseId.value = importResult.value.caseId
-  selectedCaseName.value = caseName.value.trim()
-  selectedVariantCount.value = importResult.value.totalVariants
-  selectedCreatedAt.value = Date.now()
-  activeTab.value = 'case'
-  void router.push('/case')
+  selectCase({
+    caseId: importResult.value.caseId,
+    caseName: caseName.value.trim(),
+    variantCount: importResult.value.totalVariants,
+    createdAt: Date.now()
+  })
   handleClose()
 }
 

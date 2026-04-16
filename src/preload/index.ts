@@ -1,4 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import { createCasesApi } from './domains/cases'
+import { createDatabaseApi } from './domains/database'
+import { createFilterPresetsApi } from './domains/filter-presets'
 import type {
   ProgressUpdate,
   VariantFilter,
@@ -12,12 +15,16 @@ import type {
   PerCaseAnnotationUpdates,
   CaseMetadataUpdates,
   CaseSearchParams,
-  LogMessage
+  LogMessage,
+  TranscriptInsertRow
 } from '../shared/types'
 import type { CommentCategory, AnnotationChangeEvent } from '../shared/types/api'
+import type { FilterPresetCreate, FilterPresetUpdate } from '../shared/types/filter-presets'
 import type { ShortlistResult } from '../shared/types/shortlist'
 import type { ValidatedGetShortlistParams } from '../shared/types/ipc-schemas'
 import type { MainPerfSnapshot } from '../shared/types/perf'
+import type { FilterPresetReorderItem } from '../shared/ipc/domains/filter-presets'
+import type { WindowAPI } from '../shared/types/api'
 
 /**
  * Preload script - exposes typed API to renderer via contextBridge.
@@ -30,15 +37,18 @@ import type { MainPerfSnapshot } from '../shared/types/perf'
  * - shell:openExternal
  */
 
-const api = {
+const casesDomain = createCasesApi()
+const databaseDomain = createDatabaseApi()
+const filterPresetsDomain = createFilterPresetsApi()
+
+const api: WindowAPI = {
   cases: {
-    list: () => ipcRenderer.invoke('cases:list'),
-    query: (params: CaseSearchParams) => ipcRenderer.invoke('cases:query', params),
-    delete: (id: number) => ipcRenderer.invoke('cases:delete', id),
-    deleteAll: (): Promise<number> => ipcRenderer.invoke('cases:deleteAll'),
-    deleteBatch: (ids: number[]): Promise<number> => ipcRenderer.invoke('cases:deleteBatch', ids),
-    availableBuilds: (): Promise<Array<{ build: string; caseCount: number }>> =>
-      ipcRenderer.invoke('cases:availableBuilds')
+    list: () => casesDomain.list(),
+    query: (params: CaseSearchParams) => casesDomain.query(params),
+    delete: (id: number) => casesDomain.delete(id),
+    deleteAll: () => casesDomain.deleteAll(),
+    deleteBatch: (ids: number[]) => casesDomain.deleteBatch(ids),
+    availableBuilds: () => casesDomain.availableBuilds()
   },
 
   variants: {
@@ -197,20 +207,18 @@ const api = {
   },
 
   database: {
-    selectFile: () => ipcRenderer.invoke('database:selectFile'),
-    selectSaveLocation: (defaultName: string) =>
-      ipcRenderer.invoke('database:selectSaveLocation', defaultName),
-    open: (path: string, password?: string) => ipcRenderer.invoke('database:open', path, password),
-    create: (path: string, password?: string) =>
-      ipcRenderer.invoke('database:create', path, password),
-    rekey: (newPassword: string) => ipcRenderer.invoke('database:rekey', newPassword),
-    info: () => ipcRenderer.invoke('database:info'),
-    recentList: () => ipcRenderer.invoke('database:recentList'),
-    getOverview: () => ipcRenderer.invoke('database:overview'),
-    removeRecent: (path: string) => ipcRenderer.invoke('database:removeRecent', path),
-    deleteFile: (path: string) => ipcRenderer.invoke('database:deleteFile', path),
-    showInFolder: (path: string) => ipcRenderer.invoke('database:showInFolder', path)
-  },
+    selectFile: () => databaseDomain.selectFile(),
+    selectSaveLocation: (defaultName: string) => databaseDomain.selectSaveLocation(defaultName),
+    open: (path: string, password?: string) => databaseDomain.open(path, password),
+    create: (path: string, password?: string) => databaseDomain.create(path, password),
+    rekey: (newPassword: string) => databaseDomain.rekey(newPassword),
+    info: () => databaseDomain.info(),
+    recentList: () => databaseDomain.recentList(),
+    getOverview: () => databaseDomain.getOverview(),
+    removeRecent: (path: string) => databaseDomain.removeRecent(path),
+    deleteFile: (path: string) => databaseDomain.deleteFile(path),
+    showInFolder: (path: string) => databaseDomain.showInFolder(path)
+  } as WindowAPI['database'],
 
   batchImport: {
     selectFiles: () => ipcRenderer.invoke('batch-import:selectFiles'),
@@ -480,9 +488,9 @@ const api = {
     list: (variantId: number) => ipcRenderer.invoke('transcripts:list', variantId),
     switch: (variantId: number, transcriptId: string) =>
       ipcRenderer.invoke('transcripts:switch', variantId, transcriptId),
-    insertAndSwitch: (variantId: number, transcript: Record<string, unknown>) =>
+    insertAndSwitch: (variantId: number, transcript: TranscriptInsertRow) =>
       ipcRenderer.invoke('transcripts:insertAndSwitch', variantId, transcript)
-  },
+  } as WindowAPI['transcripts'],
 
   tags: {
     // Tag CRUD
@@ -702,35 +710,15 @@ const api = {
       await requestRendererPerfSnapshot('reset')
     },
     isEnabled: () => process.env.VARLENS_PERF_MODE === '1'
-  },
+  } as WindowAPI['perf'],
 
   presets: {
-    list: () => ipcRenderer.invoke('presets:list'),
-
-    create: (params: {
-      name: string
-      description?: string | null
-      filterJson: Record<string, unknown>
-      isVisible?: boolean
-      sortOrder?: number
-    }) => ipcRenderer.invoke('presets:create', params),
-
-    update: (
-      id: number,
-      updates: {
-        name?: string
-        description?: string | null
-        filterJson?: Record<string, unknown>
-        isVisible?: boolean
-        sortOrder?: number
-      }
-    ) => ipcRenderer.invoke('presets:update', id, updates),
-
-    delete: (id: number) => ipcRenderer.invoke('presets:delete', id),
-
-    reorder: (items: { id: number; sortOrder: number }[]) =>
-      ipcRenderer.invoke('presets:reorder', items)
-  }
+    list: () => filterPresetsDomain.list(),
+    create: (params: FilterPresetCreate) => filterPresetsDomain.create(params),
+    update: (id: number, updates: FilterPresetUpdate) => filterPresetsDomain.update(id, updates),
+    delete: (id: number) => filterPresetsDomain.delete(id),
+    reorder: (items: FilterPresetReorderItem[]) => filterPresetsDomain.reorder(items)
+  } as WindowAPI['presets']
 }
 
 type RendererPerfRequestAction = 'get' | 'reset'

@@ -230,6 +230,7 @@ import GeneAutocomplete from './GeneAutocomplete.vue'
 import { useGeneValidation } from '../../composables/useGeneValidation'
 import { usePanelManager } from '../../composables/usePanelManager'
 import { useApiService } from '../../composables/useApiService'
+import { isIpcError, unwrapIpcResult } from '../../../../shared/types/errors'
 import type { ValidationResult } from '../../composables/useGeneValidation'
 import { mdiClose, mdiCheckCircle, mdiAlertCircle, mdiCloseCircle } from '@mdi/js'
 import { logService } from '../../services/LogService'
@@ -282,17 +283,20 @@ watch(
       // Edit mode: load existing panel metadata and genes
       if (api) {
         try {
-          const panel = await api.panels.get(props.editPanelId)
+          const panel = unwrapIpcResult(await api.panels.get(props.editPanelId))
           if (panel) {
             panelName.value = panel.name ?? ''
             panelVersion.value = panel.version ?? ''
             panelDescription.value = panel.description ?? ''
           }
         } catch (e) {
-          logService.error(
-            'Failed to load panel metadata: ' + (e instanceof Error ? e.message : String(e)),
-            'panels'
-          )
+          const message =
+            e instanceof Error
+              ? e.message
+              : isIpcError(e)
+                ? (e.userMessage ?? e.message)
+                : String(e)
+          logService.error('Failed to load panel metadata: ' + message, 'panels')
         }
       }
       const genes = await getGenes(props.editPanelId)

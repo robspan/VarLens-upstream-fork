@@ -178,7 +178,6 @@ import type { ActiveFilter } from '../../../shared/types/filters'
 import type { FilterDrawerState } from './filterDrawerTypes'
 import { ACMG_FILTER_OPTIONS, applyPresetStateToFilters, isPresetDiverged } from '../utils/filters'
 import { cloneForIpc } from '../utils/cloneForIpc'
-import { isIpcError } from '../../../shared/types/errors'
 import { useResponsiveLayout } from '../composables/useResponsiveLayout'
 import { useApiService } from '../composables/useApiService'
 import {
@@ -397,15 +396,11 @@ async function handleSavePreset(data: { name: string; description: string | null
   savingPreset.value = true
   try {
     const plainFilters = cloneForIpc(filters.value)
-    const result = await savePreset({
+    await savePreset({
       name: data.name,
       description: data.description,
       filterJson: plainFilters
     })
-    // Check if IPC returned a serializable error
-    if (isIpcError(result)) {
-      return
-    }
     showSavePresetDialog.value = false
   } catch (e) {
     logService.warn(

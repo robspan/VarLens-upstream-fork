@@ -10,6 +10,7 @@ import { useApiService } from '../../composables/useApiService'
 import { cloneForIpc } from '../../utils/cloneForIpc'
 import { traceStart, traceEnd } from '../../services/PerfTrace'
 import type { PerfBudgetKey } from '../../../../shared/config/perf-budgets'
+import { unwrapIpcResult } from '../../../../shared/types/errors'
 
 interface UseVariantDataOptions {
   caseId: Ref<number>
@@ -94,14 +95,16 @@ export function useVariantData(options: UseVariantDataOptions) {
           : {})
       })
       const shouldFetchUnfiltered = needsUnfilteredCount
-      const result = await api.variants.query(
-        caseId.value,
-        plainFilters,
-        offset,
-        limit,
-        sortItems,
-        skipCount,
-        shouldFetchUnfiltered
+      const result = unwrapIpcResult(
+        await api.variants.query(
+          caseId.value,
+          plainFilters,
+          offset,
+          limit,
+          sortItems,
+          skipCount,
+          shouldFetchUnfiltered
+        )
       )
 
       if (shouldFetchUnfiltered && result.unfiltered_count !== undefined) {

@@ -63,7 +63,7 @@ import type {
   RegionFile
 } from './database'
 import type { ProgressUpdate, ImportResult, VcfPreviewResult } from './import'
-import type { SerializableError } from './errors'
+import type { IpcResult } from './errors'
 import type {
   CohortVariant,
   CohortSummary,
@@ -109,6 +109,9 @@ import type {
   ProteinApiError
 } from './protein'
 import type { PerfSnapshot } from './perf'
+import type { CasesDomainContract } from '../ipc/domains/cases'
+import type { DatabaseInfo, DatabaseOpenResult, RecentDatabase } from '../ipc/domains/database'
+export type { DatabaseInfo, DatabaseOpenResult, RecentDatabase } from '../ipc/domains/database'
 
 // Re-export for convenience
 export type {
@@ -158,14 +161,7 @@ export type {
   PanelAppSearchResult
 }
 
-export interface CasesAPI {
-  list: () => Promise<Case[]>
-  query: (params: CaseSearchParams) => Promise<{ data: CaseWithCohorts[]; total_count: number }>
-  delete: (id: number) => Promise<void>
-  deleteAll: () => Promise<number>
-  deleteBatch: (ids: number[]) => Promise<number>
-  availableBuilds: () => Promise<Array<{ build: string; caseCount: number }>>
-}
+export type CasesAPI = CasesDomainContract
 
 export interface VariantsAPI {
   query: (
@@ -176,12 +172,12 @@ export interface VariantsAPI {
     sortBy?: SortItem[],
     skipCount?: boolean,
     includeUnfilteredCount?: boolean
-  ) => Promise<PaginatedResult<Variant> & { unfiltered_count?: number }>
-  getFilterOptions: (caseId: number) => Promise<FilterOptions>
-  search: (caseId: number, query: string, limit?: number) => Promise<Variant[]>
-  geneSymbols: (caseId: number, query: string, limit?: number) => Promise<string[]>
+  ) => Promise<IpcResult<PaginatedResult<Variant> & { unfiltered_count?: number }>>
+  getFilterOptions: (caseId: number) => Promise<IpcResult<FilterOptions>>
+  search: (caseId: number, query: string, limit?: number) => Promise<IpcResult<Variant[]>>
+  geneSymbols: (caseId: number, query: string, limit?: number) => Promise<IpcResult<string[]>>
   /** Get variant type counts per case for tab badges (snv/indel/sv/cnv/str) */
-  typeCounts: (caseId: number) => Promise<Record<string, number>>
+  typeCounts: (caseId: number) => Promise<IpcResult<Record<string, number>>>
   /**
    * Get per-column metadata for a single column (single-case or cohort scope).
    * Used by the filter UI to lazy-load metadata on demand instead of bulk
@@ -258,7 +254,7 @@ export interface ImportAPI {
     filePath: string,
     caseName: string,
     vcfOptions?: { selectedSample?: string; genomeBuild?: string }
-  ) => Promise<ImportResult | SerializableError>
+  ) => Promise<IpcResult<ImportResult>>
   startMultiFile: (
     caseName: string,
     files: MultiFileImportSpec[],
@@ -271,9 +267,11 @@ export interface ImportAPI {
       minGq?: number | null
       minDp?: number | null
     }
-  ) => Promise<MultiFileImportResult | SerializableError>
+  ) => Promise<IpcResult<MultiFileImportResult>>
   vcfPreview: (filePath: string) => Promise<VcfPreviewResult>
-  vcfMultiPreview: (filePaths: string[]) => Promise<import('./import').VcfMultiPreviewResult>
+  vcfMultiPreview: (
+    filePaths: string[]
+  ) => Promise<IpcResult<import('./import').VcfMultiPreviewResult>>
   onProgress: (callback: (progress: ProgressUpdate) => void) => () => void
   cancel: () => Promise<void>
 }
@@ -310,41 +308,22 @@ export interface ExportAPI {
     caseId: number,
     filters: Omit<VariantFilter, 'case_id'>,
     caseName: string
-  ) => Promise<ExportResult | SerializableError>
-  cohort: (params: CohortSearchParams) => Promise<ExportResult | SerializableError>
-}
-
-export interface DatabaseInfo {
-  path: string
-  name: string
-  encrypted: boolean
-}
-
-export interface DatabaseOpenResult {
-  success: boolean
-  needsPassword?: boolean
-  error?: string
-  info?: DatabaseInfo
-}
-
-export interface RecentDatabase {
-  path: string
-  name: string
-  lastOpened: number
+  ) => Promise<IpcResult<ExportResult>>
+  cohort: (params: CohortSearchParams) => Promise<IpcResult<ExportResult>>
 }
 
 export interface DatabaseAPI {
   selectFile: () => Promise<string | null>
   selectSaveLocation: (defaultName: string) => Promise<string | null>
-  open: (path: string, password?: string) => Promise<DatabaseOpenResult>
-  create: (path: string, password?: string) => Promise<DatabaseOpenResult>
-  rekey: (newPassword: string) => Promise<{ success: boolean; error?: string }>
-  info: () => Promise<DatabaseInfo | null>
-  recentList: () => Promise<RecentDatabase[]>
-  getOverview: () => Promise<DatabaseOverview>
-  removeRecent: (path: string) => Promise<{ success: boolean }>
-  deleteFile: (path: string) => Promise<{ success: boolean }>
-  showInFolder: (path: string) => Promise<{ success: boolean }>
+  open: (path: string, password?: string) => Promise<IpcResult<DatabaseOpenResult>>
+  create: (path: string, password?: string) => Promise<IpcResult<DatabaseOpenResult>>
+  rekey: (newPassword: string) => Promise<IpcResult<{ success: boolean; error?: string }>>
+  info: () => Promise<IpcResult<DatabaseInfo | null>>
+  recentList: () => Promise<IpcResult<RecentDatabase[]>>
+  getOverview: () => Promise<IpcResult<DatabaseOverview>>
+  removeRecent: (path: string) => Promise<IpcResult<{ success: boolean }>>
+  deleteFile: (path: string) => Promise<IpcResult<{ success: boolean }>>
+  showInFolder: (path: string) => Promise<IpcResult<{ success: boolean }>>
 }
 
 // Batch import types
@@ -392,30 +371,41 @@ export interface DuplicateCheckResult {
 export interface BatchImportAPI {
   selectFiles: () => Promise<string[]>
   selectFolder: () => Promise<string[]>
-  checkDuplicates: (filePaths: string[], stripText?: string) => Promise<DuplicateCheckResult>
+  checkDuplicates: (
+    filePaths: string[],
+    stripText?: string
+  ) => Promise<IpcResult<DuplicateCheckResult>>
   start: (
     filePaths: string[],
     duplicateStrategy: DuplicateChoice,
     stripText?: string
-  ) => Promise<BatchResult>
-  cancel: () => Promise<void>
+  ) => Promise<IpcResult<BatchResult>>
+  cancel: () => Promise<IpcResult<void>>
   onProgress: (callback: (progress: BatchProgress) => void) => () => void
   onComplete: (callback: (result: BatchResult) => void) => () => void
-  selectZip: () => Promise<{ filePath: string; isEncrypted: boolean } | null>
-  testZipPassword: (zipPath: string, password: string) => Promise<{ success: boolean }>
-  extractZip: (zipPath: string, password?: string) => Promise<{ files: string[]; errors: string[] }>
-  cleanupZipTemp: () => Promise<void>
+  selectZip: () => Promise<IpcResult<{ filePath: string; isEncrypted: boolean } | null>>
+  testZipPassword: (zipPath: string, password: string) => Promise<IpcResult<{ success: boolean }>>
+  extractZip: (
+    zipPath: string,
+    password?: string
+  ) => Promise<IpcResult<{ files: string[]; errors: string[] }>>
+  cleanupZipTemp: () => Promise<IpcResult<void>>
 }
 
 export interface CohortAPI {
   getVariants: (
     params: CohortSearchParams
-  ) => Promise<{ data: CohortVariant[]; total_count: number }>
-  getSummary: () => Promise<CohortSummary>
-  getCarriers: (chr: string, pos: number, ref: string, alt: string) => Promise<CohortCarrier[]>
-  getGeneBurden: () => Promise<GeneBurden[]>
-  getColumnMeta: () => Promise<ColumnFilterMeta[]>
-  getSummaryStatus: () => Promise<{ is_stale: boolean; last_rebuilt_at: number }>
+  ) => Promise<IpcResult<{ data: CohortVariant[]; total_count: number }>>
+  getSummary: () => Promise<IpcResult<CohortSummary>>
+  getCarriers: (
+    chr: string,
+    pos: number,
+    ref: string,
+    alt: string
+  ) => Promise<IpcResult<CohortCarrier[]>>
+  getGeneBurden: () => Promise<IpcResult<GeneBurden[]>>
+  getColumnMeta: () => Promise<IpcResult<ColumnFilterMeta[]>>
+  getSummaryStatus: () => Promise<IpcResult<{ is_stale: boolean; last_rebuilt_at: number }>>
   rebuildSummary: () => Promise<void>
   /**
    * Subscribe to cohort summary rebuild events.
@@ -440,7 +430,7 @@ export interface CohortAPI {
       label?: string
     }) => void
   ) => () => void
-  runAssociation: (config: unknown) => Promise<unknown>
+  runAssociation: (config: unknown) => Promise<IpcResult<unknown>>
   cancelAssociation: () => Promise<void>
   onAssociationProgress: (
     callback: (progress: { completed: number; total: number }) => void
@@ -482,55 +472,68 @@ export interface AnnotationsAPI {
     pos: number,
     ref: string,
     alt: string
-  ) => Promise<VariantAnnotation | null>
+  ) => Promise<IpcResult<VariantAnnotation | null>>
   upsertGlobal: (
     chr: string,
     pos: number,
     ref: string,
     alt: string,
     updates: GlobalAnnotationUpdates
-  ) => Promise<VariantAnnotation>
-  deleteGlobal: (chr: string, pos: number, ref: string, alt: string) => Promise<void>
-  getPerCase: (caseId: number, variantId: number) => Promise<CaseVariantAnnotation | null>
+  ) => Promise<IpcResult<VariantAnnotation>>
+  deleteGlobal: (chr: string, pos: number, ref: string, alt: string) => Promise<IpcResult<void>>
+  getPerCase: (
+    caseId: number,
+    variantId: number
+  ) => Promise<IpcResult<CaseVariantAnnotation | null>>
   upsertPerCase: (
     caseId: number,
     variantId: number,
     updates: PerCaseAnnotationUpdates
-  ) => Promise<CaseVariantAnnotation>
-  deletePerCase: (caseId: number, variantId: number) => Promise<void>
+  ) => Promise<IpcResult<CaseVariantAnnotation>>
+  deletePerCase: (caseId: number, variantId: number) => Promise<IpcResult<void>>
   getForVariant: (
     caseId: number,
     chr: string,
     pos: number,
     ref: string,
     alt: string
-  ) => Promise<VariantAnnotationsResult>
+  ) => Promise<IpcResult<VariantAnnotationsResult>>
   batchGet: (
     caseId: number | null,
     variantKeys: VariantKey[]
-  ) => Promise<Record<string, VariantAnnotationsResult>>
+  ) => Promise<IpcResult<Record<string, VariantAnnotationsResult>>>
 }
 
 export interface VepAPI {
-  fetch: (chr: string, pos: number, ref: string, alt: string) => Promise<VepFetchResult>
-  cancel: () => Promise<void>
-  clearCache: () => Promise<{ success: boolean }>
-  getCacheStats: () => Promise<CacheSizeInfo>
+  fetch: (chr: string, pos: number, ref: string, alt: string) => Promise<IpcResult<VepFetchResult>>
+  cancel: () => Promise<IpcResult<void>>
+  clearCache: () => Promise<IpcResult<{ success: boolean }>>
+  getCacheStats: () => Promise<IpcResult<CacheSizeInfo>>
 }
 
 export interface HpoAPI {
-  search: (query: string, maxResults?: number) => Promise<HpoSearchResult>
-  clearCache: () => Promise<{ success: boolean }>
+  search: (query: string, maxResults?: number) => Promise<IpcResult<HpoSearchResult>>
+  clearCache: () => Promise<IpcResult<{ success: boolean }>>
 }
 
 export interface MyVariantAPI {
-  fetch: (chr: string, pos: number, ref: string, alt: string) => Promise<MyVariantFetchResult>
-  clearCache: () => Promise<{ success: boolean }>
+  fetch: (
+    chr: string,
+    pos: number,
+    ref: string,
+    alt: string
+  ) => Promise<IpcResult<MyVariantFetchResult>>
+  clearCache: () => Promise<IpcResult<{ success: boolean }>>
 }
 
 export interface SpliceAIAPI {
-  fetch: (chr: string, pos: number, ref: string, alt: string) => Promise<SpliceAIFetchResult>
-  clearCache: () => Promise<{ success: boolean }>
+  fetch: (
+    chr: string,
+    pos: number,
+    ref: string,
+    alt: string
+  ) => Promise<IpcResult<SpliceAIFetchResult>>
+  clearCache: () => Promise<IpcResult<{ success: boolean }>>
 }
 
 // Case metadata types
@@ -553,12 +556,12 @@ export interface FullCaseMetadata {
 }
 
 export interface CaseMetadataAPI {
-  get: (caseId: number) => Promise<CaseMetadata | null>
+  get: (caseId: number) => Promise<IpcResult<CaseMetadata | null>>
   upsert: (caseId: number, updates: CaseMetadataUpdates) => Promise<CaseMetadata>
-  getFullMetadata: (caseId: number) => Promise<FullCaseMetadata>
+  getFullMetadata: (caseId: number) => Promise<IpcResult<FullCaseMetadata>>
 
   // Cohort groups
-  listCohorts: () => Promise<CohortGroup[]>
+  listCohorts: () => Promise<IpcResult<CohortGroup[]>>
   createCohort: (name: string, description?: string | null) => Promise<CohortGroup>
   updateCohort: (
     cohortId: number,
@@ -592,10 +595,14 @@ export interface CaseMetadataAPI {
 }
 
 export interface CaseCommentsAPI {
-  list: (caseId: number) => Promise<CaseComment[]>
-  create: (caseId: number, category: CommentCategory, content: string) => Promise<CaseComment>
-  update: (commentId: number, content: string) => Promise<CaseComment>
-  delete: (commentId: number) => Promise<void>
+  list: (caseId: number) => Promise<IpcResult<CaseComment[]>>
+  create: (
+    caseId: number,
+    category: CommentCategory,
+    content: string
+  ) => Promise<IpcResult<CaseComment>>
+  update: (commentId: number, content: string) => Promise<IpcResult<CaseComment>>
+  delete: (commentId: number) => Promise<IpcResult<void>>
 }
 
 export interface MetricValue {
@@ -605,40 +612,40 @@ export interface MetricValue {
 }
 
 export interface CaseMetricsAPI {
-  listDefinitions: () => Promise<MetricDefinition[]>
+  listDefinitions: () => Promise<IpcResult<MetricDefinition[]>>
   createDefinition: (
     name: string,
     valueType: 'numeric' | 'text' | 'date',
     unit: string,
     category: string
-  ) => Promise<MetricDefinition>
-  listForCase: (caseId: number) => Promise<CaseMetricWithDefinition[]>
-  upsert: (caseId: number, metricId: number, value: MetricValue) => Promise<CaseMetric>
-  delete: (caseId: number, metricId: number) => Promise<void>
+  ) => Promise<IpcResult<MetricDefinition>>
+  listForCase: (caseId: number) => Promise<IpcResult<CaseMetricWithDefinition[]>>
+  upsert: (caseId: number, metricId: number, value: MetricValue) => Promise<IpcResult<CaseMetric>>
+  delete: (caseId: number, metricId: number) => Promise<IpcResult<void>>
 }
 
 export interface TagsAPI {
   // Tag CRUD
-  list: () => Promise<Tag[]>
-  create: (name: string, color: string) => Promise<Tag>
-  update: (id: number, updates: { name?: string; color?: string }) => Promise<Tag>
-  delete: (id: number) => Promise<void>
-  getUsageCount: (tagId: number) => Promise<number>
+  list: () => Promise<IpcResult<Tag[]>>
+  create: (name: string, color: string) => Promise<IpcResult<Tag>>
+  update: (id: number, updates: { name?: string; color?: string }) => Promise<IpcResult<Tag>>
+  delete: (id: number) => Promise<IpcResult<void>>
+  getUsageCount: (tagId: number) => Promise<IpcResult<number>>
 
   // Variant tag assignments
-  getVariantTags: (caseId: number, variantId: number) => Promise<Tag[]>
-  assignVariantTag: (caseId: number, variantId: number, tagId: number) => Promise<void>
-  removeVariantTag: (caseId: number, variantId: number, tagId: number) => Promise<void>
-  setVariantTags: (caseId: number, variantId: number, tagIds: number[]) => Promise<void>
+  getVariantTags: (caseId: number, variantId: number) => Promise<IpcResult<Tag[]>>
+  assignVariantTag: (caseId: number, variantId: number, tagId: number) => Promise<IpcResult<void>>
+  removeVariantTag: (caseId: number, variantId: number, tagId: number) => Promise<IpcResult<void>>
+  setVariantTags: (caseId: number, variantId: number, tagIds: number[]) => Promise<IpcResult<void>>
 }
 
 export interface TranscriptsAPI {
-  list: (variantId: number) => Promise<TranscriptAnnotation[]>
-  switch: (variantId: number, transcriptId: string) => Promise<{ success: boolean }>
+  list: (variantId: number) => Promise<IpcResult<TranscriptAnnotation[]>>
+  switch: (variantId: number, transcriptId: string) => Promise<IpcResult<{ success: boolean }>>
   insertAndSwitch: (
     variantId: number,
     transcript: TranscriptInsertRow
-  ) => Promise<{ success: boolean }>
+  ) => Promise<IpcResult<{ success: boolean }>>
 }
 
 export interface LogsAPI {
@@ -646,7 +653,7 @@ export interface LogsAPI {
 }
 
 export interface AuditLogAPI {
-  getByEntity: (entityKey: string) => Promise<AuditLogEntry[]>
+  getByEntity: (entityKey: string) => Promise<IpcResult<AuditLogEntry[]>>
   query: (params: {
     action_type?: string
     entity_type?: string
@@ -659,11 +666,11 @@ export interface AuditLogAPI {
 }
 
 export interface GeneListsAPI {
-  list: () => Promise<GeneListWithCount[]>
-  create: (name: string, description?: string | null) => Promise<GeneList>
-  delete: (id: number) => Promise<void>
-  getGenes: (listId: number) => Promise<string[]>
-  setGenes: (listId: number, genes: string[]) => Promise<string[]>
+  list: () => Promise<IpcResult<GeneListWithCount[]>>
+  create: (name: string, description?: string | null) => Promise<IpcResult<GeneList>>
+  delete: (id: number) => Promise<IpcResult<void>>
+  getGenes: (listId: number) => Promise<IpcResult<string[]>>
+  setGenes: (listId: number, genes: string[]) => Promise<IpcResult<string[]>>
 }
 
 export interface RegionFilesAPI {
@@ -674,8 +681,8 @@ export interface RegionFilesAPI {
 }
 
 export interface PanelsAPI {
-  list: () => Promise<PanelWithCount[]>
-  get: (id: number) => Promise<(PanelRow & { genes: PanelGeneRow[] }) | null>
+  list: () => Promise<IpcResult<PanelWithCount[]>>
+  get: (id: number) => Promise<IpcResult<(PanelRow & { genes: PanelGeneRow[] }) | null>>
   create: (params: {
     name: string
     description?: string | null
@@ -683,46 +690,46 @@ export interface PanelsAPI {
     source?: string
     sourceId?: string | null
     sourceMetadata?: Record<string, unknown> | null
-  }) => Promise<PanelRow>
+  }) => Promise<IpcResult<PanelRow>>
   update: (params: {
     id: number
     name?: string
     description?: string | null
     version?: string | null
-  }) => Promise<PanelRow>
-  delete: (id: number) => Promise<{ success: boolean }>
-  duplicate: (id: number, newName: string) => Promise<PanelRow>
+  }) => Promise<IpcResult<PanelRow>>
+  delete: (id: number) => Promise<IpcResult<{ success: boolean }>>
+  duplicate: (id: number, newName: string) => Promise<IpcResult<PanelRow>>
   setGenes: (
     panelId: number,
     genes: Array<{ hgncId: string; symbol: string }>
-  ) => Promise<{ success: boolean }>
-  getGenes: (panelId: number) => Promise<PanelGeneRow[]>
+  ) => Promise<IpcResult<{ success: boolean }>>
+  getGenes: (panelId: number) => Promise<IpcResult<PanelGeneRow[]>>
   activate: (caseId: number, panelId: number, paddingBp?: number) => Promise<{ success: boolean }>
   deactivate: (caseId: number, panelId: number) => Promise<{ success: boolean }>
   activeForCase: (caseId: number) => Promise<ActivePanelRow[]>
-  validateSymbols: (symbols: string[]) => Promise<GeneValidationResult[]>
-  autocomplete: (query: string, limit?: number) => Promise<GeneAutocompleteResult[]>
+  validateSymbols: (symbols: string[]) => Promise<IpcResult<GeneValidationResult[]>>
+  autocomplete: (query: string, limit?: number) => Promise<IpcResult<GeneAutocompleteResult[]>>
   searchPanelApp: (
     keyword: string,
     region: 'uk' | 'aus' | 'both'
-  ) => Promise<PanelAppSearchResult[]>
+  ) => Promise<IpcResult<PanelAppSearchResult[]>>
   importPanelApp: (params: {
     panelId: number
     region: 'uk' | 'aus'
     confidenceThreshold: 'green' | 'green_amber' | 'all'
     name?: string
-  }) => Promise<PanelRow>
+  }) => Promise<IpcResult<PanelRow>>
   generateStringDb: (params: {
     seedGenes: string[]
     requiredScore: number
     networkType: 'physical' | 'functional'
     name?: string
-  }) => Promise<PanelRow>
+  }) => Promise<IpcResult<PanelRow>>
   exportBed: (
     panelId: number,
     assembly: string,
     paddingBp: number
-  ) => Promise<{ success: boolean; path?: string }>
+  ) => Promise<IpcResult<{ success: boolean; path?: string }>>
 }
 
 export interface GeneRefCheckUpdatesResult {
@@ -737,10 +744,10 @@ export interface GeneRefUpdateResult {
 }
 
 export interface GeneRefAPI {
-  info: () => Promise<GeneRefInfo>
-  assemblies: () => Promise<AssemblyInfo[]>
-  checkUpdates: () => Promise<GeneRefCheckUpdatesResult>
-  update: () => Promise<GeneRefUpdateResult>
+  info: () => Promise<IpcResult<GeneRefInfo>>
+  assemblies: () => Promise<IpcResult<AssemblyInfo[]>>
+  checkUpdates: () => Promise<IpcResult<GeneRefCheckUpdatesResult>>
+  update: () => Promise<IpcResult<GeneRefUpdateResult>>
 }
 
 export interface AnalysisGroup {
@@ -762,7 +769,7 @@ export interface AnalysisGroupMember {
 }
 
 export interface AnalysisGroupsAPI {
-  list: () => Promise<AnalysisGroup[]>
+  list: () => Promise<IpcResult<AnalysisGroup[]>>
   get: (id: number) => Promise<AnalysisGroup & { members: AnalysisGroupMember[] }>
   create: (params: {
     name: string
@@ -783,21 +790,27 @@ export interface AnalysisGroupsAPI {
 }
 
 export interface ProteinAPI {
-  getMapping: (geneSymbol: string) => Promise<ProteinMappingResult | ProteinApiError>
-  getDomains: (uniprotAccession: string) => Promise<ProteinDomainResult | ProteinApiError>
-  getStructure: (uniprotAccession: string) => Promise<ProteinStructureResult | ProteinApiError>
-  getGeneStructure: (geneSymbol: string) => Promise<GeneStructureResult | ProteinApiError>
+  getMapping: (geneSymbol: string) => Promise<IpcResult<ProteinMappingResult | ProteinApiError>>
+  getDomains: (
+    uniprotAccession: string
+  ) => Promise<IpcResult<ProteinDomainResult | ProteinApiError>>
+  getStructure: (
+    uniprotAccession: string
+  ) => Promise<IpcResult<ProteinStructureResult | ProteinApiError>>
+  getGeneStructure: (
+    geneSymbol: string
+  ) => Promise<IpcResult<GeneStructureResult | ProteinApiError>>
 }
 
 export interface GnomadAPI {
   getVariants: (
     geneSymbol: string,
     dataset?: string
-  ) => Promise<GnomadFetchResult | ProteinApiError>
+  ) => Promise<IpcResult<GnomadFetchResult | ProteinApiError>>
   getClinVarVariants: (
     geneSymbol: string,
     dataset?: string
-  ) => Promise<ClinVarFetchResult | ProteinApiError>
+  ) => Promise<IpcResult<ClinVarFetchResult | ProteinApiError>>
 }
 
 export interface PerfAPI {
@@ -843,11 +856,11 @@ export interface WindowAPI {
 }
 
 export interface PresetsAPI {
-  list: () => Promise<FilterPreset[]>
-  create: (params: FilterPresetCreate) => Promise<FilterPreset>
-  update: (id: number, updates: FilterPresetUpdate) => Promise<FilterPreset>
-  delete: (id: number) => Promise<void>
-  reorder: (items: { id: number; sortOrder: number }[]) => Promise<void>
+  list: () => Promise<IpcResult<FilterPreset[]>>
+  create: (params: FilterPresetCreate) => Promise<IpcResult<FilterPreset>>
+  update: (id: number, updates: FilterPresetUpdate) => Promise<IpcResult<FilterPreset>>
+  delete: (id: number) => Promise<IpcResult<void>>
+  reorder: (items: { id: number; sortOrder: number }[]) => Promise<IpcResult<void>>
 }
 
 export interface AuthAPI {
@@ -861,24 +874,30 @@ export interface AuthAPI {
     locked?: boolean
   }>
   logout: () => Promise<void>
-  currentUser: () => Promise<{ id: number; username: string; role: string } | null>
-  isAccountsEnabled: () => Promise<boolean>
-  createUser: (username: string, displayName: string, tempPassword: string) => Promise<void>
+  currentUser: () => Promise<IpcResult<{ id: number; username: string; role: string } | null>>
+  isAccountsEnabled: () => Promise<IpcResult<boolean>>
+  createUser: (
+    username: string,
+    displayName: string,
+    tempPassword: string
+  ) => Promise<IpcResult<void>>
   listUsers: () => Promise<
-    Array<{
-      id: number
-      username: string
-      display_name: string | null
-      role: string
-      is_active: number
-      must_change_password: number
-      failed_login_count: number
-      created_at: string
-    }>
+    IpcResult<
+      Array<{
+        id: number
+        username: string
+        display_name: string | null
+        role: string
+        is_active: number
+        must_change_password: number
+        failed_login_count: number
+        created_at: string
+      }>
+    >
   >
-  deactivateUser: (username: string) => Promise<void>
-  resetPassword: (username: string, newPassword: string) => Promise<void>
-  changePassword: (oldPassword: string, newPassword: string) => Promise<void>
+  deactivateUser: (username: string) => Promise<IpcResult<void>>
+  resetPassword: (username: string, newPassword: string) => Promise<IpcResult<void>>
+  changePassword: (oldPassword: string, newPassword: string) => Promise<IpcResult<void>>
 }
 
 /**

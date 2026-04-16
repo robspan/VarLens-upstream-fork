@@ -9,6 +9,7 @@ import { ref } from 'vue'
 import type { Tag } from '../../../shared/types/database-entities'
 import { useApiService } from './useApiService'
 import { logService } from '../services/LogService'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
 // Cache all tags (global list)
 const tagsCache = ref<Tag[]>([])
@@ -43,11 +44,16 @@ export function useTags() {
 
     isLoadingTags.value = true
     try {
-      const tags = await api.tags.list()
+      const tags = unwrapIpcResult(await api.tags.list())
       tagsCache.value = tags
     } catch (error) {
       logService.error(
-        'Failed to load tags: ' + (error instanceof Error ? error.message : String(error)),
+        'Failed to load tags: ' +
+          (error instanceof Error
+            ? error.message
+            : isIpcError(error)
+              ? (error.userMessage ?? error.message)
+              : String(error)),
         'tags'
       )
     } finally {
@@ -71,7 +77,7 @@ export function useTags() {
    */
   async function createTag(name: string, color: string): Promise<Tag | null> {
     if (!api) return null
-    const tag = await api.tags.create(name, color)
+    const tag = unwrapIpcResult(await api.tags.create(name, color))
     // Update cache
     tagsCache.value = [...tagsCache.value, tag].sort((a, b) => a.name.localeCompare(b.name))
     return tag
@@ -89,7 +95,7 @@ export function useTags() {
     updates: { name?: string; color?: string }
   ): Promise<Tag | null> {
     if (!api) return null
-    const tag = await api.tags.update(id, updates)
+    const tag = unwrapIpcResult(await api.tags.update(id, updates))
     // Update cache
     tagsCache.value = tagsCache.value
       .map((t) => (t.id === id ? tag : t))
@@ -109,7 +115,7 @@ export function useTags() {
    */
   async function deleteTag(id: number): Promise<void> {
     if (!api) return
-    await api.tags.delete(id)
+    unwrapIpcResult(await api.tags.delete(id))
     // Update cache
     tagsCache.value = tagsCache.value.filter((t) => t.id !== id)
     // Also remove from variant tags cache
@@ -127,7 +133,7 @@ export function useTags() {
    */
   async function getTagUsageCount(tagId: number): Promise<number> {
     if (!api) return 0
-    return await api.tags.getUsageCount(tagId)
+    return unwrapIpcResult(await api.tags.getUsageCount(tagId))
   }
 
   // ============================================================
@@ -149,11 +155,16 @@ export function useTags() {
 
     variantTagsLoading.value.set(key, true)
     try {
-      const tags = await api.tags.getVariantTags(caseId, variantId)
+      const tags = unwrapIpcResult(await api.tags.getVariantTags(caseId, variantId))
       variantTagsCache.value.set(key, tags)
     } catch (error) {
       logService.error(
-        'Failed to load variant tags: ' + (error instanceof Error ? error.message : String(error)),
+        'Failed to load variant tags: ' +
+          (error instanceof Error
+            ? error.message
+            : isIpcError(error)
+              ? (error.userMessage ?? error.message)
+              : String(error)),
         'tags'
       )
     } finally {
@@ -216,10 +227,15 @@ export function useTags() {
     }
 
     try {
-      await api.tags.assignVariantTag(caseId, variantId, tagId)
+      unwrapIpcResult(await api.tags.assignVariantTag(caseId, variantId, tagId))
     } catch (error) {
       logService.error(
-        'Failed to assign variant tag: ' + (error instanceof Error ? error.message : String(error)),
+        'Failed to assign variant tag: ' +
+          (error instanceof Error
+            ? error.message
+            : isIpcError(error)
+              ? (error.userMessage ?? error.message)
+              : String(error)),
         'tags'
       )
       // Revert optimistic update
@@ -247,10 +263,15 @@ export function useTags() {
     )
 
     try {
-      await api.tags.removeVariantTag(caseId, variantId, tagId)
+      unwrapIpcResult(await api.tags.removeVariantTag(caseId, variantId, tagId))
     } catch (error) {
       logService.error(
-        'Failed to remove variant tag: ' + (error instanceof Error ? error.message : String(error)),
+        'Failed to remove variant tag: ' +
+          (error instanceof Error
+            ? error.message
+            : isIpcError(error)
+              ? (error.userMessage ?? error.message)
+              : String(error)),
         'tags'
       )
       // Revert optimistic update
@@ -297,10 +318,15 @@ export function useTags() {
     variantTagsCache.value.set(key, newTags)
 
     try {
-      await api.tags.setVariantTags(caseId, variantId, tagIds)
+      unwrapIpcResult(await api.tags.setVariantTags(caseId, variantId, tagIds))
     } catch (error) {
       logService.error(
-        'Failed to set variant tags: ' + (error instanceof Error ? error.message : String(error)),
+        'Failed to set variant tags: ' +
+          (error instanceof Error
+            ? error.message
+            : isIpcError(error)
+              ? (error.userMessage ?? error.message)
+              : String(error)),
         'tags'
       )
       // Revert optimistic update

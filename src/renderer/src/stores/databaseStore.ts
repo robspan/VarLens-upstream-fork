@@ -6,6 +6,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { DatabaseOpenResult, RecentDatabase, WindowAPI } from '../../../shared/types/api'
+import { unwrapIpcResult } from '../../../shared/types/errors'
 
 /** Lazy accessor for window.api -- avoids import-time evaluation */
 function getApi(): WindowAPI {
@@ -28,7 +29,7 @@ export const useDatabaseStore = defineStore('database', () => {
 
   // Actions
   async function fetchInfo(): Promise<void> {
-    const info = await getApi().database.info()
+    const info = unwrapIpcResult(await getApi().database.info())
     if (info) {
       currentPath.value = info.path
       currentName.value = info.name
@@ -38,13 +39,13 @@ export const useDatabaseStore = defineStore('database', () => {
   }
 
   async function fetchRecent(): Promise<void> {
-    recentDatabases.value = await getApi().database.recentList()
+    recentDatabases.value = unwrapIpcResult(await getApi().database.recentList())
   }
 
   async function openDatabase(path: string, password?: string): Promise<DatabaseOpenResult> {
     isLoading.value = true
     try {
-      const result = await getApi().database.open(path, password)
+      const result = unwrapIpcResult(await getApi().database.open(path, password))
       if (result.success && result.info) {
         currentPath.value = result.info.path
         currentName.value = result.info.name
@@ -60,7 +61,7 @@ export const useDatabaseStore = defineStore('database', () => {
   async function createDatabase(path: string, password?: string): Promise<DatabaseOpenResult> {
     isLoading.value = true
     try {
-      const result = await getApi().database.create(path, password)
+      const result = unwrapIpcResult(await getApi().database.create(path, password))
       if (result.success && result.info) {
         currentPath.value = result.info.path
         currentName.value = result.info.name
@@ -88,7 +89,7 @@ export const useDatabaseStore = defineStore('database', () => {
   async function changePassword(
     newPassword: string
   ): Promise<{ success: boolean; error?: string }> {
-    return await getApi().database.rekey(newPassword)
+    return unwrapIpcResult(await getApi().database.rekey(newPassword))
   }
 
   return {

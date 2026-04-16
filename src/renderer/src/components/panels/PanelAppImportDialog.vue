@@ -146,6 +146,7 @@ import { ref, watch, onUnmounted } from 'vue'
 import { mdiClose, mdiMagnify } from '@mdi/js'
 import { useApiService } from '../../composables/useApiService'
 import type { PanelAppSearchResult } from '../../../../shared/types/api'
+import { isIpcError, unwrapIpcResult } from '../../../../shared/types/errors'
 
 const props = defineProps<{
   modelValue: boolean
@@ -225,10 +226,11 @@ async function doSearch(keyword: string): Promise<void> {
   searching.value = true
   errorMessage.value = ''
   try {
-    searchResults.value = await api.panels.searchPanelApp(keyword, region.value)
+    searchResults.value = unwrapIpcResult(await api.panels.searchPanelApp(keyword, region.value))
     hasSearched.value = true
   } catch (e) {
-    errorMessage.value = e instanceof Error ? e.message : String(e)
+    errorMessage.value =
+      e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
     searchResults.value = []
   } finally {
     searching.value = false
@@ -246,15 +248,18 @@ async function doImport(): Promise<void> {
   importing.value = true
   errorMessage.value = ''
   try {
-    await api.panels.importPanelApp({
-      panelId: selectedPanel.value.id,
-      region: selectedPanel.value.region,
-      confidenceThreshold: confidenceThreshold.value
-    })
+    unwrapIpcResult(
+      await api.panels.importPanelApp({
+        panelId: selectedPanel.value.id,
+        region: selectedPanel.value.region,
+        confidenceThreshold: confidenceThreshold.value
+      })
+    )
     emit('imported')
     close()
   } catch (e) {
-    errorMessage.value = e instanceof Error ? e.message : String(e)
+    errorMessage.value =
+      e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
   } finally {
     importing.value = false
   }

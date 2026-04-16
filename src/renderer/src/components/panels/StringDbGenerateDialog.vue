@@ -101,6 +101,7 @@ import { ref, computed, watch } from 'vue'
 import { mdiClose } from '@mdi/js'
 import { useApiService } from '../../composables/useApiService'
 import { useGeneValidation } from '../../composables/useGeneValidation'
+import { isIpcError, unwrapIpcResult } from '../../../../shared/types/errors'
 
 interface Preset {
   score: number
@@ -177,16 +178,19 @@ async function doGenerate(): Promise<void> {
   generating.value = true
   errorMessage.value = ''
   try {
-    await api.panels.generateStringDb({
-      seedGenes: parsedGenes.value,
-      requiredScore: effectiveScore.value,
-      networkType: effectiveNetworkType.value,
-      name: panelName.value.trim() || undefined
-    })
+    unwrapIpcResult(
+      await api.panels.generateStringDb({
+        seedGenes: parsedGenes.value,
+        requiredScore: effectiveScore.value,
+        networkType: effectiveNetworkType.value,
+        name: panelName.value.trim() || undefined
+      })
+    )
     emit('generated')
     close()
   } catch (e) {
-    errorMessage.value = e instanceof Error ? e.message : String(e)
+    errorMessage.value =
+      e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
   } finally {
     generating.value = false
   }

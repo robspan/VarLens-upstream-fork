@@ -21,6 +21,7 @@
 import { ref } from 'vue'
 import type { Ref } from 'vue'
 import type { CohortVariant, CohortCarrier } from '../../../shared/types/cohort'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 import { useApiService } from './useApiService'
 import { logService } from '../services/LogService'
 
@@ -116,16 +117,18 @@ export function useCarriers(): UseCarriersReturn {
     }
 
     try {
-      const carriers = await api.cohort.getCarriers(
-        variant.chr,
-        variant.pos,
-        variant.ref,
-        variant.alt
+      const carriers = unwrapIpcResult(
+        await api.cohort.getCarriers(variant.chr, variant.pos, variant.ref, variant.alt)
       )
       carrierMap.value.set(variant.variant_key, carriers)
     } catch (error) {
       logService.error(
-        'Failed to load carriers: ' + (error instanceof Error ? error.message : String(error)),
+        'Failed to load carriers: ' +
+          (error instanceof Error
+            ? error.message
+            : isIpcError(error)
+              ? (error.userMessage ?? error.message)
+              : String(error)),
         'carriers'
       )
       // Set empty array to prevent retry loops

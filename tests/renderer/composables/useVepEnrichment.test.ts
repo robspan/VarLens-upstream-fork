@@ -35,6 +35,12 @@ const successSpliceaiResult = {
   scores: { max_delta: 0.3 }
 }
 
+const ipcError = {
+  code: 'UNKNOWN' as const,
+  message: 'transport failed',
+  userMessage: 'Transport failed'
+}
+
 describe('useVepEnrichment', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -122,5 +128,23 @@ describe('useVepEnrichment', () => {
 
     // Should have variant B's data, not variant A's
     expect(enrichment.mostSevereConsequence.value).toBe('synonymous_variant')
+  })
+
+  it('clears loading flags when fulfilled IPC results unwrap to errors', async () => {
+    mockVepFetch.mockResolvedValue(ipcError)
+    mockMyvariantFetch.mockResolvedValue(ipcError)
+    mockSpliceaiFetch.mockResolvedValue(ipcError)
+
+    const enrichment = useVepEnrichment()
+
+    await enrichment.fetchVep('1', 12345, 'A', 'G')
+
+    expect(enrichment.vepLoading.value).toBe(false)
+    expect(enrichment.myvariantLoading.value).toBe(false)
+    expect(enrichment.spliceaiLoading.value).toBe(false)
+    expect(enrichment.vepError.value).toBe('Transport failed')
+    expect(enrichment.vepData.value).toBeNull()
+    expect(enrichment.myvariantData.value).toBeNull()
+    expect(enrichment.spliceaiData.value).toBeNull()
   })
 })

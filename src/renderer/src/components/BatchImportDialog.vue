@@ -95,6 +95,7 @@ import BatchProgressPhase from './batch-import/BatchProgressPhase.vue'
 import BatchSummaryPhase from './batch-import/BatchSummaryPhase.vue'
 import BatchZipPasswordPhase from './batch-import/BatchZipPasswordPhase.vue'
 import { mdiClose } from '@mdi/js'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
 type Phase = 'idle' | 'review' | 'importing' | 'summary' | 'zip-password'
 
@@ -187,9 +188,11 @@ watch(stripText, () => {
   if (recheckTimeout !== null) clearTimeout(recheckTimeout)
   recheckTimeout = setTimeout(async () => {
     if (selectedFilePaths.value.length === 0) return
-    const checkResult = await api!.batchImport.checkDuplicates(
-      [...selectedFilePaths.value],
-      stripText.value || undefined
+    const checkResult = unwrapIpcResult(
+      await api!.batchImport.checkDuplicates(
+        [...selectedFilePaths.value],
+        stripText.value || undefined
+      )
     )
     duplicateCheckFiles.value = checkResult.files
     duplicateCount.value = checkResult.duplicateCount
@@ -203,7 +206,7 @@ const show = async (mode: 'files' | 'folder' | 'zip'): Promise<void> => {
   resetState()
 
   if (mode === 'zip') {
-    const result = await api!.batchImport.selectZip()
+    const result = unwrapIpcResult(await api!.batchImport.selectZip())
     if (result === null) return
 
     zipPath.value = result.filePath
@@ -232,7 +235,7 @@ const show = async (mode: 'files' | 'folder' | 'zip'): Promise<void> => {
   fileCount.value = filePaths.length
   dialog.value = true
 
-  const checkResult = await api!.batchImport.checkDuplicates(filePaths)
+  const checkResult = unwrapIpcResult(await api!.batchImport.checkDuplicates(filePaths))
   duplicateCheckFiles.value = checkResult.files
   duplicateCount.value = checkResult.duplicateCount
   phase.value = 'review'
@@ -243,27 +246,32 @@ const show = async (mode: 'files' | 'folder' | 'zip'): Promise<void> => {
  */
 const extractAndShowReview = async (zipFilePath: string, password?: string): Promise<void> => {
   try {
-    const result = await api!.batchImport.extractZip(zipFilePath, password)
+    const result = unwrapIpcResult(await api!.batchImport.extractZip(zipFilePath, password))
 
     if (result.files.length === 0) {
       zipErrorMessage.value = 'No importable files found in archive.'
       if (result.errors.length > 0) {
         zipErrorMessage.value += ' Errors: ' + result.errors.join('; ')
       }
-      await api!.batchImport.cleanupZipTemp()
+      unwrapIpcResult(await api!.batchImport.cleanupZipTemp())
       return
     }
 
     selectedFilePaths.value = result.files
     fileCount.value = result.files.length
 
-    const checkResult = await api!.batchImport.checkDuplicates(result.files)
+    const checkResult = unwrapIpcResult(await api!.batchImport.checkDuplicates(result.files))
     duplicateCheckFiles.value = checkResult.files
     duplicateCount.value = checkResult.duplicateCount
     phase.value = 'review'
   } catch (error) {
-    zipErrorMessage.value = error instanceof Error ? error.message : 'Failed to extract archive'
-    await api!.batchImport.cleanupZipTemp()
+    zipErrorMessage.value =
+      error instanceof Error
+        ? error.message
+        : isIpcError(error)
+          ? (error.userMessage ?? error.message)
+          : 'Failed to extract archive'
+    unwrapIpcResult(await api!.batchImport.cleanupZipTemp())
   }
 }
 
@@ -291,7 +299,7 @@ const startImport = async (
   totalFiles.value = filePaths.length
 
   try {
-    const result = await api!.batchImport.start(filePaths, strategy, strip)
+    const result = unwrapIpcResult(await api!.batchImport.start(filePaths, strategy, strip))
 
     summary.value = result
     phase.value = 'summary'
@@ -313,12 +321,23 @@ const startImport = async (
           filePath: '',
           fileName: 'Batch Import',
           status: 'failed',
-          error: error instanceof Error ? error.message : 'Unknown error'
+          error:
+            error instanceof Error
+              ? error.message
+              : isIpcError(error)
+                ? (error.userMessage ?? error.message)
+                : 'Unknown error'
         }
       ]
     }
     phase.value = 'summary'
-    importStore.importError(error instanceof Error ? error.message : 'Unknown error')
+    importStore.importError(
+      error instanceof Error
+        ? error.message
+        : isIpcError(error)
+          ? (error.userMessage ?? error.message)
+          : 'Unknown error'
+    )
   }
 }
 
@@ -330,14 +349,21 @@ const handleZipUnlock = async (): Promise<void> => {
   zipErrorMessage.value = ''
 
   try {
-    const result = await api!.batchImport.testZipPassword(zipPath.value, zipPassword.value)
+    const result = unwrapIpcResult(
+      await api!.batchImport.testZipPassword(zipPath.value, zipPassword.value)
+    )
     if (result.success === true) {
       await extractAndShowReview(zipPath.value, zipPassword.value)
     } else {
       zipErrorMessage.value = 'Incorrect password. Please try again.'
     }
   } catch (error) {
-    zipErrorMessage.value = error instanceof Error ? error.message : 'Failed to test password'
+    zipErrorMessage.value =
+      error instanceof Error
+        ? error.message
+        : isIpcError(error)
+          ? (error.userMessage ?? error.message)
+          : 'Failed to test password'
   } finally {
     testingPassword.value = false
   }
@@ -347,7 +373,7 @@ const handleZipUnlock = async (): Promise<void> => {
  * Cancel ZIP flow and clean up temp directory
  */
 const handleZipCancel = async (): Promise<void> => {
-  await api!.batchImport.cleanupZipTemp()
+  unwrapIpcResult(await api!.batchImport.cleanupZipTemp())
   dialog.value = false
 }
 
@@ -356,7 +382,7 @@ const handleZipCancel = async (): Promise<void> => {
  */
 const handleCancel = async (): Promise<void> => {
   if (phase.value === 'importing') {
-    await api!.batchImport.cancel()
+    unwrapIpcResult(await api!.batchImport.cancel())
   } else if (phase.value === 'summary') {
     // Close dialog — the watch on `dialog` handles cleanup and event emission
     dialog.value = false
@@ -376,7 +402,7 @@ const continueInBackground = (): void => {
  */
 const closeDialog = async (): Promise<void> => {
   if (isZipImport.value === true) {
-    await api!.batchImport.cleanupZipTemp()
+    unwrapIpcResult(await api!.batchImport.cleanupZipTemp())
   }
   dialog.value = false
 }

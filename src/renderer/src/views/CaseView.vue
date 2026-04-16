@@ -11,6 +11,7 @@ import ShortlistPanel from '../components/shortlist/ShortlistPanel.vue'
 import { useAppState } from '../composables/useAppState'
 import type { VariantFilter, Variant } from '../../../shared/types/api'
 import { APP_CONFIG } from '../../../shared/config/app.config'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 import { logService } from '../services/LogService'
 import { useApiService } from '../composables/useApiService'
 import { useSettingsStore } from '../stores/settingsStore'
@@ -113,11 +114,15 @@ async function loadTypeCounts(caseId: number | null): Promise<void> {
     return
   }
   try {
-    typeCounts.value = await api.variants.typeCounts(caseId)
+    typeCounts.value = unwrapIpcResult(await api.variants.typeCounts(caseId))
   } catch (error) {
     logService.error(
       'Failed to load variant type counts: ' +
-        (error instanceof Error ? error.message : String(error)),
+        (isIpcError(error)
+          ? (error.userMessage ?? error.message)
+          : error instanceof Error
+            ? error.message
+            : String(error)),
       'case'
     )
     typeCounts.value = {}

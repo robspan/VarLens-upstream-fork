@@ -8,6 +8,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { withSetup } from '../../utils/test-helpers'
 import { createMockApi } from '../../utils/mock-api'
 import { useApiService } from '@renderer/composables/useApiService'
+import { ErrorCode } from '../../../src/shared/types/errors'
+import { expectIpcResult } from '../../../src/renderer/src/utils/ipc-result'
 
 describe('useApiService', () => {
   let app: { unmount: () => void }
@@ -154,6 +156,24 @@ describe('useApiService', () => {
       // Note: In practice, window.api doesn't change at runtime,
       // but the computed ensures reactive checking
       expect(typeof result.isAvailable.value).toBe('boolean')
+    })
+  })
+
+  describe('expectIpcResult', () => {
+    it('returns successful IPC payloads unchanged', () => {
+      const payload = { id: 1, name: 'Case Alpha' }
+
+      expect(expectIpcResult(payload)).toEqual(payload)
+    })
+
+    it('throws serializable IPC errors', () => {
+      expect(() =>
+        expectIpcResult({
+          code: ErrorCode.DB_ERROR,
+          message: 'query failed',
+          userMessage: 'Could not load cases'
+        })
+      ).toThrow()
     })
   })
 })

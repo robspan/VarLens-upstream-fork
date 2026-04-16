@@ -10,6 +10,7 @@ import { ref, computed } from 'vue'
 import type { Ref, ComputedRef } from 'vue'
 import { useApiService } from './useApiService'
 import { logService } from '../services/LogService'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -118,12 +119,19 @@ export function useGeneValidation(): UseGeneValidationReturn {
 
     validating.value = true
     try {
-      const results: ValidationResult[] = await api.panels.validateSymbols(symbols)
+      const results = unwrapIpcResult(
+        await api.panels.validateSymbols(symbols)
+      ) as ValidationResult[]
       validationResults.value = results
       return results
     } catch (e) {
       logService.error(
-        'Failed to validate gene symbols: ' + (e instanceof Error ? e.message : String(e)),
+        'Failed to validate gene symbols: ' +
+          (e instanceof Error
+            ? e.message
+            : isIpcError(e)
+              ? (e.userMessage ?? e.message)
+              : String(e)),
         'gene-validation'
       )
       validationResults.value = []
@@ -148,10 +156,15 @@ export function useGeneValidation(): UseGeneValidationReturn {
 
     loadingSuggestions.value = true
     try {
-      suggestions.value = await api.panels.autocomplete(query, limit)
+      suggestions.value = unwrapIpcResult(await api.panels.autocomplete(query, limit))
     } catch (e) {
       logService.error(
-        'Failed to autocomplete gene: ' + (e instanceof Error ? e.message : String(e)),
+        'Failed to autocomplete gene: ' +
+          (e instanceof Error
+            ? e.message
+            : isIpcError(e)
+              ? (e.userMessage ?? e.message)
+              : String(e)),
         'gene-validation'
       )
       suggestions.value = []

@@ -152,7 +152,7 @@ import type { CohortVariant } from '../../../shared/types/cohort'
 import type { CohortQueryParams } from '../composables/useCohortData'
 import type { ColumnFiltersParam } from '../../../shared/types/column-filters'
 import { mdiDatabaseSync, mdiRefresh } from '@mdi/js'
-import { isIpcError } from '../../../shared/types/errors'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 import type { AcmgClassification } from '../../../shared/config/domain.config'
 
 // Emit for navigation and row click
@@ -288,7 +288,7 @@ const {
     }
 
     const plainParams = buildIpcParams(params)
-    const result = await api.cohort.getVariants(plainParams)
+    const result = unwrapIpcResult(await api.cohort.getVariants(plainParams))
 
     return {
       data: result.data ?? [],
@@ -338,18 +338,9 @@ const exportToExcel = async (): Promise<void> => {
       genome_build: genomeBuild.value || undefined,
       variant_type: selectedVariantType.value || undefined
     }
-    const result = await api.export.cohort(plainParams)
+    const result = unwrapIpcResult(await api.export.cohort(plainParams))
 
-    if (isIpcError(result)) {
-      snackbar.value = {
-        visible: true,
-        message: `Export failed: ${result.userMessage ?? result.message ?? 'Unknown error'}`,
-        color: 'error',
-        timeout: -1,
-        actionText: null,
-        actionCallback: null
-      }
-    } else if (result !== null && result !== undefined && result.success === true) {
+    if (result !== null && result !== undefined && result.success === true) {
       snackbar.value = {
         visible: true,
         message: `Exported to ${result.filePath}`,
@@ -361,6 +352,29 @@ const exportToExcel = async (): Promise<void> => {
             api.shell.showItemInFolder(result.filePath)
         }
       }
+    } else if (result?.error != null && result.error !== '') {
+      snackbar.value = {
+        visible: true,
+        message: `Export failed: ${result.error}`,
+        color: 'error',
+        timeout: -1,
+        actionText: null,
+        actionCallback: null
+      }
+    }
+  } catch (error) {
+    const message = isIpcError(error)
+      ? (error.userMessage ?? error.message)
+      : error instanceof Error
+        ? error.message
+        : String(error)
+    snackbar.value = {
+      visible: true,
+      message: `Export failed: ${message}`,
+      color: 'error',
+      timeout: -1,
+      actionText: null,
+      actionCallback: null
     }
   } finally {
     exporting.value = false

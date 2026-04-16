@@ -2,22 +2,13 @@
 import CohortViewComponent from '../components/CohortView.vue'
 import { useAppState } from '../composables/useAppState'
 import { useApiService } from '../composables/useApiService'
-import { useRouter } from 'vue-router'
 import type { Variant } from '../../../shared/types/api'
 import type { CohortVariant } from '../../../shared/types/cohort'
 import { logService } from '../services/LogService'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
-const router = useRouter()
 const { api } = useApiService()
-const {
-  selectedCaseId,
-  selectedCaseName,
-  activeTab,
-  initialSearch,
-  panelOpen,
-  selectedPanelVariant,
-  cohortViewRef
-} = useAppState()
+const { initialSearch, panelOpen, selectedPanelVariant, cohortViewRef, selectCase } = useAppState()
 
 // cohortViewRef is used as template ref (not detected by vue-tsc from destructured composable)
 void cohortViewRef
@@ -44,24 +35,27 @@ async function handleNavigateToCase(payload: {
   const variantSearch = parts.length > 0 ? parts.join(' AND ') : undefined
 
   initialSearch.value = variantSearch
-  activeTab.value = 'case'
-  selectedCaseId.value = payload.caseId
+  let caseName = ''
 
   // Look up case name
   try {
-    const cases = await api.cases.list()
+    const cases = unwrapIpcResult(await api.cases.list())
     const selectedCase = cases.find((c) => c.id === payload.caseId)
     if (selectedCase !== undefined) {
-      selectedCaseName.value = selectedCase.name
+      caseName = selectedCase.name
     }
   } catch (error) {
     logService.error(
-      'Failed to fetch case name: ' + (error instanceof Error ? error.message : String(error)),
+      'Failed to fetch case name: ' +
+        (error instanceof Error
+          ? error.message
+          : isIpcError(error)
+            ? (error.userMessage ?? error.message)
+            : String(error)),
       'cohort'
     )
   }
-
-  router.push('/case')
+  selectCase({ caseId: payload.caseId, caseName })
 }
 
 function handleRowClick(variant: Variant | CohortVariant): void {

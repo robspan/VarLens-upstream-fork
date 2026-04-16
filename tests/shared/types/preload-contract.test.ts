@@ -10,11 +10,20 @@
  * that would pull in Electron dependencies.
  */
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, expectTypeOf, vi, beforeEach, afterEach } from 'vitest'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
+import { ErrorCode } from '../../../src/shared/types/errors'
+import type { WindowAPI, Case } from '../../../src/shared/types/api'
+import type { IpcResult } from '../../../src/shared/types/errors'
 
 const ROOT = resolve(__dirname, '..', '..', '..')
+
+const DOMAIN_CONTRACT_PATHS: Record<string, string> = {
+  CasesDomainContract: 'src/shared/ipc/domains/cases.ts',
+  DatabaseDomainContract: 'src/shared/ipc/domains/database.ts',
+  FilterPresetsDomainContract: 'src/shared/ipc/domains/filter-presets.ts'
+}
 
 /**
  * Extract top-level property keys from the WindowAPI interface definition.
@@ -46,9 +55,11 @@ function extractWindowApiKeys(): string[] {
 function extractPreloadApiKeys(): string[] {
   const content = readFileSync(resolve(ROOT, 'src/preload/index.ts'), 'utf-8')
 
-  // Find `const api = {` and extract until the matching closing brace
-  const startIdx = content.indexOf('const api = {')
-  if (startIdx === -1) throw new Error('Could not find `const api = {` in preload/index.ts')
+  // Find `const api = {` or `const api: WindowAPI = {`
+  const match = content.match(/const api(?::\s*WindowAPI)?\s*=\s*\{/)
+  if (!match) throw new Error('Could not find preload api object in preload/index.ts')
+  const startIdx = match.index ?? -1
+  if (startIdx === -1) throw new Error('Could not find preload api object in preload/index.ts')
 
   // Track brace depth to find the matching closing brace
   let depth = 0
@@ -101,7 +112,7 @@ function extractMockApiKeys(): string[] {
   for (const line of lines) {
     // Check match BEFORE updating depth
     if (depth === 1) {
-      const match = line.match(/^\s+(\w+)\s*:\s*\{/)
+      const match = line.match(/^\s+(\w+)\s*:/)
       if (match) {
         keys.push(match[1])
       }
@@ -132,7 +143,27 @@ function extractSubInterfaceKeys(interfaceName: string): string[] {
   // Find the start of the interface
   const startMarker = `export interface ${interfaceName}`
   const startIdx = content.indexOf(startMarker)
-  if (startIdx === -1) return []
+  if (startIdx === -1) {
+    const directAliasMatch = content.match(
+      new RegExp(`export type ${interfaceName}\\s*=\\s*(\\w+)`)
+    )
+    if (directAliasMatch) {
+      const domainPath = DOMAIN_CONTRACT_PATHS[directAliasMatch[1]]
+      if (!domainPath) return []
+
+      return extractInterfaceKeysFromFile(domainPath, directAliasMatch[1])
+    }
+
+    const typeAliasMatch = content.match(
+      new RegExp(`export type ${interfaceName}\\s*=\\s*RendererApiFromDomain<(\\w+)>`)
+    )
+    if (!typeAliasMatch) return []
+
+    const domainPath = DOMAIN_CONTRACT_PATHS[typeAliasMatch[1]]
+    if (!domainPath) return []
+
+    return extractInterfaceKeysFromFile(domainPath, typeAliasMatch[1])
+  }
 
   // Track brace depth to find the matching closing brace
   const lines = content.slice(startIdx).split('\n')
@@ -145,6 +176,50 @@ function extractSubInterfaceKeys(interfaceName: string): string[] {
     if (depth === 1) {
       const m = line.match(/^\s+(\w+)\s*:/)
       if (m) keys.push(m[1])
+    }
+
+    for (const ch of line) {
+      if (ch === '{') {
+        depth++
+        inBlock = true
+      }
+      if (ch === '}') depth--
+    }
+
+    if (inBlock && depth === 0) break
+  }
+
+  const extendsMatch = content
+    .slice(startIdx)
+    .match(
+      new RegExp(`export interface ${interfaceName}\\s+extends\\s+RendererApiFromDomain<(\\w+)>`)
+    )
+  if (extendsMatch) {
+    const domainPath = DOMAIN_CONTRACT_PATHS[extendsMatch[1]]
+    if (!domainPath) return keys.sort()
+
+    const inheritedKeys = extractInterfaceKeysFromFile(domainPath, extendsMatch[1])
+    return [...new Set([...keys, ...inheritedKeys])].sort()
+  }
+
+  return keys.sort()
+}
+
+function extractInterfaceKeysFromFile(filePath: string, interfaceName: string): string[] {
+  const content = readFileSync(resolve(ROOT, filePath), 'utf-8')
+  const startMarker = `export interface ${interfaceName}`
+  const startIdx = content.indexOf(startMarker)
+  if (startIdx === -1) return []
+
+  const lines = content.slice(startIdx).split('\n')
+  let depth = 0
+  let inBlock = false
+  const keys: string[] = []
+
+  for (const line of lines) {
+    if (depth === 1) {
+      const match = line.match(/^\s+(\w+)\s*:/)
+      if (match) keys.push(match[1])
     }
 
     for (const ch of line) {
@@ -188,6 +263,16 @@ describe('Preload contract alignment', () => {
   const windowApiKeys = extractWindowApiKeys()
   const preloadKeys = extractPreloadApiKeys()
   const mockApiKeys = extractMockApiKeys()
+  const preloadSource = readFileSync(resolve(ROOT, 'src/preload/index.ts'), 'utf-8')
+  const casesDomainSource = readFileSync(resolve(ROOT, 'src/preload/domains/cases.ts'), 'utf-8')
+  const databaseDomainSource = readFileSync(
+    resolve(ROOT, 'src/preload/domains/database.ts'),
+    'utf-8'
+  )
+  const filterPresetsDomainSource = readFileSync(
+    resolve(ROOT, 'src/preload/domains/filter-presets.ts'),
+    'utf-8'
+  )
 
   it('WindowAPI interface has expected keys', () => {
     expect(windowApiKeys.length).toBeGreaterThan(10)
@@ -195,6 +280,61 @@ describe('Preload contract alignment', () => {
 
   it('preload const api has expected keys', () => {
     expect(preloadKeys.length).toBeGreaterThan(10)
+  })
+
+  it('preload imports the cases domain factory', () => {
+    expect(preloadSource).toContain("import { createCasesApi } from './domains/cases'")
+  })
+
+  it('preload imports the database and filter presets domain factories', () => {
+    expect(preloadSource).toContain("import { createDatabaseApi } from './domains/database'")
+    expect(preloadSource).toContain(
+      "import { createFilterPresetsApi } from './domains/filter-presets'"
+    )
+  })
+
+  it('cases preload domain uses the shared domain contract boundary', () => {
+    expect(casesDomainSource).toContain(
+      "import type { CasesDomainContract } from '../../shared/ipc/domains/cases'"
+    )
+    expect(casesDomainSource).toContain('export function createCasesApi(): CasesDomainContract')
+    expect(casesDomainSource).not.toContain('unwrapIpcResult')
+    expect(casesDomainSource).toContain(
+      "deleteBatch: (ids) => ipcRenderer.invoke('cases:deleteBatch', ids)"
+    )
+    expect(casesDomainSource).toContain(
+      "availableBuilds: () => ipcRenderer.invoke('cases:availableBuilds')"
+    )
+  })
+
+  it('database preload domain uses the shared domain contract boundary', () => {
+    expect(databaseDomainSource).toContain(
+      "import type { DatabaseDomainContract } from '../../shared/ipc/domains/database'"
+    )
+    expect(databaseDomainSource).toContain(
+      'export function createDatabaseApi(): DatabaseDomainContract'
+    )
+    expect(databaseDomainSource).not.toContain('unwrapIpcResult')
+    expect(databaseDomainSource).toContain("info: () => ipcRenderer.invoke('database:info')")
+    expect(databaseDomainSource).toContain(
+      "showInFolder: (path) => ipcRenderer.invoke('database:showInFolder', path)"
+    )
+    expect(preloadSource).not.toContain('unwrapIpcResult(await databaseDomain.open')
+  })
+
+  it('filter presets preload domain uses the shared domain contract boundary', () => {
+    expect(filterPresetsDomainSource).toContain(
+      "import type { FilterPresetsDomainContract } from '../../shared/ipc/domains/filter-presets'"
+    )
+    expect(filterPresetsDomainSource).toContain(
+      'export function createFilterPresetsApi(): FilterPresetsDomainContract'
+    )
+    expect(filterPresetsDomainSource).not.toContain('unwrapIpcResult')
+    expect(filterPresetsDomainSource).toContain("list: () => ipcRenderer.invoke('presets:list')")
+    expect(filterPresetsDomainSource).toContain(
+      "reorder: (items) => ipcRenderer.invoke('presets:reorder', items)"
+    )
+    expect(preloadSource).not.toContain('unwrapIpcResult(await filterPresetsDomain.list')
   })
 
   it('mockApi type has expected keys', () => {
@@ -233,8 +373,128 @@ describe('Preload contract alignment', () => {
     }
   })
 
-  it('all three sources have identical top-level keys', () => {
+  it('preload domain modules and WindowAPI stay aligned', () => {
     expect(preloadKeys).toEqual(windowApiKeys)
+  })
+
+  it('mockApi keys match WindowAPI interface keys exactly', () => {
     expect(mockApiKeys).toEqual(windowApiKeys)
+  })
+
+  it('exposes IpcResult for scoped wrapHandler-backed methods', () => {
+    type CasesListReturn = Awaited<ReturnType<WindowAPI['cases']['list']>>
+    type CohortRunAssociationReturn = Awaited<ReturnType<WindowAPI['cohort']['runAssociation']>>
+    const apiSource = readFileSync(resolve(ROOT, 'src/shared/types/api.ts'), 'utf-8')
+
+    expectTypeOf<CasesListReturn>().toEqualTypeOf<IpcResult<Case[]>>()
+    expectTypeOf<CohortRunAssociationReturn>().toEqualTypeOf<IpcResult<unknown>>()
+
+    expect(apiSource).toContain('export type CasesAPI = CasesDomainContract')
+    expect(apiSource).toContain('getSummary: () => Promise<IpcResult<CohortSummary>>')
+    expect(apiSource).toContain('runAssociation: (config: unknown) => Promise<IpcResult<unknown>>')
+  })
+})
+
+describe('cases preload domain behavior', () => {
+  beforeEach(() => {
+    vi.resetModules()
+  })
+
+  afterEach(() => {
+    vi.resetModules()
+    vi.doUnmock('electron')
+    delete (process as typeof process & { contextIsolated?: boolean }).contextIsolated
+  })
+
+  it('forwards all cases domain channels without unwrapping in createCasesApi', async () => {
+    const invoke = vi
+      .fn()
+      .mockResolvedValueOnce([{ id: 1, name: 'Case Alpha' }])
+      .mockResolvedValueOnce({ data: [], total_count: 0 })
+      .mockResolvedValueOnce({
+        code: ErrorCode.DB_ERROR,
+        message: 'delete failed',
+        userMessage: 'Could not delete case'
+      })
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce([{ build: 'GRCh38', caseCount: 4 }])
+
+    vi.doMock('electron', () => ({
+      ipcRenderer: { invoke }
+    }))
+
+    const { createCasesApi } = await import('../../../src/preload/domains/cases')
+    const api = createCasesApi()
+
+    await expect(api.list()).resolves.toEqual([{ id: 1, name: 'Case Alpha' }])
+    await expect(api.query({ limit: 50, offset: 0 })).resolves.toEqual({ data: [], total_count: 0 })
+    await expect(api.delete(7)).resolves.toEqual({
+      code: ErrorCode.DB_ERROR,
+      message: 'delete failed',
+      userMessage: 'Could not delete case'
+    })
+    await expect(api.deleteAll()).resolves.toBe(3)
+    await expect(api.deleteBatch([1, 2])).resolves.toBe(2)
+    await expect(api.availableBuilds()).resolves.toEqual([{ build: 'GRCh38', caseCount: 4 }])
+
+    expect(invoke).toHaveBeenNthCalledWith(1, 'cases:list')
+    expect(invoke).toHaveBeenNthCalledWith(2, 'cases:query', { limit: 50, offset: 0 })
+    expect(invoke).toHaveBeenNthCalledWith(3, 'cases:delete', 7)
+    expect(invoke).toHaveBeenNthCalledWith(4, 'cases:deleteAll')
+    expect(invoke).toHaveBeenNthCalledWith(5, 'cases:deleteBatch', [1, 2])
+    expect(invoke).toHaveBeenNthCalledWith(6, 'cases:availableBuilds')
+  })
+
+  it('preload index preserves cases transport results when exposing window.api', async () => {
+    const invoke = vi.fn(async (channel: string) => {
+      if (channel === 'cases:list' || channel === 'cases:deleteBatch') {
+        return {
+          code: ErrorCode.DB_ERROR,
+          message: `${channel} failed`,
+          userMessage: `Could not run ${channel}`
+        }
+      }
+      if (channel === 'cases:availableBuilds') {
+        return [{ build: 'GRCh38', caseCount: 2 }]
+      }
+      return undefined
+    })
+    const exposeInMainWorld = vi.fn()
+
+    vi.doMock('electron', () => ({
+      contextBridge: { exposeInMainWorld },
+      ipcRenderer: {
+        invoke,
+        on: vi.fn(),
+        removeListener: vi.fn(),
+        send: vi.fn()
+      }
+    }))
+    ;(process as typeof process & { contextIsolated?: boolean }).contextIsolated = true
+
+    await import('../../../src/preload/index')
+
+    const api = exposeInMainWorld.mock.calls[0]?.[1] as {
+      cases: {
+        list: () => Promise<unknown>
+        deleteBatch: (ids: number[]) => Promise<unknown>
+        availableBuilds: () => Promise<unknown>
+      }
+    }
+
+    await expect(api.cases.list()).resolves.toMatchObject({
+      code: ErrorCode.DB_ERROR,
+      message: 'cases:list failed'
+    })
+    await expect(api.cases.deleteBatch([8, 9])).resolves.toMatchObject({
+      code: ErrorCode.DB_ERROR,
+      message: 'cases:deleteBatch failed'
+    })
+    await expect(api.cases.availableBuilds()).resolves.toEqual([{ build: 'GRCh38', caseCount: 2 }])
+
+    expect(invoke).toHaveBeenCalledWith('cases:list')
+    expect(invoke).toHaveBeenCalledWith('cases:deleteBatch', [8, 9])
+    expect(invoke).toHaveBeenCalledWith('cases:availableBuilds')
   })
 })

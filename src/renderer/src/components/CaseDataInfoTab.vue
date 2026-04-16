@@ -123,6 +123,7 @@ import PrefilteringSection from './case-data-info/PrefilteringSection.vue'
 import RegionFileImportDialog from './case-data-info/RegionFileImportDialog.vue'
 import { mdiChip, mdiFileImportOutline, mdiNoteTextOutline } from '@mdi/js'
 import { logService } from '../services/LogService'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
 const props = defineProps<{
   caseId: number
@@ -226,7 +227,7 @@ async function loadDataInfo(): Promise<void> {
     platformSuggestions.value = [...all].sort()
 
     idTypeSuggestions.value = (idTypes as string[]) ?? []
-    geneLists.value = (gLists as GeneListItem[]) ?? []
+    geneLists.value = unwrapIpcResult(gLists) as GeneListItem[]
     regionFiles.value = (rFiles as RegionFileItem[]) ?? []
 
     if (info != null) {
@@ -240,7 +241,8 @@ async function loadDataInfo(): Promise<void> {
     }
   } catch (e) {
     logService.warn(
-      'Failed to load case data info: ' + (e instanceof Error ? e.message : String(e)),
+      'Failed to load case data info: ' +
+        (e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)),
       'case-data-info'
     )
   } finally {

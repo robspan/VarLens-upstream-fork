@@ -161,7 +161,7 @@ import {
 } from '../../utils/filters'
 import { cloneForIpc } from '../../utils/cloneForIpc'
 import { logService } from '../../services/LogService'
-import { isIpcError } from '../../../../shared/types/errors'
+import { isIpcError, unwrapIpcResult } from '../../../../shared/types/errors'
 import { useApiService } from '../../composables/useApiService'
 
 interface Props {
@@ -280,15 +280,11 @@ async function handleSavePreset(data: { name: string; description: string | null
   savingPreset.value = true
   try {
     const plainFilters = cloneForIpc(filters.value)
-    const result = await savePreset({
+    await savePreset({
       name: data.name,
       description: data.description,
       filterJson: plainFilters
     })
-    // Check if IPC returned a serializable error
-    if (isIpcError(result)) {
-      return
-    }
     showSavePresetDialog.value = false
   } catch (e) {
     logService.warn(
@@ -420,15 +416,12 @@ const searchGeneSymbols = async (query: string) => {
 
   loadingGeneSuggestions.value = true
   try {
-    const result = await api.cohort.getVariants({
-      gene_symbol: query,
-      limit: 100
-    })
-
-    if (isIpcError(result)) {
-      geneSymbolSuggestions.value = []
-      return
-    }
+    const result = unwrapIpcResult(
+      await api.cohort.getVariants({
+        gene_symbol: query,
+        limit: 100
+      })
+    )
 
     const variants: CohortVariant[] = result?.data ?? []
     geneSymbolSuggestions.value = [
@@ -498,11 +491,12 @@ const cohortCaseIds = ref<number[]>([])
 async function loadCohortCaseIds(): Promise<void> {
   if (api == null) return
   try {
-    const caseList = await api.cases.list()
+    const caseList = unwrapIpcResult(await api.cases.list())
     cohortCaseIds.value = caseList.map((c) => c.id)
   } catch (e) {
     logService.warn(
-      'Failed to load cohort case IDs: ' + (e instanceof Error ? e.message : String(e)),
+      'Failed to load cohort case IDs: ' +
+        (e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)),
       'filters'
     )
     cohortCaseIds.value = []

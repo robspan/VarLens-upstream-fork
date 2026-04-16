@@ -41,6 +41,7 @@ import OverviewTagsSection from './database-overview/OverviewTagsSection.vue'
 import OverviewPhenotypesSection from './database-overview/OverviewPhenotypesSection.vue'
 import { mdiAlertCircle, mdiChartBoxOutline, mdiClose } from '@mdi/js'
 import { logService } from '../services/LogService'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
 const { api } = useApiService()
 
@@ -59,7 +60,7 @@ async function loadOverview(): Promise<void> {
   loading.value = true
   error.value = null
   try {
-    const data = await api.database.getOverview()
+    const data = unwrapIpcResult(await api.database.getOverview())
     // Normalize: ensure new annotation fields have safe defaults
     if (data.summary.starred_variants === undefined) {
       data.summary.starred_variants = 0
@@ -76,7 +77,12 @@ async function loadOverview(): Promise<void> {
     overview.value = data
   } catch (err) {
     logService.error(
-      'Failed to load database overview: ' + (err instanceof Error ? err.message : String(err)),
+      'Failed to load database overview: ' +
+        (err instanceof Error
+          ? err.message
+          : isIpcError(err)
+            ? (err.userMessage ?? err.message)
+            : String(err)),
       'database'
     )
     error.value = 'Failed to load database overview.'

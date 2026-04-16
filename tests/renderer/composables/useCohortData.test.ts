@@ -11,6 +11,7 @@ import { createMockApi } from '../../utils/mock-api'
 import { useCohortData } from '@renderer/composables/useCohortData'
 import type { CohortVariant, CohortSummary } from '../../../../../src/shared/types/cohort'
 import { logService } from '../../../src/renderer/src/services/LogService'
+import { ErrorCode } from '../../../src/shared/types/errors'
 
 vi.mock('../../../src/renderer/src/services/LogService', () => ({
   logService: {
@@ -176,6 +177,25 @@ describe('useCohortData', () => {
     expect(result.summary.value).toBeNull()
     expect(logService.error).toHaveBeenCalledWith(
       expect.stringContaining('Failed to load cohort summary:'),
+      'cohort'
+    )
+  })
+
+  it('handles SerializableError summary responses via unwrap flow', async () => {
+    window.api.cohort.getSummary = vi.fn().mockResolvedValue({
+      code: ErrorCode.DB_ERROR,
+      message: 'Summary error',
+      userMessage: 'Could not load summary'
+    })
+
+    const [result, appInstance] = withSetup(() => useCohortData())
+    app = appInstance
+
+    await result.fetchSummary()
+
+    expect(result.summary.value).toBeNull()
+    expect(logService.error).toHaveBeenCalledWith(
+      expect.stringContaining('Could not load summary'),
       'cohort'
     )
   })

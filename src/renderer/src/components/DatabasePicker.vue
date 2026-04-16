@@ -136,6 +136,7 @@ import PasswordDialog from './PasswordDialog.vue'
 import CreateDatabaseDialog from './CreateDatabaseDialog.vue'
 import ChangePasswordDialog from './ChangePasswordDialog.vue'
 import type { RecentDatabase } from '../../../shared/types/api'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 import {
   mdiClose,
   mdiDatabase,
@@ -237,19 +238,25 @@ function handlePasswordChanged(): void {
 async function handleRemoveRecent(path: string): Promise<void> {
   if (!api) return
   try {
-    await api.database.removeRecent(path)
+    unwrapIpcResult(await api.database.removeRecent(path))
     await databaseStore.fetchRecent()
   } catch (e) {
-    emit('error', e instanceof Error ? e.message : String(e))
+    emit(
+      'error',
+      e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
+    )
   }
 }
 
 async function handleShowInFolder(path: string): Promise<void> {
   if (!api) return
   try {
-    await api.database.showInFolder(path)
+    unwrapIpcResult(await api.database.showInFolder(path))
   } catch (e) {
-    emit('error', e instanceof Error ? e.message : String(e))
+    emit(
+      'error',
+      e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
+    )
   }
 }
 
@@ -262,10 +269,13 @@ async function confirmDeleteFile(): Promise<void> {
   if (!pendingDeleteDb.value) return
   try {
     if (!api) return
-    await api.database.deleteFile(pendingDeleteDb.value.path)
+    unwrapIpcResult(await api.database.deleteFile(pendingDeleteDb.value.path))
     await databaseStore.fetchRecent()
   } catch (e) {
-    emit('error', e instanceof Error ? e.message : String(e))
+    emit(
+      'error',
+      e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
+    )
   } finally {
     deleteDialog.value = false
     pendingDeleteDb.value = null

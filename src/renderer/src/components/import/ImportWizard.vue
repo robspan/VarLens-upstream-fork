@@ -197,7 +197,7 @@ import type { VcfPreviewResult } from '../../../../shared/types/vcf'
 import { useApiService } from '../../composables/useApiService'
 import { useImportStatusStore } from '../../stores/importStatusStore'
 import { logService } from '../../services/LogService'
-import { isIpcError } from '../../../../shared/types/errors'
+import { isIpcError, unwrapIpcResult } from '../../../../shared/types/errors'
 import BatchReviewPhase from '../batch-import/BatchReviewPhase.vue'
 import BatchProgressPhase from '../batch-import/BatchProgressPhase.vue'
 import BatchSummaryPhase from '../batch-import/BatchSummaryPhase.vue'
@@ -304,14 +304,37 @@ let cleanupProgress: (() => void) | null = null
 let cleanupComplete: (() => void) | null = null
 let recheckTimeout: ReturnType<typeof setTimeout> | null = null
 
+function formatIpcError(error: unknown, fallback: string): string {
+  if (isIpcError(error)) {
+    return error.userMessage ?? error.message
+  }
+  return error instanceof Error ? error.message : fallback
+}
+
+function cleanupZipTempInBackground(context: string): void {
+  void api!.batchImport
+    .cleanupZipTemp()
+    .then((cleanupResult) => {
+      unwrapIpcResult(cleanupResult)
+    })
+    .catch((error) => {
+      logService.warn(
+        `ZIP temp cleanup failed after ${context}: ${formatIpcError(error, 'cleanup failed')}`,
+        'ImportWizard'
+      )
+    })
+}
+
 // Re-check duplicates when strip text changes
 watch(stripText, () => {
   if (recheckTimeout !== null) clearTimeout(recheckTimeout)
   recheckTimeout = setTimeout(async () => {
     if (selectedFilePaths.value.length === 0) return
-    const result = await api!.batchImport.checkDuplicates(
-      [...selectedFilePaths.value],
-      stripText.value || undefined
+    const result = unwrapIpcResult(
+      await api!.batchImport.checkDuplicates(
+        [...selectedFilePaths.value],
+        stripText.value || undefined
+      )
     )
     reviewFiles.value = result.files
     duplicateCount.value = result.duplicateCount
@@ -323,7 +346,7 @@ async function selectSource(mode: ImportMode): Promise<void> {
 
   try {
     if (mode === 'zip') {
-      const result = await api!.batchImport.selectZip()
+      const result = unwrapIpcResult(await api!.batchImport.selectZip())
       if (result === null) return
 
       zipPath.value = result.filePath
@@ -376,7 +399,9 @@ async function selectSource(mode: ImportMode): Promise<void> {
 }
 
 async function extractAndAdvance(path: string): Promise<void> {
-  const { files } = await api!.batchImport.extractZip(path, zipPassword.value || undefined)
+  const { files } = unwrapIpcResult(
+    await api!.batchImport.extractZip(path, zipPassword.value || undefined)
+  )
   if (files.length === 0) return
 
   selectedFilePaths.value = files
@@ -385,14 +410,9 @@ async function extractAndAdvance(path: string): Promise<void> {
 }
 
 async function checkDuplicatesAndAdvance(filePaths: string[]): Promise<void> {
-  const result = await api!.batchImport.checkDuplicates(filePaths, stripText.value || undefined)
-
-  // Guard against error responses from wrapHandler (returns SerializableError on failure)
-  if (isIpcError(result)) {
-    logService.error('checkDuplicates returned error: ' + result.userMessage, 'ImportWizard')
-    importStore.importError(result.userMessage ?? 'Failed to check files. Please try again.')
-    return
-  }
+  const result = unwrapIpcResult(
+    await api!.batchImport.checkDuplicates(filePaths, stripText.value || undefined)
+  )
 
   reviewFiles.value = result.files
   duplicateCount.value = result.duplicateCount
@@ -402,7 +422,9 @@ async function checkDuplicatesAndAdvance(filePaths: string[]): Promise<void> {
 async function unlockZip(): Promise<void> {
   zipUnlocking.value = true
   zipError.value = ''
-  const { success } = await api!.batchImport.testZipPassword(zipPath.value, zipPassword.value)
+  const { success } = unwrapIpcResult(
+    await api!.batchImport.testZipPassword(zipPath.value, zipPassword.value)
+  )
   zipUnlocking.value = false
 
   if (!success) {
@@ -470,30 +492,21 @@ async function startVcfImport(): Promise<void> {
       overallPercent.value = Math.round(((i + 1) / vcfSelectedSamples.value.length) * 100)
 
       try {
-        const result = await api!.import.start(vcfFilePath.value, caseName, {
-          selectedSample: sample,
-          genomeBuild: vcfGenomeBuild.value ?? undefined
-        })
+        const result = unwrapIpcResult(
+          await api!.import.start(vcfFilePath.value, caseName, {
+            selectedSample: sample,
+            genomeBuild: vcfGenomeBuild.value ?? undefined
+          })
+        )
 
-        if (isIpcError(result)) {
-          results.failed++
-          results.details.push({
-            filePath: vcfFilePath.value,
-            fileName: caseName,
-            caseName,
-            status: 'failed' as const,
-            error: result.userMessage
-          })
-        } else {
-          results.succeeded++
-          results.details.push({
-            filePath: vcfFilePath.value,
-            fileName: caseName,
-            caseName,
-            status: 'success' as const,
-            variantCount: (result as { variantCount: number }).variantCount
-          })
-        }
+        results.succeeded++
+        results.details.push({
+          filePath: vcfFilePath.value,
+          fileName: caseName,
+          caseName,
+          status: 'success' as const,
+          variantCount: (result as { variantCount: number }).variantCount
+        })
       } catch (err) {
         results.failed++
         results.details.push({
@@ -553,27 +566,13 @@ async function startImport(): Promise<void> {
   try {
     // Spread reactive arrays to plain arrays — Vue Proxies cannot be
     // structured-cloned by Electron's IPC serialization.
-    const result = await api!.batchImport.start(
-      [...selectedFilePaths.value],
-      duplicateStrategy.value,
-      stripText.value || undefined
+    const result = unwrapIpcResult(
+      await api!.batchImport.start(
+        [...selectedFilePaths.value],
+        duplicateStrategy.value,
+        stripText.value || undefined
+      )
     )
-
-    // Guard against error responses from wrapHandler (returns SerializableError on failure)
-    if (isIpcError(result)) {
-      const errorMsg = result.userMessage
-      logService.error(`Import returned error: ${JSON.stringify(result)}`, 'ImportWizard')
-      summary.value = {
-        succeeded: 0,
-        failed: fileCount.value,
-        skipped: 0,
-        cancelled: false,
-        details: []
-      }
-      step.value = 4
-      importStore.importError(errorMsg)
-      return
-    }
 
     // Result also arrives via onComplete callback; guard against double-processing
     if (step.value === 3) {
@@ -586,7 +585,7 @@ async function startImport(): Promise<void> {
       })
 
       if (isZipImport.value) {
-        api!.batchImport.cleanupZipTemp()
+        cleanupZipTempInBackground('import completion')
       }
 
       if (result.succeeded > 0) {
@@ -616,7 +615,17 @@ async function startImport(): Promise<void> {
 }
 
 function cancelImport(): void {
-  api!.batchImport.cancel()
+  void api!.batchImport
+    .cancel()
+    .then((result) => {
+      unwrapIpcResult(result)
+    })
+    .catch((error) => {
+      logService.warn(
+        `Batch import cancel failed: ${formatIpcError(error, 'cancel failed')}`,
+        'ImportWizard'
+      )
+    })
   // Transition to summary step showing cancellation, and reset import store.
   // The onComplete callback may also fire with cancelled=true, but we handle
   // it here immediately so the user sees feedback right away.
@@ -740,7 +749,7 @@ onMounted(() => {
         })
 
         if (isZipImport.value) {
-          api!.batchImport.cleanupZipTemp()
+          cleanupZipTempInBackground('dialog close')
         }
       }
     })

@@ -14,6 +14,7 @@ import type {
 } from '../../../shared/types/api'
 import { useApiService } from './useApiService'
 import { logService } from '../services/LogService'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
 // Global metric definitions cache
 const definitionsCache = ref<MetricDefinition[]>([])
@@ -41,12 +42,16 @@ export function useCaseMetrics() {
     if (!api) return
     if (definitionsLoaded.value) return
     try {
-      definitionsCache.value = await api.caseMetrics.listDefinitions()
+      definitionsCache.value = unwrapIpcResult(await api.caseMetrics.listDefinitions())
       definitionsLoaded.value = true
     } catch (error) {
       logService.error(
         'Failed to load metric definitions: ' +
-          (error instanceof Error ? error.message : String(error)),
+          (error instanceof Error
+            ? error.message
+            : isIpcError(error)
+              ? (error.userMessage ?? error.message)
+              : String(error)),
         'metrics'
       )
     }
@@ -58,11 +63,16 @@ export function useCaseMetrics() {
 
     loadingStates.value.set(caseId, true)
     try {
-      const metrics = await api.caseMetrics.listForCase(caseId)
+      const metrics = unwrapIpcResult(await api.caseMetrics.listForCase(caseId))
       metricsCache.value.set(caseId, metrics)
     } catch (error) {
       logService.error(
-        'Failed to load case metrics: ' + (error instanceof Error ? error.message : String(error)),
+        'Failed to load case metrics: ' +
+          (error instanceof Error
+            ? error.message
+            : isIpcError(error)
+              ? (error.userMessage ?? error.message)
+              : String(error)),
         'metrics'
       )
     } finally {
@@ -80,7 +90,7 @@ export function useCaseMetrics() {
 
   async function upsertMetric(caseId: number, metricId: number, value: MetricValue): Promise<void> {
     if (!api) return
-    await api.caseMetrics.upsert(caseId, metricId, value)
+    unwrapIpcResult(await api.caseMetrics.upsert(caseId, metricId, value))
     // Reload to get joined data
     loadingStates.value.delete(caseId) // Allow reload
     metricsCache.value.delete(caseId)
@@ -89,7 +99,7 @@ export function useCaseMetrics() {
 
   async function deleteMetric(caseId: number, metricId: number): Promise<void> {
     if (!api) return
-    await api.caseMetrics.delete(caseId, metricId)
+    unwrapIpcResult(await api.caseMetrics.delete(caseId, metricId))
 
     // Remove from cache
     const cached = metricsCache.value.get(caseId)
@@ -108,7 +118,9 @@ export function useCaseMetrics() {
     category: string
   ): Promise<MetricDefinition | null> {
     if (!api) return null
-    const def = await api.caseMetrics.createDefinition(name, valueType, unit, category)
+    const def = unwrapIpcResult(
+      await api.caseMetrics.createDefinition(name, valueType, unit, category)
+    )
     definitionsCache.value.push(def)
     // Re-sort
     definitionsCache.value.sort(

@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useAuthStore } from '../stores/authStore'
 import { useApiService } from '../composables/useApiService'
 import { mdiAccountOff, mdiLockReset, mdiPlus } from '@mdi/js'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
 const authStore = useAuthStore()
 const { api } = useApiService()
@@ -36,7 +37,7 @@ const resetPassword = ref('')
 
 async function loadUsers(): Promise<void> {
   try {
-    users.value = await api!.auth.listUsers()
+    users.value = unwrapIpcResult(await api!.auth.listUsers())
   } catch {
     error.value = 'Failed to load users'
   }
@@ -49,7 +50,9 @@ async function handleCreateUser(): Promise<void> {
   error.value = ''
 
   try {
-    await api!.auth.createUser(newUsername.value, newDisplayName.value, newTempPassword.value)
+    unwrapIpcResult(
+      await api!.auth.createUser(newUsername.value, newDisplayName.value, newTempPassword.value)
+    )
     showCreateDialog.value = false
     newUsername.value = ''
     newDisplayName.value = ''
@@ -57,7 +60,12 @@ async function handleCreateUser(): Promise<void> {
     success.value = 'User created successfully'
     await loadUsers()
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to create user'
+    error.value =
+      e instanceof Error
+        ? e.message
+        : isIpcError(e)
+          ? (e.userMessage ?? e.message)
+          : 'Failed to create user'
   } finally {
     loading.value = false
   }
@@ -65,11 +73,16 @@ async function handleCreateUser(): Promise<void> {
 
 async function handleDeactivateUser(username: string): Promise<void> {
   try {
-    await api!.auth.deactivateUser(username)
+    unwrapIpcResult(await api!.auth.deactivateUser(username))
     success.value = `User ${username} deactivated`
     await loadUsers()
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to deactivate user'
+    error.value =
+      e instanceof Error
+        ? e.message
+        : isIpcError(e)
+          ? (e.userMessage ?? e.message)
+          : 'Failed to deactivate user'
   }
 }
 
@@ -80,13 +93,18 @@ async function handleResetPassword(): Promise<void> {
   error.value = ''
 
   try {
-    await api!.auth.resetPassword(selectedUser.value, resetPassword.value)
+    unwrapIpcResult(await api!.auth.resetPassword(selectedUser.value, resetPassword.value))
     showResetDialog.value = false
     resetPassword.value = ''
     selectedUser.value = ''
     success.value = 'Password reset successfully'
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to reset password'
+    error.value =
+      e instanceof Error
+        ? e.message
+        : isIpcError(e)
+          ? (e.userMessage ?? e.message)
+          : 'Failed to reset password'
   } finally {
     loading.value = false
   }

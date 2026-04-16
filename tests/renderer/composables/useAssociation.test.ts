@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { withSetup } from '../../utils/test-helpers'
 import { createMockApi } from '../../utils/mock-api'
 import { useAssociation } from '@renderer/composables/useAssociation'
+import { ErrorCode } from '../../../src/shared/types/errors'
 
 vi.mock('../../../src/renderer/src/services/LogService', () => ({
   logService: {
@@ -41,6 +42,23 @@ describe('useAssociation', () => {
     const res = await result.runAssociation(config)
     expect(window.api.cohort.runAssociation).toHaveBeenCalledWith(config)
     expect(res).toBe(mockResult)
+  })
+
+  it('runAssociation throws SerializableError transport failures', async () => {
+    const config = { test: 'fisher', caseIds: [1, 2] }
+    window.api.cohort.runAssociation.mockResolvedValue({
+      code: ErrorCode.DB_ERROR,
+      message: 'Association failed',
+      userMessage: 'Could not run association'
+    })
+
+    const [result, appInstance] = withSetup(() => useAssociation())
+    app = appInstance
+
+    await expect(result.runAssociation(config)).rejects.toMatchObject({
+      code: ErrorCode.DB_ERROR,
+      userMessage: 'Could not run association'
+    })
   })
 
   it('cancelAssociation calls api.cohort.cancelAssociation', () => {

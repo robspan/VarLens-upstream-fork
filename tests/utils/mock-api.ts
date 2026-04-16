@@ -5,237 +5,52 @@
  * All methods return vi.fn() mocks with sensible default values.
  */
 
-import { vi } from 'vitest'
+import { vi, type Mock } from 'vitest'
+import type { WindowAPI } from '../../src/shared/types/api'
+
+type MockApiDomain<T extends Record<string, unknown>> = {
+  [K in keyof T]: T[K] extends (...args: infer Args) => infer Result
+    ? Mock<(...args: Args) => Result>
+    : never
+}
 
 /**
  * Mock API type matching WindowAPI from preload.
  * All methods are vi.fn() mocks for spy verification.
  */
 export type MockApi = {
-  cases: {
-    list: ReturnType<typeof vi.fn>
-    delete: ReturnType<typeof vi.fn>
-    deleteAll: ReturnType<typeof vi.fn>
-    deleteBatch: ReturnType<typeof vi.fn>
-  }
-  variants: {
-    query: ReturnType<typeof vi.fn>
-    getFilterOptions: ReturnType<typeof vi.fn>
-    search: ReturnType<typeof vi.fn>
-    geneSymbols: ReturnType<typeof vi.fn>
-  }
-  import: {
-    selectFile: ReturnType<typeof vi.fn>
-    start: ReturnType<typeof vi.fn>
-    onProgress: ReturnType<typeof vi.fn>
-    cancel: ReturnType<typeof vi.fn>
-  }
-  system: {
-    getVersion: ReturnType<typeof vi.fn>
-    getUserDataPath: ReturnType<typeof vi.fn>
-  }
-  export: {
-    variants: ReturnType<typeof vi.fn>
-    cohort: ReturnType<typeof vi.fn>
-  }
-  shell: {
-    openExternal: ReturnType<typeof vi.fn>
-    updateDomains: ReturnType<typeof vi.fn>
-    showItemInFolder: ReturnType<typeof vi.fn>
-  }
-  database: {
-    selectFile: ReturnType<typeof vi.fn>
-    selectSaveLocation: ReturnType<typeof vi.fn>
-    open: ReturnType<typeof vi.fn>
-    create: ReturnType<typeof vi.fn>
-    rekey: ReturnType<typeof vi.fn>
-    info: ReturnType<typeof vi.fn>
-    recentList: ReturnType<typeof vi.fn>
-  }
-  batchImport: {
-    selectFiles: ReturnType<typeof vi.fn>
-    selectFolder: ReturnType<typeof vi.fn>
-    checkDuplicates: ReturnType<typeof vi.fn>
-    start: ReturnType<typeof vi.fn>
-    cancel: ReturnType<typeof vi.fn>
-    selectZip: ReturnType<typeof vi.fn>
-    testZipPassword: ReturnType<typeof vi.fn>
-    extractZip: ReturnType<typeof vi.fn>
-    cleanupZipTemp: ReturnType<typeof vi.fn>
-    onProgress: ReturnType<typeof vi.fn>
-  }
-  cohort: {
-    getVariants: ReturnType<typeof vi.fn>
-    getSummary: ReturnType<typeof vi.fn>
-    getCarriers: ReturnType<typeof vi.fn>
-    getGeneBurden: ReturnType<typeof vi.fn>
-    runAssociation: ReturnType<typeof vi.fn>
-    cancelAssociation: ReturnType<typeof vi.fn>
-    onAssociationProgress: ReturnType<typeof vi.fn>
-  }
-  annotations: {
-    getGlobal: ReturnType<typeof vi.fn>
-    upsertGlobal: ReturnType<typeof vi.fn>
-    deleteGlobal: ReturnType<typeof vi.fn>
-    getPerCase: ReturnType<typeof vi.fn>
-    upsertPerCase: ReturnType<typeof vi.fn>
-    deletePerCase: ReturnType<typeof vi.fn>
-    getForVariant: ReturnType<typeof vi.fn>
-    batchGet: ReturnType<typeof vi.fn>
-  }
-  vep: {
-    fetch: ReturnType<typeof vi.fn>
-    cancel: ReturnType<typeof vi.fn>
-    clearCache: ReturnType<typeof vi.fn>
-    getCacheStats: ReturnType<typeof vi.fn>
-  }
-  hpo: {
-    search: ReturnType<typeof vi.fn>
-    clearCache: ReturnType<typeof vi.fn>
-  }
-  myvariant: {
-    fetch: ReturnType<typeof vi.fn>
-    clearCache: ReturnType<typeof vi.fn>
-  }
-  spliceai: {
-    fetch: ReturnType<typeof vi.fn>
-    clearCache: ReturnType<typeof vi.fn>
-  }
-  caseMetadata: {
-    get: ReturnType<typeof vi.fn>
-    upsert: ReturnType<typeof vi.fn>
-    getFullMetadata: ReturnType<typeof vi.fn>
-    listCohorts: ReturnType<typeof vi.fn>
-    createCohort: ReturnType<typeof vi.fn>
-    deleteCohort: ReturnType<typeof vi.fn>
-    getCohortByName: ReturnType<typeof vi.fn>
-    getCaseCohorts: ReturnType<typeof vi.fn>
-    assignCohort: ReturnType<typeof vi.fn>
-    removeCohort: ReturnType<typeof vi.fn>
-    setCohorts: ReturnType<typeof vi.fn>
-    getHpoTerms: ReturnType<typeof vi.fn>
-    assignHpoTerm: ReturnType<typeof vi.fn>
-    removeHpoTerm: ReturnType<typeof vi.fn>
-  }
-  tags: {
-    list: ReturnType<typeof vi.fn>
-    create: ReturnType<typeof vi.fn>
-    update: ReturnType<typeof vi.fn>
-    delete: ReturnType<typeof vi.fn>
-    getUsageCount: ReturnType<typeof vi.fn>
-    getVariantTags: ReturnType<typeof vi.fn>
-    assignVariantTag: ReturnType<typeof vi.fn>
-    removeVariantTag: ReturnType<typeof vi.fn>
-    setVariantTags: ReturnType<typeof vi.fn>
-  }
-  presets: {
-    list: ReturnType<typeof vi.fn>
-    create: ReturnType<typeof vi.fn>
-    update: ReturnType<typeof vi.fn>
-    delete: ReturnType<typeof vi.fn>
-    reorder: ReturnType<typeof vi.fn>
-  }
-  panels: {
-    list: ReturnType<typeof vi.fn>
-    get: ReturnType<typeof vi.fn>
-    create: ReturnType<typeof vi.fn>
-    update: ReturnType<typeof vi.fn>
-    delete: ReturnType<typeof vi.fn>
-    duplicate: ReturnType<typeof vi.fn>
-    setGenes: ReturnType<typeof vi.fn>
-    getGenes: ReturnType<typeof vi.fn>
-    activate: ReturnType<typeof vi.fn>
-    deactivate: ReturnType<typeof vi.fn>
-    activeForCase: ReturnType<typeof vi.fn>
-    validateSymbols: ReturnType<typeof vi.fn>
-    autocomplete: ReturnType<typeof vi.fn>
-    exportBed: ReturnType<typeof vi.fn>
-  }
-  geneRef: {
-    info: ReturnType<typeof vi.fn>
-    assemblies: ReturnType<typeof vi.fn>
-    checkUpdates: ReturnType<typeof vi.fn>
-    update: ReturnType<typeof vi.fn>
-  }
-  protein: {
-    getMapping: ReturnType<typeof vi.fn>
-    getDomains: ReturnType<typeof vi.fn>
-    getStructure: ReturnType<typeof vi.fn>
-    getGeneStructure: ReturnType<typeof vi.fn>
-  }
-  gnomad: {
-    getVariants: ReturnType<typeof vi.fn>
-    getClinVarVariants: ReturnType<typeof vi.fn>
-  }
-  logs: {
-    onMessage: ReturnType<typeof vi.fn>
-  }
-  caseComments: {
-    list: ReturnType<typeof vi.fn>
-    create: ReturnType<typeof vi.fn>
-    update: ReturnType<typeof vi.fn>
-    delete: ReturnType<typeof vi.fn>
-  }
-  caseMetrics: {
-    listDefinitions: ReturnType<typeof vi.fn>
-    createDefinition: ReturnType<typeof vi.fn>
-    listForCase: ReturnType<typeof vi.fn>
-    upsert: ReturnType<typeof vi.fn>
-    delete: ReturnType<typeof vi.fn>
-  }
-  transcripts: {
-    list: ReturnType<typeof vi.fn>
-    switch: ReturnType<typeof vi.fn>
-    insertAndSwitch: ReturnType<typeof vi.fn>
-  }
-  geneLists: {
-    list: ReturnType<typeof vi.fn>
-    create: ReturnType<typeof vi.fn>
-    delete: ReturnType<typeof vi.fn>
-    getGenes: ReturnType<typeof vi.fn>
-    setGenes: ReturnType<typeof vi.fn>
-  }
-  regionFiles: {
-    list: ReturnType<typeof vi.fn>
-    create: ReturnType<typeof vi.fn>
-    delete: ReturnType<typeof vi.fn>
-    importBed: ReturnType<typeof vi.fn>
-  }
-  updater: {
-    checkForUpdate: ReturnType<typeof vi.fn>
-    downloadUpdate: ReturnType<typeof vi.fn>
-    installUpdate: ReturnType<typeof vi.fn>
-    getStatus: ReturnType<typeof vi.fn>
-    onStatusChange: ReturnType<typeof vi.fn>
-  }
-  audit: {
-    getByEntity: ReturnType<typeof vi.fn>
-    query: ReturnType<typeof vi.fn>
-  }
-  auth: {
-    login: ReturnType<typeof vi.fn>
-    logout: ReturnType<typeof vi.fn>
-    currentUser: ReturnType<typeof vi.fn>
-    isAccountsEnabled: ReturnType<typeof vi.fn>
-    createUser: ReturnType<typeof vi.fn>
-    listUsers: ReturnType<typeof vi.fn>
-    deactivateUser: ReturnType<typeof vi.fn>
-    resetPassword: ReturnType<typeof vi.fn>
-    changePassword: ReturnType<typeof vi.fn>
-  }
-  analysisGroups: {
-    list: ReturnType<typeof vi.fn>
-    get: ReturnType<typeof vi.fn>
-    create: ReturnType<typeof vi.fn>
-    update: ReturnType<typeof vi.fn>
-    delete: ReturnType<typeof vi.fn>
-    addMember: ReturnType<typeof vi.fn>
-    removeMember: ReturnType<typeof vi.fn>
-    getForCase: ReturnType<typeof vi.fn>
-  }
-  perf: {
-    reportInteractive: ReturnType<typeof vi.fn>
-  }
+  cases: MockApiDomain<WindowAPI['cases']>
+  variants: MockApiDomain<WindowAPI['variants']>
+  import: MockApiDomain<WindowAPI['import']>
+  system: MockApiDomain<WindowAPI['system']>
+  export: MockApiDomain<WindowAPI['export']>
+  shell: MockApiDomain<WindowAPI['shell']>
+  database: MockApiDomain<WindowAPI['database']>
+  batchImport: MockApiDomain<WindowAPI['batchImport']>
+  cohort: MockApiDomain<WindowAPI['cohort']>
+  annotations: MockApiDomain<WindowAPI['annotations']>
+  vep: MockApiDomain<WindowAPI['vep']>
+  hpo: MockApiDomain<WindowAPI['hpo']>
+  myvariant: MockApiDomain<WindowAPI['myvariant']>
+  spliceai: MockApiDomain<WindowAPI['spliceai']>
+  caseMetadata: MockApiDomain<WindowAPI['caseMetadata']>
+  tags: MockApiDomain<WindowAPI['tags']>
+  presets: MockApiDomain<WindowAPI['presets']>
+  panels: MockApiDomain<WindowAPI['panels']>
+  geneRef: MockApiDomain<WindowAPI['geneRef']>
+  protein: MockApiDomain<WindowAPI['protein']>
+  gnomad: MockApiDomain<WindowAPI['gnomad']>
+  logs: MockApiDomain<WindowAPI['logs']>
+  caseComments: MockApiDomain<WindowAPI['caseComments']>
+  caseMetrics: MockApiDomain<WindowAPI['caseMetrics']>
+  transcripts: MockApiDomain<WindowAPI['transcripts']>
+  geneLists: MockApiDomain<WindowAPI['geneLists']>
+  regionFiles: MockApiDomain<WindowAPI['regionFiles']>
+  updater: MockApiDomain<WindowAPI['updater']>
+  audit: MockApiDomain<WindowAPI['audit']>
+  auth: MockApiDomain<WindowAPI['auth']>
+  analysisGroups: MockApiDomain<WindowAPI['analysisGroups']>
+  perf: MockApiDomain<WindowAPI['perf']>
 }
 
 /**
@@ -250,7 +65,7 @@ export type MockApi = {
  * ```
  */
 export function createMockApi(): MockApi {
-  return {
+  const api: MockApi = {
     cases: {
       list: vi.fn().mockResolvedValue([]),
       delete: vi.fn().mockResolvedValue(undefined),
@@ -308,7 +123,8 @@ export function createMockApi(): MockApi {
       testZipPassword: vi.fn().mockResolvedValue({ valid: true }),
       extractZip: vi.fn().mockResolvedValue([]),
       cleanupZipTemp: vi.fn().mockResolvedValue(undefined),
-      onProgress: vi.fn(() => vi.fn()) // Returns cleanup function
+      onProgress: vi.fn(() => vi.fn()), // Returns cleanup function
+      onComplete: vi.fn(() => vi.fn()) // Returns cleanup function
     },
 
     cohort: {
@@ -525,4 +341,9 @@ export function createMockApi(): MockApi {
       isEnabled: vi.fn().mockReturnValue(false)
     }
   }
+
+  const windowApi: WindowAPI = api
+  void windowApi
+
+  return api
 }

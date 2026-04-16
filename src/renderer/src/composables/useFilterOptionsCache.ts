@@ -12,6 +12,7 @@ import type { WindowAPI } from '../../../shared/types/api'
 import type { FilterOptions } from '../../../shared/types/api'
 import { LruMap } from '../../../shared/utils/lru-map'
 import { logService } from '../services/LogService'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
 /** Maximum number of cached filter options entries */
 const FILTER_OPTIONS_CACHE_MAX = 20
@@ -75,13 +76,17 @@ export function useFilterOptionsCache(api: WindowAPI | undefined): UseFilterOpti
     }
 
     try {
-      const options = await api.variants.getFilterOptions(caseId)
+      const options = unwrapIpcResult(await api.variants.getFilterOptions(caseId))
       filterOptions.value = options
       cacheFilterOptions(caseId, options)
     } catch (error) {
       logService.error(
         'Failed to load filter options: ' +
-          (error instanceof Error ? error.message : String(error)),
+          (error instanceof Error
+            ? error.message
+            : isIpcError(error)
+              ? (error.userMessage ?? error.message)
+              : String(error)),
         'filters'
       )
     }
@@ -112,13 +117,18 @@ export function useFilterOptionsCache(api: WindowAPI | undefined): UseFilterOpti
 
     try {
       // Load filter options and tags in parallel
-      const [options] = await Promise.all([api.variants.getFilterOptions(caseId), loadTags()])
+      const [optionsResult] = await Promise.all([api.variants.getFilterOptions(caseId), loadTags()])
+      const options = unwrapIpcResult(optionsResult)
       filterOptions.value = options
       cacheFilterOptions(caseId, options)
     } catch (error) {
       logService.error(
         'Failed to load filter options: ' +
-          (error instanceof Error ? error.message : String(error)),
+          (error instanceof Error
+            ? error.message
+            : isIpcError(error)
+              ? (error.userMessage ?? error.message)
+              : String(error)),
         'filters'
       )
     }

@@ -355,10 +355,7 @@ describe('panels preload domain behavior', () => {
     expect(invoke).toHaveBeenCalledWith('panels:list')
     expect(invoke).toHaveBeenCalledWith('panels:get', 1)
     expect(invoke).toHaveBeenCalledWith('panels:delete', 1)
-    expect(invoke).toHaveBeenCalledWith('panels:deactivate', {
-      caseId: 1,
-      panelId: 1
-    })
+    expect(invoke).toHaveBeenCalledWith('panels:deactivate', 1, 1)
     expect(invoke).toHaveBeenCalledWith('panels:active-for-case', 1)
   })
 })

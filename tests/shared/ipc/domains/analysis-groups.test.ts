@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { ErrorCode } from '../../../src/shared/types/errors'
-import type { AnalysisGroup, AnalysisGroupMember } from '../../../src/shared/types/api'
+import { ErrorCode } from '../../../../src/shared/types/errors'
+import type { AnalysisGroup, AnalysisGroupMember } from '../../../../src/shared/types/api'
 
 describe('analysisGroups preload domain behavior', () => {
   beforeEach(() => {
@@ -72,7 +72,7 @@ describe('analysisGroups preload domain behavior', () => {
     }))
 
     const { createAnalysisGroupsApi } = await import(
-      '../../../src/preload/domains/analysis-groups'
+      '../../../../src/preload/domains/analysis-groups'
     )
     const api = createAnalysisGroupsApi()
 
@@ -183,7 +183,7 @@ describe('analysisGroups preload domain behavior', () => {
     }))
     ;(process as typeof process & { contextIsolated?: boolean }).contextIsolated = true
 
-    await import('../../../src/preload/index')
+    await import('../../../../src/preload/index')
 
     const api = exposeInMainWorld.mock.calls[0]?.[1] as {
       analysisGroups: {

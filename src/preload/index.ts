@@ -1,7 +1,31 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import { createAnalysisGroupsApi } from './domains/analysis-groups'
+import { createAnnotationsApi } from './domains/annotations'
+import { createAuditLogApi } from './domains/audit-log'
+import { createAuthApi } from './domains/auth'
+import { createBatchImportApi } from './domains/batch-import'
+import { createCaseCommentsApi } from './domains/case-comments'
+import { createCaseMetadataApi } from './domains/case-metadata'
+import { createCaseMetricsApi } from './domains/case-metrics'
 import { createCasesApi } from './domains/cases'
+import { createCohortApi } from './domains/cohort'
 import { createDatabaseApi } from './domains/database'
+import { createExportApi } from './domains/export'
 import { createFilterPresetsApi } from './domains/filter-presets'
+import { createGeneListsApi } from './domains/gene-lists'
+import { createGeneRefApi } from './domains/gene-ref'
+import { createGnomadApi } from './domains/gnomad'
+import { createHpoApi } from './domains/hpo'
+import { createImportApi } from './domains/import'
+import { createMyvariantApi } from './domains/myvariant'
+import { createPanelsApi } from './domains/panels'
+import { createProteinApi } from './domains/protein'
+import { createRegionFilesApi } from './domains/region-files'
+import { createSpliceaiApi } from './domains/spliceai'
+import { createTagsApi } from './domains/tags'
+import { createTranscriptsApi } from './domains/transcripts'
+import { createVariantsApi } from './domains/variants'
+import { createVepApi } from './domains/vep'
 import type {
   ProgressUpdate,
   VariantFilter,
@@ -9,7 +33,6 @@ import type {
   BatchProgress,
   BatchResult,
   DuplicateChoice,
-  DuplicateCheckResult,
   CohortSearchParams,
   GlobalAnnotationUpdates,
   PerCaseAnnotationUpdates,
@@ -37,9 +60,33 @@ import type { WindowAPI } from '../shared/types/api'
  * - shell:openExternal
  */
 
+const analysisGroupsDomain = createAnalysisGroupsApi()
+const annotationsDomain = createAnnotationsApi()
+const auditLogDomain = createAuditLogApi()
+const authDomain = createAuthApi()
+const batchImportDomain = createBatchImportApi()
+const caseCommentsDomain = createCaseCommentsApi()
+const caseMetadataDomain = createCaseMetadataApi()
+const caseMetricsDomain = createCaseMetricsApi()
 const casesDomain = createCasesApi()
+const cohortDomain = createCohortApi()
 const databaseDomain = createDatabaseApi()
+const exportDomain = createExportApi()
 const filterPresetsDomain = createFilterPresetsApi()
+const geneListsDomain = createGeneListsApi()
+const geneRefDomain = createGeneRefApi()
+const gnomadDomain = createGnomadApi()
+const hpoDomain = createHpoApi()
+const importDomain = createImportApi()
+const myvariantDomain = createMyvariantApi()
+const panelsDomain = createPanelsApi()
+const proteinDomain = createProteinApi()
+const regionFilesDomain = createRegionFilesApi()
+const spliceaiDomain = createSpliceaiApi()
+const tagsDomain = createTagsApi()
+const transcriptsDomain = createTranscriptsApi()
+const variantsDomain = createVariantsApi()
+const vepDomain = createVepApi()
 
 const api: WindowAPI = {
   cases: {
@@ -60,29 +107,19 @@ const api: WindowAPI = {
       sortBy?: SortItem[],
       skipCount?: boolean,
       includeUnfilteredCount?: boolean
-    ) =>
-      ipcRenderer.invoke(
-        'variants:query',
-        caseId,
-        filters,
-        offset,
-        limit,
-        sortBy,
-        skipCount,
-        includeUnfilteredCount
-      ),
+    ) => variantsDomain.query(caseId, filters, offset, limit, sortBy, skipCount, includeUnfilteredCount),
 
-    getFilterOptions: (caseId: number) => ipcRenderer.invoke('variants:filterOptions', caseId),
+    getFilterOptions: (caseId: number) => variantsDomain.getFilterOptions(caseId),
 
     search: (caseId: number, query: string, limit?: number) =>
-      ipcRenderer.invoke('variants:search', caseId, query, limit ?? 20),
+      variantsDomain.search(caseId, query, limit ?? 20),
 
     /** Get gene symbols for autocomplete (optimized LIKE query - faster than FTS5) */
     geneSymbols: (caseId: number, query: string, limit?: number) =>
-      ipcRenderer.invoke('variants:geneSymbols', caseId, query, limit ?? 50),
+      variantsDomain.geneSymbols(caseId, query, limit ?? 50),
 
     /** Get variant type counts per case for tab badges (snv/indel/sv/cnv/str) */
-    typeCounts: (caseId: number) => ipcRenderer.invoke('variants:typeCounts', caseId),
+    typeCounts: (caseId: number) => variantsDomain.typeCounts(caseId),
 
     /**
      * Get per-column metadata for a single column (single-case or cohort scope).
@@ -90,7 +127,7 @@ const api: WindowAPI = {
      * Payload must provide either caseId (single case) or caseIds (cohort).
      */
     columnMeta: (payload: { caseId?: number; caseIds?: number[]; columnKey: string }) =>
-      ipcRenderer.invoke('variants:columnMeta', payload),
+      variantsDomain.columnMeta(payload),
 
     /**
      * Get distinct variant types present for a single case or cohort.
@@ -98,7 +135,7 @@ const api: WindowAPI = {
      * Payload must provide either caseId (single case) or caseIds (cohort).
      */
     typesPresent: (payload: { caseId?: number; caseIds?: number[] }) =>
-      ipcRenderer.invoke('variants:typesPresent', payload),
+      variantsDomain.typesPresent(payload),
 
     /**
      * Run the unified shortlist pipeline for a case. Wave 3 wrapper
@@ -132,15 +169,15 @@ const api: WindowAPI = {
   },
 
   import: {
-    selectFile: () => ipcRenderer.invoke('import:selectFile'),
-    selectFiles: () => ipcRenderer.invoke('import:selectFiles'),
-    selectBedFile: () => ipcRenderer.invoke('import:selectBedFile'),
+    selectFile: () => importDomain.selectFile(),
+    selectFiles: () => importDomain.selectFiles(),
+    selectBedFile: () => importDomain.selectBedFile(),
 
     start: (
       filePath: string,
       caseName: string,
       vcfOptions?: { selectedSample?: string; genomeBuild?: string }
-    ) => ipcRenderer.invoke('import:start', filePath, caseName, vcfOptions),
+    ) => importDomain.start(filePath, caseName, vcfOptions),
 
     startMultiFile: (
       caseName: string,
@@ -159,11 +196,10 @@ const api: WindowAPI = {
         minGq?: number | null
         minDp?: number | null
       }
-    ) => ipcRenderer.invoke('import:startMultiFile', caseName, files, vcfOptions, filters),
+    ) => importDomain.startMultiFile(caseName, files, vcfOptions, filters),
 
-    vcfPreview: (filePath: string) => ipcRenderer.invoke('import:vcfPreview', filePath),
-    vcfMultiPreview: (filePaths: string[]) =>
-      ipcRenderer.invoke('import:vcfMultiPreview', filePaths),
+    vcfPreview: (filePath: string) => importDomain.vcfPreview(filePath),
+    vcfMultiPreview: (filePaths: string[]) => importDomain.vcfMultiPreview(filePaths),
 
     /**
      * Register progress listener. Returns cleanup function.
@@ -181,8 +217,8 @@ const api: WindowAPI = {
       }
     },
 
-    cancel: () => ipcRenderer.invoke('import:cancel')
-  },
+    cancel: () => importDomain.cancel()
+  } as WindowAPI['import'],
 
   system: {
     getVersion: () => ipcRenderer.invoke('system:version'),
@@ -196,8 +232,8 @@ const api: WindowAPI = {
 
   export: {
     variants: (caseId: number, filters: Omit<VariantFilter, 'case_id'>, caseName: string) =>
-      ipcRenderer.invoke('export:variants', caseId, filters, caseName),
-    cohort: (params: CohortSearchParams) => ipcRenderer.invoke('export:cohort', params)
+      exportDomain.variants(caseId, filters, caseName),
+    cohort: (params: CohortSearchParams) => exportDomain.cohort(params)
   },
 
   shell: {
@@ -221,20 +257,20 @@ const api: WindowAPI = {
   } as WindowAPI['database'],
 
   batchImport: {
-    selectFiles: () => ipcRenderer.invoke('batch-import:selectFiles'),
-    selectFolder: () => ipcRenderer.invoke('batch-import:selectFolder'),
-    checkDuplicates: (filePaths: string[], stripText?: string): Promise<DuplicateCheckResult> =>
-      ipcRenderer.invoke('batch-import:checkDuplicates', filePaths, stripText),
+    selectFiles: () => batchImportDomain.selectFiles(),
+    selectFolder: () => batchImportDomain.selectFolder(),
+    checkDuplicates: (filePaths: string[], stripText?: string) =>
+      batchImportDomain.checkDuplicates(filePaths, stripText),
     start: (filePaths: string[], duplicateStrategy: DuplicateChoice, stripText?: string) =>
-      ipcRenderer.invoke('batch-import:start', filePaths, duplicateStrategy, stripText),
-    cancel: () => ipcRenderer.invoke('batch-import:cancel'),
+      batchImportDomain.start(filePaths, duplicateStrategy, stripText),
+    cancel: () => batchImportDomain.cancel(),
 
-    selectZip: () => ipcRenderer.invoke('batch-import:selectZip'),
+    selectZip: () => batchImportDomain.selectZip(),
     testZipPassword: (zipPath: string, password: string) =>
-      ipcRenderer.invoke('batch-import:testZipPassword', zipPath, password),
+      batchImportDomain.testZipPassword(zipPath, password),
     extractZip: (zipPath: string, password?: string) =>
-      ipcRenderer.invoke('batch-import:extractZip', zipPath, password),
-    cleanupZipTemp: () => ipcRenderer.invoke('batch-import:cleanupZipTemp'),
+      batchImportDomain.extractZip(zipPath, password),
+    cleanupZipTemp: () => batchImportDomain.cleanupZipTemp(),
 
     onProgress: (callback: (progress: BatchProgress) => void): (() => void) => {
       const handler = (_event: Electron.IpcRendererEvent, progress: BatchProgress) => {
@@ -255,17 +291,17 @@ const api: WindowAPI = {
         ipcRenderer.removeListener('batch-import:complete', handler)
       }
     }
-  },
+  } as WindowAPI['batchImport'],
 
   cohort: {
-    getVariants: (params: CohortSearchParams) => ipcRenderer.invoke('cohort:variants', params),
-    getColumnMeta: () => ipcRenderer.invoke('cohort:columnMeta'),
-    getSummary: () => ipcRenderer.invoke('cohort:summary'),
+    getVariants: (params: CohortSearchParams) => cohortDomain.getVariants(params),
+    getColumnMeta: () => cohortDomain.getColumnMeta(),
+    getSummary: () => cohortDomain.getSummary(),
     getCarriers: (chr: string, pos: number, ref: string, alt: string) =>
-      ipcRenderer.invoke('cohort:carriers', chr, pos, ref, alt),
-    getGeneBurden: () => ipcRenderer.invoke('cohort:geneBurden'),
-    runAssociation: (config: unknown) => ipcRenderer.invoke('cohort:geneBurdenCompare', config),
-    cancelAssociation: () => ipcRenderer.invoke('cohort:geneBurdenCancel'),
+      cohortDomain.getCarriers(chr, pos, ref, alt),
+    getGeneBurden: () => cohortDomain.getGeneBurden(),
+    runAssociation: (config: unknown) => cohortDomain.runAssociation(config),
+    cancelAssociation: () => cohortDomain.cancelAssociation(),
     onAssociationProgress: (
       callback: (progress: { completed: number; total: number }) => void
     ): (() => void) => {
@@ -280,8 +316,8 @@ const api: WindowAPI = {
         ipcRenderer.removeListener('cohort:geneBurdenProgress', handler)
       }
     },
-    getSummaryStatus: () => ipcRenderer.invoke('cohort:summaryStatus'),
-    rebuildSummary: () => ipcRenderer.invoke('cohort:rebuildSummary'),
+    getSummaryStatus: () => cohortDomain.getSummaryStatus(),
+    rebuildSummary: () => cohortDomain.rebuildSummary(),
     onSummaryRebuilt: (
       callback: (status: {
         is_stale: boolean
@@ -308,11 +344,11 @@ const api: WindowAPI = {
         ipcRenderer.removeListener('cohort:summaryRebuilt', handler)
       }
     }
-  },
+  } as WindowAPI['cohort'],
 
   annotations: {
     getGlobal: (chr: string, pos: number, ref: string, alt: string) =>
-      ipcRenderer.invoke('annotations:getGlobal', chr, pos, ref, alt),
+      annotationsDomain.getGlobal(chr, pos, ref, alt),
 
     upsertGlobal: (
       chr: string,
@@ -320,100 +356,98 @@ const api: WindowAPI = {
       ref: string,
       alt: string,
       updates: GlobalAnnotationUpdates
-    ) => ipcRenderer.invoke('annotations:upsertGlobal', chr, pos, ref, alt, updates),
+    ) => annotationsDomain.upsertGlobal(chr, pos, ref, alt, updates),
 
     deleteGlobal: (chr: string, pos: number, ref: string, alt: string) =>
-      ipcRenderer.invoke('annotations:deleteGlobal', chr, pos, ref, alt),
+      annotationsDomain.deleteGlobal(chr, pos, ref, alt),
 
     getPerCase: (caseId: number, variantId: number) =>
-      ipcRenderer.invoke('annotations:getPerCase', caseId, variantId),
+      annotationsDomain.getPerCase(caseId, variantId),
 
     upsertPerCase: (caseId: number, variantId: number, updates: PerCaseAnnotationUpdates) =>
-      ipcRenderer.invoke('annotations:upsertPerCase', caseId, variantId, updates),
+      annotationsDomain.upsertPerCase(caseId, variantId, updates),
 
     deletePerCase: (caseId: number, variantId: number) =>
-      ipcRenderer.invoke('annotations:deletePerCase', caseId, variantId),
+      annotationsDomain.deletePerCase(caseId, variantId),
 
     getForVariant: (caseId: number, chr: string, pos: number, ref: string, alt: string) =>
-      ipcRenderer.invoke('annotations:getForVariant', caseId, chr, pos, ref, alt),
+      annotationsDomain.getForVariant(caseId, chr, pos, ref, alt),
 
     batchGet: (
       caseId: number | null,
       variantKeys: Array<{ chr: string; pos: number; ref: string; alt: string }>
-    ) => ipcRenderer.invoke('annotations:batchGet', caseId, variantKeys)
+    ) => annotationsDomain.batchGet(caseId, variantKeys)
   },
 
   vep: {
     fetch: (chr: string, pos: number, ref: string, alt: string) =>
-      ipcRenderer.invoke('vep:fetch', chr, pos, ref, alt),
-    cancel: () => ipcRenderer.invoke('vep:cancel'),
-    clearCache: () => ipcRenderer.invoke('vep:clearCache'),
-    getCacheStats: () => ipcRenderer.invoke('vep:getCacheStats')
+      vepDomain.fetch(chr, pos, ref, alt),
+    cancel: () => vepDomain.cancel(),
+    clearCache: () => vepDomain.clearCache(),
+    getCacheStats: () => vepDomain.getCacheStats()
   },
 
   hpo: {
-    search: (query: string, maxResults?: number) =>
-      ipcRenderer.invoke('hpo:search', query, maxResults),
-    clearCache: () => ipcRenderer.invoke('hpo:clearCache')
+    search: (query: string, maxResults?: number) => hpoDomain.search(query, maxResults),
+    clearCache: () => hpoDomain.clearCache()
   },
 
   myvariant: {
     fetch: (chr: string, pos: number, ref: string, alt: string) =>
-      ipcRenderer.invoke('myvariant:fetch', chr, pos, ref, alt),
-    clearCache: () => ipcRenderer.invoke('myvariant:clearCache')
+      myvariantDomain.fetch(chr, pos, ref, alt),
+    clearCache: () => myvariantDomain.clearCache()
   },
 
   spliceai: {
     fetch: (chr: string, pos: number, ref: string, alt: string) =>
-      ipcRenderer.invoke('spliceai:fetch', chr, pos, ref, alt),
-    clearCache: () => ipcRenderer.invoke('spliceai:clearCache')
+      spliceaiDomain.fetch(chr, pos, ref, alt),
+    clearCache: () => spliceaiDomain.clearCache()
   },
 
   caseMetadata: {
-    get: (caseId: number) => ipcRenderer.invoke('case-metadata:get', caseId),
+    get: (caseId: number) => caseMetadataDomain.get(caseId),
 
     upsert: (caseId: number, updates: CaseMetadataUpdates) =>
-      ipcRenderer.invoke('case-metadata:upsert', caseId, updates),
+      caseMetadataDomain.upsert(caseId, updates),
 
-    getFullMetadata: (caseId: number) =>
-      ipcRenderer.invoke('case-metadata:getFullMetadata', caseId),
+    getFullMetadata: (caseId: number) => caseMetadataDomain.getFullMetadata(caseId),
 
     // Cohort groups
-    listCohorts: () => ipcRenderer.invoke('case-metadata:listCohorts'),
+    listCohorts: () => caseMetadataDomain.listCohorts(),
 
     createCohort: (name: string, description?: string | null) =>
-      ipcRenderer.invoke('case-metadata:createCohort', name, description),
+      caseMetadataDomain.createCohort(name, description),
 
     updateCohort: (cohortId: number, updates: { name?: string; description?: string | null }) =>
-      ipcRenderer.invoke('case-metadata:updateCohort', cohortId, updates),
+      caseMetadataDomain.updateCohort(cohortId, updates),
 
-    deleteCohort: (cohortId: number) => ipcRenderer.invoke('case-metadata:deleteCohort', cohortId),
+    deleteCohort: (cohortId: number) => caseMetadataDomain.deleteCohort(cohortId),
 
-    getCohortByName: (name: string) => ipcRenderer.invoke('case-metadata:getCohortByName', name),
+    getCohortByName: (name: string) => caseMetadataDomain.getCohortByName(name),
 
     // Case-cohort links
-    getCaseCohorts: (caseId: number) => ipcRenderer.invoke('case-metadata:getCaseCohorts', caseId),
+    getCaseCohorts: (caseId: number) => caseMetadataDomain.getCaseCohorts(caseId),
 
     assignCohort: (caseId: number, cohortId: number) =>
-      ipcRenderer.invoke('case-metadata:assignCohort', caseId, cohortId),
+      caseMetadataDomain.assignCohort(caseId, cohortId),
 
     removeCohort: (caseId: number, cohortId: number) =>
-      ipcRenderer.invoke('case-metadata:removeCohort', caseId, cohortId),
+      caseMetadataDomain.removeCohort(caseId, cohortId),
 
     setCohorts: (caseId: number, cohortIds: number[]) =>
-      ipcRenderer.invoke('case-metadata:setCohorts', caseId, cohortIds),
+      caseMetadataDomain.setCohorts(caseId, cohortIds),
 
     // HPO terms
-    getHpoTerms: (caseId: number) => ipcRenderer.invoke('case-metadata:getHpoTerms', caseId),
+    getHpoTerms: (caseId: number) => caseMetadataDomain.getHpoTerms(caseId),
 
     assignHpoTerm: (caseId: number, hpoId: string, hpoLabel: string) =>
-      ipcRenderer.invoke('case-metadata:assignHpoTerm', caseId, hpoId, hpoLabel),
+      caseMetadataDomain.assignHpoTerm(caseId, hpoId, hpoLabel),
 
     removeHpoTerm: (caseId: number, hpoId: string) =>
-      ipcRenderer.invoke('case-metadata:removeHpoTerm', caseId, hpoId),
+      caseMetadataDomain.removeHpoTerm(caseId, hpoId),
 
     // Data info (import provenance, platform, pre-filtering)
-    getDataInfo: (caseId: number) => ipcRenderer.invoke('case-metadata:getDataInfo', caseId),
+    getDataInfo: (caseId: number) => caseMetadataDomain.getDataInfo(caseId),
 
     upsertDataInfo: (
       caseId: number,
@@ -428,47 +462,44 @@ const api: WindowAPI = {
         gene_list_id?: number | null
         region_file_id?: number | null
       }
-    ) => ipcRenderer.invoke('case-metadata:upsertDataInfo', caseId, updates),
+    ) => caseMetadataDomain.upsertDataInfo(caseId, updates),
 
     // External IDs (user-defined key-value cross-references)
-    listExternalIds: (caseId: number) =>
-      ipcRenderer.invoke('case-metadata:listExternalIds', caseId),
+    listExternalIds: (caseId: number) => caseMetadataDomain.listExternalIds(caseId),
 
     upsertExternalId: (caseId: number, idType: string, idValue: string) =>
-      ipcRenderer.invoke('case-metadata:upsertExternalId', caseId, idType, idValue),
+      caseMetadataDomain.upsertExternalId(caseId, idType, idValue),
 
     deleteExternalId: (caseId: number, idType: string) =>
-      ipcRenderer.invoke('case-metadata:deleteExternalId', caseId, idType),
+      caseMetadataDomain.deleteExternalId(caseId, idType),
 
-    distinctHpoTerms: (): Promise<Array<{ hpo_id: string; hpo_label: string }>> =>
-      ipcRenderer.invoke('case-metadata:distinctHpoTerms'),
-    distinctPlatforms: () => ipcRenderer.invoke('case-metadata:distinctPlatforms'),
-    distinctExternalIdTypes: () => ipcRenderer.invoke('case-metadata:distinctExternalIdTypes')
-  },
+    distinctHpoTerms: () => caseMetadataDomain.distinctHpoTerms(),
+    distinctPlatforms: () => caseMetadataDomain.distinctPlatforms(),
+    distinctExternalIdTypes: () => caseMetadataDomain.distinctExternalIdTypes()
+  } as WindowAPI['caseMetadata'],
 
   caseComments: {
-    list: (caseId: number) => ipcRenderer.invoke('case-comments:list', caseId),
+    list: (caseId: number) => caseCommentsDomain.list(caseId),
 
     create: (caseId: number, category: CommentCategory, content: string) =>
-      ipcRenderer.invoke('case-comments:create', caseId, category, content),
+      caseCommentsDomain.create(caseId, category, content),
 
-    update: (commentId: number, content: string) =>
-      ipcRenderer.invoke('case-comments:update', commentId, content),
+    update: (commentId: number, content: string) => caseCommentsDomain.update(commentId, content),
 
-    delete: (commentId: number) => ipcRenderer.invoke('case-comments:delete', commentId)
+    delete: (commentId: number) => caseCommentsDomain.delete(commentId)
   },
 
   caseMetrics: {
-    listDefinitions: () => ipcRenderer.invoke('case-metrics:listDefinitions'),
+    listDefinitions: () => caseMetricsDomain.listDefinitions(),
 
     createDefinition: (
       name: string,
       valueType: 'numeric' | 'text' | 'date',
       unit: string,
       category: string
-    ) => ipcRenderer.invoke('case-metrics:createDefinition', name, valueType, unit, category),
+    ) => caseMetricsDomain.createDefinition(name, valueType, unit, category),
 
-    listForCase: (caseId: number) => ipcRenderer.invoke('case-metrics:listForCase', caseId),
+    listForCase: (caseId: number) => caseMetricsDomain.listForCase(caseId),
 
     upsert: (
       caseId: number,
@@ -478,45 +509,44 @@ const api: WindowAPI = {
         text_value?: string | null
         date_value?: string | null
       }
-    ) => ipcRenderer.invoke('case-metrics:upsert', caseId, metricId, value),
+    ) => caseMetricsDomain.upsert(caseId, metricId, value),
 
-    delete: (caseId: number, metricId: number) =>
-      ipcRenderer.invoke('case-metrics:delete', caseId, metricId)
+    delete: (caseId: number, metricId: number) => caseMetricsDomain.delete(caseId, metricId)
   },
 
   transcripts: {
-    list: (variantId: number) => ipcRenderer.invoke('transcripts:list', variantId),
+    list: (variantId: number) => transcriptsDomain.list(variantId),
     switch: (variantId: number, transcriptId: string) =>
-      ipcRenderer.invoke('transcripts:switch', variantId, transcriptId),
+      transcriptsDomain.switch(variantId, transcriptId),
     insertAndSwitch: (variantId: number, transcript: TranscriptInsertRow) =>
-      ipcRenderer.invoke('transcripts:insertAndSwitch', variantId, transcript)
+      transcriptsDomain.insertAndSwitch(variantId, transcript)
   } as WindowAPI['transcripts'],
 
   tags: {
     // Tag CRUD
-    list: () => ipcRenderer.invoke('tags:list'),
+    list: () => tagsDomain.list(),
 
-    create: (name: string, color: string) => ipcRenderer.invoke('tags:create', name, color),
+    create: (name: string, color: string) => tagsDomain.create(name, color),
 
     update: (id: number, updates: { name?: string; color?: string }) =>
-      ipcRenderer.invoke('tags:update', id, updates),
+      tagsDomain.update(id, updates),
 
-    delete: (id: number) => ipcRenderer.invoke('tags:delete', id),
+    delete: (id: number) => tagsDomain.delete(id),
 
-    getUsageCount: (tagId: number) => ipcRenderer.invoke('tags:getUsageCount', tagId),
+    getUsageCount: (tagId: number) => tagsDomain.getUsageCount(tagId),
 
     // Variant tag assignments
     getVariantTags: (caseId: number, variantId: number) =>
-      ipcRenderer.invoke('tags:getVariantTags', caseId, variantId),
+      tagsDomain.getVariantTags(caseId, variantId),
 
     assignVariantTag: (caseId: number, variantId: number, tagId: number) =>
-      ipcRenderer.invoke('tags:assignVariantTag', caseId, variantId, tagId),
+      tagsDomain.assignVariantTag(caseId, variantId, tagId),
 
     removeVariantTag: (caseId: number, variantId: number, tagId: number) =>
-      ipcRenderer.invoke('tags:removeVariantTag', caseId, variantId, tagId),
+      tagsDomain.removeVariantTag(caseId, variantId, tagId),
 
     setVariantTags: (caseId: number, variantId: number, tagIds: number[]) =>
-      ipcRenderer.invoke('tags:setVariantTags', caseId, variantId, tagIds)
+      tagsDomain.setVariantTags(caseId, variantId, tagIds)
   },
 
   logs: {
@@ -538,32 +568,31 @@ const api: WindowAPI = {
   },
 
   audit: {
-    getByEntity: (entityKey: string) => ipcRenderer.invoke('audit:getByEntity', entityKey),
-    query: (params: Record<string, unknown>) => ipcRenderer.invoke('audit:query', params)
-  },
+    getByEntity: (entityKey: string) => auditLogDomain.getByEntity(entityKey),
+    query: (params: Record<string, unknown>) => auditLogDomain.query(params)
+  } as WindowAPI['audit'],
 
   geneLists: {
-    list: () => ipcRenderer.invoke('gene-lists:list'),
+    list: () => geneListsDomain.list(),
     create: (name: string, description?: string | null) =>
-      ipcRenderer.invoke('gene-lists:create', name, description),
-    delete: (id: number) => ipcRenderer.invoke('gene-lists:delete', id),
-    getGenes: (listId: number) => ipcRenderer.invoke('gene-lists:getGenes', listId),
-    setGenes: (listId: number, genes: string[]) =>
-      ipcRenderer.invoke('gene-lists:setGenes', listId, genes)
+      geneListsDomain.create(name, description),
+    delete: (id: number) => geneListsDomain.delete(id),
+    getGenes: (listId: number) => geneListsDomain.getGenes(listId),
+    setGenes: (listId: number, genes: string[]) => geneListsDomain.setGenes(listId, genes)
   },
 
   regionFiles: {
-    list: () => ipcRenderer.invoke('region-files:list'),
+    list: () => regionFilesDomain.list(),
     create: (name: string, description: string | null) =>
-      ipcRenderer.invoke('region-files:create', name, description),
-    delete: (id: number) => ipcRenderer.invoke('region-files:delete', id),
+      regionFilesDomain.create(name, description),
+    delete: (id: number) => regionFilesDomain.delete(id),
     importBed: (fileId: number, filePath: string) =>
-      ipcRenderer.invoke('region-files:importBed', fileId, filePath)
-  },
+      regionFilesDomain.importBed(fileId, filePath)
+  } as WindowAPI['regionFiles'],
 
   panels: {
-    list: () => ipcRenderer.invoke('panels:list'),
-    get: (id: number) => ipcRenderer.invoke('panels:get', id),
+    list: () => panelsDomain.list(),
+    get: (id: number) => panelsDomain.get(id),
     create: (params: {
       name: string
       description?: string | null
@@ -571,51 +600,47 @@ const api: WindowAPI = {
       source?: string
       sourceId?: string | null
       sourceMetadata?: Record<string, unknown> | null
-    }) => ipcRenderer.invoke('panels:create', params),
+    }) => panelsDomain.create(params),
     update: (params: {
       id: number
       name?: string
       description?: string | null
       version?: string | null
-    }) => ipcRenderer.invoke('panels:update', params),
-    delete: (id: number) => ipcRenderer.invoke('panels:delete', id),
-    duplicate: (id: number, newName: string) =>
-      ipcRenderer.invoke('panels:duplicate', { id, newName }),
+    }) => panelsDomain.update(params),
+    delete: (id: number) => panelsDomain.delete(id),
+    duplicate: (id: number, newName: string) => panelsDomain.duplicate(id, newName),
     setGenes: (panelId: number, genes: Array<{ hgncId: string; symbol: string }>) =>
-      ipcRenderer.invoke('panels:setGenes', { panelId, genes }),
-    getGenes: (panelId: number) => ipcRenderer.invoke('panels:getGenes', panelId),
+      panelsDomain.setGenes(panelId, genes),
+    getGenes: (panelId: number) => panelsDomain.getGenes(panelId),
     activate: (caseId: number, panelId: number, paddingBp?: number) =>
-      ipcRenderer.invoke('panels:activate', { caseId, panelId, paddingBp }),
-    deactivate: (caseId: number, panelId: number) =>
-      ipcRenderer.invoke('panels:deactivate', { caseId, panelId }),
-    activeForCase: (caseId: number) => ipcRenderer.invoke('panels:active-for-case', caseId),
-    validateSymbols: (symbols: string[]) =>
-      ipcRenderer.invoke('panels:validate-symbols', { symbols }),
-    autocomplete: (query: string, limit?: number) =>
-      ipcRenderer.invoke('panels:autocomplete', { query, limit }),
+      panelsDomain.activate(caseId, panelId, paddingBp),
+    deactivate: (caseId: number, panelId: number) => panelsDomain.deactivate(caseId, panelId),
+    activeForCase: (caseId: number) => panelsDomain.activeForCase(caseId),
+    validateSymbols: (symbols: string[]) => panelsDomain.validateSymbols(symbols),
+    autocomplete: (query: string, limit?: number) => panelsDomain.autocomplete(query, limit),
     searchPanelApp: (keyword: string, region: 'uk' | 'aus' | 'both') =>
-      ipcRenderer.invoke('panels:search-panelapp', { keyword, region }),
+      panelsDomain.searchPanelApp(keyword, region),
     importPanelApp: (params: {
       panelId: number
       region: 'uk' | 'aus'
       confidenceThreshold: 'green' | 'green_amber' | 'all'
       name?: string
-    }) => ipcRenderer.invoke('panels:import-panelapp', params),
+    }) => panelsDomain.importPanelApp(params),
     generateStringDb: (params: {
       seedGenes: string[]
       requiredScore: number
       networkType: 'physical' | 'functional'
       name?: string
-    }) => ipcRenderer.invoke('panels:generate-stringdb', params),
+    }) => panelsDomain.generateStringDb(params),
     exportBed: (panelId: number, assembly: string, paddingBp: number) =>
-      ipcRenderer.invoke('panels:export-bed', { panelId, assembly, paddingBp })
+      panelsDomain.exportBed(panelId, assembly, paddingBp)
   },
 
   geneRef: {
-    info: () => ipcRenderer.invoke('gene-ref:info'),
-    assemblies: () => ipcRenderer.invoke('gene-ref:assemblies'),
-    checkUpdates: () => ipcRenderer.invoke('gene-ref:check-updates'),
-    update: () => ipcRenderer.invoke('gene-ref:update')
+    info: () => geneRefDomain.info(),
+    assemblies: () => geneRefDomain.assemblies(),
+    checkUpdates: () => geneRefDomain.checkUpdates(),
+    update: () => geneRefDomain.update()
   },
 
   updater: {
@@ -640,56 +665,52 @@ const api: WindowAPI = {
   },
 
   auth: {
-    login: (username: string, password: string) =>
-      ipcRenderer.invoke('auth:login', username, password),
-    logout: () => ipcRenderer.invoke('auth:logout'),
-    currentUser: () => ipcRenderer.invoke('auth:currentUser'),
-    isAccountsEnabled: () => ipcRenderer.invoke('auth:isAccountsEnabled'),
+    login: (username: string, password: string) => authDomain.login(username, password),
+    logout: () => authDomain.logout(),
+    currentUser: () => authDomain.currentUser(),
+    isAccountsEnabled: () => authDomain.isAccountsEnabled(),
     createUser: (username: string, displayName: string, tempPassword: string) =>
-      ipcRenderer.invoke('auth:createUser', username, displayName, tempPassword),
-    listUsers: () => ipcRenderer.invoke('auth:listUsers'),
-    deactivateUser: (username: string) => ipcRenderer.invoke('auth:deactivateUser', username),
+      authDomain.createUser(username, displayName, tempPassword),
+    listUsers: () => authDomain.listUsers(),
+    deactivateUser: (username: string) => authDomain.deactivateUser(username),
     resetPassword: (username: string, newPassword: string) =>
-      ipcRenderer.invoke('auth:resetPassword', username, newPassword),
+      authDomain.resetPassword(username, newPassword),
     changePassword: (oldPassword: string, newPassword: string) =>
-      ipcRenderer.invoke('auth:changePassword', oldPassword, newPassword)
-  },
+      authDomain.changePassword(oldPassword, newPassword)
+  } as WindowAPI['auth'],
 
   analysisGroups: {
-    list: () => ipcRenderer.invoke('analysisGroups:list'),
-    get: (id: number) => ipcRenderer.invoke('analysisGroups:get', id),
+    list: () => analysisGroupsDomain.list(),
+    get: (id: number) => analysisGroupsDomain.get(id),
     create: (params: { name: string; groupType?: string; description?: string }) =>
-      ipcRenderer.invoke('analysisGroups:create', params),
+      analysisGroupsDomain.create(params),
     update: (id: number, params: { name?: string; description?: string }) =>
-      ipcRenderer.invoke('analysisGroups:update', id, params),
-    delete: (id: number) => ipcRenderer.invoke('analysisGroups:delete', id),
+      analysisGroupsDomain.update(id, params),
+    delete: (id: number) => analysisGroupsDomain.delete(id),
     addMember: (params: {
       groupId: number
       caseId: number
       role: string
       affectedStatus?: string
       individualId?: string
-    }) => ipcRenderer.invoke('analysisGroups:addMember', params),
+    }) => analysisGroupsDomain.addMember(params),
     removeMember: (groupId: number, caseId: number) =>
-      ipcRenderer.invoke('analysisGroups:removeMember', groupId, caseId),
-    getForCase: (caseId: number) => ipcRenderer.invoke('analysisGroups:getForCase', caseId)
-  },
+      analysisGroupsDomain.removeMember(groupId, caseId),
+    getForCase: (caseId: number) => analysisGroupsDomain.getForCase(caseId)
+  } as WindowAPI['analysisGroups'],
 
   protein: {
-    getMapping: (geneSymbol: string) => ipcRenderer.invoke('protein:mapping', geneSymbol),
-    getDomains: (uniprotAccession: string) =>
-      ipcRenderer.invoke('protein:domains', uniprotAccession),
-    getStructure: (uniprotAccession: string) =>
-      ipcRenderer.invoke('protein:structure', uniprotAccession),
-    getGeneStructure: (geneSymbol: string) =>
-      ipcRenderer.invoke('protein:gene-structure', geneSymbol)
+    getMapping: (geneSymbol: string) => proteinDomain.getMapping(geneSymbol),
+    getDomains: (uniprotAccession: string) => proteinDomain.getDomains(uniprotAccession),
+    getStructure: (uniprotAccession: string) => proteinDomain.getStructure(uniprotAccession),
+    getGeneStructure: (geneSymbol: string) => proteinDomain.getGeneStructure(geneSymbol)
   },
 
   gnomad: {
     getVariants: (geneSymbol: string, dataset?: string) =>
-      ipcRenderer.invoke('gnomad:variants', geneSymbol, dataset),
+      gnomadDomain.getVariants(geneSymbol, dataset),
     getClinVarVariants: (geneSymbol: string, dataset?: string) =>
-      ipcRenderer.invoke('gnomad:clinvar', geneSymbol, dataset)
+      gnomadDomain.getClinVarVariants(geneSymbol, dataset)
   },
 
   perf: {

@@ -111,11 +111,7 @@ import type {
 } from './protein'
 import type { PerfSnapshot } from './perf'
 import type { CasesDomainContract } from '../ipc/domains/cases'
-import type {
-  DatabaseInfo,
-  DatabaseOpenResult,
-  RecentDatabase
-} from '../ipc/domains/database'
+import type { DatabaseInfo, DatabaseOpenResult, RecentDatabase } from '../ipc/domains/database'
 export type { DatabaseInfo, DatabaseOpenResult, RecentDatabase } from '../ipc/domains/database'
 
 // Re-export for convenience
@@ -174,7 +170,7 @@ type RendererApiFromDomain<TDomain> = {
     : never
 }
 
-export interface CasesAPI extends RendererApiFromDomain<CasesDomainContract> {}
+export type CasesAPI = RendererApiFromDomain<CasesDomainContract>
 
 export interface VariantsAPI {
   query: (

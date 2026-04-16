@@ -64,10 +64,7 @@
       @open-shortcuts-help="showKeyboardHelp = true"
     />
 
-    <AppDialogHost
-      ref="dialogHostRef"
-      @import-complete="handleImportComplete"
-    />
+    <AppDialogHost ref="dialogHostRef" @import-complete="handleImportComplete" />
 
     <KeyboardShortcutsDialog v-model="showKeyboardHelp" />
 
@@ -253,22 +250,18 @@ watch(selectedCaseId, () => {
   resetCaseFilters()
 })
 
-const {
-  handleDatabaseSwitched,
-  handleImportComplete
-} =
-  useShellLifecycle({
-    api,
-    currentDatabasePath: databasePath,
-    currentDatabaseName: databaseName,
-    incrementDataGeneration,
-    resetForDatabaseSwitch,
-    clearMetadataCache,
-    selectCase,
-    caseListRef,
-    dialogHostRef: dialogHostRef as Parameters<typeof useShellLifecycle>[0]['dialogHostRef'],
-    importStore
-  })
+const { handleDatabaseSwitched, handleImportComplete } = useShellLifecycle({
+  api,
+  currentDatabasePath: databasePath,
+  currentDatabaseName: databaseName,
+  incrementDataGeneration,
+  resetForDatabaseSwitch,
+  clearMetadataCache,
+  selectCase,
+  caseListRef,
+  dialogHostRef: dialogHostRef as Parameters<typeof useShellLifecycle>[0]['dialogHostRef'],
+  importStore
+})
 
 const handleShowImportProgress = (): void => {
   dialogHostRef.value?.reopenImportDialog()

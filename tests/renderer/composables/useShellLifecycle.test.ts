@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
+import type { BatchResult } from '../../../src/shared/types/api'
 import { useShellLifecycle } from '../../../src/renderer/src/composables/useShellLifecycle'
 
 describe('useShellLifecycle', () => {
@@ -60,7 +61,7 @@ describe('useShellLifecycle', () => {
     })
 
     const cleanup = vi.fn()
-    onComplete.mockImplementation((callback: (result: any) => void) => {
+    onComplete.mockImplementation((callback: (result: BatchResult) => void) => {
       callback({
         totalImported: 1,
         details: [{ fileName: 'case-a', status: 'success' }]

@@ -133,7 +133,17 @@ function extractSubInterfaceKeys(interfaceName: string): string[] {
   // Find the start of the interface
   const startMarker = `export interface ${interfaceName}`
   const startIdx = content.indexOf(startMarker)
-  if (startIdx === -1) return []
+  if (startIdx === -1) {
+    const typeAliasMatch = content.match(
+      new RegExp(`export type ${interfaceName}\\s*=\\s*RendererApiFromDomain<(\\w+)>`)
+    )
+    if (!typeAliasMatch) return []
+
+    const domainPath = DOMAIN_CONTRACT_PATHS[typeAliasMatch[1]]
+    if (!domainPath) return []
+
+    return extractInterfaceKeysFromFile(domainPath, typeAliasMatch[1])
+  }
 
   // Track brace depth to find the matching closing brace
   const lines = content.slice(startIdx).split('\n')
@@ -161,7 +171,9 @@ function extractSubInterfaceKeys(interfaceName: string): string[] {
 
   const extendsMatch = content
     .slice(startIdx)
-    .match(new RegExp(`export interface ${interfaceName}\\s+extends\\s+RendererApiFromDomain<(\\w+)>`))
+    .match(
+      new RegExp(`export interface ${interfaceName}\\s+extends\\s+RendererApiFromDomain<(\\w+)>`)
+    )
   if (extendsMatch) {
     const domainPath = DOMAIN_CONTRACT_PATHS[extendsMatch[1]]
     if (!domainPath) return keys.sort()
@@ -233,7 +245,10 @@ describe('Preload contract alignment', () => {
   const mockApiKeys = extractMockApiKeys()
   const preloadSource = readFileSync(resolve(ROOT, 'src/preload/index.ts'), 'utf-8')
   const casesDomainSource = readFileSync(resolve(ROOT, 'src/preload/domains/cases.ts'), 'utf-8')
-  const databaseDomainSource = readFileSync(resolve(ROOT, 'src/preload/domains/database.ts'), 'utf-8')
+  const databaseDomainSource = readFileSync(
+    resolve(ROOT, 'src/preload/domains/database.ts'),
+    'utf-8'
+  )
   const filterPresetsDomainSource = readFileSync(
     resolve(ROOT, 'src/preload/domains/filter-presets.ts'),
     'utf-8'
@@ -264,7 +279,9 @@ describe('Preload contract alignment', () => {
     )
     expect(casesDomainSource).toContain('export function createCasesApi(): CasesDomainContract')
     expect(casesDomainSource).not.toContain('unwrapIpcResult')
-    expect(casesDomainSource).toContain("deleteBatch: (ids) => ipcRenderer.invoke('cases:deleteBatch', ids)")
+    expect(casesDomainSource).toContain(
+      "deleteBatch: (ids) => ipcRenderer.invoke('cases:deleteBatch', ids)"
+    )
     expect(casesDomainSource).toContain(
       "availableBuilds: () => ipcRenderer.invoke('cases:availableBuilds')"
     )
@@ -421,7 +438,6 @@ describe('cases preload domain behavior', () => {
         send: vi.fn()
       }
     }))
-
     ;(process as typeof process & { contextIsolated?: boolean }).contextIsolated = true
 
     await import('../../../src/preload/index')

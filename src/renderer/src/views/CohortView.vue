@@ -7,13 +7,7 @@ import type { CohortVariant } from '../../../shared/types/cohort'
 import { logService } from '../services/LogService'
 
 const { api } = useApiService()
-const {
-  initialSearch,
-  panelOpen,
-  selectedPanelVariant,
-  cohortViewRef,
-  selectCase
-} = useAppState()
+const { initialSearch, panelOpen, selectedPanelVariant, cohortViewRef, selectCase } = useAppState()
 
 // cohortViewRef is used as template ref (not detected by vue-tsc from destructured composable)
 void cohortViewRef

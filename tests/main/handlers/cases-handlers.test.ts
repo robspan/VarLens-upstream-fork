@@ -4,7 +4,15 @@
  * Tests cases:query handler and database:overview pool migration.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi, afterEach as vitestAfterEach } from 'vitest'
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  vi,
+  afterEach as vitestAfterEach
+} from 'vitest'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { DatabaseService } from '../../../src/main/database/DatabaseService'

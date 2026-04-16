@@ -11,13 +11,21 @@ const { useShellNavigationSpy, useShellLifecycleSpy } = vi.hoisted(() => ({
   useShellLifecycleSpy: vi.fn()
 }))
 
-vi.mock('../../src/renderer/src/composables/useShellNavigation', () => ({
-  useShellNavigation: useShellNavigationSpy
-}), { virtual: true })
+vi.mock(
+  '../../src/renderer/src/composables/useShellNavigation',
+  () => ({
+    useShellNavigation: useShellNavigationSpy
+  }),
+  { virtual: true }
+)
 
-vi.mock('../../src/renderer/src/composables/useShellLifecycle', () => ({
-  useShellLifecycle: useShellLifecycleSpy
-}), { virtual: true })
+vi.mock(
+  '../../src/renderer/src/composables/useShellLifecycle',
+  () => ({
+    useShellLifecycle: useShellLifecycleSpy
+  }),
+  { virtual: true }
+)
 
 import App from '../../src/renderer/src/App.vue'
 import { createMockApi } from '../utils/mock-api'

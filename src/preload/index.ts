@@ -19,10 +19,7 @@ import type {
   LogMessage
 } from '../shared/types'
 import type { CommentCategory, AnnotationChangeEvent } from '../shared/types/api'
-import type {
-  FilterPresetCreate,
-  FilterPresetUpdate
-} from '../shared/types/filter-presets'
+import type { FilterPresetCreate, FilterPresetUpdate } from '../shared/types/filter-presets'
 import type { ShortlistResult } from '../shared/types/shortlist'
 import type { ValidatedGetShortlistParams } from '../shared/types/ipc-schemas'
 import type { MainPerfSnapshot } from '../shared/types/perf'

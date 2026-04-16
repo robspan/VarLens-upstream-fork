@@ -80,9 +80,8 @@ describe('database IPC domain registration', () => {
       getDbPool
     }))
 
-    const { registerFilterPresetsDomain } = await import(
-      '../../../src/main/ipc/domains/filter-presets'
-    )
+    const { registerFilterPresetsDomain } =
+      await import('../../../src/main/ipc/domains/filter-presets')
 
     registerFilterPresetsDomain(ipcMain as never)
 

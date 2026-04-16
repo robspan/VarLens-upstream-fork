@@ -1,5 +1,5 @@
 import { wrapHandler } from '../errorHandler'
-import type { HandlerDependencies } from '../types'
+import type { IpcMain } from 'electron'
 import { MyVariantApiClient } from '../../services/api/MyVariantApiClient'
 import { ApiCache } from '../../services/api/ApiCache'
 import { networkStatus } from '../../services/network/NetworkStatus'
@@ -15,7 +15,12 @@ import { mainLogger } from '../../services/MainLogger'
 let myVariantClient: MyVariantApiClient | null = null
 let apiCache: ApiCache | null = null
 
-export function registerMyVariantHandlers({ ipcMain, getDb }: HandlerDependencies): void {
+interface MyVariantDependencies {
+  ipcMain: IpcMain
+  getDb: () => { database: any }
+}
+
+export function registerMyVariantHandlers({ ipcMain, getDb }: MyVariantDependencies): void {
   function getMyVariantClient(): MyVariantApiClient {
     if (!myVariantClient) {
       const db = getDb().database

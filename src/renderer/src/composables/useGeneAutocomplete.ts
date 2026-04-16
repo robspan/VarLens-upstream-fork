@@ -8,6 +8,7 @@
 import { ref, type Ref, type ComputedRef } from 'vue'
 import type { WindowAPI } from '../../../shared/types/api'
 import type { FilterState } from '../../../shared/types/filters'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 import { logService } from '../services/LogService'
 
 /**
@@ -54,11 +55,16 @@ export function useGeneAutocomplete(
     loadingSuggestions.value = true
     try {
       // Use optimized geneSymbols API - direct LIKE query instead of FTS5
-      const results: string[] = await api!.variants.geneSymbols(caseIdRef.value, query, 50)
+      const results = unwrapIpcResult(await api!.variants.geneSymbols(caseIdRef.value, query, 50))
       geneSymbolSuggestions.value = results
     } catch (e) {
       logService.warn(
-        'Gene symbol autocomplete failed: ' + (e instanceof Error ? e.message : String(e)),
+        'Gene symbol autocomplete failed: ' +
+          (e instanceof Error
+            ? e.message
+            : isIpcError(e)
+              ? (e.userMessage ?? e.message)
+              : String(e)),
         'filters'
       )
       geneSymbolSuggestions.value = []

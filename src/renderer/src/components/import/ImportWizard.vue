@@ -197,7 +197,7 @@ import type { VcfPreviewResult } from '../../../../shared/types/vcf'
 import { useApiService } from '../../composables/useApiService'
 import { useImportStatusStore } from '../../stores/importStatusStore'
 import { logService } from '../../services/LogService'
-import { unwrapIpcResult } from '../../../../shared/types/errors'
+import { isIpcError, unwrapIpcResult } from '../../../../shared/types/errors'
 import BatchReviewPhase from '../batch-import/BatchReviewPhase.vue'
 import BatchProgressPhase from '../batch-import/BatchProgressPhase.vue'
 import BatchSummaryPhase from '../batch-import/BatchSummaryPhase.vue'
@@ -303,6 +303,27 @@ const summary = ref<BatchResult>({
 let cleanupProgress: (() => void) | null = null
 let cleanupComplete: (() => void) | null = null
 let recheckTimeout: ReturnType<typeof setTimeout> | null = null
+
+function formatIpcError(error: unknown, fallback: string): string {
+  if (isIpcError(error)) {
+    return error.userMessage ?? error.message
+  }
+  return error instanceof Error ? error.message : fallback
+}
+
+function cleanupZipTempInBackground(context: string): void {
+  void api!.batchImport
+    .cleanupZipTemp()
+    .then((cleanupResult) => {
+      unwrapIpcResult(cleanupResult)
+    })
+    .catch((error) => {
+      logService.warn(
+        `ZIP temp cleanup failed after ${context}: ${formatIpcError(error, 'cleanup failed')}`,
+        'ImportWizard'
+      )
+    })
+}
 
 // Re-check duplicates when strip text changes
 watch(stripText, () => {
@@ -564,9 +585,7 @@ async function startImport(): Promise<void> {
       })
 
       if (isZipImport.value) {
-        void api!.batchImport.cleanupZipTemp().then((cleanupResult) => {
-          unwrapIpcResult(cleanupResult)
-        })
+        cleanupZipTempInBackground('import completion')
       }
 
       if (result.succeeded > 0) {
@@ -596,7 +615,17 @@ async function startImport(): Promise<void> {
 }
 
 function cancelImport(): void {
-  api!.batchImport.cancel()
+  void api!.batchImport
+    .cancel()
+    .then((result) => {
+      unwrapIpcResult(result)
+    })
+    .catch((error) => {
+      logService.warn(
+        `Batch import cancel failed: ${formatIpcError(error, 'cancel failed')}`,
+        'ImportWizard'
+      )
+    })
   // Transition to summary step showing cancellation, and reset import store.
   // The onComplete callback may also fire with cancelled=true, but we handle
   // it here immediately so the user sees feedback right away.
@@ -720,9 +749,7 @@ onMounted(() => {
         })
 
         if (isZipImport.value) {
-          void api!.batchImport.cleanupZipTemp().then((cleanupResult) => {
-            unwrapIpcResult(cleanupResult)
-          })
+          cleanupZipTempInBackground('dialog close')
         }
       }
     })

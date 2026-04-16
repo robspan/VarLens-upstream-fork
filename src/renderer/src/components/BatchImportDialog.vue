@@ -382,7 +382,7 @@ const handleZipCancel = async (): Promise<void> => {
  */
 const handleCancel = async (): Promise<void> => {
   if (phase.value === 'importing') {
-    await api!.batchImport.cancel()
+    unwrapIpcResult(await api!.batchImport.cancel())
   } else if (phase.value === 'summary') {
     // Close dialog — the watch on `dialog` handles cleanup and event emission
     dialog.value = false

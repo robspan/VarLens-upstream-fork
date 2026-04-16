@@ -175,9 +175,9 @@ export interface VariantsAPI {
   ) => Promise<IpcResult<PaginatedResult<Variant> & { unfiltered_count?: number }>>
   getFilterOptions: (caseId: number) => Promise<IpcResult<FilterOptions>>
   search: (caseId: number, query: string, limit?: number) => Promise<IpcResult<Variant[]>>
-  geneSymbols: (caseId: number, query: string, limit?: number) => Promise<string[]>
+  geneSymbols: (caseId: number, query: string, limit?: number) => Promise<IpcResult<string[]>>
   /** Get variant type counts per case for tab badges (snv/indel/sv/cnv/str) */
-  typeCounts: (caseId: number) => Promise<Record<string, number>>
+  typeCounts: (caseId: number) => Promise<IpcResult<Record<string, number>>>
   /**
    * Get per-column metadata for a single column (single-case or cohort scope).
    * Used by the filter UI to lazy-load metadata on demand instead of bulk
@@ -380,7 +380,7 @@ export interface BatchImportAPI {
     duplicateStrategy: DuplicateChoice,
     stripText?: string
   ) => Promise<IpcResult<BatchResult>>
-  cancel: () => Promise<void>
+  cancel: () => Promise<IpcResult<void>>
   onProgress: (callback: (progress: BatchProgress) => void) => () => void
   onComplete: (callback: (result: BatchResult) => void) => () => void
   selectZip: () => Promise<IpcResult<{ filePath: string; isEncrypted: boolean } | null>>
@@ -397,8 +397,13 @@ export interface CohortAPI {
     params: CohortSearchParams
   ) => Promise<IpcResult<{ data: CohortVariant[]; total_count: number }>>
   getSummary: () => Promise<IpcResult<CohortSummary>>
-  getCarriers: (chr: string, pos: number, ref: string, alt: string) => Promise<CohortCarrier[]>
-  getGeneBurden: () => Promise<GeneBurden[]>
+  getCarriers: (
+    chr: string,
+    pos: number,
+    ref: string,
+    alt: string
+  ) => Promise<IpcResult<CohortCarrier[]>>
+  getGeneBurden: () => Promise<IpcResult<GeneBurden[]>>
   getColumnMeta: () => Promise<IpcResult<ColumnFilterMeta[]>>
   getSummaryStatus: () => Promise<IpcResult<{ is_stale: boolean; last_rebuilt_at: number }>>
   rebuildSummary: () => Promise<void>
@@ -636,11 +641,11 @@ export interface TagsAPI {
 
 export interface TranscriptsAPI {
   list: (variantId: number) => Promise<IpcResult<TranscriptAnnotation[]>>
-  switch: (variantId: number, transcriptId: string) => Promise<{ success: boolean }>
+  switch: (variantId: number, transcriptId: string) => Promise<IpcResult<{ success: boolean }>>
   insertAndSwitch: (
     variantId: number,
     transcript: TranscriptInsertRow
-  ) => Promise<{ success: boolean }>
+  ) => Promise<IpcResult<{ success: boolean }>>
 }
 
 export interface LogsAPI {

@@ -33,7 +33,7 @@ export function useTranscripts(variantId: Ref<number | null>) {
   async function switchTranscript(transcriptId: string): Promise<boolean> {
     if (!api || variantId.value === null) return false
     try {
-      await api.transcripts.switch(variantId.value, transcriptId)
+      unwrapIpcResult(await api.transcripts.switch(variantId.value, transcriptId))
       // Reload to get updated state
       await loadTranscripts(variantId.value)
       return true
@@ -47,7 +47,7 @@ export function useTranscripts(variantId: Ref<number | null>) {
   async function insertAndSwitch(transcript: TranscriptInsertRow): Promise<boolean> {
     if (!api || variantId.value === null) return false
     try {
-      await api.transcripts.insertAndSwitch(variantId.value, transcript)
+      unwrapIpcResult(await api.transcripts.insertAndSwitch(variantId.value, transcript))
       await loadTranscripts(variantId.value)
       return true
     } catch (e) {

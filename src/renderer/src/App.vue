@@ -100,6 +100,7 @@ import {
 } from './services/RendererLongTaskObserver'
 import { resetRendererPerfSnapshot } from './services/PerfSnapshot'
 import { getTraceSnapshot } from './services/PerfTrace'
+import { unwrapIpcResult } from '../../shared/types/errors'
 
 const ImportStatusBar = defineAsyncComponent(() => import('./components/ImportStatusBar.vue'))
 const VariantDetailsPanel = defineAsyncComponent(
@@ -271,7 +272,9 @@ const handleShowImportProgress = (): void => {
 
 const handleCancelImport = async (): Promise<void> => {
   await api?.import.cancel()
-  await api?.batchImport.cancel()
+  if (api?.batchImport != null) {
+    unwrapIpcResult(await api.batchImport.cancel())
+  }
 }
 
 const handleDatabaseError = (message: string): void => {

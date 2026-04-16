@@ -19,6 +19,12 @@ import type { IpcResult } from '../../../src/shared/types/errors'
 
 const ROOT = resolve(__dirname, '..', '..', '..')
 
+const DOMAIN_CONTRACT_PATHS: Record<string, string> = {
+  CasesDomainContract: 'src/shared/ipc/domains/cases.ts',
+  DatabaseDomainContract: 'src/shared/ipc/domains/database.ts',
+  FilterPresetsDomainContract: 'src/shared/ipc/domains/filter-presets.ts'
+}
+
 /**
  * Extract top-level property keys from the WindowAPI interface definition.
  * Matches lines like: `  cases: CasesAPI`
@@ -492,8 +498,3 @@ describe('cases preload domain behavior', () => {
     expect(invoke).toHaveBeenCalledWith('cases:availableBuilds')
   })
 })
-const DOMAIN_CONTRACT_PATHS: Record<string, string> = {
-  CasesDomainContract: 'src/shared/ipc/domains/cases.ts',
-  DatabaseDomainContract: 'src/shared/ipc/domains/database.ts',
-  FilterPresetsDomainContract: 'src/shared/ipc/domains/filter-presets.ts'
-}

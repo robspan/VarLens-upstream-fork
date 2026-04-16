@@ -47,6 +47,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import type { GeneBurden } from '../../../shared/types/cohort'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useApiService } from '../composables/useApiService'
 import { logService } from '../services/LogService'
@@ -88,11 +89,16 @@ const loadGeneBurden = async (): Promise<void> => {
 
   loading.value = true
   try {
-    const result = await api.cohort.getGeneBurden()
+    const result = unwrapIpcResult(await api.cohort.getGeneBurden())
     geneBurden.value = result
   } catch (error) {
     logService.error(
-      'Failed to load gene burden: ' + (error instanceof Error ? error.message : String(error)),
+      'Failed to load gene burden: ' +
+        (error instanceof Error
+          ? error.message
+          : isIpcError(error)
+            ? (error.userMessage ?? error.message)
+            : String(error)),
       'gene-burden'
     )
     geneBurden.value = []

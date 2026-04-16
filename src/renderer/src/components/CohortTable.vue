@@ -152,7 +152,7 @@ import type { CohortVariant } from '../../../shared/types/cohort'
 import type { CohortQueryParams } from '../composables/useCohortData'
 import type { ColumnFiltersParam } from '../../../shared/types/column-filters'
 import { mdiDatabaseSync, mdiRefresh } from '@mdi/js'
-import { unwrapIpcResult } from '../../../shared/types/errors'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 import type { AcmgClassification } from '../../../shared/config/domain.config'
 
 // Emit for navigation and row click
@@ -361,6 +361,20 @@ const exportToExcel = async (): Promise<void> => {
         actionText: null,
         actionCallback: null
       }
+    }
+  } catch (error) {
+    const message = isIpcError(error)
+      ? (error.userMessage ?? error.message)
+      : error instanceof Error
+        ? error.message
+        : String(error)
+    snackbar.value = {
+      visible: true,
+      message: `Export failed: ${message}`,
+      color: 'error',
+      timeout: -1,
+      actionText: null,
+      actionCallback: null
     }
   } finally {
     exporting.value = false

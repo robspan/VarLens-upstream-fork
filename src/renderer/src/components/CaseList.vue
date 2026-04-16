@@ -177,6 +177,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, shallowRef, markRaw } from 'vue'
 import type { CaseWithCohorts, CaseSex, AffectedStatus } from '../../../shared/types/api'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 import { useContextMenu } from '../composables/useContextMenu'
 import { logService } from '../services/LogService'
 
@@ -303,16 +304,18 @@ const onLoad = async ({
 
   loading.value = true
   try {
-    const result = await api.cases.query({
-      limit: PAGE_SIZE,
-      offset: currentOffset.value,
-      search_term: searchTerm.value || undefined,
-      cohort_ids: selectedCohortIds.value.length > 0 ? [...selectedCohortIds.value] : undefined,
-      hpo_ids: selectedHpoIds.value.length > 0 ? [...selectedHpoIds.value] : undefined,
-      sort_by: 'created_at',
-      sort_order: 'desc',
-      _count_needed: currentOffset.value === 0
-    })
+    const result = unwrapIpcResult(
+      await api.cases.query({
+        limit: PAGE_SIZE,
+        offset: currentOffset.value,
+        search_term: searchTerm.value || undefined,
+        cohort_ids: selectedCohortIds.value.length > 0 ? [...selectedCohortIds.value] : undefined,
+        hpo_ids: selectedHpoIds.value.length > 0 ? [...selectedHpoIds.value] : undefined,
+        sort_by: 'created_at',
+        sort_order: 'desc',
+        _count_needed: currentOffset.value === 0
+      })
+    )
 
     cases.value = markRaw([...cases.value, ...result.data])
 
@@ -325,7 +328,8 @@ const onLoad = async ({
     done(result.data.length < PAGE_SIZE ? 'empty' : 'ok')
   } catch (e) {
     logService.error(
-      'Failed to load cases page: ' + (e instanceof Error ? e.message : String(e)),
+      'Failed to load cases page: ' +
+        (e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)),
       'case-list'
     )
     done('error')

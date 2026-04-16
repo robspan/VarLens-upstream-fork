@@ -40,53 +40,56 @@
 - `variants.ts` — logic `variants-logic.ts`
 - `vep.ts` — logic `-`
 
-## Bucket A — Closed / Already Aligned
+## Rollout closeout — 2026-04-17
 
-- `shell`
-- `system`
-- `shortlist`
-- `updater`
+All 30 handlers are now fully on the domain-module pattern. The
+"two-tier IPC codebase" noted in the 2026-04-16 Priority 1 closeout is
+retired.
 
-## Bucket B — Handler / Logic Extraction Remaining
+### Completed in this rollout (branch `feat/ipc-domain-grouping`)
 
-- `database`
+24 new domain triples landed (one commit per handler), plus one
+`region-files` no-op-registration triple discovered during execution
+because the handler file for `gene-lists` registers both `gene-lists:*`
+and `region-files:*` channels and WindowAPI declares both as top-level
+keys:
 
-## Bucket C — Renderer Error Standardization Remaining
+- Bucket B (handler extraction): ✅ n/a — only `database` was in this
+  bucket and it was already migrated before this rollout.
+- Bucket C (renderer error standardization): ✅ all 6 migrated —
+  `case-metadata`, `cohort`, `export`, `import` (`cases` and
+  `filter-presets` were already migrated before this rollout).
+- Bucket D (both remaining): ✅ all 19 migrated —
+  `analysis-groups`, `annotations`, `audit-log`, `auth`, `batch-import`,
+  `case-comments`, `case-metrics`, `gene-lists`, `gene-ref`, `gnomad`,
+  `hpo`, `myvariant`, `panels`, `protein`, `spliceai`, `tags`,
+  `transcripts`, `variants`, `vep`.
+- **Added during execution:** `region-files` (no-op registration —
+  channels register from inside `registerGeneListHandlers`).
 
-- `cases`
-- `case-metadata`
-- `cohort`
-- `export`
-- `filter-presets`
-- `import`
+### Circuit-breaker
 
-## Bucket D — Both Remaining
+- Active domains in Buckets B + C + D: `0`
+- Result: **circuit-breaker retired.**
+- All 30 handlers are now domain-contracted, `IpcResult<T>`-typed,
+  and grouped under
+  `src/{shared/ipc,preload,main/ipc}/domains/<name>.ts` with a
+  per-domain preload test at `tests/shared/ipc/domains/<name>.test.ts`.
 
-- `analysis-groups`
-- `annotations`
-- `audit-log`
-- `auth`
-- `batch-import`
-- `case-comments`
-- `case-metrics`
-- `gene-lists`
-- `gene-ref`
-- `gnomad`
-- `hpo`
-- `myvariant`
-- `panels`
-- `protein`
-- `spliceai`
-- `tags`
-- `transcripts`
-- `variants`
-- `vep`
+### Bucket A — Closed / Already Aligned (untouched)
 
-## Circuit-Breaker
+- `shell`, `system`, `shortlist`, `updater`
 
-- Active domains in Buckets B + C + D: `26`
-- Result: circuit-breaker remains active
-- Execution stays split into Foundation, Sub-phase A, Sub-phase B, and Sub-phase C
+### Deferred to a follow-up PR
+
+- Converting inline `export interface <Name>API { … }` declarations in
+  `src/shared/types/api.ts` to `export type <Name>API = <Name>DomainContract`
+  aliases. A handful of domains needed `as WindowAPI['<key>']` casts in
+  the preload aggregator because the inline interfaces declared plain
+  `Promise<T>` returns where the runtime actually produces
+  `Promise<IpcResult<T>>`. Aligning the interface shape to the contract
+  is a pure type-system reconciliation — no runtime change — but
+  touches renderer call sites and is best reviewed as its own PR.
 
 ## Final Disposition
 

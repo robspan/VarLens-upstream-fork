@@ -171,23 +171,33 @@ Source:
 - https://docs.github.com/en/github/administering-a-repository/keeping-your-actions-up-to-date-with-github-dependabot
 - https://docs.github.com/en/code-security/dependabot/ecosystems-supported-by-dependabot/supported-ecosystems-and-repositories
 
-### Medium: Electron fuse posture should now be audited explicitly
+### Updated: Electron fuse hardening has started, with one deliberate follow-up gap
 
-The current review and `AGENTS.md` correctly emphasize Electron runtime defaults such as:
+This was previously an explicit gap. The repo now has a checked-in `build.electronFuses` configuration in `package.json`, and `AGENTS.md` documents that fuse posture as part of the security baseline.
 
-- `sandbox: true`
-- `contextIsolation: true`
-- `nodeIntegration: false`
+The current fuse set is a conservative first pass that matches the current codebase well:
 
-But the repo does not yet document or verify the packaged-build **fuse** configuration in the same explicit way.
+- `runAsNode: false`
+- `enableNodeOptionsEnvironmentVariable: false`
+- `enableNodeCliInspectArguments: false`
+- `enableCookieEncryption: true`
+- `enableEmbeddedAsarIntegrityValidation: true`
 
-That matters more now than it did in earlier reviews because newer Electron security guidance and 2025 research increased the importance of fuse-level hardening for packaged apps. At minimum, this should be an explicit audit item rather than an implicit assumption.
+That is a real improvement, because the app does not appear to depend on `child_process.fork` / `process.fork`, and GitHub/Electron guidance both support disabling those Node-oriented entry points when they are unused.
+
+The remaining gap is also now clearer:
+
+- the packaged app still loads the renderer via `loadFile(...)` from `file://`
+- `src/renderer/src/composables/useMolstarViewer.ts` lazy-loads `/pdbe-molstar-component.js`
+- that Mol* bundle is explicitly kept in `asarUnpack`
+
+Because of that current packaging shape, this review does **not** recommend immediately enabling `onlyLoadAppFromAsar` or aggressively changing `grantFileProtocolExtraPrivileges` yet. Those are likely the next fuse-hardening candidates, but only after the renderer asset path is simplified so the app is not depending on unpacked `file://`-served assets for the protein viewer.
 
 **Recommendation**
 
-- inspect the current packaged build's fuse state
-- move the chosen fuse configuration into a reproducible checked-in configuration path
-- document the expected fuse set alongside the other Electron security defaults
+- Keep the current checked-in fuse set.
+- Add packaged-build fuse verification to a release or CI-adjacent workflow when practical.
+- Treat `onlyLoadAppFromAsar` as the next explicit fuse-hardening task, gated on refactoring the Mol* asset loading path away from the current unpacked-script dependency.
 
 Sources:
 - https://www.electronjs.org/docs/latest/tutorial/fuses

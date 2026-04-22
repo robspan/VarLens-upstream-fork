@@ -154,6 +154,7 @@ Test data lives at `tests/test-data/vcf/` (GIAB Chinese Trio, chr22:29M–30.5M,
 ## Security Defaults
 
 - Electron window creation enforces `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`. See `src/main/index.ts`. **Do not weaken these.**
+- Packaged builds also harden Electron fuses in `package.json` (`build.electronFuses`). Keep `runAsNode` disabled unless the app intentionally adds a main-process `fork()` dependency, and reassess fuses before changing packaging/load behavior.
 - Renderer talks to main only through the typed `window.api` exposed by `src/preload/index.ts` — no raw `ipcRenderer`. Adding a new IPC channel means adding to the shared contract, preload, main handler, and (ideally) the preload contract test.
 - External URLs are validated before `shell.openExternal`. Do not add a shortcut path that skips that validation.
 - SQLite databases can be encrypted (`better-sqlite3-multiple-ciphers`). User keys are never logged; tests must not commit real user data.

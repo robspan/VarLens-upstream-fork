@@ -89,6 +89,13 @@
     "productName": "Varlens",
     "icon": "build/icon.png",
     "npmRebuild": false,
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true
+    },
     "extraResources": [
       {
         "from": "resources/gene_reference.db",

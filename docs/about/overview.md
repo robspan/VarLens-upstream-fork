@@ -11,7 +11,7 @@ VarLens is an open-source desktop application for offline genetic variant analys
 
 ## Technology
 
-- **Frontend:** Vue 3, Vuetify 3, TypeScript
+- **Frontend:** Vue 3, Vuetify 4, TypeScript
 - **Backend:** Electron, SQLite (better-sqlite3-multiple-ciphers)
 - **Build:** electron-vite, electron-builder
 - **Testing:** Vitest (unit), Playwright (E2E)

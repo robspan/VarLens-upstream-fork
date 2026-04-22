@@ -24,13 +24,13 @@ That means the current codebase is stronger than the 2026-04-16 score implied. T
 
 **Updated overall rating: 7.5 / 10**
 
-VarLens is now a well-structured Electron desktop application with strong local-security defaults, a credible typed IPC boundary, real CI gates, and unusually good agent-facing repo discipline. It is not blocked by shell or IPC chaos anymore. Its main limitations are scale strategy, data-layer portability, and a few remaining workflow/documentation mismatches.
+VarLens is now a well-structured Electron desktop application with strong local-security defaults, a credible typed IPC boundary, real CI gates, and unusually good agent-facing repo discipline. It is not blocked by shell or IPC chaos anymore. Its main limitations are scale strategy, data-layer portability, and a few remaining workflow hardening tasks more than broad documentation drift.
 
 ## Method
 
 This review used the current working tree as the source of truth, then checked recent git history and planning artifacts to determine whether prior review findings were still current.
 
-That matters here because several `.planning/plans` and `.planning/specs` files still say "pending" even though the related code has shipped. As of 2026-04-22, **current source + git history are more reliable than checkbox state in active planning files**.
+That mattered here because several `.planning/plans` and `.planning/specs` had drifted away from the shipped code. After the cleanup in this review pass, most prior code-review snapshots and completed planning docs are archived, the remaining live planning docs carry explicit 2026-04-22 status banners, and the obvious version/framework mismatches in `AGENTS.md`, `README.md`, and the VitePress intro/overview pages were corrected. The general rule still holds: **current source + git history are more reliable than checkbox state in planning files unless someone is actively maintaining those markers**.
 
 ## Current Strengths
 
@@ -73,9 +73,18 @@ This is a meaningful maturity jump. The current CI posture is no longer "good un
 
 This is now one of the better multi-agent repo contracts I have seen in an Electron application.
 
+### 5. Documentation drift is much lower after the current cleanup pass
+
+- completed review snapshots and completed 2026-04-10 specs are archived
+- the remaining live planning docs are explicitly marked as partial/reference status
+- `AGENTS.md` now reflects the current IPC rollout state
+- `README.md` and the VitePress intro/overview pages now match the current runtime and framework stack
+
+The repo is in a noticeably better state for picking the next engineering phase than it was before this pass.
+
 ## Findings
 
-### High: Planning cleanup was the immediate next step, and it is now mostly done
+### Resolved: Planning cleanup was the immediate next step, and it is now mostly done
 
 The biggest documentation problem was no longer missing standards. It was **status drift inside `.planning/`**.
 
@@ -94,10 +103,12 @@ This was a practical planning problem, not just a documentation nit. Future revi
 As of this review pass, that cleanup has been substantially improved:
 
 - completed 2026-04-10 planning docs were archived
+- prior 2026-04-15 and 2026-04-16 review snapshots were archived
 - the remaining live cleanup/perf docs now carry explicit 2026-04-22 status banners
 - the active planning set is reduced to the genuinely still-useful reference docs
+- the stale IPC/version/framework wording in `AGENTS.md`, `README.md`, and VitePress overview pages was corrected
 
-**Recommendation**
+**Current guidance**
 
 - Review the active `.planning/specs` and `.planning/plans` first, before choosing the next substantive engineering phase.
 - Archive completed plans/specs promptly, or add a dated status banner at the top when archival is deferred.

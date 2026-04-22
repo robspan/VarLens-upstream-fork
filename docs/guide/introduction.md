@@ -22,8 +22,8 @@ VarLens is a desktop application for offline genetic variant analysis. It is des
 
 VarLens is an Electron desktop app built with:
 
-- **Vue 3 + Vuetify 3** for the user interface
-- **SQLite** (via better-sqlite3) for local data storage
+- **Vue 3 + Vuetify 4** for the user interface
+- **SQLite** (via better-sqlite3-multiple-ciphers) for local data storage
 - **Electron** for cross-platform desktop distribution (Windows, macOS, Linux)
 
 All processing happens locally. External API calls (VEP, gnomAD, ClinVar) are optional and only triggered when you explicitly request enrichment.

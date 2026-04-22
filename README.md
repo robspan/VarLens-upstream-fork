@@ -53,7 +53,7 @@ See the [installation guide](https://berntpopp.github.io/VarLens/guide/installat
 
 ## Development
 
-Requires [Node.js](https://nodejs.org/) 20+ and npm 9+. On Windows, also install [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the C++ workload.
+Requires [Node.js](https://nodejs.org/) 24.14.1+ and npm 11.11.0+. On Windows, also install [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the C++ workload.
 
 ```bash
 npm install
@@ -66,12 +66,12 @@ make dev
 | `make lint` | Lint and auto-fix |
 | `make typecheck` | TypeScript type checking |
 | `make test` | Run unit tests |
-| `make ci` | Lint + typecheck + test |
+| `make ci` | Lint + format check + typecheck + rebuild for Node + test |
 | `make dist` | Build and package for current platform |
 
 ## Tech Stack
 
-Vue 3 and Vuetify 3 (renderer), Electron 40 with electron-vite (build), SQLite via better-sqlite3-multiple-ciphers (storage), Pinia (state), Vitest and Playwright (testing), GitHub Actions (CI/CD).
+Vue 3 and Vuetify 4 (renderer), Electron 40 with electron-vite (build), SQLite via better-sqlite3-multiple-ciphers (storage), Pinia (state), Vitest and Playwright (testing), GitHub Actions (CI/CD).
 
 ## License
 

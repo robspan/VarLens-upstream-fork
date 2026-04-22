@@ -90,7 +90,7 @@ The **Makefile is the source of truth**. GitHub Actions workflows mirror it targ
 | `make ci-startup-smoke`                                             | Playwright Electron startup smoke under xvfb (Linux)                       |
 | `make docs-dev` / `make docs`                                       | VitePress user docs                                                        |
 
-**Before claiming work is done, run `make ci` at minimum.** For anything touching Electron lifecycle, IPC, workers, or packaging, run `make ci-full`.
+**Before claiming work is done, run `make ci` at minimum.** If you have run local packaging first, clean `release/` before `make ci` because ESLint still traverses generated release artifacts. For anything touching Electron lifecycle, IPC, workers, or packaging, run `make ci-full`.
 
 ## Testing
 
@@ -109,8 +109,8 @@ A linter enforces formatting and generic TypeScript rules. What follows is what 
   - Main process: `mainLogger` from `src/main/services/MainLogger` — `mainLogger.error(msg, 'source')`
   - Renderer: `logService` from `src/renderer/src/services/LogService` — `logService.error(msg, 'source')`
   - Documented exceptions: `logStore.ts` (bootstrap), `main.ts` (dev mode), `preload/index.ts` (no IPC yet), worker threads (no Electron IPC).
-- **IPC channels use `domain:action` naming** — `cases:list`, `variants:query`, `filter-presets:save`. Handlers are registered in `src/main/ipc/handlers/<domain>.ts` and return through `wrapHandler(...)`, which produces `IpcResult<T | SerializableError>`. The renderer **must** call `unwrapIpcResult(...)` at the edge — see `src/renderer/src/utils/ipc-result.ts` and the 48 existing call sites.
-- **New IPC domains should follow the domain-module pattern**: `src/shared/ipc/domains/<name>.ts` (contract) + `src/preload/domains/<name>.ts` (preload binding) + `src/main/ipc/domains/<name>.ts` (handler registration). See `cases`, `database`, `filter-presets` as live examples. The remaining 27 handlers are still on the older flat registration style — migrate them toward the domain-module shape when touching them.
+- **IPC channels use `domain:action` naming** — `cases:list`, `variants:query`, `filter-presets:save`. Handlers are registered in `src/main/ipc/handlers/<domain>.ts` and return through `wrapHandler(...)`, which produces `IpcResult<T | SerializableError>`. The renderer **must** call `unwrapIpcResult(...)` at the edge — see `src/renderer/src/utils/ipc-result.ts` and its broad use across the renderer.
+- **IPC domains now follow the domain-module pattern by default**: `src/shared/ipc/domains/<name>.ts` (contract) + `src/preload/domains/<name>.ts` (preload binding) + `src/main/ipc/domains/<name>.ts` (handler registration). Most shipped app-facing domains are already on this shape. The remaining flat registrations are intentional (`shell`, `shortlist`, `system`, `updater`), so new work should follow the domain-module pattern rather than the old flat style.
 - **Vue components** use `<script setup lang="ts">` with Composition API. Props via `defineProps<T>()`, emits via `defineEmits<{...}>()`. Prefer composables in `src/renderer/src/composables/` for shared logic — do **not** put shared logic in components.
 - **Don't add try/catch for control flow in main-process IPC paths** — `wrapHandler` already converts thrown errors into `SerializableError` with structured fields. Let errors throw.
 

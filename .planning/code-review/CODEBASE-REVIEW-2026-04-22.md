@@ -2,188 +2,128 @@
 
 **Date:** 2026-04-22  
 **Branch:** `main`  
-**Head:** `94c1b17`  
-**Baseline reviewed:** `.planning/code-review/CODEBASE-REVIEW-2026-04-16.md`  
-**Scope:** Current repository state, recent git history after 2026-04-16, active `.planning/plans` and `.planning/specs`, maintainability artifacts, and current official guidance for Electron, Vue, Playwright, GitHub Actions, and Kysely
+**Head:** `1449c74`  
+**Baseline reviewed:** `.planning/archive/completed-docs/CODEBASE-REVIEW-2026-04-16.md`  
+**Scope:** Current repository state after planning cleanup, workflow hardening, initial Electron fuse hardening, Mol* integration cleanup, and recent type-safety fixes
 
 ## Executive Summary
 
-The 2026-04-16 review is now materially stale in three important ways:
+The 2026-04-16 review is now fully superseded.
 
-1. The IPC domain rollout is no longer "scaffolded for 3 of 30 handlers." It is effectively complete for the application-facing surface, with `src/shared/ipc/domains/*`, `src/preload/domains/*`, and `src/main/ipc/domains/*` present across the active domains, plus per-domain tests under `tests/shared/ipc/domains/`.
-2. The repo is no longer Claude-only from an agent-contract perspective. `AGENTS.md` is now the canonical cross-agent contract and `CLAUDE.md` is a thin overlay that imports it.
-3. The startup-smoke / CI-trust problem is no longer a primary weakness. Linux startup smoke is a real CI gate, and `release.yml` refuses to publish a tag whose exact SHA did not pass `build.yml`.
+The codebase is in a materially better state than that review described:
 
-That means the current codebase is stronger than the 2026-04-16 score implied. The review should now focus less on organization-level cleanup that has already landed, and more on the remaining structural bets:
+1. The IPC domain rollout is effectively complete for the active app-facing surface.
+2. `AGENTS.md` is now the canonical agent contract and matches the real repo workflow.
+3. GitHub Actions are SHA-pinned, startup smoke is a real CI gate, and release publishing is tied to a previously green build on the exact tagged SHA.
+4. The Electron security baseline is stronger: key fuses are now checked in, and the old fragile pdbe-molstar public-script packaging path is gone.
+5. The planning tree has been cleaned up enough that stale live plans/specs are no longer the main source of confusion.
 
-- SQLite-native storage and worker assumptions
-- renderer table performance ceilings after Phase 1
-- workflow supply-chain hardening in GitHub Actions
-- Electron fuse auditing and packaged-app integrity posture
-- planning-document status drift versus current code and git history
+**Updated overall rating: 8.0 / 10**
 
-**Updated overall rating: 7.5 / 10**
-
-VarLens is now a well-structured Electron desktop application with strong local-security defaults, a credible typed IPC boundary, real CI gates, and unusually good agent-facing repo discipline. It is not blocked by shell or IPC chaos anymore. Its main limitations are scale strategy, data-layer portability, and a few remaining workflow hardening tasks more than broad documentation drift.
+VarLens is now a well-structured Electron desktop app with credible local-security defaults, a strong typed IPC boundary, solid CI/release discipline, and much better repo hygiene than the prior reviews captured. The remaining work is narrower and more strategic: storage-boundary design, the next renderer-performance phase, packaged-app integrity follow-through, and small local workflow rough edges.
 
 ## Method
 
-This review used the current working tree as the source of truth, then checked recent git history and planning artifacts to determine whether prior review findings were still current.
+This review uses the current tree and recent git history as the source of truth, then treats `.planning/` documents as historical context only where they still match shipped code.
 
-That mattered here because several `.planning/plans` and `.planning/specs` had drifted away from the shipped code. After the cleanup in this review pass, most prior code-review snapshots and completed planning docs are archived, the remaining live planning docs carry explicit 2026-04-22 status banners, and the obvious version/framework mismatches in `AGENTS.md`, `README.md`, and the VitePress intro/overview pages were corrected. The general rule still holds: **current source + git history are more reliable than checkbox state in planning files unless someone is actively maintaining those markers**.
+That distinction mattered in this pass. The remaining live plan/spec docs had become reference-only, so they were archived:
+
+- `.planning/archive/completed-plans/2026-04-11-post-0.56.0-cleanup-plan.md`
+- `.planning/archive/completed-specs/2026-04-11-post-0.56.0-cleanup-design.md`
+- `.planning/archive/completed-plans/2026-04-15-performance-measurement-and-renderer-tables-phase1-plan.md`
+- `.planning/archive/completed-specs/2026-04-15-performance-measurement-and-renderer-tables-design.md`
+
+At this point, today's review is the only live code-review snapshot, and there are no active execution plans/specs left in `.planning/plans` or `.planning/specs` until the next real phase is intentionally opened.
 
 ## Current Strengths
 
 ### 1. Desktop security posture remains strong
 
-- `src/main/index.ts` keeps `sandbox: true`, `contextIsolation: true`, and `nodeIntegration: false`.
-- `src/preload/index.ts` exposes a narrow typed `window.api` surface instead of raw Electron primitives.
-- External URL access still flows through validated shell handlers.
+- `src/main/index.ts` still enforces `sandbox: true`, `contextIsolation: true`, and `nodeIntegration: false`.
+- `src/preload/index.ts` exposes a typed `window.api` surface instead of broad Electron primitives.
+- External URL opens still flow through validation before `shell.openExternal`.
 
-This remains aligned with Electron's guidance to keep context isolation enabled and expose one preload method per IPC capability rather than broad raw IPC access.  
+This remains aligned with Electron's core guidance for isolating the renderer and minimizing IPC exposure.  
 Sources:
 - https://www.electronjs.org/docs/latest/tutorial/context-isolation
 - https://www.electronjs.org/docs/latest/tutorial/security
 
-### 2. IPC architecture is now a real strength, not an active weakness
+### 2. IPC architecture is now a real strength
 
-- `src/main/ipc/index.ts` registers domain modules for the active app-facing IPC surface and keeps only a narrow legacy set for `shell`, `shortlist`, `system`, and `updater`.
-- The corresponding domain triples exist under:
+- `src/main/ipc/index.ts` is organized around domain modules for the active IPC surface.
+- Corresponding shared, preload, and main domain modules exist under:
   - `src/shared/ipc/domains/`
   - `src/preload/domains/`
   - `src/main/ipc/domains/`
 - Per-domain tests exist under `tests/shared/ipc/domains/`.
-- `.planning/artifacts/maintainability/2026-04-16-ipc-domain-inventory.md` now explicitly records the rollout as complete on 2026-04-17 and retires the circuit-breaker.
 
-The remaining follow-up here is mostly type-shape cleanup in `src/shared/types/api.ts`, not a missing architectural pattern.
+The remaining cleanup here is legacy type-shape consolidation, not missing architecture.
 
-### 3. CI and release gates are substantially better than the prior review captured
+### 3. CI and release gates are credible
 
 - `.github/workflows/build.yml` runs Linux startup smoke against the built Electron app.
-- `.github/workflows/release.yml` blocks release unless `build.yml` passed on the tagged SHA.
-- `Makefile` exposes `ci`, `ci-full`, and `ci-startup-smoke` as a coherent command surface.
+- `.github/workflows/release.yml` refuses to publish unless `build.yml` passed on the exact tagged SHA.
+- Workflow actions are now pinned to immutable full commit SHAs with readable tag comments.
 
-This is a meaningful maturity jump. The current CI posture is no longer "good unit tests but weak end-to-end trust." It now has a real startup gate and a release guard.
+That combination gives the repo real startup verification and better CI supply-chain discipline.
 
-### 4. Cross-agent repo guidance is now canonical and credible
+### 4. Agent and contributor guidance is now trustworthy
 
-- `AGENTS.md` is present and correctly repo-specific.
-- `CLAUDE.md` imports `AGENTS.md` and limits itself to Claude-harness behavior.
-- The content is grounded in actual repo quirks: dual native-module rebuilds, canonical `make` targets, typed IPC rules, logging rules, UI traps, and `.planning/` conventions.
+- `AGENTS.md` is canonical and repo-specific.
+- The command surface is clearly centered on `Makefile`.
+- The guidance now matches the actual stack, IPC shape, fuse posture, and verification flow.
 
-This is now one of the better multi-agent repo contracts I have seen in an Electron application.
+This is no longer a repo where future agents need to rediscover the real workflow by trial and error.
 
-### 5. Documentation drift is much lower after the current cleanup pass
+### 5. The Mol* integration is substantially safer and less fragile
 
-- completed review snapshots and completed 2026-04-10 specs are archived
-- the remaining live planning docs are explicitly marked as partial/reference status
-- `AGENTS.md` now reflects the current IPC rollout state
-- `README.md` and the VitePress intro/overview pages now match the current runtime and framework stack
+- The renderer no longer depends on a copied public pdbe-molstar script.
+- The viewer runtime is loaded through the normal Vite asset graph.
+- The old renderer-side `asarUnpack` exception for the viewer bundle is gone.
 
-The repo is in a noticeably better state for picking the next engineering phase than it was before this pass.
+That is a meaningful packaging and security improvement, and it also removes one of the most plausible explanations for the unexplained Windows instability around the old integration.
 
-### 6. Protein viewer packaging is now on a sounder path
+### 6. Planning hygiene is much better
 
-- The pdbe-molstar integration no longer depends on a copied public script, a custom-element registration wait loop, or an unpacked renderer-side JS file.
-- The renderer now lazy-loads the `PDBeMolstarPlugin` runtime and light-theme CSS through Vite's asset graph.
-- `package.json` no longer needs the old `copy:molstar` hooks or renderer-side `asarUnpack` exception for the viewer bundle.
+- older code reviews are archived
+- finished cleanup/perf plan+spec docs are archived
+- user-facing docs and repo-facing docs were synchronized with the current codebase
 
-This is a meaningful quality improvement because it removes one of the more fragile `file://`-era frontend integration patterns in the repo, which was a plausible source of cross-platform drift and an especially suspicious explanation for the unexplained Windows failures.
+The planning tree is now much less likely to send a future reviewer down an already-finished path.
 
 ## Findings
 
-### Resolved: Planning cleanup was the immediate next step, and it is now mostly done
+### Resolved: planning-status drift is no longer a top problem
 
-The biggest documentation problem was no longer missing standards. It was **status drift inside `.planning/`**.
+This was the right cleanup priority earlier in the day, and it has now been handled well enough that it should drop out of the active risk list.
 
-Examples:
+The remaining rule should be simple:
 
-- `.planning/specs/2026-04-11-post-0.56.0-cleanup-design.md` still says "Design approved, pending plan", but major parts of that work clearly shipped:
-  - explicit Apple-Silicon-only macOS targets in `package.json`
-  - installation docs updated in `docs/guide/installation.md`
-  - coverage thresholds restored in `vitest.config.ts`
-  - workflow action major-version bumps in `.github/workflows/*.yml`
-  - the scoring vision doc under `.planning/docs/`
-- `.planning/plans/2026-04-15-performance-measurement-and-renderer-tables-phase1-plan.md` still reads like an active execution plan, but the harness, perf snapshot plumbing, comparison script, and Linux startup-smoke gate already exist in the codebase.
+- keep code reviews as dated snapshots
+- archive finished plans/specs promptly
+- only leave docs in `.planning/plans` or `.planning/specs` when someone is actually maintaining them as live working documents
 
-This was a practical planning problem, not just a documentation nit. Future reviewers or agents could spend time re-triaging already-completed work, misclassifying shipped work as pending, or planning "next phases" on top of stale status markers.
+That rule is now also easier to enforce because the live planning set has been reduced to zero active plans/specs rather than a handful of stale reference docs.
 
-As of this review pass, that cleanup has been substantially improved:
+### Resolved: GitHub Actions SHA pinning has landed
 
-- completed 2026-04-10 planning docs were archived
-- prior 2026-04-15 and 2026-04-16 review snapshots were archived
-- the remaining live cleanup/perf docs now carry explicit 2026-04-22 status banners
-- the active planning set is reduced to the genuinely still-useful reference docs
-- the stale IPC/version/framework wording in `AGENTS.md`, `README.md`, and VitePress overview pages was corrected
+This was a valid gap at the start of the review pass, but it is no longer an open finding.
 
-**Current guidance**
+The workflows now use immutable full-SHA action refs with same-line tag comments that keep Dependabot updates maintainable. That aligns with GitHub's hardening guidance and materially lowers the supply-chain risk of CI drift.
 
-- Review the active `.planning/specs` and `.planning/plans` first, before choosing the next substantive engineering phase.
-- Archive completed plans/specs promptly, or add a dated status banner at the top when archival is deferred.
-- Mark remaining live docs explicitly as `completed`, `partially landed`, or `superseded` where applicable.
-- Treat code review docs as snapshots and planning docs as living docs only if someone is actually maintaining the status markers.
+The standing policy should remain:
 
-### Medium: The 2026-04-16 review overstates virtualization as the default next move
-
-The prior review's "Priority B" recommendation leaned too hard toward virtualization as the obvious next renderer step.
-
-That is not fully supported by this repo's own evidence:
-
-- `.planning/specs/2026-04-15-performance-measurement-and-renderer-tables-design.md` explicitly says Phase 1 should optimize the current architecture first.
-- `.planning/archive/completed-specs/2026-03-25-performance-optimization-design.md` records concrete problems with direct `v-data-table-virtual` use on wide tables.
-- The current tables are still wide, slot-heavy, and server-paginated rather than unbounded client lists.
-
-Vue's guidance does support virtualization for large lists, but that is a general recommendation. For VarLens specifically, the review should not lock in the next renderer phase yet. The right sequencing is:
-
-1. clean up planning status
-2. review the current perf evidence
-3. then decide whether the next renderer phase is row-cost reduction, hidden-work suppression, selective virtualization, or something else
-
-**Recommendation**
-
-- Keep virtualization as an option, not as the default prescription.
-- Require new perf evidence against the current harness before choosing between:
-  - further row-cost reduction
-  - hidden-work suppression
-  - selective virtualization
-  - table-primitive replacement
+- require full-SHA pins for new external actions
+- keep the human-readable tag comment
+- let Dependabot handle normal ref refreshes
 
 Sources:
-- https://vuejs.org/guide/best-practices/performance
-- https://www.electronjs.org/docs/latest/tutorial/performance
-
-### Updated: GitHub Actions SHA pinning has landed, but it should remain an enforced maintenance rule
-
-This gap was real at the start of the review pass, and it has now been substantially reduced.
-
-The repository's workflow actions are now pinned to full commit SHAs across `build.yml`, `release.yml`, and `docs.yml`, with same-line human-readable tag comments for maintainability and Dependabot compatibility. That materially improves the immutability of the CI supply chain and aligns the repo with GitHub's current guidance.
-
-The remaining risk is now less about today's workflow state and more about **future regressions**:
-
-- new workflow steps could slip back to floating tags
-- maintainers could remove the tag comments that make Dependabot updates clean
-- the repo still relies on periodic review to ensure newly added third-party actions get the same treatment
-
-That maintenance path is now documented in both `AGENTS.md` and `.github/dependabot.yml`, which is the right long-term shape for this repository.
-
-This is not just abstract hygiene. 2025 supply-chain incidents such as the `tj-actions/changed-files` compromise materially raised the cost of floating-tag dependencies in CI, and full-length SHA pinning is the concrete control GitHub recommends for immutable action references.
-
-**Recommendation**
-
-- Keep workflow actions SHA-pinned as an ongoing repo policy, not a one-time cleanup.
-- Require `uses: owner/repo@<full-sha> # owner/repo@vX.Y.Z` for any new external action.
-- Let Dependabot own normal action-version refreshes; review humans should only need to check the resulting diff and upstream changelog.
-
-Source:
 - https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions
 - https://docs.github.com/en/github/administering-a-repository/keeping-your-actions-up-to-date-with-github-dependabot
-- https://docs.github.com/en/code-security/dependabot/ecosystems-supported-by-dependabot/supported-ecosystems-and-repositories
 
-### Updated: Electron fuse hardening has started, and the Mol* delivery path no longer blocks the next step
+### Resolved in part: Electron fuse hardening has started, but packaged-app integrity still has one obvious next step
 
-This was previously an explicit gap. The repo now has a checked-in `build.electronFuses` configuration in `package.json`, and `AGENTS.md` documents that fuse posture as part of the security baseline.
-
-The current fuse set is a conservative first pass that matches the current codebase well:
+This is no longer an “audit missing” problem. The repo now has a checked-in initial fuse baseline in `package.json`:
 
 - `runAsNode: false`
 - `enableNodeOptionsEnvironmentVariable: false`
@@ -191,156 +131,138 @@ The current fuse set is a conservative first pass that matches the current codeb
 - `enableCookieEncryption: true`
 - `enableEmbeddedAsarIntegrityValidation: true`
 
-That is a real improvement, because the app does not appear to depend on `child_process.fork` / `process.fork`, and GitHub/Electron guidance both support disabling those Node-oriented entry points when they are unused.
+That is real progress. The next step is now narrower and clearer: evaluate and, if safe, enable `onlyLoadAppFromAsar`.
 
-The remaining gap is also now clearer:
-
-- the packaged app still loads the renderer via `loadFile(...)` from `file://`
-- but the old pdbe-molstar public-script / `asarUnpack` exception has now been removed
-- the protein viewer runtime is bundled and lazy-loaded through the normal renderer asset graph
-
-That means one of the key blockers for stricter packaged-code integrity has been removed. This review still does **not** recommend flipping every remaining fuse immediately, but the repo is now in a much better position to evaluate `onlyLoadAppFromAsar` next because the most obvious unpacked-renderer exception is gone.
-
-**Recommendation**
-
-- Keep the current checked-in fuse set.
-- Add packaged-build fuse verification to a release or CI-adjacent workflow when practical.
-- Treat `onlyLoadAppFromAsar` as the next explicit fuse-hardening task, now that the Mol* runtime no longer depends on a copied public script outside the normal bundle pipeline.
+The Mol* cleanup removed the most suspicious unpacked-renderer exception, so the repo is in a much better position to make that decision deliberately rather than deferring it indefinitely.
 
 Sources:
 - https://www.electronjs.org/docs/latest/tutorial/fuses
 - https://www.electron.build/tutorials/adding-electron-fuses.html
 
-### Medium: Local verification is brittle when packaged artifacts are present
+### Medium: Local verification is still brittle when packaged artifacts exist
 
-The repo's canonical gate is `make ci`, but local verification is not fully hermetic today.
+The repo's canonical local gate is `make ci`, but it is not fully hermetic yet.
 
-During this review, `make ci` failed in `lint:check` because ESLint traversed generated files under `release/linux-unpacked/resources/app.asar.unpacked/...`. The current ignore list in `eslint.config.js` excludes `out/**`, `dist/**`, `.planning/**`, `docs/**`, and `src/renderer/public/**`, but not `release/**`.
+During review work, packaged output under `release/**` contaminated linting because `eslint.config.js` excludes `out/**`, `dist/**`, `.planning/**`, and `docs/**`, but not `release/**`.
 
-That means a perfectly valid local packaging run can poison later lint runs unless the build output is cleaned manually. For a repo that explicitly treats the Makefile as the source of truth, that is a workflow-quality issue worth fixing.
+That means a legitimate local packaging run can poison later verification until the generated output is manually cleaned.
 
 **Recommendation**
 
-- ignore `release/**` in ESLint unless there is a deliberate reason to lint packaged output
-- keep canonical verification commands resilient to expected generated artifacts
-- if packaged-output linting is desired, move it into a separate explicit target instead of contaminating `make ci`
+- ignore `release/**` in ESLint unless packaged output is intentionally part of lint scope
+- keep `make ci` resilient to expected generated artifacts
+- if packaged-output validation is wanted, put it behind a separate explicit target
 
-### Medium: Data-layer portability remains the main strategic architectural gap
+### Medium: Data-layer portability remains the main strategic architecture gap
 
-Nothing in the current codebase changes the basic conclusion from the earlier reviews:
+The core long-term conclusion from earlier reviews still holds.
 
-- `DatabaseService` is still SQLite-native.
-- `VariantRepository` still owns SQLite-specific FTS and rebuild behavior.
-- workers still assume local file-backed encrypted SQLite.
-- summary rebuild flows still assume full local control over the storage engine.
+- `DatabaseService` remains SQLite-native.
+- `VariantRepository` still owns SQLite-specific FTS behavior.
+- worker assumptions still target local encrypted SQLite files.
+- Kysely is still being used for typed SQL help, not as a real dialect boundary.
 
-Kysely is present, but still not acting as a dialect boundary. Its role remains closer to typed SQL assistance than portability infrastructure.
+There has been useful prep work:
 
-There has been some small real movement here that should be acknowledged:
+- FTS trigger lifecycle management is more isolated
+- incremental cohort-summary SQL exists
 
-- FTS trigger lifecycle has been extracted into its own management module
-- incremental cohort-summary SQL exists instead of everything being expressed only as full rebuilds
-
-Those are useful preparatory steps, but they are still preparatory. They do not change the headline conclusion that the adapter boundary is absent and the runtime behavior remains SQLite-native.
-
-So the repo is substantially healthier operationally, but it is still **not prepared for hosted Postgres or WGS-scale growth without deliberate architecture work**.
-
-This remains the most important long-term technical limitation.
+But that is still preparatory. It does not change the headline conclusion that a true storage adapter boundary does not exist yet. VarLens is operationally stronger now, but it is still not prepared for a hosted-Postgres pivot or much larger-scale data growth without deliberate architecture work.
 
 Sources:
 - https://kysely.dev/docs/dialects
 - https://www.postgresql.org/docs/current/ddl-partitioning.html
 - https://www.postgresql.org/docs/current/textsearch-tables.html
 
-### Low: npm script discoverability still lags the Makefile
+### Medium: Renderer Phase 2 should still be chosen from evidence, not habit
 
-The repo now has a strong canonical command surface in `Makefile`, and `AGENTS.md` documents that correctly.
+The previous overcorrection toward “virtualization next” is still not justified as a default conclusion.
 
-But `package.json` still does not mirror a few high-value entry points such as:
+Phase 1 measurement and first-pass responsiveness work landed. That is enough to make the next decision disciplined rather than speculative, but not enough to pre-commit the answer.
 
-- `test:e2e`
-- `test:smoke`
-- `verify`
-- `ci:full`
+The correct next move is still:
 
-This is a mild ergonomics problem, not a structural problem. It mainly affects contributors or tools that look at `package.json` first and never inspect the Makefile.
+1. start from the current perf harness and latest measurements
+2. identify the highest remaining cost centers
+3. then choose among:
+   - further row-cost reduction
+   - hidden-work suppression
+   - selective virtualization
+   - table primitive replacement
+
+Virtualization remains an option, not a predetermined plan.
+
+Sources:
+- https://vuejs.org/guide/best-practices/performance
+- https://www.electronjs.org/docs/latest/tutorial/performance
+
+### Low: npm-script discoverability still lags the Makefile
+
+The Makefile is correctly the source of truth, but `package.json` still does not mirror a few high-value entry points that some contributors and tools will look for first.
+
+This is a small ergonomics issue, not a structural one. It is only worth doing if it can be done without diluting the rule that `make` is canonical.
+
+### Resolved: recent `stream-json` typecheck breakage is fixed
+
+The node-side typecheck failure caused by unresolved `stream-json` typings is no longer an active issue. Local declarations and callback typing cleanup were added, and direct node-side `tsc` now passes again.
+
+That matters because it removes a misleading source of “repo instability” that was really just a narrow typing gap in the import pipeline.
 
 ## Updated Scorecard
 
 | Area | 2026-04-16 | 2026-04-22 | Notes |
 |---|---:|---:|---|
-| Security / desktop boundary | 8.0 | 7.8 | Strong defaults remain; fuse posture now deserves explicit audit |
-| Architecture | 7.5 | 8.0 | IPC/domain structure is now materially stronger |
-| Maintainability | 7.5 | 8.0 | Biggest remaining issue is planning status drift, not shell/IPC sprawl |
-| Testability / CI trust | 7.5 | 8.2 | Startup smoke and release gating are now first-class |
-| UX / snappiness | 7.0 | 7.1 | Phase 1 harness is real; next steps still require evidence |
-| PostgreSQL / hosted backend readiness | 3.0 | 3.3 | Small prep work landed; adapter boundary still absent |
-| Supply chain / CI posture | 7.0 | 6.5 | CI gates improved, but floating action tags are now a more serious risk |
+| Security / desktop boundary | 8.0 | 8.3 | Strong defaults remain; fuse baseline is now checked in |
+| Architecture | 7.5 | 8.1 | IPC/domain structure is now materially stronger |
+| Maintainability | 7.5 | 8.3 | Planning drift was cleaned up; repo guidance now matches reality |
+| Testability / CI trust | 7.5 | 8.4 | Startup smoke, release gating, and cleaner verification flow help materially |
+| UX / snappiness | 7.0 | 7.2 | Phase 1 landed; next step still needs evidence |
+| PostgreSQL / hosted backend readiness | 3.0 | 3.3 | Small prep work exists; adapter boundary is still absent |
+| Supply chain / CI posture | 7.0 | 8.0 | Action SHA pinning landed |
 | WGS-scale readiness | 4.0 | 4.0 | No meaningful change |
-| Dev workflow / agent-readiness | 7.0 | 8.1 | `AGENTS.md` is strong; Makefile is canonical; planning status drift holds this back |
-| **Overall** | **7.0** | **7.5** | Earlier organizational weaknesses are mostly retired; security hardening bar is higher now |
+| Dev workflow / agent-readiness | 7.0 | 8.5 | `AGENTS.md` is strong and stale live planning docs are gone |
+| **Overall** | **7.0** | **8.0** | Broad cleanup is done; remaining issues are narrower and more strategic |
 
 ## Revised Priorities
 
-### Priority A — Clean up `.planning/` first
+### Priority A — Finish packaged-app integrity hardening
 
-This is the highest-ROI documentation task now.
+- evaluate `onlyLoadAppFromAsar`
+- add fuse verification to a reproducible build or release check
+- keep the current fuse baseline documented and intentional
 
-- archive completed plans/specs
-- add explicit "completed / superseded / partially landed" headers where archival is deferred
-- stop leaving active-phase checklists in the live planning directories after the code has already shipped
+### Priority B — Decide the next renderer-performance phase from measurements
 
-### Priority B — Decide the next perf phase only after cleanup
-
-Do not prematurely lock in a virtualization migration or any other specific renderer strategy.
-
-Use the existing harness to decide the next renderer move based on measured bottlenecks in:
-
-- `startup-shell`
-- `case-select-visible-rows`
-- `cohort-toggle`
-- `keyboard-nav-burst`
+- use the current perf harness as the entry point
+- choose the next renderer move from actual bottlenecks, not generic frontend advice
 
 ### Priority C — Introduce a real storage adapter boundary before any Postgres work
 
-This remains the key strategic architecture task.
-
-The right move is still:
-
-- isolate SQLite-specific behavior
-- define repository/adapter boundaries around variant queries and rebuild jobs
+- isolate SQLite-specific repository behavior
+- define adapter boundaries around query and rebuild flows
 - keep Kysely as a tool inside the boundary, not the boundary itself
 
-### Priority D — Harden workflow supply chain
+### Priority D — Make local verification hermetic
 
-- pin critical GitHub Actions to full commit SHAs
-- keep least-privilege `GITHUB_TOKEN` permissions
-- review third-party actions periodically
+- exclude `release/**` from normal lint scope or clean it automatically
+- keep `make ci` reliable after normal local packaging activity
 
-### Priority E — Audit and document Electron fuses
+### Priority E — Optional command-surface mirroring
 
-- inspect the current packaged fuse state
-- check the configuration into the repo in a reproducible form
-- document the intended fuse posture next to the other Electron security defaults
-
-### Priority F — Optional command-surface mirroring
-
-Mirror a few high-value `make` targets into `package.json` for discoverability, but do not split the source of truth. The Makefile should stay canonical.
+- mirror a few high-value `make` targets into `package.json` only if it improves discoverability without weakening the “Makefile is canonical” rule
 
 ## Bottom Line
 
-The right update to the codebase story is:
+VarLens is no longer primarily paying down shell chaos, IPC sprawl, or stale planning drift. Those problems have been reduced to the point where they should stop dominating reviews.
 
-VarLens is no longer a good desktop app that is still paying off shell and IPC structure debt. That debt has largely been paid down. The repo is now in the healthier phase where the most important remaining issues are:
+The remaining work is more focused:
 
-- strategic data-layer design
-- renderer ceilings after Phase 1
-- workflow hardening
-- documentation/status accuracy
+- finish packaged-app integrity hardening
+- choose the next renderer-performance phase from evidence
+- add a real storage abstraction boundary if larger-scale or hosted data is still a real future direction
+- smooth out a few local workflow rough edges
 
-That is a much better place to be.
-
-The prior reviews were directionally useful, but the latest one needs to be superseded because it no longer reflects the current tree.
+That is a healthier and more accurate picture of the current codebase.
 
 ## External References
 
@@ -352,8 +274,6 @@ The prior reviews were directionally useful, but the latest one needs to be supe
 - Vue performance guide: https://vuejs.org/guide/best-practices/performance
 - Playwright Electron docs: https://playwright.dev/docs/api/class-electronapplication
 - GitHub Actions security hardening: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions
-- CISA alert on `tj-actions/changed-files`: https://www.cisa.gov/news-events/alerts/2025/03/18/supply-chain-compromise-third-party-tj-actionschanged-files-cve-2025-30066-and-reviewdogaction
 - Kysely dialects: https://kysely.dev/docs/dialects
 - PostgreSQL partitioning: https://www.postgresql.org/docs/current/ddl-partitioning.html
 - PostgreSQL text search tables and indexes: https://www.postgresql.org/docs/current/textsearch-tables.html
-- OpenAI Codex planning guidance: https://cookbook.openai.com/articles/codex_exec_plans/

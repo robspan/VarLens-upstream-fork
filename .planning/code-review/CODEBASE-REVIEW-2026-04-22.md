@@ -6,6 +6,28 @@
 **Baseline reviewed:** `.planning/archive/completed-docs/CODEBASE-REVIEW-2026-04-16.md`  
 **Scope:** Current repository state after planning cleanup, workflow hardening, initial Electron fuse hardening, Mol* integration cleanup, and recent type-safety fixes
 
+## Update — 2026-04-23
+
+**Current HEAD:** `b08d01a`  
+**Shipped since this review was written:**
+
+- **v0.56.6 released** (tag `v0.56.6`, 10 platform artifacts published). Addresses **Priority A** end-to-end via PR #169: `onlyLoadAppFromAsar: true` is flipped on all three platforms, fuse configuration is owned by `scripts/configure-fuses.mjs` with `strictlyRequireAllFuses: true` as a drift detector against Electron upgrades, a new Linux packaged-binary smoke (`tests/e2e/packaged-smoke.e2e.ts`) guards against fuse-caused boot regressions, and the baseline is documented in `AGENTS.md`.
+- **Priority D resolved** in commit `a8a80fc` — `release/**` is now in the ESLint ignore list; a local `make dist` no longer poisons `make ci`.
+- **Dependency hygiene pass** via PR #171: 8 dev-deps, 2 prod-deps, and `actions/download-artifact` in `docs.yml`/`release.yml` bumped together; lockfile regenerated under `.nvmrc`-pinned Node 24.14.1 so `npm ci` stays strictly consistent. Dependabot PRs #166, #167, #168, #170 closed.
+
+**Now-open priorities** (unchanged from the original list):
+
+- **Priority B** — pick the next renderer-performance phase from the perf harness, not from habit.
+- **Priority C** — design a real storage adapter boundary before any Postgres work.
+- **Priority E** — optional `package.json` script mirroring for discoverability.
+
+**Not in scope of this update** (explicit follow-ups):
+
+- macOS and Windows packaged-binary smoke tests.
+- Tightening `GrantFileProtocolExtraPrivileges` — needs its own compatibility assessment before flipping.
+- Moving the renderer off `file://` toward a custom protocol (Electron's longer-term hardening direction).
+- Two open Dependabot CVEs nested inside `vitepress` (`vite`, `esbuild`); tracked in #154 pending a vitepress major upgrade.
+
 ## Executive Summary
 
 The 2026-04-16 review is now fully superseded.
@@ -121,37 +143,22 @@ Sources:
 - https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions
 - https://docs.github.com/en/github/administering-a-repository/keeping-your-actions-up-to-date-with-github-dependabot
 
-### Resolved in part: Electron fuse hardening has started, but packaged-app integrity still has one obvious next step
+### ✅ Fully resolved (2026-04-23, v0.56.6, PR #169): Electron fuse hardening
 
-This is no longer an “audit missing” problem. The repo now has a checked-in initial fuse baseline in `package.json`:
+Originally filed as "resolved in part" — the remaining step was flipping `onlyLoadAppFromAsar`. That shipped with PR #169 along with the broader hardening:
 
-- `runAsNode: false`
-- `enableNodeOptionsEnvironmentVariable: false`
-- `enableNodeCliInspectArguments: false`
-- `enableCookieEncryption: true`
-- `enableEmbeddedAsarIntegrityValidation: true`
-
-That is real progress. The next step is now narrower and clearer: evaluate and, if safe, enable `onlyLoadAppFromAsar`.
-
-The Mol* cleanup removed the most suspicious unpacked-renderer exception, so the repo is in a much better position to make that decision deliberately rather than deferring it indefinitely.
+- `onlyLoadAppFromAsar: true` flipped on all three platforms.
+- Fuse configuration moved from the declarative `build.electronFuses` in `package.json` into `scripts/configure-fuses.mjs` (an `afterPack` hook) which calls `context.packager.addElectronFuses(...)` with `strictlyRequireAllFuses: true`. Electron upgrades that introduce new fuses now fail the build until the baseline declares them.
+- Baseline documented in `AGENTS.md` under "Electron fuse baseline".
+- `tests/e2e/packaged-smoke.e2e.ts` launches `release/linux-unpacked/varlens` directly (via `child_process.spawn` — Playwright's `_electron.launch` is blocked by the `EnableNodeCliInspectArguments: false` fuse because it injects `--inspect=0`) and asserts the `IPC handlers registered` log line. Wired into `make ci-packaged-smoke-linux`, `make ci-full`, and `build.yml`.
 
 Sources:
 - https://www.electronjs.org/docs/latest/tutorial/fuses
 - https://www.electron.build/tutorials/adding-electron-fuses.html
 
-### Medium: Local verification is still brittle when packaged artifacts exist
+### ✅ Resolved (commit `a8a80fc`): Local verification is now hermetic to packaged artifacts
 
-The repo's canonical local gate is `make ci`, but it is not fully hermetic yet.
-
-During review work, packaged output under `release/**` contaminated linting because `eslint.config.js` excludes `out/**`, `dist/**`, `.planning/**`, and `docs/**`, but not `release/**`.
-
-That means a legitimate local packaging run can poison later verification until the generated output is manually cleaned.
-
-**Recommendation**
-
-- ignore `release/**` in ESLint unless packaged output is intentionally part of lint scope
-- keep `make ci` resilient to expected generated artifacts
-- if packaged-output validation is wanted, put it behind a separate explicit target
+`eslint.config.js` was updated to ignore `release/**` in addition to `out/**`, `dist/**`, `.planning/**`, and `docs/**`. A local `make dist` can now run without poisoning subsequent `make ci` / `make lint` invocations.
 
 ### Medium: Data-layer portability remains the main strategic architecture gap
 
@@ -210,18 +217,18 @@ That matters because it removes a misleading source of “repo instability” th
 
 ## Updated Scorecard
 
-| Area | 2026-04-16 | 2026-04-22 | Notes |
-|---|---:|---:|---|
-| Security / desktop boundary | 8.0 | 8.3 | Strong defaults remain; fuse baseline is now checked in |
-| Architecture | 7.5 | 8.1 | IPC/domain structure is now materially stronger |
-| Maintainability | 7.5 | 8.3 | Planning drift was cleaned up; repo guidance now matches reality |
-| Testability / CI trust | 7.5 | 8.4 | Startup smoke, release gating, and cleaner verification flow help materially |
-| UX / snappiness | 7.0 | 7.2 | Phase 1 landed; next step still needs evidence |
-| PostgreSQL / hosted backend readiness | 3.0 | 3.3 | Small prep work exists; adapter boundary is still absent |
-| Supply chain / CI posture | 7.0 | 8.0 | Action SHA pinning landed |
-| WGS-scale readiness | 4.0 | 4.0 | No meaningful change |
-| Dev workflow / agent-readiness | 7.0 | 8.5 | `AGENTS.md` is strong and stale live planning docs are gone |
-| **Overall** | **7.0** | **8.0** | Broad cleanup is done; remaining issues are narrower and more strategic |
+| Area | 2026-04-16 | 2026-04-22 | 2026-04-23 | Notes |
+|---|---:|---:|---:|---|
+| Security / desktop boundary | 8.0 | 8.3 | 8.7 | `onlyLoadAppFromAsar` flipped; strict-require drift detector live; packaged-binary smoke on Linux |
+| Architecture | 7.5 | 8.1 | 8.1 | No change |
+| Maintainability | 7.5 | 8.3 | 8.4 | Fuse baseline is now a documented invariant with a single source of truth |
+| Testability / CI trust | 7.5 | 8.4 | 8.6 | New packaged-binary smoke wired into `ci-full` and `build.yml` |
+| UX / snappiness | 7.0 | 7.2 | 7.2 | Unchanged — Priority B still open |
+| PostgreSQL / hosted backend readiness | 3.0 | 3.3 | 3.3 | Unchanged — Priority C still open |
+| Supply chain / CI posture | 7.0 | 8.0 | 8.2 | Dependency batch resolved under pinned Node; `download-artifact` bumped; 4 Dependabot PRs consolidated |
+| WGS-scale readiness | 4.0 | 4.0 | 4.0 | No change |
+| Dev workflow / agent-readiness | 7.0 | 8.5 | 8.5 | No change |
+| **Overall** | **7.0** | **8.0** | **8.3** | Priority A + D shipped; remaining work is B (perf) and C (storage adapter) |
 
 ## Revised Priorities
 
@@ -254,16 +261,13 @@ That matters because it removes a misleading source of “repo instability” th
 
 ## Bottom Line
 
-VarLens is no longer primarily paying down shell chaos, IPC sprawl, or stale planning drift. Those problems have been reduced to the point where they should stop dominating reviews.
+**As of 2026-04-23**, packaged-app integrity hardening and local-verification hermeticity (the two tactical items on this review) have shipped in v0.56.6. The remaining work is genuinely strategic:
 
-The remaining work is more focused:
+- **B** — choose the next renderer-performance phase from evidence, using the current perf harness as the entry point.
+- **C** — design a real storage adapter boundary if larger-scale or hosted data is still on the roadmap.
+- **E** — optional `package.json` script mirroring for discoverability.
 
-- finish packaged-app integrity hardening
-- choose the next renderer-performance phase from evidence
-- add a real storage abstraction boundary if larger-scale or hosted data is still a real future direction
-- smooth out a few local workflow rough edges
-
-That is a healthier and more accurate picture of the current codebase.
+VarLens is no longer primarily paying down shell chaos, IPC sprawl, or stale planning drift, and now also no longer paying down packaged-app hardening or local-verification friction. The next review should start from whichever of B or C gets picked up.
 
 ## External References
 

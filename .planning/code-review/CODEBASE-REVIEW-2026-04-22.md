@@ -144,27 +144,32 @@ Sources:
 - https://vuejs.org/guide/best-practices/performance
 - https://www.electronjs.org/docs/latest/tutorial/performance
 
-### Medium: GitHub Actions security hardening still stops at major-version pins
+### Updated: GitHub Actions SHA pinning has landed, but it should remain an enforced maintenance rule
 
-The workflows are in materially better shape, but they still use floating action tags such as:
+This gap was real at the start of the review pass, and it has now been substantially reduced.
 
-- `actions/checkout@v6`
-- `actions/setup-node@v6`
-- `actions/cache@v5`
-- `actions/upload-artifact@v7`
+The repository's workflow actions are now pinned to full commit SHAs across `build.yml`, `release.yml`, and `docs.yml`, with same-line human-readable tag comments for maintainability and Dependabot compatibility. That materially improves the immutability of the CI supply chain and aligns the repo with GitHub's current guidance.
 
-GitHub's own security guidance is explicit that full-length commit SHAs are the strongest option for immutable action references.
+The remaining risk is now less about today's workflow state and more about **future regressions**:
 
-This is not just abstract hygiene anymore. 2025 supply-chain incidents such as the `tj-actions/changed-files` compromise materially raised the cost of floating-tag dependencies in CI. For VarLens, this is now one of the clearest open workflow-hardening gaps in the repository.
+- new workflow steps could slip back to floating tags
+- maintainers could remove the tag comments that make Dependabot updates clean
+- the repo still relies on periodic review to ensure newly added third-party actions get the same treatment
+
+That maintenance path is now documented in both `AGENTS.md` and `.github/dependabot.yml`, which is the right long-term shape for this repository.
+
+This is not just abstract hygiene. 2025 supply-chain incidents such as the `tj-actions/changed-files` compromise materially raised the cost of floating-tag dependencies in CI, and full-length SHA pinning is the concrete control GitHub recommends for immutable action references.
 
 **Recommendation**
 
-- Pin the highest-risk external workflow actions to full commit SHAs first.
-- Start with `checkout`, `setup-node`, `cache`, `upload-artifact`, and any third-party actions.
-- Leave an inline comment with the human-readable tag next to the SHA for maintainability.
+- Keep workflow actions SHA-pinned as an ongoing repo policy, not a one-time cleanup.
+- Require `uses: owner/repo@<full-sha> # owner/repo@vX.Y.Z` for any new external action.
+- Let Dependabot own normal action-version refreshes; review humans should only need to check the resulting diff and upstream changelog.
 
 Source:
 - https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions
+- https://docs.github.com/en/github/administering-a-repository/keeping-your-actions-up-to-date-with-github-dependabot
+- https://docs.github.com/en/code-security/dependabot/ecosystems-supported-by-dependabot/supported-ecosystems-and-repositories
 
 ### Medium: Electron fuse posture should now be audited explicitly
 

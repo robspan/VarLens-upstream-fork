@@ -46,6 +46,8 @@ updates:
   # Enable security updates for GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
+    # Keep SHA-pinned workflow actions current; same-line tag comments in
+    # workflow `uses:` entries let Dependabot update the pin cleanly.
     schedule:
       interval: "weekly"
     labels:

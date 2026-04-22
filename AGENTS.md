@@ -146,6 +146,11 @@ Test data lives at `tests/test-data/vcf/` (GIAB Chinese Trio, chr22:29M–30.5M,
 - **Release flow.** Versions are tagged `vX.Y.Z`. `.github/workflows/release.yml` **refuses to publish** if `build.yml` has not passed on the exact tagged SHA. Do not tag until CI is green on the commit you're tagging.
 - **PRs.** Small, focused, green CI. If a change spans shell + IPC + database, split it unless the atomicity is load-bearing. Reference the `.planning/` plan or review that motivates the change.
 
+## Workflow Maintenance
+
+- **GitHub Actions must stay pinned to full commit SHAs, not floating tags.** Use the form `uses: owner/repo@<full-sha> # owner/repo@vX.Y.Z` so the reference is immutable and Dependabot can still update it cleanly.
+- `.github/dependabot.yml` already tracks the `github-actions` ecosystem. When updating or adding workflow actions, keep the human-readable tag comment on the same `uses:` line so Dependabot preserves and refreshes it.
+
 ## Security Defaults
 
 - Electron window creation enforces `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`. See `src/main/index.ts`. **Do not weaken these.**

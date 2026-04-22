@@ -12,17 +12,17 @@ The target user is a clinical geneticist or researcher working with case-level v
 
 ## Tech Stack
 
-| Layer | Choice |
-|---|---|
-| Runtime | Electron 40 (main + preload + renderer) |
-| Renderer | Vue 3.5 + Vuetify 4 + Pinia 3 + Vue Router |
-| Build | electron-vite 5 + Vite 7 |
-| Language | TypeScript 6, strict mode |
-| Database | `better-sqlite3-multiple-ciphers` (encrypted SQLite, synchronous) |
-| Query builder | Kysely (used for types — not as a dialect abstraction) |
-| Tests | Vitest (unit/integration, happy-dom) + Playwright `_electron` (E2E) |
-| Docs site | VitePress (`docs/`) |
-| CI/CD | GitHub Actions on Windows / Ubuntu / macOS runners |
+| Layer         | Choice                                                              |
+| ------------- | ------------------------------------------------------------------- |
+| Runtime       | Electron 40 (main + preload + renderer)                             |
+| Renderer      | Vue 3.5 + Vuetify 4 + Pinia 3 + Vue Router                          |
+| Build         | electron-vite 5 + Vite 7                                            |
+| Language      | TypeScript 6, strict mode                                           |
+| Database      | `better-sqlite3-multiple-ciphers` (encrypted SQLite, synchronous)   |
+| Query builder | Kysely (used for types — not as a dialect abstraction)              |
+| Tests         | Vitest (unit/integration, happy-dom) + Playwright `_electron` (E2E) |
+| Docs site     | VitePress (`docs/`)                                                 |
+| CI/CD         | GitHub Actions on Windows / Ubuntu / macOS runners                  |
 
 Node version is pinned by `.nvmrc` — match it before running anything (`24.14.1` at time of writing). npm ≥ 11 is required.
 
@@ -75,20 +75,20 @@ Do **not** use `electron-builder install-app-deps` — it has been broken for El
 
 The **Makefile is the source of truth**. GitHub Actions workflows mirror it target-for-target. When in doubt, run the `make` target, not the underlying npm script.
 
-| Command | Purpose |
-|---|---|
-| `make dev` | Rebuild for Electron, start hot-reload dev server |
-| `make lint` / `make lint-check` | ESLint with / without auto-fix |
-| `make format` / `make format-check` | Prettier with / without write |
-| `make typecheck` | `vue-tsc` (renderer) + `tsc` (node) in parallel |
-| `make test` | Vitest once (run `make rebuild-node` first) |
-| `make test-watch` / `make test-coverage` | Vitest watch / with coverage |
-| `make build` | `electron-vite build` into `out/` |
-| `make dist` / `make dist-linux` / `make dist-mac` / `make dist-win` | Build + package |
-| `make ci` | Local minimum: lint-check + format-check + typecheck + rebuild-node + test |
-| `make ci-full` / `make ci-actions` | Full local mirror of GitHub Actions pipeline |
-| `make ci-startup-smoke` | Playwright Electron startup smoke under xvfb (Linux) |
-| `make docs-dev` / `make docs` | VitePress user docs |
+| Command                                                             | Purpose                                                                    |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `make dev`                                                          | Rebuild for Electron, start hot-reload dev server                          |
+| `make lint` / `make lint-check`                                     | ESLint with / without auto-fix                                             |
+| `make format` / `make format-check`                                 | Prettier with / without write                                              |
+| `make typecheck`                                                    | `vue-tsc` (renderer) + `tsc` (node) in parallel                            |
+| `make test`                                                         | Vitest once (run `make rebuild-node` first)                                |
+| `make test-watch` / `make test-coverage`                            | Vitest watch / with coverage                                               |
+| `make build`                                                        | `electron-vite build` into `out/`                                          |
+| `make dist` / `make dist-linux` / `make dist-mac` / `make dist-win` | Build + package                                                            |
+| `make ci`                                                           | Local minimum: lint-check + format-check + typecheck + rebuild-node + test |
+| `make ci-full` / `make ci-actions`                                  | Full local mirror of GitHub Actions pipeline                               |
+| `make ci-startup-smoke`                                             | Playwright Electron startup smoke under xvfb (Linux)                       |
+| `make docs-dev` / `make docs`                                       | VitePress user docs                                                        |
 
 **Before claiming work is done, run `make ci` at minimum.** For anything touching Electron lifecycle, IPC, workers, or packaging, run `make ci-full`.
 

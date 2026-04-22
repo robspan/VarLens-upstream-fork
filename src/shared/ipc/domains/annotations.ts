@@ -4,10 +4,7 @@ import type {
   VariantAnnotationsResult,
   VariantKey
 } from '../../types/api'
-import type {
-  VariantAnnotation,
-  CaseVariantAnnotation
-} from '../../types/database-entities'
+import type { VariantAnnotation, CaseVariantAnnotation } from '../../types/database-entities'
 import type { IpcResult } from '../../types/errors'
 
 export interface AnnotationsDomainContract {

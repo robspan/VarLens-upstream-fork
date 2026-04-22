@@ -39,9 +39,7 @@ describe('myvariant preload domain behavior', () => {
       ipcRenderer: { invoke }
     }))
 
-    const { createMyvariantApi } = await import(
-      '../../../../src/preload/domains/myvariant'
-    )
+    const { createMyvariantApi } = await import('../../../../src/preload/domains/myvariant')
     const api = createMyvariantApi()
 
     await expect(api.fetch('chr1', 1000, 'A', 'T')).resolves.toMatchObject({

@@ -188,13 +188,13 @@ export interface VariantsAPI {
     caseId?: number
     caseIds?: number[]
     columnKey: string
-  }) => Promise<ColumnFilterMeta>
+  }) => Promise<IpcResult<ColumnFilterMeta>>
   /**
    * Get distinct variant types present for a single case or cohort. Used by
    * the renderer to auto-hide variant-type tabs with no data. Either `caseId`
    * or a non-empty `caseIds` array must be provided.
    */
-  typesPresent: (payload: { caseId?: number; caseIds?: number[] }) => Promise<string[]>
+  typesPresent: (payload: { caseId?: number; caseIds?: number[] }) => Promise<IpcResult<string[]>>
   /**
    * Run the unified shortlist pipeline for a case. Wave 3 wrapper around the
    * `variants:shortlist` IPC channel. Accepts either a preset id or an
@@ -704,9 +704,13 @@ export interface PanelsAPI {
     genes: Array<{ hgncId: string; symbol: string }>
   ) => Promise<IpcResult<{ success: boolean }>>
   getGenes: (panelId: number) => Promise<IpcResult<PanelGeneRow[]>>
-  activate: (caseId: number, panelId: number, paddingBp?: number) => Promise<{ success: boolean }>
-  deactivate: (caseId: number, panelId: number) => Promise<{ success: boolean }>
-  activeForCase: (caseId: number) => Promise<ActivePanelRow[]>
+  activate: (
+    caseId: number,
+    panelId: number,
+    paddingBp?: number
+  ) => Promise<IpcResult<{ success: boolean }>>
+  deactivate: (caseId: number, panelId: number) => Promise<IpcResult<{ success: boolean }>>
+  activeForCase: (caseId: number) => Promise<IpcResult<ActivePanelRow[]>>
   validateSymbols: (symbols: string[]) => Promise<IpcResult<GeneValidationResult[]>>
   autocomplete: (query: string, limit?: number) => Promise<IpcResult<GeneAutocompleteResult[]>>
   searchPanelApp: (

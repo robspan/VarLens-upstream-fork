@@ -75,7 +75,12 @@ describe('region-files preload domain behavior', () => {
     })
 
     expect(invoke).toHaveBeenNthCalledWith(1, 'region-files:list')
-    expect(invoke).toHaveBeenNthCalledWith(2, 'region-files:create', 'New Region File', 'A new region file')
+    expect(invoke).toHaveBeenNthCalledWith(
+      2,
+      'region-files:create',
+      'New Region File',
+      'A new region file'
+    )
     expect(invoke).toHaveBeenNthCalledWith(3, 'region-files:delete', 1)
     expect(invoke).toHaveBeenNthCalledWith(4, 'region-files:importBed', 2, '/path/to/file.bed')
   })

@@ -93,4 +93,54 @@ describe('audit-log preload domain behavior', () => {
       offset: 0
     })
   })
+
+  it('preload index preserves audit-log transport results when exposing window.api', async () => {
+    const { ErrorCode } = await import('../../../../src/shared/types/errors')
+    const invoke = vi.fn(async (channel: string) => {
+      if (channel === 'audit:getByEntity') {
+        return {
+          code: ErrorCode.DB_ERROR,
+          message: 'audit:getByEntity failed',
+          userMessage: 'Could not load audit entries'
+        }
+      }
+      if (channel === 'audit:query') {
+        return { data: [], total_count: 0 }
+      }
+      return undefined
+    })
+    const exposeInMainWorld = vi.fn()
+
+    vi.doMock('electron', () => ({
+      contextBridge: { exposeInMainWorld },
+      ipcRenderer: {
+        invoke,
+        on: vi.fn(),
+        removeListener: vi.fn(),
+        send: vi.fn()
+      }
+    }))
+    ;(process as typeof process & { contextIsolated?: boolean }).contextIsolated = true
+
+    await import('../../../../src/preload/index')
+
+    const api = exposeInMainWorld.mock.calls[0]?.[1] as {
+      audit: {
+        getByEntity: (entityKey: string) => Promise<unknown>
+        query: (params: Record<string, unknown>) => Promise<unknown>
+      }
+    }
+
+    await expect(api.audit.getByEntity('chr1:1000:A:T')).resolves.toMatchObject({
+      code: ErrorCode.DB_ERROR,
+      message: 'audit:getByEntity failed'
+    })
+    await expect(api.audit.query({ limit: 10, offset: 0 })).resolves.toEqual({
+      data: [],
+      total_count: 0
+    })
+
+    expect(invoke).toHaveBeenCalledWith('audit:getByEntity', 'chr1:1000:A:T')
+    expect(invoke).toHaveBeenCalledWith('audit:query', { limit: 10, offset: 0 })
+  })
 })

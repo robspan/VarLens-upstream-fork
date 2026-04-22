@@ -53,9 +53,7 @@ describe('case-metadata preload domain behavior', () => {
       .mockResolvedValueOnce(undefined)
       .mockResolvedValueOnce(undefined)
       .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce([
-        { hpo_id: 'HP:0001197', hpo_label: 'Abnormal palate morphology' }
-      ])
+      .mockResolvedValueOnce([{ hpo_id: 'HP:0001197', hpo_label: 'Abnormal palate morphology' }])
       .mockResolvedValueOnce({
         hpo_id: 'HP:0001197',
         hpo_label: 'Abnormal palate morphology'
@@ -83,9 +81,7 @@ describe('case-metadata preload domain behavior', () => {
         gene_list_id: null,
         region_file_id: null
       })
-      .mockResolvedValueOnce([
-        { id: 1, external_id_type: 'SAMPLE_ID', external_id_value: 'S123' }
-      ])
+      .mockResolvedValueOnce([{ id: 1, external_id_type: 'SAMPLE_ID', external_id_value: 'S123' }])
       .mockResolvedValueOnce({
         id: 2,
         external_id_type: 'EXTERNAL_CASE_ID',
@@ -104,12 +100,8 @@ describe('case-metadata preload domain behavior', () => {
           sex: 'F',
           notes: 'test'
         },
-        cohorts: [
-          { id: 1, name: 'Cohort A', description: 'Test cohort', case_count: 5 }
-        ],
-        hpoTerms: [
-          { hpo_id: 'HP:0001197', hpo_label: 'Abnormal palate morphology' }
-        ],
+        cohorts: [{ id: 1, name: 'Cohort A', description: 'Test cohort', case_count: 5 }],
+        hpoTerms: [{ hpo_id: 'HP:0001197', hpo_label: 'Abnormal palate morphology' }],
         dataInfo: {
           platform: 'Illumina',
           platform_details: null,
@@ -121,18 +113,14 @@ describe('case-metadata preload domain behavior', () => {
           gene_list_id: null,
           region_file_id: null
         },
-        externalIds: [
-          { id: 1, external_id_type: 'SAMPLE_ID', external_id_value: 'S123' }
-        ]
+        externalIds: [{ id: 1, external_id_type: 'SAMPLE_ID', external_id_value: 'S123' }]
       })
 
     vi.doMock('electron', () => ({
       ipcRenderer: { invoke }
     }))
 
-    const { createCaseMetadataApi } = await import(
-      '../../../../src/preload/domains/case-metadata'
-    )
+    const { createCaseMetadataApi } = await import('../../../../src/preload/domains/case-metadata')
     const api = createCaseMetadataApi()
 
     // Test all 23 channels
@@ -155,9 +143,7 @@ describe('case-metadata preload domain behavior', () => {
       name: 'Cohort B'
     })
 
-    await expect(
-      api.updateCohort(1, { name: 'Cohort A Updated' })
-    ).resolves.toMatchObject({
+    await expect(api.updateCohort(1, { name: 'Cohort A Updated' })).resolves.toMatchObject({
       id: 1,
       name: 'Cohort A Updated'
     })
@@ -183,7 +169,9 @@ describe('case-metadata preload domain behavior', () => {
       expect.arrayContaining([expect.objectContaining({ hpo_id: 'HP:0001197' })])
     )
 
-    await expect(api.assignHpoTerm(1, 'HP:0001197', 'Abnormal palate morphology')).resolves.toMatchObject({
+    await expect(
+      api.assignHpoTerm(1, 'HP:0001197', 'Abnormal palate morphology')
+    ).resolves.toMatchObject({
       hpo_id: 'HP:0001197'
     })
 
@@ -203,9 +191,7 @@ describe('case-metadata preload domain behavior', () => {
       expect.arrayContaining([expect.objectContaining({ id: 1 })])
     )
 
-    await expect(
-      api.upsertExternalId(1, 'EXTERNAL_CASE_ID', 'EC456')
-    ).resolves.toMatchObject({
+    await expect(api.upsertExternalId(1, 'EXTERNAL_CASE_ID', 'EC456')).resolves.toMatchObject({
       id: 2,
       external_id_type: 'EXTERNAL_CASE_ID'
     })
@@ -216,9 +202,7 @@ describe('case-metadata preload domain behavior', () => {
       expect.arrayContaining([expect.objectContaining({ hpo_id: 'HP:0001197' })])
     )
 
-    await expect(api.distinctPlatforms()).resolves.toEqual(
-      expect.arrayContaining(['Illumina'])
-    )
+    await expect(api.distinctPlatforms()).resolves.toEqual(expect.arrayContaining(['Illumina']))
 
     await expect(api.distinctExternalIdTypes()).resolves.toEqual(
       expect.arrayContaining(['SAMPLE_ID'])
@@ -238,7 +222,12 @@ describe('case-metadata preload domain behavior', () => {
       notes: 'updated'
     })
     expect(invoke).toHaveBeenNthCalledWith(3, 'case-metadata:listCohorts')
-    expect(invoke).toHaveBeenNthCalledWith(4, 'case-metadata:createCohort', 'Cohort B', 'New cohort')
+    expect(invoke).toHaveBeenNthCalledWith(
+      4,
+      'case-metadata:createCohort',
+      'Cohort B',
+      'New cohort'
+    )
     expect(invoke).toHaveBeenNthCalledWith(5, 'case-metadata:updateCohort', 1, {
       name: 'Cohort A Updated'
     })
@@ -249,7 +238,13 @@ describe('case-metadata preload domain behavior', () => {
     expect(invoke).toHaveBeenNthCalledWith(10, 'case-metadata:removeCohort', 1, 1)
     expect(invoke).toHaveBeenNthCalledWith(11, 'case-metadata:setCohorts', 1, [1, 2])
     expect(invoke).toHaveBeenNthCalledWith(12, 'case-metadata:getHpoTerms', 1)
-    expect(invoke).toHaveBeenNthCalledWith(13, 'case-metadata:assignHpoTerm', 1, 'HP:0001197', 'Abnormal palate morphology')
+    expect(invoke).toHaveBeenNthCalledWith(
+      13,
+      'case-metadata:assignHpoTerm',
+      1,
+      'HP:0001197',
+      'Abnormal palate morphology'
+    )
     expect(invoke).toHaveBeenNthCalledWith(14, 'case-metadata:removeHpoTerm', 1, 'HP:0001197')
     expect(invoke).toHaveBeenNthCalledWith(15, 'case-metadata:getDataInfo', 1)
     expect(invoke).toHaveBeenNthCalledWith(16, 'case-metadata:upsertDataInfo', 1, {
@@ -257,7 +252,13 @@ describe('case-metadata preload domain behavior', () => {
       platform_details: 'NovaSeq'
     })
     expect(invoke).toHaveBeenNthCalledWith(17, 'case-metadata:listExternalIds', 1)
-    expect(invoke).toHaveBeenNthCalledWith(18, 'case-metadata:upsertExternalId', 1, 'EXTERNAL_CASE_ID', 'EC456')
+    expect(invoke).toHaveBeenNthCalledWith(
+      18,
+      'case-metadata:upsertExternalId',
+      1,
+      'EXTERNAL_CASE_ID',
+      'EC456'
+    )
     expect(invoke).toHaveBeenNthCalledWith(19, 'case-metadata:deleteExternalId', 1, 'SAMPLE_ID')
     expect(invoke).toHaveBeenNthCalledWith(20, 'case-metadata:distinctHpoTerms')
     expect(invoke).toHaveBeenNthCalledWith(21, 'case-metadata:distinctPlatforms')

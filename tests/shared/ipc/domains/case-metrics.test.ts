@@ -113,7 +113,9 @@ describe('case-metrics preload domain behavior', () => {
   it('preload index preserves case-metrics transport results when exposing window.api', async () => {
     const invoke = vi.fn(async (channel: string) => {
       if (channel === 'case-metrics:listDefinitions') {
-        return [{ id: 1, name: 'Height', valueType: 'numeric', unit: 'cm', category: 'Anthropometric' }]
+        return [
+          { id: 1, name: 'Height', valueType: 'numeric', unit: 'cm', category: 'Anthropometric' }
+        ]
       }
       if (channel === 'case-metrics:createDefinition') {
         return {
@@ -170,7 +172,12 @@ describe('case-metrics preload domain behavior', () => {
     const api = exposeInMainWorld.mock.calls[0]?.[1] as {
       caseMetrics: {
         listDefinitions: () => Promise<unknown>
-        createDefinition: (name: string, valueType: string, unit: string, category: string) => Promise<unknown>
+        createDefinition: (
+          name: string,
+          valueType: string,
+          unit: string,
+          category: string
+        ) => Promise<unknown>
         listForCase: (caseId: number) => Promise<unknown>
         upsert: (caseId: number, metricId: number, value: unknown) => Promise<unknown>
         delete: (caseId: number, metricId: number) => Promise<unknown>
@@ -188,13 +195,9 @@ describe('case-metrics preload domain behavior', () => {
       name: 'Height'
     })
 
-    await expect(api.caseMetrics.listForCase(1)).resolves.toMatchObject([
-      { id: 1, case_id: 1 }
-    ])
+    await expect(api.caseMetrics.listForCase(1)).resolves.toMatchObject([{ id: 1, case_id: 1 }])
 
-    await expect(
-      api.caseMetrics.upsert(1, 1, { numeric_value: 180 })
-    ).resolves.toMatchObject({
+    await expect(api.caseMetrics.upsert(1, 1, { numeric_value: 180 })).resolves.toMatchObject({
       code: ErrorCode.DB_ERROR,
       message: 'upsert failed'
     })
@@ -202,7 +205,13 @@ describe('case-metrics preload domain behavior', () => {
     await expect(api.caseMetrics.delete(1, 1)).resolves.toBeUndefined()
 
     expect(invoke).toHaveBeenCalledWith('case-metrics:listDefinitions')
-    expect(invoke).toHaveBeenCalledWith('case-metrics:createDefinition', 'Height', 'numeric', 'cm', 'Anthropometric')
+    expect(invoke).toHaveBeenCalledWith(
+      'case-metrics:createDefinition',
+      'Height',
+      'numeric',
+      'cm',
+      'Anthropometric'
+    )
     expect(invoke).toHaveBeenCalledWith('case-metrics:listForCase', 1)
     expect(invoke).toHaveBeenCalledWith('case-metrics:upsert', 1, 1, { numeric_value: 180 })
     expect(invoke).toHaveBeenCalledWith('case-metrics:delete', 1, 1)

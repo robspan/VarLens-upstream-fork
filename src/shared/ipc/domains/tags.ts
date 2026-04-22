@@ -11,15 +11,7 @@ export interface TagsDomainContract {
 
   // Variant tag assignments
   getVariantTags: (caseId: number, variantId: number) => Promise<IpcResult<Tag[]>>
-  assignVariantTag: (
-    caseId: number,
-    variantId: number,
-    tagId: number
-  ) => Promise<IpcResult<void>>
-  removeVariantTag: (
-    caseId: number,
-    variantId: number,
-    tagId: number
-  ) => Promise<IpcResult<void>>
+  assignVariantTag: (caseId: number, variantId: number, tagId: number) => Promise<IpcResult<void>>
+  removeVariantTag: (caseId: number, variantId: number, tagId: number) => Promise<IpcResult<void>>
   setVariantTags: (caseId: number, variantId: number, tagIds: number[]) => Promise<IpcResult<void>>
 }

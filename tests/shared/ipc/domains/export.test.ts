@@ -38,16 +38,20 @@ describe('export preload domain behavior', () => {
       filePath: '/tmp/variants.xlsx'
     })
 
-    await expect(
-      api.cohort({ caseIds: [1, 2], limit: 50, offset: 0 })
-    ).resolves.toMatchObject({
+    await expect(api.cohort({ caseIds: [1, 2], limit: 50, offset: 0 })).resolves.toMatchObject({
       success: true,
       filePath: '/tmp/cohort.xlsx'
     })
 
-    expect(invoke).toHaveBeenNthCalledWith(1, 'export:variants', 1, {
-      variant_type: ['SNV', 'INDEL']
-    }, 'Test Case')
+    expect(invoke).toHaveBeenNthCalledWith(
+      1,
+      'export:variants',
+      1,
+      {
+        variant_type: ['SNV', 'INDEL']
+      },
+      'Test Case'
+    )
     expect(invoke).toHaveBeenNthCalledWith(2, 'export:cohort', {
       caseIds: [1, 2],
       limit: 50,
@@ -97,15 +101,11 @@ describe('export preload domain behavior', () => {
       }
     }
 
-    await expect(
-      api.export.variants(1, { variant_type: ['SNV'] }, 'Case')
-    ).resolves.toMatchObject({
+    await expect(api.export.variants(1, { variant_type: ['SNV'] }, 'Case')).resolves.toMatchObject({
       success: false,
       error: 'Export cancelled'
     })
-    await expect(
-      api.export.cohort({ caseIds: [1] })
-    ).resolves.toMatchObject({
+    await expect(api.export.cohort({ caseIds: [1] })).resolves.toMatchObject({
       code: ErrorCode.INVALID_INPUT,
       message: 'export:cohort failed'
     })

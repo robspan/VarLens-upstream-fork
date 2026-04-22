@@ -69,9 +69,7 @@ describe('tags preload domain behavior', () => {
       color: '#ff0000'
     })
 
-    await expect(
-      api.update(1, { name: 'Important Updated' })
-    ).resolves.toMatchObject({
+    await expect(api.update(1, { name: 'Important Updated' })).resolves.toMatchObject({
       id: 1,
       name: 'Important Updated'
     })
@@ -112,7 +110,11 @@ describe('tags preload domain behavior', () => {
       if (channel === 'tags:getUsageCount') {
         return 5
       }
-      if (channel === 'tags:assignVariantTag' || channel === 'tags:removeVariantTag' || channel === 'tags:setVariantTags') {
+      if (
+        channel === 'tags:assignVariantTag' ||
+        channel === 'tags:removeVariantTag' ||
+        channel === 'tags:setVariantTags'
+      ) {
         return undefined
       }
       if (channel === 'tags:list' || channel === 'tags:getVariantTags') {

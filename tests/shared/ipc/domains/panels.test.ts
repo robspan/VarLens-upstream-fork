@@ -96,9 +96,7 @@ describe('panels preload domain behavior', () => {
         { hgnc_id: 'HGNC:1', symbol: 'GENE1', priority: 'exact' },
         { hgnc_id: 'HGNC:2', symbol: 'GENE2', priority: 'partial' }
       ])
-      .mockResolvedValueOnce([
-        { id: 1, name: 'Test Panel', version: '1.0', confidence: 'green' }
-      ])
+      .mockResolvedValueOnce([{ id: 1, name: 'Test Panel', version: '1.0', confidence: 'green' }])
       .mockResolvedValueOnce({
         id: 4,
         name: 'Imported Panel',
@@ -206,9 +204,7 @@ describe('panels preload domain behavior', () => {
     })
 
     // Test activeForCase
-    await expect(api.activeForCase(1)).resolves.toMatchObject([
-      { panel_id: 1, case_id: 1 }
-    ])
+    await expect(api.activeForCase(1)).resolves.toMatchObject([{ panel_id: 1, case_id: 1 }])
 
     // Test validateSymbols
     const validationResults = await api.validateSymbols(['GENE1', 'FAKEGENE'])
@@ -269,18 +265,30 @@ describe('panels preload domain behavior', () => {
       version: '1.1'
     })
     expect(invoke).toHaveBeenNthCalledWith(5, 'panels:delete', 1)
-    expect(invoke).toHaveBeenNthCalledWith(6, 'panels:duplicate', 1, 'Panel1 Copy')
-    expect(invoke).toHaveBeenNthCalledWith(7, 'panels:setGenes', 1, [
-      { hgncId: 'HGNC:1', symbol: 'GENE1' },
-      { hgncId: 'HGNC:2', symbol: 'GENE2' }
-    ])
+    expect(invoke).toHaveBeenNthCalledWith(6, 'panels:duplicate', { id: 1, newName: 'Panel1 Copy' })
+    expect(invoke).toHaveBeenNthCalledWith(7, 'panels:setGenes', {
+      panelId: 1,
+      genes: [
+        { hgncId: 'HGNC:1', symbol: 'GENE1' },
+        { hgncId: 'HGNC:2', symbol: 'GENE2' }
+      ]
+    })
     expect(invoke).toHaveBeenNthCalledWith(8, 'panels:getGenes', 1)
-    expect(invoke).toHaveBeenNthCalledWith(9, 'panels:activate', 1, 1, 5000)
-    expect(invoke).toHaveBeenNthCalledWith(10, 'panels:deactivate', 1, 1)
+    expect(invoke).toHaveBeenNthCalledWith(9, 'panels:activate', {
+      caseId: 1,
+      panelId: 1,
+      paddingBp: 5000
+    })
+    expect(invoke).toHaveBeenNthCalledWith(10, 'panels:deactivate', { caseId: 1, panelId: 1 })
     expect(invoke).toHaveBeenNthCalledWith(11, 'panels:active-for-case', 1)
-    expect(invoke).toHaveBeenNthCalledWith(12, 'panels:validate-symbols', ['GENE1', 'FAKEGENE'])
-    expect(invoke).toHaveBeenNthCalledWith(13, 'panels:autocomplete', 'GENE', 10)
-    expect(invoke).toHaveBeenNthCalledWith(14, 'panels:search-panelapp', 'cancer', 'both')
+    expect(invoke).toHaveBeenNthCalledWith(12, 'panels:validate-symbols', {
+      symbols: ['GENE1', 'FAKEGENE']
+    })
+    expect(invoke).toHaveBeenNthCalledWith(13, 'panels:autocomplete', { query: 'GENE', limit: 10 })
+    expect(invoke).toHaveBeenNthCalledWith(14, 'panels:search-panelapp', {
+      keyword: 'cancer',
+      region: 'both'
+    })
     expect(invoke).toHaveBeenNthCalledWith(15, 'panels:import-panelapp', {
       panelId: 1,
       region: 'uk',
@@ -355,7 +363,7 @@ describe('panels preload domain behavior', () => {
     expect(invoke).toHaveBeenCalledWith('panels:list')
     expect(invoke).toHaveBeenCalledWith('panels:get', 1)
     expect(invoke).toHaveBeenCalledWith('panels:delete', 1)
-    expect(invoke).toHaveBeenCalledWith('panels:deactivate', 1, 1)
+    expect(invoke).toHaveBeenCalledWith('panels:deactivate', { caseId: 1, panelId: 1 })
     expect(invoke).toHaveBeenCalledWith('panels:active-for-case', 1)
   })
 })

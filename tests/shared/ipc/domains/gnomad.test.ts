@@ -71,15 +71,13 @@ describe('gnomad preload domain behavior', () => {
   })
 
   it('forwards gnomad domain channels with dataset parameter', async () => {
-    const invoke = vi
-      .fn()
-      .mockResolvedValueOnce({
-        success: true,
-        variants: [],
-        geneId: 'ENSG00000012048',
-        dataset: 'gnomad_r3',
-        cacheInfo: { cached: false }
-      })
+    const invoke = vi.fn().mockResolvedValueOnce({
+      success: true,
+      variants: [],
+      geneId: 'ENSG00000012048',
+      dataset: 'gnomad_r3',
+      cacheInfo: { cached: false }
+    })
 
     vi.doMock('electron', () => ({
       ipcRenderer: { invoke }

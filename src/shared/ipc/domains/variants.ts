@@ -1,9 +1,4 @@
-import type {
-  Variant,
-  VariantFilter,
-  PaginatedResult,
-  SortItem
-} from '../../types/database'
+import type { Variant, VariantFilter, PaginatedResult, SortItem } from '../../types/database'
 import type { IpcResult } from '../../types/errors'
 import type { FilterOptions } from '../../types/api'
 import type { ColumnFilterMeta } from '../../types/column-filters'
@@ -26,6 +21,6 @@ export interface VariantsDomainContract {
     caseId?: number
     caseIds?: number[]
     columnKey: string
-  }) => Promise<ColumnFilterMeta>
-  typesPresent: (payload: { caseId?: number; caseIds?: number[] }) => Promise<string[]>
+  }) => Promise<IpcResult<ColumnFilterMeta>>
+  typesPresent: (payload: { caseId?: number; caseIds?: number[] }) => Promise<IpcResult<string[]>>
 }

@@ -8,7 +8,8 @@ export function createTagsApi(): TagsDomainContract {
     update: (id, updates) => ipcRenderer.invoke('tags:update', id, updates),
     delete: (id) => ipcRenderer.invoke('tags:delete', id),
     getUsageCount: (tagId) => ipcRenderer.invoke('tags:getUsageCount', tagId),
-    getVariantTags: (caseId, variantId) => ipcRenderer.invoke('tags:getVariantTags', caseId, variantId),
+    getVariantTags: (caseId, variantId) =>
+      ipcRenderer.invoke('tags:getVariantTags', caseId, variantId),
     assignVariantTag: (caseId, variantId, tagId) =>
       ipcRenderer.invoke('tags:assignVariantTag', caseId, variantId, tagId),
     removeVariantTag: (caseId, variantId, tagId) =>

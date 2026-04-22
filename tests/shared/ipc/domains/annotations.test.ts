@@ -105,9 +105,7 @@ describe('annotations preload domain behavior', () => {
     const { createAnnotationsApi } = await import('../../../../src/preload/domains/annotations')
     const api = createAnnotationsApi()
 
-    await expect(
-      api.getGlobal('chr22', 1000, 'A', 'T')
-    ).resolves.toMatchObject({
+    await expect(api.getGlobal('chr22', 1000, 'A', 'T')).resolves.toMatchObject({
       id: 1,
       chr: 'chr22',
       pos: 1000,
@@ -130,9 +128,7 @@ describe('annotations preload domain behavior', () => {
       variant_id: 1
     })
 
-    await expect(
-      api.upsertPerCase(1, 1, { per_case_comment: 'test' })
-    ).resolves.toMatchObject({
+    await expect(api.upsertPerCase(1, 1, { per_case_comment: 'test' })).resolves.toMatchObject({
       id: 1,
       per_case_comment: 'test'
     })
@@ -169,7 +165,15 @@ describe('annotations preload domain behavior', () => {
       per_case_comment: 'test'
     })
     expect(invoke).toHaveBeenNthCalledWith(6, 'annotations:deletePerCase', 1, 1)
-    expect(invoke).toHaveBeenNthCalledWith(7, 'annotations:getForVariant', 1, 'chr22', 1000, 'A', 'T')
+    expect(invoke).toHaveBeenNthCalledWith(
+      7,
+      'annotations:getForVariant',
+      1,
+      'chr22',
+      1000,
+      'A',
+      'T'
+    )
     expect(invoke).toHaveBeenNthCalledWith(8, 'annotations:batchGet', 1, [
       { chr: 'chr22', pos: 1000, ref: 'A', alt: 'T' }
     ])

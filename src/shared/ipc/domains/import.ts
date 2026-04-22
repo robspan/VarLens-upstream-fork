@@ -1,18 +1,11 @@
-import type {
-  ImportResult,
-  MultiFileImportResult,
-  MultiFileImportSpec
-} from '../../../main/ipc/handlers/import-logic'
-import type {
-  VcfPreviewResult,
-  VcfMultiPreviewResult
-} from '../../types/import'
+import type { ImportResult, VcfPreviewResult, VcfMultiPreviewResult } from '../../types/import'
+import type { MultiFileImportResult, MultiFileImportSpec } from '../../types/api'
 import type { IpcResult } from '../../types/errors'
 
 export interface ImportDomainContract {
-  selectFile: () => Promise<string | null>
-  selectFiles: () => Promise<string[]>
-  selectBedFile: () => Promise<string | null>
+  selectFile: () => Promise<IpcResult<string | null>>
+  selectFiles: () => Promise<IpcResult<string[]>>
+  selectBedFile: () => Promise<IpcResult<string | null>>
   start: (
     filePath: string,
     caseName: string,
@@ -31,7 +24,7 @@ export interface ImportDomainContract {
       minDp?: number | null
     }
   ) => Promise<IpcResult<MultiFileImportResult>>
-  vcfPreview: (filePath: string) => Promise<VcfPreviewResult>
+  vcfPreview: (filePath: string) => Promise<IpcResult<VcfPreviewResult>>
   vcfMultiPreview: (filePaths: string[]) => Promise<IpcResult<VcfMultiPreviewResult>>
   cancel: () => Promise<IpcResult<void>>
 }

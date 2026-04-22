@@ -9,7 +9,8 @@ export function createAnalysisGroupsApi(): AnalysisGroupsDomainContract {
     update: (id, params) => ipcRenderer.invoke('analysisGroups:update', id, params),
     delete: (id) => ipcRenderer.invoke('analysisGroups:delete', id),
     addMember: (params) => ipcRenderer.invoke('analysisGroups:addMember', params),
-    removeMember: (groupId, caseId) => ipcRenderer.invoke('analysisGroups:removeMember', groupId, caseId),
+    removeMember: (groupId, caseId) =>
+      ipcRenderer.invoke('analysisGroups:removeMember', groupId, caseId),
     getForCase: (caseId) => ipcRenderer.invoke('analysisGroups:getForCase', caseId)
   }
 }

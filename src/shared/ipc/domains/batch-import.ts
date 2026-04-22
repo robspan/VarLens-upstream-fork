@@ -1,8 +1,4 @@
-import type {
-  BatchResult,
-  DuplicateCheckResult,
-  DuplicateChoice
-} from '../../types/api'
+import type { BatchResult, DuplicateCheckResult, DuplicateChoice } from '../../types/api'
 import type { IpcResult } from '../../types/errors'
 
 export interface BatchImportDomainContract {

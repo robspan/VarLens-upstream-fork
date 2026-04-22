@@ -5,10 +5,7 @@ import type {
   ActivePanelRow,
   PanelAppSearchResult
 } from '../../types/panels'
-import type {
-  GeneValidationResult,
-  GeneAutocompleteResult
-} from '../../types/gene-reference'
+import type { GeneValidationResult, GeneAutocompleteResult } from '../../types/gene-reference'
 import type { IpcResult } from '../../types/errors'
 
 export interface PanelsDomainContract {
@@ -35,9 +32,13 @@ export interface PanelsDomainContract {
     genes: Array<{ hgncId: string; symbol: string }>
   ) => Promise<IpcResult<{ success: boolean }>>
   getGenes: (panelId: number) => Promise<IpcResult<PanelGeneRow[]>>
-  activate: (caseId: number, panelId: number, paddingBp?: number) => Promise<{ success: boolean }>
-  deactivate: (caseId: number, panelId: number) => Promise<{ success: boolean }>
-  activeForCase: (caseId: number) => Promise<ActivePanelRow[]>
+  activate: (
+    caseId: number,
+    panelId: number,
+    paddingBp?: number
+  ) => Promise<IpcResult<{ success: boolean }>>
+  deactivate: (caseId: number, panelId: number) => Promise<IpcResult<{ success: boolean }>>
+  activeForCase: (caseId: number) => Promise<IpcResult<ActivePanelRow[]>>
   validateSymbols: (symbols: string[]) => Promise<IpcResult<GeneValidationResult[]>>
   autocomplete: (query: string, limit?: number) => Promise<IpcResult<GeneAutocompleteResult[]>>
   searchPanelApp: (

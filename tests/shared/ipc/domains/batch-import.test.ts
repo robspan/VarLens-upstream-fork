@@ -60,9 +60,7 @@ describe('batch-import preload domain behavior', () => {
       ipcRenderer: { invoke }
     }))
 
-    const { createBatchImportApi } = await import(
-      '../../../../src/preload/domains/batch-import'
-    )
+    const { createBatchImportApi } = await import('../../../../src/preload/domains/batch-import')
     const api = createBatchImportApi()
 
     await expect(api.selectFiles()).resolves.toEqual([])
@@ -79,9 +77,7 @@ describe('batch-import preload domain behavior', () => {
       duplicateCount: 0
     })
 
-    await expect(
-      api.start(['/path/to/file1.json'], 'skip', undefined)
-    ).resolves.toMatchObject({
+    await expect(api.start(['/path/to/file1.json'], 'skip', undefined)).resolves.toMatchObject({
       succeeded: 1,
       failed: 0
     })
@@ -106,10 +102,19 @@ describe('batch-import preload domain behavior', () => {
 
     expect(invoke).toHaveBeenNthCalledWith(1, 'batch-import:selectFiles')
     expect(invoke).toHaveBeenNthCalledWith(2, 'batch-import:selectFolder')
-    expect(invoke).toHaveBeenNthCalledWith(3, 'batch-import:checkDuplicates', [
-      '/path/to/file1.json'
-    ], undefined)
-    expect(invoke).toHaveBeenNthCalledWith(4, 'batch-import:start', ['/path/to/file1.json'], 'skip', undefined)
+    expect(invoke).toHaveBeenNthCalledWith(
+      3,
+      'batch-import:checkDuplicates',
+      ['/path/to/file1.json'],
+      undefined
+    )
+    expect(invoke).toHaveBeenNthCalledWith(
+      4,
+      'batch-import:start',
+      ['/path/to/file1.json'],
+      'skip',
+      undefined
+    )
     expect(invoke).toHaveBeenNthCalledWith(5, 'batch-import:cancel')
     expect(invoke).toHaveBeenNthCalledWith(6, 'batch-import:selectZip')
     expect(invoke).toHaveBeenNthCalledWith(
@@ -118,16 +123,18 @@ describe('batch-import preload domain behavior', () => {
       '/path/to/archive.zip',
       'password'
     )
-    expect(invoke).toHaveBeenNthCalledWith(8, 'batch-import:extractZip', '/path/to/archive.zip', undefined)
+    expect(invoke).toHaveBeenNthCalledWith(
+      8,
+      'batch-import:extractZip',
+      '/path/to/archive.zip',
+      undefined
+    )
     expect(invoke).toHaveBeenNthCalledWith(9, 'batch-import:cleanupZipTemp')
   })
 
   it('preload index preserves batch-import transport results when exposing window.api', async () => {
     const invoke = vi.fn(async (channel: string) => {
-      if (
-        channel === 'batch-import:selectFiles' ||
-        channel === 'batch-import:selectFolder'
-      ) {
+      if (channel === 'batch-import:selectFiles' || channel === 'batch-import:selectFolder') {
         return []
       }
       if (channel === 'batch-import:cancel' || channel === 'batch-import:cleanupZipTemp') {

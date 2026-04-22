@@ -99,12 +99,7 @@ describe('vep preload domain behavior', () => {
 
     const api = exposeInMainWorld.mock.calls[0]?.[1] as {
       vep: {
-        fetch: (
-          chr: string,
-          pos: number,
-          ref: string,
-          alt: string
-        ) => Promise<unknown>
+        fetch: (chr: string, pos: number, ref: string, alt: string) => Promise<unknown>
         cancel: () => Promise<unknown>
         clearCache: () => Promise<unknown>
         getCacheStats: () => Promise<unknown>

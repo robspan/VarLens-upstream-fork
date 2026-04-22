@@ -18,6 +18,7 @@
 
 import { ref, type Ref } from 'vue'
 import { useApiService } from './useApiService'
+import { unwrapIpcResult } from '../../../shared/types/errors'
 import type { ColumnFilterMeta } from '../../../shared/types/column-filters'
 
 /** Scope for a column-meta lookup — either single-case or cohort. */
@@ -102,7 +103,8 @@ export function useVariantColumnMeta(): {
 
     const promise = api.variants
       .columnMeta({ caseId: scope.caseId, caseIds: scope.caseIds, columnKey })
-      .then((meta) => {
+      .then((result) => {
+        const meta = unwrapIpcResult(result)
         const bucket = extensionColumnMetaCache.value[key] ?? {}
         bucket[columnKey] = meta
         extensionColumnMetaCache.value[key] = bucket
@@ -136,7 +138,8 @@ export function useVariantColumnMeta(): {
 
     const promise = api.variants
       .typesPresent({ caseId: scope.caseId, caseIds: scope.caseIds })
-      .then((types) => {
+      .then((result) => {
+        const types = unwrapIpcResult(result)
         const set = new Set(types)
         variantTypesPresentCache.value[key] = set
         inflightTypes.delete(key)

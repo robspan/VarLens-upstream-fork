@@ -4,13 +4,15 @@ export interface AuthDomainContract {
   login: (
     username: string,
     password: string
-  ) => Promise<{
-    success: boolean
-    user?: { id: number; username: string; role: string }
-    mustChangePassword?: boolean
-    locked?: boolean
-  }>
-  logout: () => Promise<void>
+  ) => Promise<
+    IpcResult<{
+      success: boolean
+      user?: { id: number; username: string; role: string }
+      mustChangePassword?: boolean
+      locked?: boolean
+    }>
+  >
+  logout: () => Promise<IpcResult<void>>
   currentUser: () => Promise<IpcResult<{ id: number; username: string; role: string } | null>>
   isAccountsEnabled: () => Promise<IpcResult<boolean>>
   createUser: (

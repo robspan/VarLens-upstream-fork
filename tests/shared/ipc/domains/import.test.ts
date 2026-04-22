@@ -83,7 +83,13 @@ describe('import preload domain behavior', () => {
     expect(invoke).toHaveBeenNthCalledWith(1, 'import:selectFile')
     expect(invoke).toHaveBeenNthCalledWith(2, 'import:selectFiles')
     expect(invoke).toHaveBeenNthCalledWith(3, 'import:selectBedFile')
-    expect(invoke).toHaveBeenNthCalledWith(4, 'import:start', '/path/to/file.vcf', 'case1', undefined)
+    expect(invoke).toHaveBeenNthCalledWith(
+      4,
+      'import:start',
+      '/path/to/file.vcf',
+      'case1',
+      undefined
+    )
     expect(invoke).toHaveBeenNthCalledWith(5, 'import:start', '/path/to/file.vcf', 'case1', {
       selectedSample: 'sample1'
     })

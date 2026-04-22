@@ -70,9 +70,7 @@ describe('variants preload domain behavior', () => {
     const { createVariantsApi } = await import('../../../../src/preload/domains/variants')
     const api = createVariantsApi()
 
-    await expect(
-      api.query(1, {}, 0, 50, undefined, false, false)
-    ).resolves.toMatchObject({
+    await expect(api.query(1, {}, 0, 50, undefined, false, false)).resolves.toMatchObject({
       data: [
         {
           id: 1,
@@ -119,7 +117,17 @@ describe('variants preload domain behavior', () => {
       })
     ).resolves.toEqual(['SNV', 'indel', 'SV'])
 
-    expect(invoke).toHaveBeenNthCalledWith(1, 'variants:query', 1, {}, 0, 50, undefined, false, false)
+    expect(invoke).toHaveBeenNthCalledWith(
+      1,
+      'variants:query',
+      1,
+      {},
+      0,
+      50,
+      undefined,
+      false,
+      false
+    )
     expect(invoke).toHaveBeenNthCalledWith(2, 'variants:filterOptions', 1)
     expect(invoke).toHaveBeenNthCalledWith(3, 'variants:search', 1, 'test', undefined)
     expect(invoke).toHaveBeenNthCalledWith(4, 'variants:geneSymbols', 1, 'BRC', undefined)
@@ -196,7 +204,16 @@ describe('variants preload domain behavior', () => {
       }
     ])
 
-    expect(invoke).toHaveBeenCalledWith('variants:query', 1, {}, undefined, undefined, undefined, undefined, undefined)
+    expect(invoke).toHaveBeenCalledWith(
+      'variants:query',
+      1,
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined
+    )
     expect(invoke).toHaveBeenCalledWith('variants:filterOptions', 1)
     expect(invoke).toHaveBeenCalledWith('variants:search', 1, 'test', 20)
   })

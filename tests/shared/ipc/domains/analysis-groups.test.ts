@@ -71,9 +71,8 @@ describe('analysisGroups preload domain behavior', () => {
       ipcRenderer: { invoke }
     }))
 
-    const { createAnalysisGroupsApi } = await import(
-      '../../../../src/preload/domains/analysis-groups'
-    )
+    const { createAnalysisGroupsApi } =
+      await import('../../../../src/preload/domains/analysis-groups')
     const api = createAnalysisGroupsApi()
 
     // Test list

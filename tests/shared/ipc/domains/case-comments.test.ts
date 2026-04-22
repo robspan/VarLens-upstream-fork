@@ -77,9 +77,7 @@ describe('case-comments preload domain behavior', () => {
       }
     ])
 
-    await expect(
-      api.create(5, 'Interpretation', 'New interpretation')
-    ).resolves.toEqual({
+    await expect(api.create(5, 'Interpretation', 'New interpretation')).resolves.toEqual({
       id: 3,
       case_id: 5,
       category: 'Interpretation',

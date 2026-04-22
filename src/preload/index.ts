@@ -107,7 +107,16 @@ const api: WindowAPI = {
       sortBy?: SortItem[],
       skipCount?: boolean,
       includeUnfilteredCount?: boolean
-    ) => variantsDomain.query(caseId, filters, offset, limit, sortBy, skipCount, includeUnfilteredCount),
+    ) =>
+      variantsDomain.query(
+        caseId,
+        filters,
+        offset,
+        limit,
+        sortBy,
+        skipCount,
+        includeUnfilteredCount
+      ),
 
     getFilterOptions: (caseId: number) => variantsDomain.getFilterOptions(caseId),
 
@@ -586,8 +595,7 @@ const api: WindowAPI = {
     create: (name: string, description: string | null) =>
       regionFilesDomain.create(name, description),
     delete: (id: number) => regionFilesDomain.delete(id),
-    importBed: (fileId: number, filePath: string) =>
-      regionFilesDomain.importBed(fileId, filePath)
+    importBed: (fileId: number, filePath: string) => regionFilesDomain.importBed(fileId, filePath)
   } as WindowAPI['regionFiles'],
 
   panels: {

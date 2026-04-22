@@ -52,10 +52,25 @@ export default defineConfig({
     // Re-enabled after the project split (see file docblock above).
     fileParallelism: true,
 
-    // Cap CI workers a bit below core count to reduce SQLite lock contention
-    // on the shared-file code paths and keep memory bounded on ubuntu-latest.
-    maxWorkers: process.env.CI ? 4 : undefined,
+    // Memory-safe defaults for forked workers.
+    //
+    // Worker count — local runs used to default to `os.availableParallelism()
+    // / 2`, which on a 32-core workstation fanned out to 16 forks. With
+    // Vitest's full transform cache per fork this drove peak RSS past what
+    // a 64 GB box can absorb once IDEs and browsers are also resident, and
+    // triggered SIGKILL on a chained `make ci` run. Cap at 8 locally; CI
+    // Ubuntu runners stay at 4 to match their ~7 GB memory envelope.
+    //
+    // Per-worker heap — bound each fork to 2 GB via V8's
+    // `--max-old-space-size`. This makes the ceiling deterministic
+    // (workers × 2 GB) and turns a runaway test file into a single-fork
+    // OOM rather than a workstation-wide one.
+    maxWorkers: process.env.CI ? 4 : 8,
     minWorkers: 1,
+    // Vitest 4 flattened the former `poolOptions.forks.execArgv` to a
+    // top-level `execArgv` (see migration guide). Applies to whichever
+    // pool is active.
+    execArgv: ['--max-old-space-size=2048'],
 
     // Timeouts — main-process tests do real on-disk work during migration,
     // so keep generous hook/test budgets.

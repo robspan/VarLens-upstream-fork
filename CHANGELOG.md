@@ -31,8 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dropped (`@electron/windows-sign`, `cross-dirname`, `postject`,
   `fs-extra`, `commander`, `jsonfile`, `universalify`). `npm ci` now
   succeeds on a clean tree.
-- **ESLint ignores `release/**`** so a local `make dist`no longer
-poisons subsequent`make ci` runs.
+- **ESLint now ignores the `release/` directory** so a local `make dist`
+  no longer poisons subsequent `make ci` runs.
 
 ### Added
 

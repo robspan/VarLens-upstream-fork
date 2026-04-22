@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.56.6] — 2026-04-23
+
+### Security
+
+- **`onlyLoadAppFromAsar` fuse enabled** on packaged builds. The main
+  process now refuses to launch from any location other than `app.asar`,
+  pairing with the existing `enableEmbeddedAsarIntegrityValidation` per
+  Electron's hardening guidance. Addresses Priority A of the 2026-04-22
+  codebase review (#169).
+
+### Changed
+
+- **Fuse configuration moved to an `afterPack` hook**
+  (`scripts/configure-fuses.mjs`) with `strictlyRequireAllFuses: true`.
+  Electron upgrades that introduce new fuses now fail the build until
+  the baseline declares an explicit value for each — a deliberate drift
+  detector, not a regression. `build.electronFuses` in `package.json`
+  is intentionally removed so electron-builder's internal
+  `doAddElectronFuses` short-circuits.
+- **Lockfile regenerated under `.nvmrc`-pinned Node 24.14.1** to restore
+  optional peer deps that a prior resolution under Node 24.5.0 had
+  dropped (`@electron/windows-sign`, `cross-dirname`, `postject`,
+  `fs-extra`, `commander`, `jsonfile`, `universalify`). `npm ci` now
+  succeeds on a clean tree.
+- **ESLint ignores `release/**`** so a local `make dist`no longer
+poisons subsequent`make ci` runs.
+
+### Added
+
+- **Linux packaged-binary smoke test**
+  (`tests/e2e/packaged-smoke.e2e.ts`) that spawns
+  `release/linux-unpacked/varlens` directly and waits for the
+  `IPC handlers registered` log line. Catches boot regressions caused
+  by fuse flipping that the existing unpacked startup smoke cannot.
+  Wired into `make ci-packaged-smoke-linux`, `make ci-full`, and the
+  Linux job in `.github/workflows/build.yml`.
+- **`AGENTS.md` "Electron fuse baseline" subsection** listing each
+  fuse and the single-source-of-truth rule.
+
 ## [0.56.1] — 2026-04-12
 
 ### Changed

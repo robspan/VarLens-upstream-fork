@@ -225,11 +225,13 @@ That matters because it removes a misleading source of “repo instability” th
 
 ## Revised Priorities
 
-### Priority A — Finish packaged-app integrity hardening
+### Priority A — Finish packaged-app integrity hardening — ✅ Resolved (0.56.6, PR #169)
 
-- evaluate `onlyLoadAppFromAsar`
-- add fuse verification to a reproducible build or release check
-- keep the current fuse baseline documented and intentional
+- `onlyLoadAppFromAsar: true` is now flipped on all three platforms.
+- Fuse configuration moved to `scripts/configure-fuses.mjs` (afterPack hook) with `strictlyRequireAllFuses: true` — Electron upgrades that add a fuse now fail the build until the baseline declares it.
+- Baseline documented in `AGENTS.md` "Electron fuse baseline" subsection.
+- New Linux packaged-binary smoke test (`tests/e2e/packaged-smoke.e2e.ts`) catches boot regressions caused by fuse flipping; wired into `make ci-packaged-smoke-linux`, `make ci-full`, and `.github/workflows/build.yml`.
+- Not in scope: macOS/Windows packaged-binary smoke, tightening `GrantFileProtocolExtraPrivileges`, or long-term move off `file://` — each tracked as a separate follow-up.
 
 ### Priority B — Decide the next renderer-performance phase from measurements
 
@@ -242,10 +244,9 @@ That matters because it removes a misleading source of “repo instability” th
 - define adapter boundaries around query and rebuild flows
 - keep Kysely as a tool inside the boundary, not the boundary itself
 
-### Priority D — Make local verification hermetic
+### Priority D — Make local verification hermetic — ✅ Resolved (commit `a8a80fc`)
 
-- exclude `release/**` from normal lint scope or clean it automatically
-- keep `make ci` reliable after normal local packaging activity
+- `release/**` is in `eslint.config.js` ignore list; a local `make dist` no longer poisons subsequent `make ci` runs.
 
 ### Priority E — Optional command-surface mirroring
 

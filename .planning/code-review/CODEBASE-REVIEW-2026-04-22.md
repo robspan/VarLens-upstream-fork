@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-22  
 **Branch:** `main`  
-**Head:** `a13c66a`  
+**Head:** `94c1b17`  
 **Baseline reviewed:** `.planning/code-review/CODEBASE-REVIEW-2026-04-16.md`  
 **Scope:** Current repository state, recent git history after 2026-04-16, active `.planning/plans` and `.planning/specs`, maintainability artifacts, and current official guidance for Electron, Vue, Playwright, GitHub Actions, and Kysely
 

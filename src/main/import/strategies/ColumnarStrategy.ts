@@ -181,7 +181,7 @@ export class ColumnarStrategy implements ImportStrategy {
       })
 
       stream.on('end', resolveNow)
-      stream.on('error', (err) => {
+      stream.on('error', (err: Error) => {
         if (resolved) return
         resolved = true
         cleanup()

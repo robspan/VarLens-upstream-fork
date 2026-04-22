@@ -243,7 +243,7 @@ export async function extractFirstSampleId(filePath: string): Promise<string> {
       }
     })
 
-    stream.on('error', (err) => {
+    stream.on('error', (err: Error) => {
       if (resolved) return
       resolved = true
       cleanup()

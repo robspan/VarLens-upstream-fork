@@ -576,7 +576,7 @@ export async function parseHeader(
       resolve({ dictionaries, columnIndices: resolveColumnIndices(headerItems) })
     })
 
-    stream.on('error', (err) => {
+    stream.on('error', (err: Error) => {
       if (resolved) return
       resolved = true
       cleanup()

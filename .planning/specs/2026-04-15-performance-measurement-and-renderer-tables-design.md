@@ -1,7 +1,9 @@
 # Performance Measurement and Renderer Tables — Design
 
+> **Status (updated 2026-04-22):** Substantially landed for Phase 1 and retained as reference. Landed from this design: perf instrumentation, startup smoke, Linux CI gate, frozen-fixture comparison harness, and first-pass table responsiveness work. Remaining renderer-performance work should be planned as a fresh follow-up phase after `.planning/` cleanup and current perf-evidence review.
+
 **Date:** 2026-04-15  
-**Status:** Design approved, pending plan  
+**Status:** Phase 1 substantially landed, retained as historical design reference  
 **Scope:** Phase 1 only — establish trustworthy performance measurement, stabilize Electron startup/perf verification, and improve renderer responsiveness in the two main data tables  
 **Primary goal:** Improve day-to-day development speed and user-perceived responsiveness by measuring first, then optimizing the highest-cost renderer paths with before/after evidence
 

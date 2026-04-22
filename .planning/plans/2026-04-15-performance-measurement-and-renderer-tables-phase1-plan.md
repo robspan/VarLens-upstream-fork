@@ -1,5 +1,7 @@
 # Performance Measurement and Renderer Tables Phase 1 Implementation Plan
 
+> **Status (updated 2026-04-22):** Phase 1 substantially landed and retained as reference. The harness, startup smoke gate, perf snapshot plumbing, comparison script, and first optimization pass shipped. Any next renderer-performance phase should start from current measurements rather than continuing this checklist verbatim.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Land Phase 1 only: make renderer responsiveness measurable, capture a frozen-fixture baseline with Playwright, then implement targeted renderer responsiveness improvements with before/after evidence.

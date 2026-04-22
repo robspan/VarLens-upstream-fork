@@ -1,39 +1,45 @@
 import { ipcMain } from 'electron'
-import { getDatabaseService, getDatabaseManager } from '../database'
 import { mainLogger } from '../services/MainLogger'
 import type { HandlerDependencies } from './types'
+import { getDatabaseService, getDatabaseManager } from '../database'
 import { getDbPool } from './dbPoolManager'
 
+// Domain-module registrations (one per WindowAPI top-level key)
+import { registerAnalysisGroupsDomain } from './domains/analysis-groups'
+import { registerAnnotationsDomain } from './domains/annotations'
+import { registerAuditLogDomain } from './domains/audit-log'
+import { registerAuthDomain } from './domains/auth'
+import { registerBatchImportDomain } from './domains/batch-import'
+import { registerCaseCommentsDomain } from './domains/case-comments'
+import { registerCaseMetadataDomain } from './domains/case-metadata'
+import { registerCaseMetricsDomain } from './domains/case-metrics'
 import { registerCasesDomain } from './domains/cases'
+import { registerCohortDomain } from './domains/cohort'
 import { registerDatabaseDomain } from './domains/database'
+import { registerExportDomain } from './domains/export'
 import { registerFilterPresetsDomain } from './domains/filter-presets'
-import { registerVariantHandlers } from './handlers/variants'
-import { registerImportHandlers } from './handlers/import'
-import { registerSystemHandlers } from './handlers/system'
-import { registerExportHandlers } from './handlers/export'
+import { registerGeneListsDomain } from './domains/gene-lists'
+import { registerGeneRefDomain } from './domains/gene-ref'
+import { registerGnomadDomain } from './domains/gnomad'
+import { registerHpoDomain } from './domains/hpo'
+import { registerImportDomain } from './domains/import'
+import { registerMyvariantDomain } from './domains/myvariant'
+import { registerPanelsDomain } from './domains/panels'
+import { registerProteinDomain } from './domains/protein'
+import { registerRegionFilesDomain } from './domains/region-files'
+import { registerSpliceaiDomain } from './domains/spliceai'
+import { registerTagsDomain } from './domains/tags'
+import { registerTranscriptsDomain } from './domains/transcripts'
+import { registerVariantsDomain } from './domains/variants'
+import { registerVepDomain } from './domains/vep'
+
+// Handlers not yet wrapped in a domain module (intentionally on the legacy
+// flat-registration shape). These were "closed from start" in the
+// 2026-04-16 IPC domain inventory and do not expose a shared contract.
 import { registerShellHandlers } from './handlers/shell'
-import { registerBatchImportHandlers } from './handlers/batch-import'
-import { registerCohortHandlers } from './handlers/cohort'
-import { registerAnnotationHandlers } from './handlers/annotations'
-import { registerVepHandlers } from './handlers/vep'
-import { registerHpoHandlers } from './handlers/hpo'
-import { registerMyVariantHandlers } from './handlers/myvariant'
-import { registerSpliceAIHandlers } from './handlers/spliceai'
-import { registerCaseMetadataHandlers } from './handlers/case-metadata'
-import { registerCaseCommentHandlers } from './handlers/case-comments'
-import { registerCaseMetricHandlers } from './handlers/case-metrics'
-import { registerTagHandlers } from './handlers/tags'
-import { registerTranscriptHandlers } from './handlers/transcripts'
-import { registerUpdaterHandlers } from './handlers/updater'
-import { registerAuditLogHandlers } from './handlers/audit-log'
-import { registerGeneListHandlers } from './handlers/gene-lists'
-import { registerAuthHandlers } from './handlers/auth'
-import { registerPanelHandlers } from './handlers/panels'
-import { registerGeneRefHandlers } from './handlers/gene-ref'
-import { registerAnalysisGroupHandlers } from './handlers/analysis-groups'
-import { registerProteinHandlers } from './handlers/protein'
-import { registerGnomadHandlers } from './handlers/gnomad'
 import { registerShortlistHandlers } from './handlers/shortlist'
+import { registerSystemHandlers } from './handlers/system'
+import { registerUpdaterHandlers } from './handlers/updater'
 
 // Re-export pool lifecycle for external callers (e.g. app shutdown)
 export { initDbPool, destroyDbPool } from './dbPoolManager'
@@ -42,8 +48,9 @@ export { initDbPool, destroyDbPool } from './dbPoolManager'
  * Register all IPC handlers.
  * Called once during app initialization.
  *
- * Creates shared dependencies and passes them to each handler module's
- * register function, replacing the previous side-effect import pattern.
+ * Domain-module registrations take only `ipcMain` — they resolve their own
+ * dependencies internally. Legacy flat handlers still take the shared
+ * `HandlerDependencies` shape.
  */
 export function registerIpcHandlers(): void {
   const deps: HandlerDependencies = {
@@ -53,36 +60,40 @@ export function registerIpcHandlers(): void {
     getDbPool
   }
 
+  // Domain modules (alphabetical)
+  registerAnalysisGroupsDomain(ipcMain)
+  registerAnnotationsDomain(ipcMain)
+  registerAuditLogDomain(ipcMain)
+  registerAuthDomain(ipcMain)
+  registerBatchImportDomain(ipcMain)
+  registerCaseCommentsDomain(ipcMain)
+  registerCaseMetadataDomain(ipcMain)
+  registerCaseMetricsDomain(ipcMain)
   registerCasesDomain(ipcMain)
-  registerVariantHandlers(deps)
-  registerImportHandlers(deps)
-  registerSystemHandlers(deps)
-  registerExportHandlers(deps)
-  registerShellHandlers(deps)
+  registerCohortDomain(ipcMain)
   registerDatabaseDomain(ipcMain)
-  registerBatchImportHandlers(deps)
-  registerCohortHandlers(deps)
-  registerAnnotationHandlers(deps)
-  registerVepHandlers(deps)
-  registerHpoHandlers(deps)
-  registerMyVariantHandlers(deps)
-  registerSpliceAIHandlers(deps)
-  registerCaseMetadataHandlers(deps)
-  registerCaseCommentHandlers(deps)
-  registerCaseMetricHandlers(deps)
-  registerTagHandlers(deps)
-  registerTranscriptHandlers(deps)
-  registerUpdaterHandlers(deps)
-  registerAuditLogHandlers(deps)
-  registerGeneListHandlers(deps)
-  registerAuthHandlers(deps)
+  registerExportDomain(ipcMain)
   registerFilterPresetsDomain(ipcMain)
-  registerPanelHandlers(deps)
-  registerGeneRefHandlers(deps)
-  registerAnalysisGroupHandlers(deps)
-  registerProteinHandlers(deps)
-  registerGnomadHandlers(deps)
+  registerGeneListsDomain(ipcMain)
+  registerGeneRefDomain(ipcMain)
+  registerGnomadDomain(ipcMain)
+  registerHpoDomain(ipcMain)
+  registerImportDomain(ipcMain)
+  registerMyvariantDomain(ipcMain)
+  registerPanelsDomain(ipcMain)
+  registerProteinDomain(ipcMain)
+  registerRegionFilesDomain(ipcMain)
+  registerSpliceaiDomain(ipcMain)
+  registerTagsDomain(ipcMain)
+  registerTranscriptsDomain(ipcMain)
+  registerVariantsDomain(ipcMain)
+  registerVepDomain(ipcMain)
+
+  // Legacy flat-registration handlers (not yet in a domain module)
+  registerShellHandlers(deps)
   registerShortlistHandlers(deps)
+  registerSystemHandlers(deps)
+  registerUpdaterHandlers(deps)
 
   mainLogger.info('IPC handlers registered', 'ipc')
 }

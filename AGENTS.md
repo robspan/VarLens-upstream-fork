@@ -1,0 +1,163 @@
+# AGENTS.md
+
+Canonical agent contract for VarLens. Any coding agent (Codex, Claude Code, Cursor, Copilot, OpenCode, Zed, Factory, …) should read this file before doing any work. `CLAUDE.md` imports this file and only adds Claude-specific notes on top.
+
+Keep this file lean. If an instruction belongs to only one agent, put it in that agent's own file.
+
+## Project Overview
+
+VarLens is an Electron desktop app for **offline genetic variant analysis**. It imports annotated variant data (JSON or VCF), stores it in a local SQLite database, and provides filtering, cohort analysis, ACMG classification, HPO matching, and export. The app is distributed as signed installers for Windows, macOS (Apple Silicon), and Linux.
+
+The target user is a clinical geneticist or researcher working with case-level variant data. **There is no backend service** — all data stays on the user's machine.
+
+## Tech Stack
+
+| Layer         | Choice                                                              |
+| ------------- | ------------------------------------------------------------------- |
+| Runtime       | Electron 40 (main + preload + renderer)                             |
+| Renderer      | Vue 3.5 + Vuetify 4 + Pinia 3 + Vue Router                          |
+| Build         | electron-vite 5 + Vite 7                                            |
+| Language      | TypeScript 6, strict mode                                           |
+| Database      | `better-sqlite3-multiple-ciphers` (encrypted SQLite, synchronous)   |
+| Query builder | Kysely (used for types — not as a dialect abstraction)              |
+| Tests         | Vitest (unit/integration, happy-dom) + Playwright `_electron` (E2E) |
+| Docs site     | VitePress (`docs/`)                                                 |
+| CI/CD         | GitHub Actions on Windows / Ubuntu / macOS runners                  |
+
+Node version is pinned by `.nvmrc` — match it before running anything (`24.14.1` at time of writing). npm ≥ 11 is required.
+
+## Repository Layout
+
+```
+src/
+  main/          Electron main process (IPC handlers, database, import/export workers)
+  preload/       contextBridge API (typed, domain-organized under preload/domains/)
+  renderer/      Vue 3 SPA (composables, stores, views, components)
+  shared/        Cross-process types, IPC domain contracts, filters, SQL templates
+tests/
+  e2e/           Playwright Electron tests (startup smoke, perf, workflows)
+  ...            Vitest unit/integration tests mirror src/ layout
+.planning/       Specs, plans, code reviews, artifacts, research notes — NOT user docs
+docs/            VitePress user-facing documentation (what ships to users)
+scripts/         Build helpers, gene reference builder, perf comparison
+.github/         CI (build.yml, release.yml) + PR/issue templates
+Makefile         Canonical command surface — mirrored by GitHub Actions workflows
+```
+
+## Setup
+
+```bash
+npm ci                 # install deps; postinstall rebuilds native module for Electron
+make dev               # rebuild for Electron + start electron-vite dev server
+```
+
+On Windows, `@electron/rebuild` requires **Visual Studio Build Tools** with the "Desktop development with C++" workload. GitHub Actions `windows-latest` has this pre-installed.
+
+## Critical Gotcha: Native-Module Dual-Rebuild
+
+`better-sqlite3-multiple-ciphers` is a native Node.js addon that must be compiled against the **Node ABI of whoever is loading it**. Electron's Node ABI differs from system Node's. Tests run under system Node; the app runs under Electron. The rebuild has to match.
+
+The canonical sequence:
+
+```bash
+npm ci                    # postinstall rebuilds for Electron
+make rebuild-node         # rebuild for Node before running Vitest
+make test                 # Vitest against Node-ABI binary
+make rebuild              # rebuild for Electron before packaging or running the app
+make dist                 # package
+```
+
+**If tests fail with `ERR_MODULE_NOT_FOUND` on `out/main/db-worker.js`** or native-load errors, the binary is built for the wrong ABI. Run `make rebuild-node` (for tests) or `make rebuild` (for the app) and retry.
+
+Do **not** use `electron-builder install-app-deps` — it has been broken for Electron 20+. `postinstall` uses `@electron/rebuild` directly. `electron-builder`'s `npmRebuild: false` is intentional.
+
+## Canonical Commands
+
+The **Makefile is the source of truth**. GitHub Actions workflows mirror it target-for-target. When in doubt, run the `make` target, not the underlying npm script.
+
+| Command                                                             | Purpose                                                                    |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `make dev`                                                          | Rebuild for Electron, start hot-reload dev server                          |
+| `make lint` / `make lint-check`                                     | ESLint with / without auto-fix                                             |
+| `make format` / `make format-check`                                 | Prettier with / without write                                              |
+| `make typecheck`                                                    | `vue-tsc` (renderer) + `tsc` (node) in parallel                            |
+| `make test`                                                         | Vitest once (run `make rebuild-node` first)                                |
+| `make test-watch` / `make test-coverage`                            | Vitest watch / with coverage                                               |
+| `make build`                                                        | `electron-vite build` into `out/`                                          |
+| `make dist` / `make dist-linux` / `make dist-mac` / `make dist-win` | Build + package                                                            |
+| `make ci`                                                           | Local minimum: lint-check + format-check + typecheck + rebuild-node + test |
+| `make ci-full` / `make ci-actions`                                  | Full local mirror of GitHub Actions pipeline                               |
+| `make ci-startup-smoke`                                             | Playwright Electron startup smoke under xvfb (Linux)                       |
+| `make docs-dev` / `make docs`                                       | VitePress user docs                                                        |
+
+**Before claiming work is done, run `make ci` at minimum.** For anything touching Electron lifecycle, IPC, workers, or packaging, run `make ci-full`.
+
+## Testing
+
+- **Unit / integration**: Vitest. Files live next to source (e.g. `src/main/foo.ts` → `tests/main/foo.test.ts`). Happy-dom is the renderer environment. Run `make rebuild-node` first or the native module will ABI-fail.
+- **E2E**: Playwright's native Electron support (`_electron.launch`) against the built `out/main/index.js`. See `tests/e2e/helpers/electron-app.ts` for the shared launcher (isolated `userData`, perf-mode hooks, failure capture). `make build` first.
+- **Startup smoke**: `tests/e2e/startup-smoke.e2e.ts` asserts `app-ready`, `window-created`, `renderer-interactive` perf milestones. It is a first-class CI gate on Linux via `xvfb-run`. Treat failures as release blockers.
+- **Perf**: `tests/e2e/renderer-perf-phase1.e2e.ts` + `scripts/perf/compare-phase1.mjs` produce reproducible frozen-fixture comparisons under `.planning/artifacts/perf/phase1/`. Any renderer-perf claim must come with a before/after comparison from this harness.
+- **Preload contract**: `tests/shared/types/preload-contract.test.ts` locks the IPC surface to `IpcResult<T>` return types. If you touch IPC, this test is your first-line guardrail.
+- **Coverage**: `COVERAGE=1 vitest run --coverage`. **Do not lower thresholds to make a failing suite pass** — add tests or fix the code.
+
+## Code Style (non-obvious rules only)
+
+A linter enforces formatting and generic TypeScript rules. What follows is what the linter cannot know.
+
+- **Never use `console.log / console.error / console.warn` in application code.** Use the structured loggers:
+  - Main process: `mainLogger` from `src/main/services/MainLogger` — `mainLogger.error(msg, 'source')`
+  - Renderer: `logService` from `src/renderer/src/services/LogService` — `logService.error(msg, 'source')`
+  - Documented exceptions: `logStore.ts` (bootstrap), `main.ts` (dev mode), `preload/index.ts` (no IPC yet), worker threads (no Electron IPC).
+- **IPC channels use `domain:action` naming** — `cases:list`, `variants:query`, `filter-presets:save`. Handlers are registered in `src/main/ipc/handlers/<domain>.ts` and return through `wrapHandler(...)`, which produces `IpcResult<T | SerializableError>`. The renderer **must** call `unwrapIpcResult(...)` at the edge — see `src/renderer/src/utils/ipc-result.ts` and the 48 existing call sites.
+- **New IPC domains should follow the domain-module pattern**: `src/shared/ipc/domains/<name>.ts` (contract) + `src/preload/domains/<name>.ts` (preload binding) + `src/main/ipc/domains/<name>.ts` (handler registration). See `cases`, `database`, `filter-presets` as live examples. The remaining 27 handlers are still on the older flat registration style — migrate them toward the domain-module shape when touching them.
+- **Vue components** use `<script setup lang="ts">` with Composition API. Props via `defineProps<T>()`, emits via `defineEmits<{...}>()`. Prefer composables in `src/renderer/src/composables/` for shared logic — do **not** put shared logic in components.
+- **Don't add try/catch for control flow in main-process IPC paths** — `wrapHandler` already converts thrown errors into `SerializableError` with structured fields. Let errors throw.
+
+## UI / Vuetify Rules
+
+Full pattern catalog in `.planning/docs/UI-PATTERNS.md`. The two that bite hardest:
+
+- **Never use `surface-variant` for background colors.** VarLens's warm palette maps `surface-variant` to `#f5f2ef` against `surface` `#faf8f6` — white-on-white, invisible. Use `bg-grey-lighten-3` for subtle contrast (nested tables, expanded rows) or `secondary` `#424242` for strong contrast (tabs, toolbars).
+- **`v-data-table-server` expand API**: `v-model:expanded` emits an **array of item keys (strings)**, not `{ value, item }` objects. Passing the wrong shape silently breaks row expansion.
+
+## Domain Conventions
+
+VarLens stores data from two very different input formats in **one unified schema**. Field naming follows a deliberate convention that is easy to get wrong:
+
+- **`consequence`** → IMPACT level: `HIGH` | `MODERATE` | `LOW` | `MODIFIER`
+- **`func`** → Sequence Ontology consequence term: `missense_variant`, `stop_gained`, `splice_acceptor_variant`, …
+
+Both JSON-format imports and VCF imports (via VEP `CSQ` or SnpEff `ANN`) populate the same two fields with the same meaning. Don't swap them.
+
+VCF import lives in `src/main/import/vcf/`. The pipeline is deliberately modular: `vcf-header-parser → vcf-line-parser → vcf-allele-splitter → vcf-annotation-parser → vcf-genotype-parser → VcfMapper → VcfStrategy`. `info-field-registry.ts` maps configured INFO fields to DB columns; everything else lands in the `info_json` column. Multi-sample VCFs create **one case per selected sample**.
+
+Test data lives at `tests/test-data/vcf/` (GIAB Chinese Trio, chr22:29M–30.5M, annotated with VEP + SnpEff). Regenerate via `scripts/prepare-test-data.sh`.
+
+## Planning & Documentation
+
+- **All plans, specs, design docs, code reviews, and research notes go in `.planning/`.** Never put them in `docs/`.
+- `.planning/specs/` for specifications, `.planning/plans/` for execution plans, `.planning/code-review/` for reviews, `.planning/artifacts/` for machine-generated artifacts (perf runs, inventories), `.planning/docs/` for long-form research notes that inform decisions.
+- `docs/` is VitePress — **user-facing documentation only**. What ships on the website.
+
+## Commit & PR Conventions
+
+- **Conventional Commits.** Types used in this repo: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `style`, `chore`, `ci`, `merge`. Optional scope in parentheses: `refactor(ipc): …`, `fix(renderer): …`. Read `git log --oneline -30` before opening a PR if you're unsure of current phrasing.
+- **Release flow.** Versions are tagged `vX.Y.Z`. `.github/workflows/release.yml` **refuses to publish** if `build.yml` has not passed on the exact tagged SHA. Do not tag until CI is green on the commit you're tagging.
+- **PRs.** Small, focused, green CI. If a change spans shell + IPC + database, split it unless the atomicity is load-bearing. Reference the `.planning/` plan or review that motivates the change.
+
+## Security Defaults
+
+- Electron window creation enforces `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`. See `src/main/index.ts`. **Do not weaken these.**
+- Renderer talks to main only through the typed `window.api` exposed by `src/preload/index.ts` — no raw `ipcRenderer`. Adding a new IPC channel means adding to the shared contract, preload, main handler, and (ideally) the preload contract test.
+- External URLs are validated before `shell.openExternal`. Do not add a shortcut path that skips that validation.
+- SQLite databases can be encrypted (`better-sqlite3-multiple-ciphers`). User keys are never logged; tests must not commit real user data.
+
+## What NOT to do
+
+- Do not introduce `console.*` calls.
+- Do not widen IPC surface without adding types to `src/shared/ipc/domains/` (or `src/shared/types/api.ts` for legacy handlers).
+- Do not import from a child of `src/renderer/src` into `src/main`. The renderer and main do not share a runtime; shared code goes through `src/shared/`.
+- Do not lower coverage / lint / typecheck thresholds to make a failing suite pass. Add tests or fix the code.
+- Do not put plans, specs, or reviews in `docs/`. Use `.planning/`.
+- Do not commit `.planning/artifacts/perf/phase1/` run outputs — they are gitignored on purpose.

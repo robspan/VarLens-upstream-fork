@@ -1,129 +1,160 @@
 # Electron Fuse Hardening — Phase 2
 
 **Date:** 2026-04-22
-**Status:** Design approved; ready for implementation plan
+**Status:** Design approved (revised after code review); ready for implementation plan
 **Addresses:** `.planning/code-review/CODEBASE-REVIEW-2026-04-22.md` Priority A
-**Scope:** Packaged-app integrity hardening — one additional fuse + automated verification + documentation
+**Scope:** Flip `onlyLoadAppFromAsar`, take ownership of fuse configuration in an `afterPack` hook with strict-require drift detection, document the baseline, and add a packaged-binary smoke test that actually exercises the flipped app.
 
 ## Problem
 
-The 2026-04-22 codebase review left Priority A partially resolved. The repo ships an initial fuse baseline in `package.json` `build.electronFuses`:
+The 2026-04-22 review left Priority A partially resolved. `package.json` carries an initial declarative baseline under `build.electronFuses`, but two gaps remain:
 
-- `runAsNode: false`
-- `enableNodeOptionsEnvironmentVariable: false`
-- `enableNodeCliInspectArguments: false`
-- `enableCookieEncryption: true`
-- `enableEmbeddedAsarIntegrityValidation: true`
-
-Two gaps remain:
-
-1. The most impactful remaining fuse, `onlyLoadAppFromAsar`, has not yet been evaluated or flipped. The earlier pdbe-molstar cleanup removed the last known blocker, so the repo is now in a position to make this decision deliberately.
-2. The fuse baseline lives only as configuration. Nothing verifies that the packaged binary actually has the intended fuses flipped. Electron upgrades, electron-builder internal changes, or an accidental config edit can silently drift the shipped binary from the declared baseline.
+1. The most impactful remaining fuse — `onlyLoadAppFromAsar` — has not been enabled. The pdbe-molstar cleanup removed the last plausible blocker, so this can now be turned on deliberately.
+2. Nothing in the build catches drift between the declared baseline and what actually gets flipped. electron-builder's built-in `config.electronFuses` path does not set `strictlyRequireAllFuses`, so an Electron upgrade that introduces new fuses leaves them silently at default. And existing CI / local smoke tests run against `./out/main/index.js`, not a packaged binary, so a boot regression caused by a fuse would not surface until a user opens an installer.
 
 ## Goals
 
-- Turn on `onlyLoadAppFromAsar` in packaged builds for all three platforms.
-- Fail the build (not just CI) when the packaged binary's fuse wiring diverges from the declared baseline.
-- Make the declared baseline the single source of truth — no duplicate lists to keep in sync.
-- Document the baseline so future fuse changes are deliberate.
+- Enable `onlyLoadAppFromAsar` in packaged builds on all three platforms.
+- Detect fuse drift on Electron upgrades (new fuse introduced → build fails until baseline is updated).
+- Keep the fuse baseline in a single place in the repo.
+- Exercise the packaged, fuse-flipped Linux binary in CI so boot regressions surface before release.
+- Document the baseline so future changes are deliberate.
 
 ## Non-Goals
 
-- Flipping other currently-off fuses (`loadValidationBehavior`, `grantFileProtocolExtraPrivileges`, `resetAdHocDarwinSignature`, etc.). Each needs its own compatibility assessment — bundling them with this pass would make startup-smoke regressions ambiguous.
+- Flipping other currently-off fuses (`loadValidationBehavior`, `grantFileProtocolExtraPrivileges`, `resetAdHocDarwinSignature`, etc.). Each needs its own compatibility assessment; bundling them in one pass would make a startup-smoke regression ambiguous.
 - Auto-updater changes. `electron-updater` replaces the whole app bundle; `onlyLoadAppFromAsar` does not affect the update path.
-- Runtime fuse assertions from the main process. Build-time verification is strictly better — it catches drift before an artifact reaches a user.
-- Changes to `docs/` (the user-facing VitePress site). Fuse posture is an internal invariant.
+- Moving the renderer off `file://` toward a custom protocol. Electron recommends this long-term but it is a separate, larger change.
+- Packaged-binary smoke on macOS and Windows. Linux coverage is enough to gate releases initially; macOS/Windows can be added in a follow-up if release data shows value.
 
 ## Design
 
-### 1. Fuse change
+### 1. Move fuse configuration into an `afterPack` hook
 
-In `package.json` `build.electronFuses`, add:
+In the installed electron-builder, the lifecycle is:
 
-```json
-"onlyLoadAppFromAsar": true
-```
+1. pack Electron
+2. `emitAfterPack` → user `afterPack` hook
+3. `doAddElectronFuses` (only if `config.electronFuses` is set)
+4. signing
 
-No other fuse flags are modified in this pass. Dev mode is unaffected because fuses are burned into the packaged Electron binary by electron-builder during `make dist`; `make dev` runs against the unmodified Electron binary from `node_modules/electron/`.
+(See `node_modules/app-builder-lib/out/platformPackager.js:246` and the comment "the fuses MUST be flipped right before signing".)
 
-### 2. Verification script
+A read-only verifier inside `afterPack` would therefore inspect the *pre-flip* binary. The fix is to own the flip inside our own hook using the exposed method `context.packager.addElectronFuses(context, fuses)`, and remove the declarative `build.electronFuses` entirely. `doAddElectronFuses` short-circuits when `config.electronFuses == null`, so there is no double-flip.
 
-New file: `scripts/verify-fuses.mjs`.
+New file: `scripts/configure-fuses.mjs`.
 
 Contract:
 
-- Exported default async function matching the electron-builder `afterPack` signature: `(context) => Promise<void>`.
-- Reads the expected baseline from `package.json` `build.electronFuses`. This is the single source of truth.
-- Resolves the packaged Electron binary path from `context.appOutDir` and `context.electronPlatformName`:
-  - `darwin`: `<appOutDir>/<productFilename>.app/Contents/MacOS/<productFilename>`
-  - `win32`: `<appOutDir>/<productName>.exe`
-  - `linux`: `<appOutDir>/<executableName>`
-  The `productName` and `executableName` come from `context.packager.appInfo`.
-- Calls `getCurrentFuseWiring(binaryPath)` from `@electron/fuses`.
-- Compares each declared fuse against the actual wiring. On mismatch, throws with a message of the form:
-  ```
-  Fuse verification failed for <platform>/<arch>:
-    onlyLoadAppFromAsar: expected true, actual false
-    <other mismatches>
-  ```
-- Throwing from `afterPack` aborts electron-builder cleanly — no artifact is produced.
-- The script is side-effect-free beyond logging and throwing. It never modifies fuses; flipping is electron-builder's job.
+```js
+import { FuseVersion, FuseV1Options } from '@electron/fuses'
 
-### 3. Wiring
+const FUSE_BASELINE = {
+  version: FuseVersion.V1,
+  strictlyRequireAllFuses: true,
+  [FuseV1Options.RunAsNode]: false,
+  [FuseV1Options.EnableCookieEncryption]: true,
+  [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
+  [FuseV1Options.EnableNodeCliInspectArguments]: false,
+  [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
+  [FuseV1Options.OnlyLoadAppFromAsar]: true,
+  // Any additional fuse known to the installed @electron/fuses version
+  // must be listed here (defaulted explicitly) because strictlyRequireAllFuses
+  // is on. The implementation plan enumerates the exact set for the pinned
+  // version.
+}
 
-In `package.json` `build`, add:
-
-```json
-"afterPack": "scripts/verify-fuses.mjs"
+export default async function configureFuses(context) {
+  await context.packager.addElectronFuses(context, FUSE_BASELINE)
+}
 ```
 
-Add `@electron/fuses` to `devDependencies` explicitly (it is already a transitive dep via electron-builder, but declaring it pins the API surface this repo depends on).
+`strictlyRequireAllFuses: true` is what replaces the spec's original "expected vs actual verifier". When `@electron/fuses` (and therefore the Electron version it supports) ships a new fuse, `addElectronFuses` will throw because our baseline does not mention it. That is the actual drift signal — not a same-source comparison.
+
+Declare `@electron/fuses` in `devDependencies` so the fuse enum and API are explicit dependencies of this repo, not transitive guarantees of electron-builder. Pin to a version known to line up with the installed Electron ABI (implementation plan picks the exact version).
+
+Pair with what is already in place: `enableEmbeddedAsarIntegrityValidation: true` stays enabled. Electron's guidance is to pair `onlyLoadAppFromAsar` with ASAR integrity validation; this combination is the intended posture.
+
+### 2. Remove `build.electronFuses` from `package.json`
+
+With the hook owning the flip, the declarative block is both redundant and a second source of truth. Delete it. The new baseline lives in `scripts/configure-fuses.mjs`.
+
+Add to `package.json` `build`:
+
+```json
+"afterPack": "scripts/configure-fuses.mjs"
+```
+
+### 3. Packaged-binary smoke on Linux
+
+The existing startup smoke at `tests/e2e/startup-smoke.e2e.ts` launches `./out/main/index.js` via the helper at `tests/e2e/helpers/electron-app.ts`. That is the *unpacked* app; fuses never touch it. To actually exercise `onlyLoadAppFromAsar`, CI must launch the produced AppImage.
+
+New test: `tests/e2e/packaged-smoke.e2e.ts`.
+
+- Discovers the Linux artifact produced by `make dist-linux` under `release/` (AppImage preferred; deb as a fallback if AppImage is absent).
+- Launches it via Playwright `_electron.launch({ executablePath })`. Passes `--appimage-extract-and-run` where needed for CI environments without FUSE.
+- Asserts `app-ready`, `window-created`, `renderer-interactive` perf milestones, same as the unpacked smoke.
+- Closes the app cleanly.
+
+New Makefile target: `make ci-packaged-smoke-linux`. Runs after `make dist-linux`. `make ci-full` gains a step that invokes it. `.github/workflows/build.yml` Linux job runs the same target after its existing packaging step.
+
+If AppImage extract-and-run turns out to be flaky in CI, the implementation plan may fall back to installing the `.deb` into a throwaway prefix. Decision deferred to the plan.
 
 ### 4. Documentation
 
-Append a short "Electron fuse baseline" subsection to the "Security Defaults" section of `AGENTS.md`:
+Append a "Fuse baseline" subsection to the "Security Defaults" section of `AGENTS.md`:
 
-- List each baseline fuse and the one-line reason it is set the way it is.
-- State the rule: `package.json` `build.electronFuses` is the only place the baseline lives. `scripts/verify-fuses.mjs` reads from it. Changing a fuse means editing that one block.
-- Reference `https://www.electronjs.org/docs/latest/tutorial/fuses` and `https://www.electron.build/tutorials/adding-electron-fuses.html` for future readers.
+- List each baseline fuse with one-line rationale.
+- State the rule: the baseline lives only in `scripts/configure-fuses.mjs`. `strictlyRequireAllFuses: true` enforces completeness.
+- Mention the pairing with `enableEmbeddedAsarIntegrityValidation`, per Electron guidance.
+- Reference the Electron fuse and ASAR integrity docs.
 
-`CLAUDE.md` already imports `AGENTS.md`, so no separate Claude-specific update is needed.
+`CLAUDE.md` imports `AGENTS.md`, so no separate Claude-side update is needed.
 
 ## Integration points
 
 | Touchpoint | Change |
 |---|---|
-| `package.json` `build.electronFuses` | Add `onlyLoadAppFromAsar: true` |
-| `package.json` `build.afterPack` | Add `"scripts/verify-fuses.mjs"` |
-| `package.json` `devDependencies` | Add `@electron/fuses` (pin latest compatible) |
-| `scripts/verify-fuses.mjs` | New file |
-| `AGENTS.md` | New "Electron fuse baseline" subsection |
-| `Makefile` | No changes — existing `dist` targets pick up `afterPack` automatically |
+| `package.json` `build.electronFuses` | **Removed** — baseline moves into hook |
+| `package.json` `build.afterPack` | Added: `"scripts/configure-fuses.mjs"` |
+| `package.json` `devDependencies` | Added: `@electron/fuses` at a pinned version |
+| `scripts/configure-fuses.mjs` | New — owns flip via `addElectronFuses` with `strictlyRequireAllFuses: true` |
+| `tests/e2e/packaged-smoke.e2e.ts` | New — launches produced Linux binary |
+| `tests/e2e/helpers/electron-app.ts` | Extended to accept an `executablePath` override, or a new sibling helper introduced |
+| `Makefile` | New target `ci-packaged-smoke-linux`; wired into `ci-full` |
+| `.github/workflows/build.yml` | Linux job runs `ci-packaged-smoke-linux` after dist |
+| `AGENTS.md` | New "Fuse baseline" subsection |
 
 ## Verification flow
 
-- **Local**: `make dist`, `make dist-linux`, `make dist-mac`, `make dist-win` all trigger `verify-fuses.mjs` via `afterPack`. A mismatch aborts the build before any installer is produced.
-- **CI (`build.yml`)**: unchanged — the existing dist jobs inherit the `afterPack` hook. No new CI step required.
-- **Runtime regression check**: `make ci-startup-smoke` and the release-gating startup smoke in `build.yml` continue to cover the case where `onlyLoadAppFromAsar` breaks application boot on Linux.
-- **Manual acceptance**: a test flip (e.g., temporarily changing `enableCookieEncryption` to `false` in `package.json`) must cause `make dist-linux` to fail with a clear expected-vs-actual diff. This is a throwaway sanity check run during implementation, not committed.
+- **Local `make dist-linux`**: `configure-fuses.mjs` flips fuses with `strictlyRequireAllFuses: true`. Any undeclared fuse aborts the build with a clear electron-builder error.
+- **Local `make ci-full`**: after dist, `ci-packaged-smoke-linux` launches the AppImage and asserts boot milestones. Boot regression caused by `onlyLoadAppFromAsar` fails here rather than in the field.
+- **CI `build.yml`**: same chain on the Linux runner. macOS and Windows jobs package as before; their packaged-binary smoke is deferred.
+- **Manual acceptance (one-off)**: during implementation, temporarily delete one fuse line from `FUSE_BASELINE` (keeping `strictlyRequireAllFuses: true`) and confirm `make dist-linux` fails with a clear strict-require error naming the missing fuse. Not committed.
 
 ## Risks and rollback
 
-- **`onlyLoadAppFromAsar` breaks boot on some platform.** The Mol* cleanup removed the most plausible cause of that failure, and nothing in `src/main/index.ts` uses custom app-path loading. If smoke fails post-flip, rollback is a one-line revert of the fuse in `package.json`. The verification script does not need to change.
-- **macOS code signing.** electron-builder flips fuses *before* signing on macOS; afterPack runs *after* flipping and *before* signing. `getCurrentFuseWiring` reads the intended state. Notarization is unaffected.
-- **Hoisting.** Declaring `@electron/fuses` in `devDependencies` avoids resolving through electron-builder's internal `node_modules`. If a future electron-builder version vendors its own copy, the declared dep still wins.
-- **CI cost.** Reading fuse wiring from a binary is O(milliseconds). No meaningful impact on build time.
+- **`onlyLoadAppFromAsar` breaks boot.** Caught by the new packaged-binary smoke on Linux. macOS/Windows risk is higher because they are not smoked post-pack in this pass — mitigated by the fact that the Mol* cleanup removed the most plausible trigger, and by keeping the change to a single new fuse. If a platform-specific regression appears post-release, rollback is a one-line change in `scripts/configure-fuses.mjs` (set `OnlyLoadAppFromAsar` to `false`). No rebuild plumbing changes.
+- **`strictlyRequireAllFuses` blocks benign Electron upgrades.** That is the design. When `@electron/fuses` adds a new fuse, the upgrader must declare it explicitly (defaulting to the safe value). This is the drift-detection mechanism; treating it as friction is a misread.
+- **macOS signing / notarization.** `addElectronFuses` flips before signing inside electron-builder's normal pipeline; notarization is unaffected. If signing ever breaks here, the cause is cert/entitlement, not the fuse.
+- **Hoisting.** Declaring `@electron/fuses` in `devDependencies` pins the API surface. A future electron-builder bump that changes which version it vendors cannot silently shift the fuse enum out from under this repo.
+- **AppImage in CI.** AppImage needs FUSE or `--appimage-extract-and-run`. The packaged-smoke test plans to use the latter. If that proves flaky, fall back to `.deb` install into a scratch prefix — an implementation-plan decision, not a spec-level one.
 
 ## Acceptance criteria
 
-1. `make dist-linux` produces an AppImage and deb package, and `verify-fuses.mjs` confirms `onlyLoadAppFromAsar: true` on the packaged binary.
-2. `make ci-startup-smoke` passes against the built Linux app with `onlyLoadAppFromAsar` enabled.
-3. `AGENTS.md` contains the fuse baseline subsection, including the "single source of truth" rule.
-4. A deliberate fuse-weakening edit in `package.json` causes `make dist-linux` to fail with a clear message naming the fuse, expected value, and actual value.
-5. `make ci` still passes (lint, format, typecheck, unit tests).
+1. `make dist-linux` produces an AppImage and a deb package with `onlyLoadAppFromAsar: true`, driven by `scripts/configure-fuses.mjs`.
+2. `build.electronFuses` is absent from `package.json`.
+3. `scripts/configure-fuses.mjs` sets `strictlyRequireAllFuses: true` and lists every fuse exposed by the pinned `@electron/fuses` version.
+4. Removing any single fuse declaration from `FUSE_BASELINE` (while keeping `strictlyRequireAllFuses: true`) causes `make dist-linux` to fail with an error naming the missing fuse. (Verified once during implementation; not a committed test.)
+5. `make ci-packaged-smoke-linux` launches the produced AppImage and passes its perf-milestone assertions. Wired into `make ci-full` and `.github/workflows/build.yml`'s Linux job.
+6. `AGENTS.md` contains the "Fuse baseline" subsection, including the single-source-of-truth rule and the ASAR-integrity pairing note.
+7. `make ci` still passes (lint, format, typecheck, unit tests).
 
 ## External references
 
 - Electron fuses: https://www.electronjs.org/docs/latest/tutorial/fuses
-- electron-builder `electronFuses` and `addElectronFuses`: https://www.electron.build/tutorials/adding-electron-fuses.html
-- `@electron/fuses` API: https://github.com/electron/fuses
+- Electron ASAR integrity: https://www.electronjs.org/docs/latest/tutorial/asar-integrity
+- Electron security guide (custom-protocol direction, longer-term): https://www.electronjs.org/docs/latest/tutorial/security
+- electron-builder `electronFuses` and custom-hook path: https://www.electron.build/tutorials/adding-electron-fuses.html
+- electron-builder lifecycle hooks: https://www.electron.build/configuration.html
+- `@electron/fuses` API (`getCurrentFuseWire`, `flipFuses`): https://github.com/electron/fuses

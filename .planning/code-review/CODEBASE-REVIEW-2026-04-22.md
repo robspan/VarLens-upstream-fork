@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-22  
 **Branch:** `main`  
-**Head:** `f937c07`  
+**Head:** `a13c66a`  
 **Baseline reviewed:** `.planning/code-review/CODEBASE-REVIEW-2026-04-16.md`  
 **Scope:** Current repository state, recent git history after 2026-04-16, active `.planning/plans` and `.planning/specs`, maintainability artifacts, and current official guidance for Electron, Vue, Playwright, GitHub Actions, and Kysely
 
@@ -81,6 +81,14 @@ This is now one of the better multi-agent repo contracts I have seen in an Elect
 - `README.md` and the VitePress intro/overview pages now match the current runtime and framework stack
 
 The repo is in a noticeably better state for picking the next engineering phase than it was before this pass.
+
+### 6. Protein viewer packaging is now on a sounder path
+
+- The pdbe-molstar integration no longer depends on a copied public script, a custom-element registration wait loop, or an unpacked renderer-side JS file.
+- The renderer now lazy-loads the `PDBeMolstarPlugin` runtime and light-theme CSS through Vite's asset graph.
+- `package.json` no longer needs the old `copy:molstar` hooks or renderer-side `asarUnpack` exception for the viewer bundle.
+
+This is a meaningful quality improvement because it removes one of the more fragile `file://`-era frontend integration patterns in the repo, which was a plausible source of cross-platform drift and an especially suspicious explanation for the unexplained Windows failures.
 
 ## Findings
 
@@ -171,7 +179,7 @@ Source:
 - https://docs.github.com/en/github/administering-a-repository/keeping-your-actions-up-to-date-with-github-dependabot
 - https://docs.github.com/en/code-security/dependabot/ecosystems-supported-by-dependabot/supported-ecosystems-and-repositories
 
-### Updated: Electron fuse hardening has started, with one deliberate follow-up gap
+### Updated: Electron fuse hardening has started, and the Mol* delivery path no longer blocks the next step
 
 This was previously an explicit gap. The repo now has a checked-in `build.electronFuses` configuration in `package.json`, and `AGENTS.md` documents that fuse posture as part of the security baseline.
 
@@ -188,16 +196,16 @@ That is a real improvement, because the app does not appear to depend on `child_
 The remaining gap is also now clearer:
 
 - the packaged app still loads the renderer via `loadFile(...)` from `file://`
-- `src/renderer/src/composables/useMolstarViewer.ts` lazy-loads `/pdbe-molstar-component.js`
-- that Mol* bundle is explicitly kept in `asarUnpack`
+- but the old pdbe-molstar public-script / `asarUnpack` exception has now been removed
+- the protein viewer runtime is bundled and lazy-loaded through the normal renderer asset graph
 
-Because of that current packaging shape, this review does **not** recommend immediately enabling `onlyLoadAppFromAsar` or aggressively changing `grantFileProtocolExtraPrivileges` yet. Those are likely the next fuse-hardening candidates, but only after the renderer asset path is simplified so the app is not depending on unpacked `file://`-served assets for the protein viewer.
+That means one of the key blockers for stricter packaged-code integrity has been removed. This review still does **not** recommend flipping every remaining fuse immediately, but the repo is now in a much better position to evaluate `onlyLoadAppFromAsar` next because the most obvious unpacked-renderer exception is gone.
 
 **Recommendation**
 
 - Keep the current checked-in fuse set.
 - Add packaged-build fuse verification to a release or CI-adjacent workflow when practical.
-- Treat `onlyLoadAppFromAsar` as the next explicit fuse-hardening task, gated on refactoring the Mol* asset loading path away from the current unpacked-script dependency.
+- Treat `onlyLoadAppFromAsar` as the next explicit fuse-hardening task, now that the Mol* runtime no longer depends on a copied public script outside the normal bundle pipeline.
 
 Sources:
 - https://www.electronjs.org/docs/latest/tutorial/fuses

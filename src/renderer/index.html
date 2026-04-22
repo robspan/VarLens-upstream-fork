@@ -4,8 +4,6 @@
     <meta charset="UTF-8" />
     <title>VarLens</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <!-- pdbe-molstar light theme CSS for 3D protein structure viewer -->
-    <link rel="stylesheet" type="text/css" href="/pdbe-molstar-light.css" />
     <!-- Load Roboto Mono font for genomic data -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -14,7 +12,7 @@
       rel="stylesheet"
     />
     <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
-    <!-- Note: 'unsafe-eval' is required by Mol*/pdbe-molstar for WebGL shader compilation.
+    <!-- Note: 'unsafe-eval' is required by the bundled Mol* / pdbe-molstar runtime for WebGL shader compilation.
          blob: is needed for Mol* internal worker/data handling.
          External connect-src entries enable AlphaFold, PDB, gnomAD, UniProt, InterPro APIs. -->
     <meta

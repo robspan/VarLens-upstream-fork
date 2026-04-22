@@ -3,10 +3,9 @@
  * MolstarViewer - pdbe-molstar Web Component wrapper
  * Renders a 3D protein structure with variant highlighting
  *
- * The <pdbe-molstar> custom element is registered by the global script
- * tag in index.html (pdbe-molstar-component.js). The CSS is also loaded
- * globally (pdbe-molstar-light.css). This avoids bundling the 6 MB IIFE
- * through Vite.
+ * The viewer is mounted directly into a plain container div via the
+ * PDBeMolstarPlugin API. The runtime and CSS are still lazy-loaded, but
+ * they now flow through Vite's asset graph instead of a raw file:// script.
  */
 
 import { ref, computed, watch, type Ref } from 'vue'
@@ -94,24 +93,14 @@ defineExpose({
       </span>
     </div>
 
-    <!-- pdbe-molstar Web Component
+    <!-- Direct mount container for pdbe-molstar.
          The :key includes activeRepresentation so Vue destroys and recreates the
-         element when the representation changes. This avoids the fullLoad bug in
-         pdbe-molstar where visual.update(opts, true) resets the background to black
-         and the setBgColor API cannot restore it. A fresh element always renders
-         with the correct bg-color attributes. -->
-    <pdbe-molstar
+         mount node when the representation changes. This avoids the fullLoad bug
+         where background/theme state can become inconsistent after visual updates. -->
+    <div
       v-if="structureUrl"
       ref="molstarRef"
-      :key="`${structureUrl}-${activeRepresentation}`"
-      :custom-data-url="structureUrl"
-      :custom-data-format="structureFormat"
-      :visual-style="activeRepresentation"
-      hide-controls="true"
-      landscape="true"
-      bg-color-r="250"
-      bg-color-g="248"
-      bg-color-b="246"
+      :key="`${structureUrl}-${structureFormat}-${activeRepresentation}`"
       :style="{ visibility: structureLoaded ? 'visible' : 'hidden' }"
       class="molstar-element"
     />

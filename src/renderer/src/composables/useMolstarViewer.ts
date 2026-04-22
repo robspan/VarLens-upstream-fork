@@ -9,6 +9,7 @@
  */
 
 import { ref, watch, onBeforeUnmount, markRaw, type Ref } from 'vue'
+import type { PDBeMolstarPlugin } from 'pdbe-molstar/lib/viewer'
 import type {
   LollipopVariant,
   ClinVarVariant,
@@ -36,32 +37,26 @@ function checkWebGLSupport(): string | null {
   }
 }
 
-/** Lazy-load the pdbe-molstar web component script on first use */
-let molstarScriptLoaded = false
-let molstarScriptLoadPromise: Promise<void> | null = null
-function ensureMolstarScript(): Promise<void> {
-  if (molstarScriptLoaded) return Promise.resolve()
-  // Return the in-flight promise if a load is already pending
-  if (molstarScriptLoadPromise) return molstarScriptLoadPromise
+type MolstarViewerModule = typeof import('pdbe-molstar/lib/viewer')
 
-  molstarScriptLoadPromise = new Promise<void>((resolve, reject) => {
-    const script = document.createElement('script')
-    script.src = '/pdbe-molstar-component.js'
-    script.onload = () => {
-      logService.info('pdbe-molstar script loaded on demand', 'MolstarViewer')
-      molstarScriptLoaded = true
-      molstarScriptLoadPromise = null
-      resolve()
-    }
-    script.onerror = () => {
-      molstarScriptLoadPromise = null // Allow retry on next call
-      script.remove() // Remove failed element to avoid duplicates on retry
-      reject(new Error('Failed to load pdbe-molstar script'))
-    }
-    document.head.appendChild(script)
-  })
+let molstarRuntimePromise: Promise<MolstarViewerModule> | null = null
+async function ensureMolstarRuntime(): Promise<MolstarViewerModule> {
+  if (molstarRuntimePromise) return molstarRuntimePromise
 
-  return molstarScriptLoadPromise
+  molstarRuntimePromise = Promise.all([
+    import('pdbe-molstar/build/pdbe-molstar-light.css'),
+    import('pdbe-molstar/lib/viewer')
+  ])
+    .then(([, viewerModule]) => {
+      logService.info('pdbe-molstar runtime loaded via Vite asset graph', 'MolstarViewer')
+      return viewerModule
+    })
+    .catch((error) => {
+      molstarRuntimePromise = null
+      throw error
+    })
+
+  return molstarRuntimePromise
 }
 
 /** Representation types supported by pdbe-molstar */
@@ -85,27 +80,7 @@ interface SelectionDataItem {
   representationColor?: RgbColor
 }
 
-/** pdbe-molstar viewer instance (partial typing for the API we use) */
-interface MolstarViewerInstance {
-  events: {
-    loadComplete: {
-      subscribe: (callback: (success: boolean) => void) => { unsubscribe: () => void }
-    }
-  }
-  visual: {
-    select: (params: { data: SelectionDataItem[]; nonSelectedColor?: RgbColor }) => Promise<void>
-    reset: (params: { camera: boolean; theme: boolean }) => void
-    update: (options: Record<string, unknown>, fullLoad?: boolean) => void | Promise<void>
-  }
-  canvas: {
-    setBgColor: (color: RgbColor) => void
-  }
-}
-
-/** pdbe-molstar custom element with viewer instance */
-interface PdbeMolstarElement extends HTMLElement {
-  viewerInstance?: MolstarViewerInstance
-}
+type MolstarViewerInstance = PDBeMolstarPlugin
 
 /**
  * Parse a hex color string to RGB components (0-255)
@@ -123,7 +98,7 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
 /**
  * Composable for pdbe-molstar 3D protein structure viewer
  *
- * @param molstarRef - Ref to the <pdbe-molstar> DOM element
+ * @param molstarRef - Ref to the viewer mount container element
  * @param structureInfo - Reactive protein structure info
  * @param variants - Reactive array of lollipop variants to highlight
  */
@@ -142,7 +117,7 @@ export function useMolstarViewer(
   // Store viewer instance outside Vue reactivity (WebGL objects break with proxies)
   let viewerInstance: MolstarViewerInstance | null = null
   let loadSubscription: { unsubscribe: () => void } | null = null
-  let pollingTimer: ReturnType<typeof setInterval> | null = null
+  let activeInitToken = 0
 
   /** The warm-light background color used across the panel */
   const BG_COLOR = { r: 250, g: 248, b: 246 }
@@ -157,19 +132,8 @@ export function useMolstarViewer(
     }
   }
 
-  /**
-   * Attempt to grab the viewer instance from the custom element and
-   * subscribe to load events.
-   */
-  function tryAttachViewer(): boolean {
-    const el = molstarRef.value as PdbeMolstarElement | null
-    if (!el?.viewerInstance) return false
-
-    // Already attached
-    if (viewerInstance === el.viewerInstance) return true
-
-    viewerInstance = markRaw(el.viewerInstance) as MolstarViewerInstance
-
+  function attachViewer(viewer: MolstarViewerInstance): void {
+    viewerInstance = markRaw(viewer) as MolstarViewerInstance
     // Subscribe to load complete
     loadSubscription?.unsubscribe()
     loadSubscription = viewerInstance.events.loadComplete.subscribe((success: boolean) => {
@@ -191,60 +155,76 @@ export function useMolstarViewer(
         error.value = 'Failed to load 3D structure'
         logService.error('3D structure load returned failure', 'MolstarViewer')
       }
-
-      // Stop polling once we get a result
-      stopPolling()
     })
-
-    // Check if the structure is already loaded (event may have fired before
-    // we subscribed). Inspect the plugin's structure hierarchy as a fallback.
-    if (!structureLoaded.value) {
-      try {
-        const plugin = (viewerInstance as unknown as Record<string, unknown>).plugin as
-          | { managers?: { structure?: { hierarchy?: { current?: { structures?: unknown[] } } } } }
-          | undefined
-        const structures = plugin?.managers?.structure?.hierarchy?.current?.structures
-        if (structures !== undefined && structures.length > 0) {
-          loading.value = false
-          structureLoaded.value = true
-          error.value = null
-          setTimeout(() => void highlightVariants(), 500)
-          logService.info(
-            '3D structure already loaded (detected via plugin state)',
-            'MolstarViewer'
-          )
-        }
-      } catch {
-        // Ignore — structure state check is a best-effort fallback
-      }
-    }
-
-    return true
   }
 
-  /**
-   * Wait for the pdbe-molstar custom element to be registered, then poll
-   * for the viewerInstance to appear on the DOM element.
-   *
-   * Uses the standard `customElements.whenDefined()` API which returns a
-   * Promise that resolves when the element is registered. This is superior
-   * to polling because it reacts instantly to registration and handles
-   * slow script loading gracefully (e.g. Windows antivirus scanning the
-   * 6 MB pdbe-molstar script during ASAR extraction).
-   *
-   * After registration, a short poll waits for viewerInstance which is
-   * set synchronously in connectedCallback but may be delayed by Vue's
-   * DOM update batching.
-   */
-  function startPolling(): void {
-    stopPolling()
+  function getInitParams(): {
+    customData: { url: string; format: string; binary: boolean }
+    visualStyle: RepresentationType
+    hideControls: true
+    landscape: true
+    bgColor: RgbColor
+    alphafoldView: boolean
+    sequencePanel: false
+    leftPanel: false
+    rightPanel: false
+    logPanel: false
+    loadingOverlay: false
+    selectInteraction: false
+  } | null {
+    const activeSource = structureInfo.value?.alphafold ?? structureInfo.value?.pdb
+    if (!activeSource) return null
 
-    if (typeof customElements === 'undefined') {
-      loading.value = false
-      error.value = '3D viewer is not supported in this environment.'
-      logService.error('customElements API is unavailable', 'MolstarViewer')
-      return
+    return {
+      customData: {
+        url: activeSource.url,
+        format: activeSource.format,
+        binary: activeSource.format === 'bcif'
+      },
+      visualStyle: activeRepresentation.value,
+      hideControls: true,
+      landscape: true,
+      bgColor: BG_COLOR,
+      alphafoldView: activeSource.source === 'alphafold',
+      sequencePanel: false,
+      leftPanel: false,
+      rightPanel: false,
+      logPanel: false,
+      loadingOverlay: false,
+      selectInteraction: false
     }
+  }
+
+  async function teardownViewer(invalidatePendingInit = true): Promise<void> {
+    if (invalidatePendingInit) {
+      activeInitToken++
+    }
+    loadSubscription?.unsubscribe()
+    loadSubscription = null
+
+    const instance = viewerInstance
+    viewerInstance = null
+
+    if (instance) {
+      try {
+        await instance.clear()
+      } catch (err) {
+        logService.warn(
+          `Failed to clear pdbe-molstar instance: ${err instanceof Error ? err.message : String(err)}`,
+          'MolstarViewer'
+        )
+      }
+    }
+  }
+
+  async function startViewer(): Promise<void> {
+    const container = molstarRef.value
+    const initParams = getInitParams()
+
+    if (!container || !initParams) return
+
+    const initToken = activeInitToken + 1
+    activeInitToken = initToken
 
     // Phase -1: Verify WebGL is available before loading the 6 MB script.
     const webglContext = checkWebGLSupport()
@@ -261,80 +241,37 @@ export function useMolstarViewer(
     }
     logService.info(`WebGL available: ${webglContext}`, 'MolstarViewer')
 
-    // Phase 0: Ensure script is loaded (lazy — only on first 3D viewer open).
-    // Phase 1: Wait for custom element registration (with timeout).
-    // Phase 2: Poll for viewerInstance on the DOM element.
-    void ensureMolstarScript()
-      .then(() => {
-        // If already registered, skip whenDefined
-        if (customElements.get('pdbe-molstar')) return
+    loading.value = true
+    error.value = null
+    structureLoaded.value = false
 
-        // Wrap whenDefined in a timeout — if the script loads but fails to
-        // call customElements.define(), we don't hang forever
-        return new Promise<void>((resolve, reject) => {
-          const timeoutMs = 30_000
-          const timeoutId = setTimeout(() => {
-            reject(new Error('Timed out waiting for pdbe-molstar custom element registration'))
-          }, timeoutMs)
+    try {
+      await teardownViewer(false)
+      container.replaceChildren()
+      const { PDBeMolstarPlugin } = await ensureMolstarRuntime()
+      if (initToken !== activeInitToken || container !== molstarRef.value) return
 
-          void customElements
-            .whenDefined('pdbe-molstar')
-            .then(() => {
-              clearTimeout(timeoutId)
-              resolve()
-            })
-            .catch((err) => {
-              clearTimeout(timeoutId)
-              reject(err)
-            })
-        })
-      })
-      .then(() => {
-        logService.info('pdbe-molstar custom element registered', 'MolstarViewer')
+      const nextViewer = new PDBeMolstarPlugin()
+      attachViewer(nextViewer)
+      await nextViewer.render(container, initParams)
+      if (initToken !== activeInitToken || container !== molstarRef.value) return
 
-        // Phase 2: Poll for viewerInstance on the DOM element.
-        // connectedCallback sets it synchronously, but Vue may not have
-        // flushed the DOM update yet, so a brief poll is warranted.
-        let viewerAttempts = 0
-        const maxViewerAttempts = 60 // 30 seconds
-
-        pollingTimer = setInterval(() => {
-          viewerAttempts++
-          if (tryAttachViewer()) {
-            stopPolling()
-            return
-          }
-          if (viewerAttempts >= maxViewerAttempts) {
-            stopPolling()
-            loading.value = false
-            error.value = 'Timed out waiting for 3D viewer to initialize'
-            logService.error(
-              'pdbe-molstar viewer instance not found after timeout — ' +
-                `element exists: ${!!molstarRef.value}, ` +
-                `tagName: ${molstarRef.value?.tagName ?? 'null'}, ` +
-                `has viewerInstance: ${!!(molstarRef.value as PdbeMolstarElement | null)?.viewerInstance}`,
-              'MolstarViewer'
-            )
-          }
-        }, 500)
-      })
-      .catch((err: Error) => {
-        loading.value = false
-        error.value =
-          '3D viewer component failed to load. ' +
-          'Try restarting the application. If the problem persists, try launching with --disable-gpu flag.'
-        logService.error(
-          `pdbe-molstar init failed: ${err.message} ` +
-            `(webgl=${webglContext}, userAgent=${navigator.userAgent})`,
-          'MolstarViewer'
-        )
-      })
-  }
-
-  function stopPolling(): void {
-    if (pollingTimer !== null) {
-      clearInterval(pollingTimer)
-      pollingTimer = null
+      restoreBgColor()
+      logService.info(
+        `pdbe-molstar viewer mounted directly into renderer container ` +
+          `(source=${initParams.customData.format}, style=${initParams.visualStyle})`,
+        'MolstarViewer'
+      )
+    } catch (err) {
+      loading.value = false
+      error.value =
+        '3D viewer component failed to load. ' +
+        'Try restarting the application. If the problem persists, try launching with --disable-gpu flag.'
+      logService.error(
+        `pdbe-molstar init failed: ${err instanceof Error ? err.message : String(err)} ` +
+          `(webgl=${webglContext}, userAgent=${navigator.userAgent})`,
+        'MolstarViewer'
+      )
     }
   }
 
@@ -456,11 +393,10 @@ export function useMolstarViewer(
    * Switch the molecular representation type.
    *
    * Updates the activeRepresentation ref which triggers the MolstarViewer
-   * component to recreate the <pdbe-molstar> element with a new :key.
-   * This avoids the pdbe-molstar fullLoad bug where visual.update(opts, true)
-   * resets the WebGL background to black and setBgColor cannot restore it.
-   * A fresh element initialized with bg-color-r/g/b attributes always renders
-   * with the correct background.
+   * component to recreate the viewer mount container with a new :key.
+   * This avoids the pdbe-molstar fullLoad bug where visual updates can reset
+   * the WebGL background to black and setBgColor cannot reliably restore it.
+   * A fresh plugin mount consistently restores the expected background/theme.
    */
   function setRepresentation(type: RepresentationType): void {
     activeRepresentation.value = type
@@ -508,36 +444,12 @@ export function useMolstarViewer(
     molstarRef,
     (newEl) => {
       if (newEl) {
-        // Start polling for viewer instance
-        loading.value = true
-        startPolling()
+        void startViewer()
       } else {
-        stopPolling()
-        loadSubscription?.unsubscribe()
-        loadSubscription = null
-        viewerInstance = null
+        void teardownViewer()
       }
     },
     { immediate: true }
-  )
-
-  // Watch structure info changes to trigger loading state
-  watch(
-    structureInfo,
-    (newInfo) => {
-      if (newInfo !== null) {
-        loading.value = true
-        structureLoaded.value = false
-        error.value = null
-        viewerInstance = null
-        loadSubscription?.unsubscribe()
-        loadSubscription = null
-
-        // Wait for DOM update then start polling
-        setTimeout(() => startPolling(), 100)
-      }
-    },
-    { deep: true }
   )
 
   // Re-highlight when variants change
@@ -557,10 +469,7 @@ export function useMolstarViewer(
   }
 
   onBeforeUnmount(() => {
-    stopPolling()
-    loadSubscription?.unsubscribe()
-    loadSubscription = null
-    viewerInstance = null
+    void teardownViewer()
   })
 
   return {

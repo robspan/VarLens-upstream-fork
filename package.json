@@ -41,6 +41,7 @@
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
+    "@electron/fuses": "^1.8.0",
     "@electron/rebuild": "^4.0.3",
     "@eslint/js": "^10.0.1",
     "@mdi/js": "^7.4.47",
@@ -86,13 +87,7 @@
     "productName": "Varlens",
     "icon": "build/icon.png",
     "npmRebuild": false,
-    "electronFuses": {
-      "runAsNode": false,
-      "enableCookieEncryption": true,
-      "enableNodeOptionsEnvironmentVariable": false,
-      "enableNodeCliInspectArguments": false,
-      "enableEmbeddedAsarIntegrityValidation": true
-    },
+    "afterPack": "scripts/configure-fuses.mjs",
     "extraResources": [
       {
         "from": "resources/gene_reference.db",

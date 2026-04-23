@@ -1,7 +1,7 @@
 # Storage Session Boundary — Design
 
 **Date:** 2026-04-23  
-**Status:** Draft v4 — rewritten to replace the obsolete low-level adapter design  
+**Status:** Implemented through Phase 2; retained as active architectural reference  
 **Motivation:** VarLens needs a realistic path from SQLite-only local storage to optional hosted PostgreSQL without destabilizing the current app. The codebase does not support a thin driver swap under `DatabaseService`; the seam needs to sit above the current SQLite runtime.
 
 ## Summary
@@ -335,4 +335,4 @@ This design is satisfied when:
 
 ## Relationship to the plan
 
-The implementation plan at [2026-04-23-storage-adapter-phase-1-scaffold-plan.md](../plans/2026-04-23-storage-adapter-phase-1-scaffold-plan.md) is the execution document for Phase 1 of this design.
+The Phase 1 execution plan is archived at [2026-04-23-storage-adapter-phase-1-scaffold-plan.md](../archive/completed-plans/2026-04-23-storage-adapter-phase-1-scaffold-plan.md). Phase 2 is also complete, with its completed execution docs archived under `.planning/archive/`.

@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.56.7] — 2026-04-23
+
+### Changed
+
+- **Phase 1 storage-session boundary scaffold landed on `main`.** VarLens now
+  has explicit `StorageSession` / `StorageManager` contracts, a
+  `SqliteStorageSession` wrapper over the existing SQLite runtime, and a
+  session-backed `DatabaseManager` that preserves current `DatabaseService`
+  compatibility while establishing the seam for future PostgreSQL-backed work.
+- **Local PostgreSQL development workflow added** with a localhost-only Compose
+  stack, configurable nonstandard port (`55432` by default), bootstrap SQL,
+  `.env.postgres.example`, and `pg-up` / `pg-down` / `pg-logs` / `pg-psql` /
+  `pg-reset` Make targets for workstation setups that run multiple local
+  database projects in parallel.
+
+### Internal
+
+- **CI and release secrets scanning no longer depend on the deprecated
+  Node-20-only `gitleaks` GitHub Action.** Both workflows now download and run
+  a pinned `gitleaks` CLI release directly, eliminating the GitHub Actions
+  runtime deprecation warning while keeping deterministic secrets scanning in
+  place.
+
 ## [0.56.6] — 2026-04-23
 
 ### Security

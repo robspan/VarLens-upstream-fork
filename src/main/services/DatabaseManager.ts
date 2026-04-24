@@ -199,6 +199,18 @@ export class DatabaseManager {
     await this.switchDatabase(path, key)
   }
 
+  async openPostgresSession(session: StorageSession): Promise<void> {
+    const isPostgresSession =
+      session.workspace.kind === 'postgres' && session.capabilities.backend === 'postgres'
+
+    if (!isPostgresSession) {
+      throw new DatabaseError('openPostgresSession requires a postgres-backed session')
+    }
+
+    await this.close()
+    this.currentSession = session
+  }
+
   /**
    * Close the current database
    *

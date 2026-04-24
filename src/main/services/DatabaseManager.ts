@@ -9,7 +9,7 @@ import { DatabaseService } from '../database/DatabaseService'
 import { DatabaseError, WrongPasswordError } from '../database/errors'
 import { RecentDatabasesService, type RecentDatabase } from './RecentDatabasesService'
 import { mainLogger } from './MainLogger'
-import { SqliteStorageSession } from '../storage/sqlite/SqliteStorageSession'
+import { createSqliteStorageSession } from '../storage/sqlite/createSqliteStorageSession'
 import type { StorageSession } from '../storage/session'
 
 /**
@@ -45,7 +45,7 @@ export class DatabaseManager {
     try {
       await this.close()
 
-      const newSession = this.createSqliteSession(dbPath, key)
+      const newSession = await this.createSqliteSession(dbPath, key)
       this.currentSession = newSession
       this.recentDatabases.addRecent(dbPath)
     } catch (error) {
@@ -123,7 +123,7 @@ export class DatabaseManager {
     try {
       await this.close()
 
-      const newSession = this.createSqliteSession(dbPath, key)
+      const newSession = await this.createSqliteSession(dbPath, key)
       this.currentSession = newSession
       this.recentDatabases.addRecent(dbPath)
     } catch (error) {
@@ -154,7 +154,7 @@ export class DatabaseManager {
     let newSession: StorageSession | null = null
 
     try {
-      newSession = this.createSqliteSession(newPath, key)
+      newSession = await this.createSqliteSession(newPath, key)
       this.currentSession = newSession
       this.recentDatabases.addRecent(newPath)
 
@@ -301,29 +301,7 @@ export class DatabaseManager {
     this.recentDatabases.removeRecent(dbPath)
   }
 
-  private createSqliteSession(dbPath: string, key?: string): StorageSession {
-    const newDb = new DatabaseService(dbPath, key)
-
-    if (key !== undefined && key.length > 0) {
-      try {
-        newDb.database.prepare('SELECT count(*) FROM sqlite_master').get()
-      } catch (error) {
-        newDb.close()
-
-        if (
-          error instanceof Error &&
-          error.message.includes('file is encrypted or is not a database')
-        ) {
-          throw new WrongPasswordError()
-        }
-
-        throw error
-      }
-    }
-
-    return new SqliteStorageSession({
-      databaseService: newDb,
-      dbPool: null
-    })
+  private async createSqliteSession(dbPath: string, key?: string): Promise<StorageSession> {
+    return createSqliteStorageSession(dbPath, key)
   }
 }

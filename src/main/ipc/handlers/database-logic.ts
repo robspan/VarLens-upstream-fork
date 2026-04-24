@@ -20,7 +20,6 @@ const ALLOWED_DB_EXTENSIONS = new Set(['.db', '.sqlite', '.sqlite3'])
 
 /** Callbacks for pool init and cohort rebuild during database open/create. */
 export interface DatabaseLifecycleCallbacks {
-  initDbPool: (path: string, password?: string) => Promise<void>
   triggerStartupRebuild: (db: DatabaseService) => void
 }
 
@@ -61,17 +60,6 @@ export async function openDatabase(
     await manager.switchDatabase(vPath, vPassword)
     mainLogger.info(`Switched to database: ${vPath}`, 'database')
 
-    // Initialise worker pool for off-thread reads (best effort)
-    try {
-      await callbacks.initDbPool(vPath, vPassword)
-    } catch (e) {
-      mainLogger.warn(
-        'DbPool init failed -- reads will use main thread: ' +
-          (e instanceof Error ? e.message : String(e)),
-        'database'
-      )
-    }
-
     // Trigger async cohort summary rebuild if needed (non-blocking)
     try {
       callbacks.triggerStartupRebuild(getDb())
@@ -98,22 +86,10 @@ export async function openDatabase(
  */
 export async function createDatabase(
   params: { path: string; password?: string },
-  getDbManager: () => DatabaseManager,
-  callbacks: Pick<DatabaseLifecycleCallbacks, 'initDbPool'>
+  getDbManager: () => DatabaseManager
 ): Promise<{ success: boolean; info: { path: string; name: string; encrypted: boolean } }> {
   const manager = getDbManager()
   await manager.createDatabase(params.path, params.password)
-
-  // Initialise worker pool (best effort)
-  try {
-    await callbacks.initDbPool(params.path, params.password)
-  } catch (e) {
-    mainLogger.warn(
-      'DbPool init failed -- reads will use main thread: ' +
-        (e instanceof Error ? e.message : String(e)),
-      'database'
-    )
-  }
 
   const info = manager.getCurrentInfo()
   return { success: true, info: info! }

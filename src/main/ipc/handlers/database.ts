@@ -17,7 +17,6 @@ import {
   FilePathSchema
 } from '../../../shared/types/ipc-schemas'
 import { triggerStartupRebuildIfNeeded } from './cohort'
-import { initDbPool } from '../dbPoolManager'
 import {
   openDatabase,
   createDatabase,
@@ -32,7 +31,6 @@ import type { DatabaseLifecycleCallbacks } from './database-logic'
 
 /** Shared lifecycle callbacks wiring pool init and cohort rebuild. */
 const lifecycleCallbacks: DatabaseLifecycleCallbacks = {
-  initDbPool: (path, password) => initDbPool(path, password),
   triggerStartupRebuild: (db) => triggerStartupRebuildIfNeeded(db)
 }
 
@@ -115,7 +113,7 @@ export function registerDatabaseHandlers({
         mainLogger.error(`Invalid database:create params: ${validated.error.message}`, 'database')
         throw new Error('Invalid database create parameters')
       }
-      return createDatabase(validated.data, getDbManager, lifecycleCallbacks)
+      return createDatabase(validated.data, getDbManager)
     })
   })
 

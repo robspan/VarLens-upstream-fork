@@ -4,6 +4,7 @@ import type { Case } from '../../../shared/types/database'
 import type { StorageReadExecutor } from '../read-executor'
 import type { StorageSession } from '../session'
 import type { StorageCapabilities, StorageHealth, WorkspaceRef } from '../types'
+import { SqliteReadExecutor } from './SqliteReadExecutor'
 
 interface SqliteStorageSessionOptions {
   databaseService: DatabaseService
@@ -30,11 +31,7 @@ export class SqliteStorageSession implements StorageSession {
   constructor(options: SqliteStorageSessionOptions) {
     this.databaseService = options.databaseService
     this.dbPool = options.dbPool
-    this.readExecutor = {
-      execute: async () => {
-        throw new Error('Storage read executor is not implemented for sqlite sessions')
-      }
-    }
+    this.readExecutor = new SqliteReadExecutor(this.databaseService, this.dbPool)
 
     const dbPath = this.databaseService.getPath()
 

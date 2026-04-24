@@ -30,6 +30,55 @@ describe('database-logic exports', () => {
   })
 })
 
+describe('database lifecycle logic', () => {
+  it('does not require handler-level pool initialization after opening a database', async () => {
+    const initDbPool = vi.fn()
+    const triggerStartupRebuild = vi.fn()
+    const db = {}
+    const manager = {
+      openDetectEncryption: vi.fn().mockReturnValue({ needsPassword: false }),
+      switchDatabase: vi.fn().mockResolvedValue(undefined),
+      getCurrentInfo: vi.fn().mockReturnValue({
+        path: '/tmp/varlens.db',
+        name: 'varlens.db',
+        encrypted: false
+      })
+    }
+
+    const callbacks = { initDbPool, triggerStartupRebuild }
+
+    await expect(
+      logic.openDatabase(
+        { path: '/tmp/varlens.db' },
+        () => db as never,
+        () => manager as never,
+        callbacks
+      )
+    ).resolves.toMatchObject({ success: true })
+
+    expect(initDbPool).not.toHaveBeenCalled()
+    expect(triggerStartupRebuild).toHaveBeenCalledWith(db)
+  })
+
+  it('does not require handler-level pool initialization after creating a database', async () => {
+    const initDbPool = vi.fn()
+    const manager = {
+      createDatabase: vi.fn().mockResolvedValue(undefined),
+      getCurrentInfo: vi.fn().mockReturnValue({
+        path: '/tmp/varlens.db',
+        name: 'varlens.db',
+        encrypted: false
+      })
+    }
+
+    await expect(
+      logic.createDatabase({ path: '/tmp/varlens.db' }, () => manager as never)
+    ).resolves.toMatchObject({ success: true })
+
+    expect(initDbPool).not.toHaveBeenCalled()
+  })
+})
+
 describe('database IPC domain registration', () => {
   it('delegates database domain registration to database handlers with injected dependencies', async () => {
     const registerDatabaseHandlers = vi.fn()

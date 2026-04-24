@@ -35,6 +35,19 @@ describe('DatabaseManager storage-session compatibility', () => {
     await manager.close()
   })
 
+  it('creates sqlite sessions that own the legacy worker read pool', async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'varlens-storage-manager-'))
+    const settingsPath = join(tempDir, 'settings.json')
+    const dbPath = join(tempDir, 'test.db')
+    const manager = new DatabaseManager(new RecentDatabasesService(settingsPath))
+
+    await manager.open(dbPath)
+
+    expect(manager.getCurrentSession().getDbPool()).not.toBeNull()
+
+    await manager.close()
+  })
+
   it('can adopt a postgres-backed current session without exposing a sqlite path', async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'varlens-storage-manager-'))
     const settingsPath = join(tempDir, 'settings.json')

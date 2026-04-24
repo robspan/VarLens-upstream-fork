@@ -28,50 +28,51 @@ jobs:
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       # Belt-and-suspenders gate: refuse to release a tag whose SHA didn't
-      # pass build.yml. Branch protection already blocks merges on failing
+      # pass the Build workflow. Branch protection already blocks merges on failing
       # CI, but direct tag pushes bypass branch protection — this catches
       # that case before any OS builder spins up and wastes runner minutes.
-      # Tags don't trigger build.yml (it only runs on push-to-main and PRs),
-      # so we look up the latest build.yml run on the exact tagged commit.
+      # Tags don't trigger the Build workflow (it only runs on push-to-main
+      # and PRs), so we look up the latest Build run on the exact tagged commit.
       #
       # IMPORTANT: annotated tags (`git tag -a`) have their own tag object;
       # `git rev-parse v0.55.0` returns that tag object's SHA, not the commit
       # it points to. Use `${GITHUB_SHA}` (which Actions always sets to the
       # underlying commit SHA for tag pushes) so the lookup hits the actual
-      # build.yml run that CI executed. Previous bug: released 0.55.0 failed
+      # Build run that CI executed. Previous bug: released 0.55.0 failed
       # with "got: missing" because `gh run list --commit=<tag-object-sha>`
       # returned an empty array.
-      # Poll for build.yml completion instead of a single-shot check.
+      # Poll for Build completion instead of a single-shot check.
       # When a release commit is pushed to main AND tagged in quick
-      # succession, build.yml triggers on the main push but may not
+      # succession, Build triggers on the main push but may not
       # finish before release.yml reaches this step. Without retry
       # logic the check finds no "success" conclusion and fails
       # (race condition that broke v0.56.1's first release attempt).
-      - name: Verify build.yml passed on tagged SHA
+      - name: Verify Build workflow passed on tagged SHA
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           SHA="${GITHUB_SHA}"
+          WORKFLOW_NAME="Build"
           MAX_ATTEMPTS=20
           DELAY=30
           STATUS="pending"
           for i in $(seq 1 $MAX_ATTEMPTS); do
-            STATUS=$(gh run list --workflow=build.yml --commit="$SHA" \
+            STATUS=$(gh run list --workflow="$WORKFLOW_NAME" --commit="$SHA" \
               --json conclusion --jq '.[0].conclusion // "pending"')
             if [ "$STATUS" = "success" ]; then
-              echo "build.yml passed on $SHA — proceeding with release"
+              echo "$WORKFLOW_NAME passed on $SHA — proceeding with release"
               break
             elif [ "$STATUS" = "failure" ] || [ "$STATUS" = "cancelled" ]; then
-              echo "::error::build.yml did not succeed on $SHA (got: $STATUS)"
+              echo "::error::$WORKFLOW_NAME did not succeed on $SHA (got: $STATUS)"
               echo "::error::Refusing to release a tag whose CI did not pass."
               exit 1
             else
-              echo "build.yml status: $STATUS (attempt $i/$MAX_ATTEMPTS, waiting ${DELAY}s...)"
+              echo "$WORKFLOW_NAME status: $STATUS (attempt $i/$MAX_ATTEMPTS, waiting ${DELAY}s...)"
               sleep $DELAY
             fi
           done
           if [ "$STATUS" != "success" ]; then
-            echo "::error::build.yml did not complete within $((MAX_ATTEMPTS * DELAY))s on $SHA (last status: $STATUS)"
+            echo "::error::$WORKFLOW_NAME did not complete within $((MAX_ATTEMPTS * DELAY))s on $SHA (last status: $STATUS)"
             exit 1
           fi
 
@@ -150,9 +151,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # lint/typecheck/test are validated by build.yml on the tagged SHA
+      # lint/typecheck/test are validated by the Build workflow on the tagged SHA
       # before the tag is pushed. The create-release gate above refuses to
-      # proceed when build.yml didn't succeed, so re-running those checks
+      # proceed when Build didn't succeed, so re-running those checks
       # here would be pure duplication.
 
       # Cache the Electron-ABI native binary. Key must include runner.os,
@@ -213,7 +214,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # lint/typecheck/test already validated by build.yml on the tagged SHA.
+      # lint/typecheck/test already validated by the Build workflow on the tagged SHA.
 
       - name: Extract Electron version
         id: electron-ver

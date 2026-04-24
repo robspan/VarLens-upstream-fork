@@ -179,4 +179,15 @@ describe('PostgresVariantReadRepository', () => {
     expect(pool.query.mock.calls[1][0]).toContain('variant_str')
     expect(pool.query.mock.calls[1][0]).toContain('_str_repeat_id')
   })
+
+  it('fails filter metadata reads with explicit Phase 7 deferral errors', async () => {
+    const repository = new PostgresVariantReadRepository({ query: vi.fn() } as never, 'public')
+
+    await expect(repository.getFilterOptions(1)).rejects.toThrow(
+      'PostgreSQL variants:filterOptions is deferred from Phase 7'
+    )
+    await expect(repository.getColumnMeta({ caseId: 1 }, 'cadd')).rejects.toThrow(
+      'PostgreSQL variants:columnMeta is deferred from Phase 7'
+    )
+  })
 })

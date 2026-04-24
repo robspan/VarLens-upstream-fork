@@ -146,4 +146,34 @@ describe('PostgresReadExecutor', () => {
       true
     )
   })
+
+  it('dispatches variant metadata reads to explicit postgres deferral methods', async () => {
+    const variants = {
+      getVariantTypeCounts: vi.fn(),
+      getVariantTypesPresent: vi.fn(),
+      getGeneSymbols: vi.fn(),
+      queryVariants: vi.fn(),
+      getFilterOptions: vi
+        .fn()
+        .mockRejectedValue(new Error('PostgreSQL variants:filterOptions is deferred from Phase 7')),
+      getColumnMeta: vi
+        .fn()
+        .mockRejectedValue(new Error('PostgreSQL variants:columnMeta is deferred from Phase 7'))
+    }
+    const executor = new PostgresReadExecutor({
+      casesQuery: {} as never,
+      availableBuilds: {} as never,
+      caseMetadata: {} as never,
+      variants
+    } as never)
+
+    await expect(executor.execute({ type: 'variants:filterOptions', params: [1] })).rejects.toThrow(
+      'PostgreSQL variants:filterOptions is deferred from Phase 7'
+    )
+    await expect(
+      executor.execute({ type: 'variants:columnMeta', params: [{ caseId: 1 }, 'cadd'] })
+    ).rejects.toThrow('PostgreSQL variants:columnMeta is deferred from Phase 7')
+    expect(variants.getFilterOptions).toHaveBeenCalledWith(1)
+    expect(variants.getColumnMeta).toHaveBeenCalledWith({ caseId: 1 }, 'cadd')
+  })
 })

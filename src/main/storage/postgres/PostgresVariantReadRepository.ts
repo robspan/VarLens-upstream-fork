@@ -298,6 +298,17 @@ export class PostgresVariantReadRepository {
     }
   }
 
+  async getFilterOptions(_caseId: number): Promise<never> {
+    throw new Error('PostgreSQL variants:filterOptions is deferred from Phase 7')
+  }
+
+  async getColumnMeta(
+    _scope: { caseId: number } | { caseIds: number[] },
+    _columnKey: string
+  ): Promise<never> {
+    throw new Error('PostgreSQL variants:columnMeta is deferred from Phase 7')
+  }
+
   private assertSupportedQueryFilter(filter: VariantFilter): void {
     const unsupported: string[] = []
     if ((filter.tag_ids?.length ?? 0) > 0) unsupported.push('tag_ids')

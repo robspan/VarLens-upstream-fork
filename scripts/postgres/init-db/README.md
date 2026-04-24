@@ -19,8 +19,14 @@ Developers can override the host port in their untracked `.env.postgres.local`
 file. If the port changes, update `VARLENS_PG_URL` in the same local env file so
 client tools keep pointing at the correct endpoint.
 
-Phase 1 keeps this bootstrap SQL intentionally minimal. The local development
-workflow only needs a stable schema baseline for early PostgreSQL session work.
+Current init files:
+
+- `001-create-varlens-schema.sql` creates the schema only.
+- `10-phase3-cases.sql` creates the base `cases` table.
+- `11-phase6-case-metadata.sql` creates Phase 6 metadata/cohort/HPO/comment/metric
+  tables that depend on `cases`.
+- `20-phase3-seed-cases.sql` seeds deterministic development rows and resets
+  sequences after explicit-ID seed inserts.
 
 Future phases may add development-only helper objects here if they improve local
 iteration. Production migrations must not depend on this folder because these

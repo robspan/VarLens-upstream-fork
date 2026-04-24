@@ -13,9 +13,7 @@ export class PostgresCasesQueryRepository {
     private readonly schema: string
   ) {}
 
-  async queryCases(
-    params: ValidatedCaseSearchParams
-  ): Promise<PaginatedResult<CaseWithCohorts>> {
+  async queryCases(params: ValidatedCaseSearchParams): Promise<PaginatedResult<CaseWithCohorts>> {
     const limit = params.limit
     const offset = params.offset ?? 0
     const searchTerm = params.search_term?.trim()

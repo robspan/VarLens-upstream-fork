@@ -1,10 +1,7 @@
 import { describe, expectTypeOf, it } from 'vitest'
 
 import type { ValidatedCaseSearchParams } from '../../../src/shared/types/ipc-schemas'
-import type {
-  StorageReadExecutor,
-  StorageReadTask
-} from '../../../src/main/storage/read-executor'
+import type { StorageReadExecutor, StorageReadTask } from '../../../src/main/storage/read-executor'
 
 describe('StorageReadExecutor contract', () => {
   it('accepts the narrow Phase 4 cases:query task union', () => {

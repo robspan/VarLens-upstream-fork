@@ -128,9 +128,8 @@ describe('DatabaseManager storage-session compatibility', () => {
       run: vi.fn(),
       destroy: vi.fn()
     }
-    const { getDbPool, setActiveSessionResolver } = await import(
-      '../../../src/main/ipc/dbPoolManager'
-    )
+    const { getDbPool, setActiveSessionResolver } =
+      await import('../../../src/main/ipc/dbPoolManager')
 
     setActiveSessionResolver(() => ({
       capabilities: {
@@ -147,9 +146,8 @@ describe('DatabaseManager storage-session compatibility', () => {
   it('returns null from the legacy db pool bridge for an active postgres session', async () => {
     vi.resetModules()
 
-    const { getDbPool, setActiveSessionResolver } = await import(
-      '../../../src/main/ipc/dbPoolManager'
-    )
+    const { getDbPool, setActiveSessionResolver } =
+      await import('../../../src/main/ipc/dbPoolManager')
 
     setActiveSessionResolver(() => ({
       capabilities: {

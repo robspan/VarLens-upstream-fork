@@ -55,9 +55,9 @@
 
 **Planning state to reconcile next:**
 
-- Phase 6 case metadata/cases-filter docs are still active/proposed under `.planning/plans` and `.planning/specs`.
+- **Reconciled 2026-04-24:** Phase 6 case metadata/cases-filter docs were verified as implemented and archived under `.planning/archive/completed-plans/` and `.planning/archive/completed-specs/`.
 - Phase 7 variant read parity has already shipped and is archived.
-- The next PostgreSQL step should either execute Phase 6 next or intentionally rewrite/archive it if the implementation order has superseded it. Do not open a Phase 8 plan until this Phase 6 status is resolved.
+- The next PostgreSQL step can now proceed from the archived Phase 6 and Phase 7 baselines.
 
 **Still not ready for user-facing PostgreSQL mode:**
 
@@ -93,7 +93,7 @@ That distinction mattered in this pass. The remaining live plan/spec docs had be
 - `.planning/archive/completed-plans/2026-04-15-performance-measurement-and-renderer-tables-phase1-plan.md`
 - `.planning/archive/completed-specs/2026-04-15-performance-measurement-and-renderer-tables-design.md`
 
-At this point, today's review is the live code-review snapshot. The active planning set is small but not empty: Phase 6 case metadata/cases-filter docs and the storage-session boundary design remain active, while Phase 7 has been completed and archived.
+At this point, today's review is the live code-review snapshot. The active planning set is small but not empty: the storage-session boundary design remains active, while Phase 6 and Phase 7 have been completed and archived.
 
 ## Current Strengths
 
@@ -287,7 +287,7 @@ That matters because it removes a misleading source of “repo instability” th
 
 - storage-session/read-executor architecture exists and has shipped through cases and variant read slices
 - keep Kysely as a tool inside backend-specific repositories, not the boundary itself
-- next reconcile the still-active Phase 6 case metadata/cases-filter docs, then close that parity gap or explicitly supersede/archive the docs
+- keep completed parity phase docs archived promptly so active PostgreSQL planning starts from the current implementation state
 - do not expose renderer PostgreSQL settings until write/import/export/delete/rebuild and remaining major read domains are honest
 
 ### Priority D — Make local verification hermetic — ✅ Resolved (commit `a8a80fc`)
@@ -303,7 +303,7 @@ That matters because it removes a misleading source of “repo instability” th
 **As of 2026-04-24**, packaged-app integrity hardening and local-verification hermeticity have shipped, and PostgreSQL parity has moved from architecture-only work into real vertical slices through v0.56.13. The remaining work is genuinely strategic:
 
 - **B** — choose the next renderer-performance phase from evidence, using the current perf harness as the entry point.
-- **C** — continue PostgreSQL parity on the storage-session boundary, starting by reconciling or executing the still-active Phase 6 case metadata/cases-filter docs.
+- **C** — continue PostgreSQL parity on the storage-session boundary from the archived Phase 6 and Phase 7 baselines.
 - **E** — optional `package.json` script mirroring for discoverability.
 
 VarLens is no longer primarily paying down shell chaos, IPC sprawl, stale planning drift, packaged-app hardening, or local-verification friction. The next review should start from whichever of B or C gets picked up, but the immediate planning cleanup is to resolve the Phase 6 document state before opening new PostgreSQL phases.

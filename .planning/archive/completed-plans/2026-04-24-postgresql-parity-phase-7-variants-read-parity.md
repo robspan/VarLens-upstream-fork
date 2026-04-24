@@ -15,7 +15,7 @@
 ## Reference Documents
 
 - Spec: `.planning/archive/completed-specs/2026-04-24-postgresql-parity-phase-7-variants-read-parity.md`
-- Previous phase: `.planning/specs/2026-04-24-postgresql-parity-phase-6-case-metadata-and-cases-filters.md`
+- Previous phase: `.planning/archive/completed-specs/2026-04-24-postgresql-parity-phase-6-case-metadata-and-cases-filters.md`
 - Readiness input: `.planning/artifacts/postgres-parity-phase-6-wgs-readiness.md`
 - Existing SQLite query behavior: `src/main/database/VariantRepository.ts`
 - Existing SQLite filter builder: `src/main/database/VariantFilterBuilder.ts`

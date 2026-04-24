@@ -1,10 +1,12 @@
 # PostgreSQL Parity Phase 6: Case Metadata and Cases Filters
 
 **Date:** 2026-04-24  
-**Status:** Proposed  
+**Status:** Completed  
 **Depends on:** [Storage Session Boundary Design](./2026-04-23-storage-adapter-boundary-design.md)  
 **Previous phase:** [Storage Session Boundary Phase 5: Cases Available Builds](../archive/completed-specs/2026-04-24-storage-session-phase-5-cases-available-builds.md)  
 **Goal:** Move the next high-leverage backend slice toward honest PostgreSQL parity, make Docker PostgreSQL validation runnable early, and keep renderer PostgreSQL settings hidden until runtime support is honest.
+
+**Completion note — 2026-04-24:** Implemented and merged via PR #176 (`refactor/postgres-parity-phase-6-case-metadata`). Fresh reconciliation check ran `make rebuild-node && npx vitest run tests/main/storage/postgres-case-metadata-repository.test.ts tests/main/storage/postgres-cases-query-repository.test.ts tests/main/storage/postgres-read-executor.test.ts tests/main/storage/postgres-write-executor.test.ts tests/main/storage/sqlite-read-executor.test.ts tests/main/storage/sqlite-write-executor.test.ts tests/main/handlers/case-metadata-routing.test.ts` with 7 files and 38 tests passing.
 
 ## Summary
 

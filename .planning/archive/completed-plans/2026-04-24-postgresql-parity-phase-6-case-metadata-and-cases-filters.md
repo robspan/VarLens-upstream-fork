@@ -2,6 +2,10 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status:** Completed
+
+**Completion note — 2026-04-24:** Implemented and merged via PR #176 (`refactor/postgres-parity-phase-6-case-metadata`). Fresh reconciliation check ran `make rebuild-node && npx vitest run tests/main/storage/postgres-case-metadata-repository.test.ts tests/main/storage/postgres-cases-query-repository.test.ts tests/main/storage/postgres-read-executor.test.ts tests/main/storage/postgres-write-executor.test.ts tests/main/storage/sqlite-read-executor.test.ts tests/main/storage/sqlite-write-executor.test.ts tests/main/handlers/case-metadata-routing.test.ts` with 7 files and 38 tests passing.
+
 **Goal:** Complete PostgreSQL parity for cases-query metadata filters and the `case-metadata:*` domain, validate it early against a running Docker PostgreSQL backend, and keep renderer PostgreSQL settings hidden.
 
 **Architecture:** Use a Docker-first loop, then add a small backend-aware write executor beside the existing read executor and migrate one domain vertically. SQLite executors delegate to existing `DatabaseService` repositories; PostgreSQL executors delegate to a focused `PostgresCaseMetadataRepository`. `database:overview`, broad variants, import, export, delete, and summary rebuild remain deferred, but Phase 6 also produces the WGS-readiness notes needed to start Phase 7 immediately.

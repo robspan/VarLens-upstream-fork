@@ -16,10 +16,16 @@ export type StorageWriteTask =
   | { type: 'case-metadata:assignCohort'; params: [caseId: number, cohortId: number] }
   | { type: 'case-metadata:removeCohort'; params: [caseId: number, cohortId: number] }
   | { type: 'case-metadata:setCohorts'; params: [caseId: number, cohortIds: number[]] }
-  | { type: 'case-metadata:assignHpoTerm'; params: [caseId: number, hpoId: string, hpoLabel: string] }
+  | {
+      type: 'case-metadata:assignHpoTerm'
+      params: [caseId: number, hpoId: string, hpoLabel: string]
+    }
   | { type: 'case-metadata:removeHpoTerm'; params: [caseId: number, hpoId: string] }
   | { type: 'case-metadata:upsertDataInfo'; params: [caseId: number, updates: DataInfoUpdates] }
-  | { type: 'case-metadata:upsertExternalId'; params: [caseId: number, idType: string, idValue: string] }
+  | {
+      type: 'case-metadata:upsertExternalId'
+      params: [caseId: number, idType: string, idValue: string]
+    }
   | { type: 'case-metadata:deleteExternalId'; params: [caseId: number, idType: string] }
 
 export interface StorageWriteExecutor {

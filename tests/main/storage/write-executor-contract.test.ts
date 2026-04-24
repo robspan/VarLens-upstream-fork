@@ -1,6 +1,9 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
 
-import type { StorageWriteExecutor, StorageWriteTask } from '../../../src/main/storage/write-executor'
+import type {
+  StorageWriteExecutor,
+  StorageWriteTask
+} from '../../../src/main/storage/write-executor'
 
 describe('StorageWriteExecutor contract', () => {
   it('supports case metadata write tasks', () => {

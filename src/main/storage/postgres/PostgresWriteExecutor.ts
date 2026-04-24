@@ -1,8 +1,24 @@
 import type { StorageWriteExecutor, StorageWriteTask } from '../write-executor'
 import type { PostgresCaseMetadataRepository } from './PostgresCaseMetadataRepository'
 
+type PostgresCaseMetadataWriter = Pick<
+  PostgresCaseMetadataRepository,
+  | 'upsertCaseMetadata'
+  | 'createCohortGroup'
+  | 'updateCohortGroup'
+  | 'deleteCohortGroup'
+  | 'assignCaseCohort'
+  | 'removeCaseCohort'
+  | 'setCaseCohorts'
+  | 'assignCaseHpoTerm'
+  | 'removeCaseHpoTerm'
+  | 'upsertCaseDataInfo'
+  | 'upsertCaseExternalId'
+  | 'deleteCaseExternalId'
+>
+
 export class PostgresWriteExecutor implements StorageWriteExecutor {
-  constructor(private readonly caseMetadata: PostgresCaseMetadataRepository) {}
+  constructor(private readonly caseMetadata: PostgresCaseMetadataWriter) {}
 
   async execute(task: StorageWriteTask): Promise<unknown> {
     switch (task.type) {

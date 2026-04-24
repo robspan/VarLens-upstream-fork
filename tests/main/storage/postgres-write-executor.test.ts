@@ -6,10 +6,19 @@ describe('PostgresWriteExecutor', () => {
   it('routes case metadata write tasks to the postgres repository', async () => {
     const repository = {
       upsertCaseMetadata: vi.fn().mockResolvedValue({ case_id: 1 }),
+      createCohortGroup: vi.fn(),
+      updateCohortGroup: vi.fn(),
+      deleteCohortGroup: vi.fn(),
+      assignCaseCohort: vi.fn(),
+      removeCaseCohort: vi.fn(),
       setCaseCohorts: vi.fn().mockResolvedValue(undefined),
+      assignCaseHpoTerm: vi.fn(),
+      removeCaseHpoTerm: vi.fn(),
+      upsertCaseDataInfo: vi.fn(),
+      upsertCaseExternalId: vi.fn(),
       deleteCaseExternalId: vi.fn().mockResolvedValue(undefined)
     }
-    const executor = new PostgresWriteExecutor(repository as never)
+    const executor = new PostgresWriteExecutor(repository)
 
     await executor.execute({ type: 'case-metadata:upsert', params: [1, { sex: 'female' }] })
     await executor.execute({ type: 'case-metadata:setCohorts', params: [1, [2, 3]] })

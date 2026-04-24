@@ -6,7 +6,7 @@ import type { StorageReadExecutor } from '../read-executor'
 import type { StorageSession } from '../session'
 import type { StorageCapabilities, StorageHealth, WorkspaceRef } from '../types'
 import type { StorageWriteExecutor } from '../write-executor'
-import { unsupportedImportExecutor } from '../unsupported-import-executor'
+import { SqliteImportExecutor } from './SqliteImportExecutor'
 import { SqliteReadExecutor } from './SqliteReadExecutor'
 import { SqliteWriteExecutor } from './SqliteWriteExecutor'
 
@@ -33,12 +33,16 @@ export class SqliteStorageSession implements StorageSession {
   private readonly dbPool: DbPool | null
   private readonly readExecutor: StorageReadExecutor
   private readonly writeExecutor: StorageWriteExecutor
+  private readonly importExecutor: StorageImportExecutor
 
   constructor(options: SqliteStorageSessionOptions) {
     this.databaseService = options.databaseService
     this.dbPool = options.dbPool
     this.readExecutor = new SqliteReadExecutor(this.databaseService, this.dbPool)
     this.writeExecutor = new SqliteWriteExecutor(this.databaseService)
+    this.importExecutor = new SqliteImportExecutor({
+      getDatabaseService: () => this.databaseService
+    })
 
     const dbPath = this.databaseService.getPath()
 
@@ -63,7 +67,7 @@ export class SqliteStorageSession implements StorageSession {
   }
 
   getImportExecutor(): StorageImportExecutor {
-    return unsupportedImportExecutor
+    return this.importExecutor
   }
 
   async listCases(): Promise<Case[]> {

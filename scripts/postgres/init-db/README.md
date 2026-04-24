@@ -25,8 +25,12 @@ Current init files:
 - `10-phase3-cases.sql` creates the base `cases` table.
 - `11-phase6-case-metadata.sql` creates Phase 6 metadata/cohort/HPO/comment/metric
   tables that depend on `cases`.
+- `12-phase7-variants.sql` creates read-only PostgreSQL variant tables, indexes,
+  and FTS trigger-backed `tsvector` columns.
 - `20-phase3-seed-cases.sql` seeds deterministic development rows and resets
   sequences after explicit-ID seed inserts.
+- `21-phase7-seed-variants.sql` seeds deterministic variant rows for gated
+  Phase 7 E2E tests. It is not an import path.
 
 Future phases may add development-only helper objects here if they improve local
 iteration. Production migrations must not depend on this folder because these

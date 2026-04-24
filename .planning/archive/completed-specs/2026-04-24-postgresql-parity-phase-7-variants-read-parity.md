@@ -1,9 +1,9 @@
 # PostgreSQL Parity Phase 7: Variants Read Parity
 
 **Date:** 2026-04-24
-**Status:** Proposed
-**Depends on:** [PostgreSQL Parity Phase 6: Case Metadata and Cases Filters](./2026-04-24-postgresql-parity-phase-6-case-metadata-and-cases-filters.md)
-**Planning input:** [PostgreSQL WGS-readiness Inventory](../artifacts/postgres-parity-phase-6-wgs-readiness.md)
+**Status:** Completed
+**Depends on:** [PostgreSQL Parity Phase 6: Case Metadata and Cases Filters](../../specs/2026-04-24-postgresql-parity-phase-6-case-metadata-and-cases-filters.md)
+**Planning input:** [PostgreSQL WGS-readiness Inventory](../../artifacts/postgres-parity-phase-6-wgs-readiness.md)
 **Goal:** Add PostgreSQL-backed variant read support for the first user-visible variant browsing slice without expanding into import, export, delete, rebuild, cohort, database overview, or renderer PostgreSQL settings work.
 
 ## Summary

@@ -53,4 +53,28 @@ describe('StorageReadExecutor contract', () => {
 
     expect(tasks).toHaveLength(11)
   })
+
+  it('supports phase 7 variant read tasks', () => {
+    const tasks = [
+      { type: 'variants:typeCounts', params: [1] },
+      { type: 'variants:typesPresent', params: [{ caseId: 1 }] },
+      { type: 'variants:typesPresent', params: [{ caseIds: [1, 2] }] },
+      { type: 'variants:geneSymbols', params: [1, 'BR', 20] },
+      {
+        type: 'variants:query',
+        params: [
+          { case_id: 1, variant_type: 'snv' },
+          25,
+          0,
+          [{ key: 'pos', order: 'asc' }],
+          false,
+          true
+        ]
+      },
+      { type: 'variants:filterOptions', params: [1] },
+      { type: 'variants:columnMeta', params: [{ caseId: 1 }, 'cadd'] }
+    ] satisfies StorageReadTask[]
+
+    expect(tasks).toHaveLength(7)
+  })
 })

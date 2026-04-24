@@ -127,6 +127,40 @@ export class SqliteReadExecutor implements StorageReadExecutor {
         }
 
         return this.databaseService.metadata.getFullCaseMetadata(task.params[0])
+
+      case 'variants:typeCounts':
+        if (this.dbPool !== null)
+          return await this.dbPool.run({ type: task.type, params: task.params })
+        return this.databaseService.variants.getVariantTypeCounts(task.params[0])
+
+      case 'variants:typesPresent':
+        if (this.dbPool !== null)
+          return await this.dbPool.run({ type: task.type, params: task.params })
+        return Array.from(this.databaseService.variants.getVariantTypesPresent(task.params[0]))
+
+      case 'variants:geneSymbols':
+        if (this.dbPool !== null)
+          return await this.dbPool.run({ type: task.type, params: task.params })
+        return this.databaseService.variants.getGeneSymbols(
+          task.params[0],
+          task.params[1],
+          task.params[2]
+        )
+
+      case 'variants:query':
+        if (this.dbPool !== null)
+          return await this.dbPool.run({ type: task.type, params: task.params })
+        return this.databaseService.variants.getVariants(...task.params)
+
+      case 'variants:filterOptions':
+        if (this.dbPool !== null)
+          return await this.dbPool.run({ type: task.type, params: task.params })
+        return this.databaseService.variants.getFilterOptions(task.params[0])
+
+      case 'variants:columnMeta':
+        if (this.dbPool !== null)
+          return await this.dbPool.run({ type: task.type, params: task.params })
+        return this.databaseService.variants.getColumnMeta(task.params[0], task.params[1])
     }
 
     const _exhaustive: never = task

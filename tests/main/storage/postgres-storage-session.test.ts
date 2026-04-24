@@ -249,4 +249,28 @@ describe('PostgresStorageSession', () => {
     expect(pool.query).toHaveBeenCalledTimes(1)
     expect(pool.query.mock.calls[0][0]).toContain('"phase6_metadata"."case_metadata"')
   })
+
+  it('routes variant small reads through the session-owned postgres read executor', async () => {
+    const pool = {
+      query: vi.fn().mockResolvedValue({
+        rows: [{ variant_type: 'snv', count: '2' }]
+      }),
+      end: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn()
+    }
+    const session = new PostgresStorageSession({
+      config: makeConfig({ schema: 'phase7_variants' }),
+      pool: pool as never
+    })
+
+    await expect(
+      session.getReadExecutor().execute({
+        type: 'variants:typeCounts',
+        params: [1]
+      })
+    ).resolves.toEqual({ snv: 2 })
+
+    expect(pool.query).toHaveBeenCalledTimes(1)
+    expect(pool.query.mock.calls[0][0]).toContain('"phase7_variants"."variants"')
+  })
 })

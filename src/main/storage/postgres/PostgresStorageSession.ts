@@ -10,7 +10,9 @@ import { PostgresCaseMetadataRepository } from './PostgresCaseMetadataRepository
 import { PostgresCasesQueryRepository } from './PostgresCasesQueryRepository'
 import { PostgresReadExecutor } from './PostgresReadExecutor'
 import { PostgresVariantReadRepository } from './PostgresVariantReadRepository'
+import type { StorageImportExecutor } from '../import-executor'
 import type { StorageReadExecutor } from '../read-executor'
+import { unsupportedImportExecutor } from '../unsupported-import-executor'
 import { PostgresWriteExecutor } from './PostgresWriteExecutor'
 import {
   buildPostgresConnectionLabel,
@@ -100,6 +102,10 @@ export class PostgresStorageSession implements StorageSession {
 
   getWriteExecutor(): StorageWriteExecutor {
     return this.writeExecutor
+  }
+
+  getImportExecutor(): StorageImportExecutor {
+    return unsupportedImportExecutor
   }
 
   getDatabaseService(): DatabaseService {

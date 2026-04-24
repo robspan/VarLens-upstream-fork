@@ -1,10 +1,12 @@
 import type { DatabaseService } from '../../database/DatabaseService'
 import type { DbPool } from '../../database/DbPool'
 import type { Case } from '../../../shared/types/database'
+import type { StorageImportExecutor } from '../import-executor'
 import type { StorageReadExecutor } from '../read-executor'
 import type { StorageSession } from '../session'
 import type { StorageCapabilities, StorageHealth, WorkspaceRef } from '../types'
 import type { StorageWriteExecutor } from '../write-executor'
+import { unsupportedImportExecutor } from '../unsupported-import-executor'
 import { SqliteReadExecutor } from './SqliteReadExecutor'
 import { SqliteWriteExecutor } from './SqliteWriteExecutor'
 
@@ -58,6 +60,10 @@ export class SqliteStorageSession implements StorageSession {
 
   getWriteExecutor(): StorageWriteExecutor {
     return this.writeExecutor
+  }
+
+  getImportExecutor(): StorageImportExecutor {
+    return unsupportedImportExecutor
   }
 
   async listCases(): Promise<Case[]> {

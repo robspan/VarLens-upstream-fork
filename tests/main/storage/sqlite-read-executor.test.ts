@@ -131,4 +131,36 @@ describe('SqliteReadExecutor', () => {
       expect(databaseService.metadata[metadataMethod]).toHaveBeenCalledWith(...expectedArgs)
     }
   )
+
+  it('dispatches variant reads through the sqlite worker pool when present', async () => {
+    const dbPool = { run: vi.fn().mockResolvedValue({ snv: 1 }) }
+    const executor = new SqliteReadExecutor({} as never, dbPool as never)
+
+    await expect(
+      executor.execute({ type: 'variants:typeCounts', params: [1] })
+    ).resolves.toStrictEqual({ snv: 1 })
+
+    expect(dbPool.run).toHaveBeenCalledWith({ type: 'variants:typeCounts', params: [1] })
+  })
+
+  it('dispatches variant reads to DatabaseService when no pool is present', async () => {
+    const databaseService = {
+      variants: {
+        getVariantTypeCounts: vi.fn().mockReturnValue({ snv: 1 }),
+        getVariantTypesPresent: vi.fn().mockReturnValue(new Set(['snv'])),
+        getGeneSymbols: vi.fn().mockReturnValue(['BRCA1'])
+      }
+    }
+    const executor = new SqliteReadExecutor(databaseService as never, null)
+
+    await expect(
+      executor.execute({ type: 'variants:typeCounts', params: [1] })
+    ).resolves.toStrictEqual({ snv: 1 })
+    await expect(
+      executor.execute({ type: 'variants:typesPresent', params: [{ caseId: 1 }] })
+    ).resolves.toStrictEqual(['snv'])
+    await expect(
+      executor.execute({ type: 'variants:geneSymbols', params: [1, 'BR', 20] })
+    ).resolves.toStrictEqual(['BRCA1'])
+  })
 })

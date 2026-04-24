@@ -116,4 +116,34 @@ describe('PostgresReadExecutor', () => {
       executor.execute({ type: 'variants:geneSymbols', params: [1, 'BR', 20] })
     ).resolves.toStrictEqual(['BRCA1'])
   })
+
+  it('dispatches variant query reads to the postgres variant repository', async () => {
+    const variants = {
+      getVariantTypeCounts: vi.fn(),
+      getVariantTypesPresent: vi.fn(),
+      getGeneSymbols: vi.fn(),
+      queryVariants: vi.fn().mockResolvedValue({ data: [], total_count: 0 })
+    }
+    const executor = new PostgresReadExecutor({
+      casesQuery: {} as never,
+      availableBuilds: {} as never,
+      caseMetadata: {} as never,
+      variants
+    } as never)
+
+    await expect(
+      executor.execute({
+        type: 'variants:query',
+        params: [{ case_id: 1 }, 25, 0, undefined, false, true]
+      })
+    ).resolves.toStrictEqual({ data: [], total_count: 0 })
+    expect(variants.queryVariants).toHaveBeenCalledWith(
+      { case_id: 1 },
+      25,
+      0,
+      undefined,
+      false,
+      true
+    )
+  })
 })

@@ -27,7 +27,7 @@ interface PostgresReadExecutorRepositories {
   >
   variants: Pick<
     PostgresVariantReadRepository,
-    'getVariantTypeCounts' | 'getVariantTypesPresent' | 'getGeneSymbols'
+    'getVariantTypeCounts' | 'getVariantTypesPresent' | 'getGeneSymbols' | 'queryVariants'
   >
 }
 
@@ -89,6 +89,8 @@ export class PostgresReadExecutor implements StorageReadExecutor {
         )
 
       case 'variants:query':
+        return await this.repositories.variants.queryVariants(...task.params)
+
       case 'variants:filterOptions':
       case 'variants:columnMeta':
         return deferredVariantReadTask(task.type)

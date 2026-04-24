@@ -2,6 +2,7 @@ import type { StorageReadExecutor, StorageReadTask } from '../read-executor'
 import type { PostgresAvailableBuildsRepository } from './PostgresAvailableBuildsRepository'
 import type { PostgresCaseMetadataRepository } from './PostgresCaseMetadataRepository'
 import type { PostgresCasesQueryRepository } from './PostgresCasesQueryRepository'
+import type { PostgresVariantReadRepository } from './PostgresVariantReadRepository'
 
 function deferredVariantReadTask(taskType: string): never {
   throw new Error(`${taskType} is not implemented by this storage executor yet`)
@@ -23,6 +24,10 @@ interface PostgresReadExecutorRepositories {
     | 'getDistinctPlatforms'
     | 'getDistinctExternalIdTypes'
     | 'getFullCaseMetadata'
+  >
+  variants: Pick<
+    PostgresVariantReadRepository,
+    'getVariantTypeCounts' | 'getVariantTypesPresent' | 'getGeneSymbols'
   >
 }
 
@@ -71,8 +76,18 @@ export class PostgresReadExecutor implements StorageReadExecutor {
         return await this.repositories.caseMetadata.getFullCaseMetadata(task.params[0])
 
       case 'variants:typeCounts':
+        return await this.repositories.variants.getVariantTypeCounts(task.params[0])
+
       case 'variants:typesPresent':
+        return await this.repositories.variants.getVariantTypesPresent(task.params[0])
+
       case 'variants:geneSymbols':
+        return await this.repositories.variants.getGeneSymbols(
+          task.params[0],
+          task.params[1],
+          task.params[2]
+        )
+
       case 'variants:query':
       case 'variants:filterOptions':
       case 'variants:columnMeta':

@@ -77,4 +77,43 @@ describe('PostgresReadExecutor', () => {
     expect(caseMetadata.listCohortGroups).toHaveBeenCalledWith()
     expect(caseMetadata.getFullCaseMetadata).toHaveBeenCalledWith(1)
   })
+
+  it('dispatches variant small reads to the postgres variant repository', async () => {
+    const variants = {
+      getVariantTypeCounts: vi.fn().mockResolvedValue({ snv: 2 }),
+      getVariantTypesPresent: vi.fn().mockResolvedValue(['snv']),
+      getGeneSymbols: vi.fn().mockResolvedValue(['BRCA1'])
+    }
+    const casesQuery = { queryCases: vi.fn() }
+    const availableBuilds = { getAvailableGenomeBuilds: vi.fn() }
+    const caseMetadata = {
+      getCaseMetadata: vi.fn(),
+      listCohortGroups: vi.fn(),
+      getCohortGroupByName: vi.fn(),
+      getCaseCohorts: vi.fn(),
+      getCaseHpoTerms: vi.fn(),
+      getCaseDataInfo: vi.fn(),
+      listCaseExternalIds: vi.fn(),
+      getDistinctHpoTerms: vi.fn(),
+      getDistinctPlatforms: vi.fn(),
+      getDistinctExternalIdTypes: vi.fn(),
+      getFullCaseMetadata: vi.fn()
+    }
+    const executor = new PostgresReadExecutor({
+      casesQuery,
+      availableBuilds,
+      caseMetadata,
+      variants
+    } as never)
+
+    await expect(
+      executor.execute({ type: 'variants:typeCounts', params: [1] })
+    ).resolves.toStrictEqual({ snv: 2 })
+    await expect(
+      executor.execute({ type: 'variants:typesPresent', params: [{ caseId: 1 }] })
+    ).resolves.toStrictEqual(['snv'])
+    await expect(
+      executor.execute({ type: 'variants:geneSymbols', params: [1, 'BR', 20] })
+    ).resolves.toStrictEqual(['BRCA1'])
+  })
 })

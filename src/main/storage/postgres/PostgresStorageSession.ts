@@ -9,6 +9,7 @@ import { PostgresCaseListRepository } from './PostgresCaseListRepository'
 import { PostgresCaseMetadataRepository } from './PostgresCaseMetadataRepository'
 import { PostgresCasesQueryRepository } from './PostgresCasesQueryRepository'
 import { PostgresReadExecutor } from './PostgresReadExecutor'
+import { PostgresVariantReadRepository } from './PostgresVariantReadRepository'
 import type { StorageReadExecutor } from '../read-executor'
 import { PostgresWriteExecutor } from './PostgresWriteExecutor'
 import {
@@ -59,7 +60,8 @@ export class PostgresStorageSession implements StorageSession {
     this.readExecutor = new PostgresReadExecutor({
       casesQuery: new PostgresCasesQueryRepository(options.pool, options.config.schema),
       availableBuilds: new PostgresAvailableBuildsRepository(options.pool, options.config.schema),
-      caseMetadata
+      caseMetadata,
+      variants: new PostgresVariantReadRepository(options.pool, options.config.schema)
     })
     this.writeExecutor = new PostgresWriteExecutor(caseMetadata)
     this.createCaseListRepository =

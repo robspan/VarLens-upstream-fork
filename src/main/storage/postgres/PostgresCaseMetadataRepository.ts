@@ -11,7 +11,17 @@ import { quoteIdentifier } from './identifiers'
 type Queryable = Pick<Pool, 'query' | 'connect'>
 type Row = Record<string, unknown>
 
-const integerFields = new Set(['id', 'case_id', 'cohort_id', 'metric_id', 'case_count'])
+const integerFields = new Set([
+  'id',
+  'case_id',
+  'cohort_id',
+  'metric_id',
+  'case_count',
+  'created_at',
+  'updated_at',
+  'gene_list_id',
+  'region_file_id'
+])
 
 function normalizeRow<T extends Row>(row: T): Row {
   const normalized: Row = { ...row }
@@ -364,9 +374,9 @@ export class PostgresCaseMetadataRepository {
   async getDistinctHpoTerms(): Promise<unknown[]> {
     const result = await this.pool.query<Row>(
       `
-        SELECT hpo_id, hpo_label, COUNT(DISTINCT case_id)::int AS case_count
+        SELECT hpo_id, MIN(hpo_label) AS hpo_label, COUNT(DISTINCT case_id)::int AS case_count
         FROM ${this.table('case_hpo_terms')}
-        GROUP BY hpo_id, hpo_label
+        GROUP BY hpo_id
         ORDER BY hpo_label
       `,
       []

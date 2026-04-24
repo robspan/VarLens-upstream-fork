@@ -146,7 +146,57 @@ describe('PostgresCaseMetadataRepository', () => {
     })
   })
 
-  it('returns stable distinct HPO terms by hpo_id and hpo_label', async () => {
+  it('normalizes bigint timestamps and nullable linked ids in returned rows', async () => {
+    const { pool } = makePool()
+    pool.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: '1',
+            case_id: '1',
+            created_at: '1714060800000',
+            updated_at: '1714060801000'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: '2',
+            case_id: '1',
+            gene_list_id: '3',
+            region_file_id: '4',
+            created_at: '1714060802000',
+            updated_at: '1714060803000'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [] })
+    const repository = new PostgresCaseMetadataRepository(pool, 'public')
+
+    await expect(repository.getFullCaseMetadata(1)).resolves.toMatchObject({
+      metadata: {
+        id: 1,
+        case_id: 1,
+        created_at: 1714060800000,
+        updated_at: 1714060801000
+      },
+      dataInfo: {
+        id: 2,
+        case_id: 1,
+        gene_list_id: 3,
+        region_file_id: 4,
+        created_at: 1714060802000,
+        updated_at: 1714060803000
+      }
+    })
+  })
+
+  it('returns stable distinct HPO terms grouped by hpo_id', async () => {
     const { pool } = makePool()
     pool.query.mockResolvedValueOnce({
       rows: [{ hpo_id: 'HP:0001250', hpo_label: 'Seizure', case_count: '2' }]
@@ -156,9 +206,21 @@ describe('PostgresCaseMetadataRepository', () => {
     await expect(repository.getDistinctHpoTerms()).resolves.toStrictEqual([
       { hpo_id: 'HP:0001250', hpo_label: 'Seizure', case_count: 2 }
     ])
-    expect(pool.query).toHaveBeenCalledWith(
-      expect.stringContaining('GROUP BY hpo_id, hpo_label'),
-      []
-    )
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('GROUP BY hpo_id'), [])
+  })
+
+  it('keeps distinct HPO terms to one row per HPO id with deterministic labels', async () => {
+    const { pool } = makePool()
+    pool.query.mockResolvedValueOnce({
+      rows: [{ hpo_id: 'HP:0001250', hpo_label: 'Seizure', case_count: '2' }]
+    })
+    const repository = new PostgresCaseMetadataRepository(pool, 'public')
+
+    await repository.getDistinctHpoTerms()
+
+    const sql = pool.query.mock.calls[0][0] as string
+    expect(sql).toContain('MIN(hpo_label) AS hpo_label')
+    expect(sql).toContain('GROUP BY hpo_id')
+    expect(sql).not.toContain('GROUP BY hpo_id, hpo_label')
   })
 })

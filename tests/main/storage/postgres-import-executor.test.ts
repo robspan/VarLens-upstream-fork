@@ -354,4 +354,78 @@ describe('PostgresImportExecutor', () => {
     expect(second.errors).toEqual([])
     expect(second.variantCount).toBe(1)
   })
+
+  it('rejects a second concurrent import attempt while one is in flight', async () => {
+    // Gate the first import inside the repository so we can observe a second
+    // concurrent call being rejected with the same shape as SqliteImportExecutor.
+    let releaseFirst!: () => void
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    const runJsonImport = vi.fn(
+      async (
+        _req: PostgresJsonImportRequest,
+        writeVariants: (session: PostgresJsonImportSession) => Promise<void>
+      ): Promise<PostgresJsonImportBatchResult> => {
+        await firstGate
+        await writeVariants({
+          caseId: 1,
+          insertVariantBatch: async (variants) => variants.length
+        })
+        return { caseId: 1, variantCount: 0 }
+      }
+    )
+    const repository = { runJsonImport } as unknown as PostgresJsonImportRepository
+
+    const executor = new PostgresImportExecutor({
+      repository,
+      detectFormat: async () => ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
+      createMapperPipeline: async () => makeReadable([{ chr: '1', pos: 1, ref: 'A', alt: 'G' }]),
+      statFile: () => ({ size: 10 }),
+      now: () => 1_000_000
+    })
+
+    const first = executor.importSingleFile({
+      filePath: '/tmp/one.json',
+      caseName: 'C1',
+      throttleMs: 0
+    })
+
+    await expect(
+      executor.importSingleFile({
+        filePath: '/tmp/two.json',
+        caseName: 'C2',
+        throttleMs: 0
+      })
+    ).rejects.toThrow('An import is already in progress')
+
+    // Unblock the first import and let it finish cleanly.
+    releaseFirst()
+    const result = await first
+    expect(result.errors).toEqual([])
+  })
+
+  it('allows a new import after a previous one completes', async () => {
+    const { repository, runJsonImport } = createFakeRepository()
+    const executor = new PostgresImportExecutor({
+      repository,
+      detectFormat: async () => ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
+      createMapperPipeline: async () => makeReadable([{ chr: '1', pos: 1, ref: 'A', alt: 'G' }]),
+      statFile: () => ({ size: 10 }),
+      now: () => 1_000_000
+    })
+
+    await executor.importSingleFile({
+      filePath: '/tmp/one.json',
+      caseName: 'C1',
+      throttleMs: 0
+    })
+    await executor.importSingleFile({
+      filePath: '/tmp/two.json',
+      caseName: 'C2',
+      throttleMs: 0
+    })
+
+    expect(runJsonImport).toHaveBeenCalledTimes(2)
+  })
 })

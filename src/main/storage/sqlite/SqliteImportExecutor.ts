@@ -47,85 +47,94 @@ export class SqliteImportExecutor implements StorageImportExecutor {
       let capturedCaseId = 0
       let capturedElapsed = 0
 
-      worker.start({
-        files: [
-          {
-            filePath,
-            caseName,
-            isDuplicate: false,
-            duplicateStrategy: 'skip',
-            vcfSelectedSamples:
-              vcfOptions?.selectedSample != null && vcfOptions.selectedSample !== ''
-                ? [vcfOptions.selectedSample]
-                : undefined,
-            vcfGenomeBuild: vcfOptions?.genomeBuild
-          }
-        ],
-        dbPath: db.getPath(),
-        encryptionKey: db.getEncryptionKey(),
-        throttleMs,
-        onProgress: (msg) => {
-          onProgress?.({
-            phase: msg.phase === 'finalizing' ? 'inserting' : msg.phase,
-            count: msg.variantCount,
-            elapsed: 0,
-            skipped: msg.skipped
-          })
-        },
-        onFileComplete: (msg) => {
-          capturedCaseId = msg.result.caseId
-          capturedElapsed = msg.result.elapsed
-        },
-        onComplete: (msg) => {
-          this.workerClient = null
-
-          if (msg.results.cancelled === true) {
-            resolve({
-              caseId: 0,
-              variantCount: 0,
-              skipped: 0,
-              errors: ['Import cancelled by user'],
-              elapsed: 0
-            })
-            return
-          }
-
-          const detail = msg.results.details[0]
-          if (detail !== undefined && detail.status === 'success') {
+      try {
+        worker.start({
+          files: [
+            {
+              filePath,
+              caseName,
+              isDuplicate: false,
+              duplicateStrategy: 'skip',
+              vcfSelectedSamples:
+                vcfOptions?.selectedSample != null && vcfOptions.selectedSample !== ''
+                  ? [vcfOptions.selectedSample]
+                  : undefined,
+              vcfGenomeBuild: vcfOptions?.genomeBuild
+            }
+          ],
+          dbPath: db.getPath(),
+          encryptionKey: db.getEncryptionKey(),
+          throttleMs,
+          onProgress: (msg) => {
             onProgress?.({
-              phase: 'inserting',
-              count: detail.variantCount ?? 0,
+              phase: msg.phase === 'finalizing' ? 'inserting' : msg.phase,
+              count: msg.variantCount,
               elapsed: 0,
-              skipped: 0
+              skipped: msg.skipped
             })
+          },
+          onFileComplete: (msg) => {
+            capturedCaseId = msg.result.caseId
+            capturedElapsed = msg.result.elapsed
+          },
+          onComplete: (msg) => {
+            this.workerClient = null
 
-            try {
-              db.variants.updateFrequencies(capturedCaseId)
-            } catch (freqError) {
-              mainLogger.warn(
-                `Failed to update variant frequencies: ${freqError instanceof Error ? freqError.message : String(freqError)}`,
-                'SqliteImportExecutor'
-              )
+            if (msg.results.cancelled === true) {
+              resolve({
+                caseId: 0,
+                variantCount: 0,
+                skipped: 0,
+                errors: ['Import cancelled by user'],
+                elapsed: 0
+              })
+              return
             }
 
-            resolve({
-              caseId: capturedCaseId,
-              variantCount: detail.variantCount ?? 0,
-              skipped: 0,
-              errors: [],
-              elapsed: capturedElapsed
-            })
-          } else {
-            reject(new Error(detail?.error ?? 'Import failed'))
+            const detail = msg.results.details[0]
+            if (detail !== undefined && detail.status === 'success') {
+              onProgress?.({
+                phase: 'inserting',
+                count: detail.variantCount ?? 0,
+                elapsed: 0,
+                skipped: 0
+              })
+
+              try {
+                db.variants.updateFrequencies(capturedCaseId)
+              } catch (freqError) {
+                mainLogger.warn(
+                  `Failed to update variant frequencies: ${freqError instanceof Error ? freqError.message : String(freqError)}`,
+                  'SqliteImportExecutor'
+                )
+              }
+
+              resolve({
+                caseId: capturedCaseId,
+                variantCount: detail.variantCount ?? 0,
+                skipped: 0,
+                errors: [],
+                elapsed: capturedElapsed
+              })
+            } else {
+              reject(new Error(detail?.error ?? 'Import failed'))
+            }
+          },
+          onError: (msg) => {
+            if (msg.fileIndex === -1) {
+              this.workerClient = null
+              reject(new Error(msg.error))
+            }
           }
-        },
-        onError: (msg) => {
-          if (msg.fileIndex === -1) {
-            this.workerClient = null
-            reject(new Error(msg.error))
-          }
-        }
-      })
+        })
+      } catch (err) {
+        // A synchronous throw from worker.start() (or an earlier construction
+        // step) must not leave `this.workerClient` referencing a broken worker,
+        // otherwise future imports hit the "already in progress" guard or
+        // cancel() targets a stale client.
+        this.workerClient = null
+        reject(err instanceof Error ? err : new Error(String(err)))
+      }
     })
   }
 

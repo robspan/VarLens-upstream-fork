@@ -253,4 +253,53 @@ describe('SqliteImportExecutor', () => {
       skipped: 1
     })
   })
+
+  it('clears the worker reference if worker.start() throws synchronously so later imports are not blocked', async () => {
+    let throwOnStart = true
+    const start = vi.fn(() => {
+      if (throwOnStart) {
+        throwOnStart = false
+        throw new Error('worker boot failed')
+      }
+    })
+    const cancel = vi.fn()
+    const worker = {
+      get isRunning() {
+        return false
+      },
+      start,
+      cancel
+    }
+    const executor = new SqliteImportExecutor({
+      getDatabaseService: () =>
+        ({
+          getPath: () => '/tmp/test.varlens',
+          getEncryptionKey: () => undefined,
+          variants: { updateFrequencies: vi.fn() }
+        }) as never,
+      createWorkerClient: () => worker as never
+    })
+
+    await expect(
+      executor.importSingleFile({
+        filePath: '/tmp/input.json',
+        caseName: 'Imported',
+        throttleMs: 100
+      })
+    ).rejects.toThrow('worker boot failed')
+
+    // After a synchronous start() failure the executor must not hold onto the
+    // broken worker: cancel() should be a no-op and a new import must be
+    // acceptable without hitting the "already in progress" guard.
+    executor.cancel()
+    expect(cancel).not.toHaveBeenCalled()
+
+    // Second attempt reaches start() again rather than being blocked.
+    void executor.importSingleFile({
+      filePath: '/tmp/input2.json',
+      caseName: 'Second',
+      throttleMs: 100
+    })
+    expect(start).toHaveBeenCalledTimes(2)
+  })
 })

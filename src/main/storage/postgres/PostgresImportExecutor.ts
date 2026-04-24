@@ -74,6 +74,7 @@ export class PostgresImportExecutor implements StorageImportExecutor {
   private readonly statFile: (filePath: string) => { size: number }
   private readonly now: () => number
   private cancelled = false
+  private inProgress = false
 
   constructor(options: PostgresImportExecutorOptions) {
     this.repository = options.repository
@@ -90,6 +91,13 @@ export class PostgresImportExecutor implements StorageImportExecutor {
   async importSingleFile(
     params: StorageImportSingleFileParams
   ): Promise<StorageImportSingleFileResult> {
+    // Mirror SqliteImportExecutor: reject concurrent imports. The shared
+    // `cancelled` flag is scoped per-run, so overlapping runs would interleave
+    // cancel state and progress callbacks.
+    if (this.inProgress) {
+      throw new Error('An import is already in progress')
+    }
+    this.inProgress = true
     const started = this.now()
     try {
       // Honor a pre-flight cancel() call.
@@ -203,6 +211,7 @@ export class PostgresImportExecutor implements StorageImportExecutor {
       }
     } finally {
       this.cancelled = false
+      this.inProgress = false
     }
   }
 

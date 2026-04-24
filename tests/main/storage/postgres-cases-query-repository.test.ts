@@ -68,27 +68,47 @@ describe('PostgresCasesQueryRepository', () => {
     )
   })
 
-  it('rejects unsupported cohort filtering explicitly', async () => {
-    const repository = new PostgresCasesQueryRepository({ query: vi.fn() } as never, 'public')
+  it('filters postgres cases by cohort ids', async () => {
+    const pool = {
+      query: vi
+        .fn()
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ total_count: 0 }] })
+    }
+    const repository = new PostgresCasesQueryRepository(pool as never, 'public')
 
-    await expect(
-      repository.queryCases({
-        limit: 25,
-        offset: 0,
-        cohort_ids: [1]
-      })
-    ).rejects.toThrow('cohort_ids filtering is not implemented for postgres sessions in Phase 4')
+    await repository.queryCases({
+      limit: 25,
+      offset: 0,
+      cohort_ids: [1, 2]
+    })
+
+    expect(pool.query).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining('ccl_filter.cohort_id = ANY'),
+      [[1, 2], 25, 0]
+    )
   })
 
-  it('rejects unsupported HPO filtering explicitly', async () => {
-    const repository = new PostgresCasesQueryRepository({ query: vi.fn() } as never, 'public')
+  it('filters postgres cases by hpo ids', async () => {
+    const pool = {
+      query: vi
+        .fn()
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ total_count: 0 }] })
+    }
+    const repository = new PostgresCasesQueryRepository(pool as never, 'public')
 
-    await expect(
-      repository.queryCases({
-        limit: 25,
-        offset: 0,
-        hpo_ids: ['HP:0001250']
-      })
-    ).rejects.toThrow('hpo_ids filtering is not implemented for postgres sessions in Phase 4')
+    await repository.queryCases({
+      limit: 25,
+      offset: 0,
+      hpo_ids: ['HP:0001250']
+    })
+
+    expect(pool.query).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining('cht_filter.hpo_id = ANY'),
+      [['HP:0001250'], 25, 0]
+    )
   })
 })

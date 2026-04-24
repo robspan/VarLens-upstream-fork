@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status:** Completed
+
 **Goal:** Add PostgreSQL-backed read parity for the first variant browsing slice: schema/read model, `variants:typeCounts`, `variants:typesPresent`, `variants:geneSymbols`, initial `variants:query`, PostgreSQL FTS, and optional basic filter metadata.
 
 **Architecture:** Extend the Phase 6 storage-session read executor rather than adding a new worker path. SQLite keeps its existing `DbPool`/`DatabaseService` behavior behind `SqliteReadExecutor`; PostgreSQL gets a focused `PostgresVariantReadRepository` with parameterized SQL, explicit unsupported-filter checks, and Docker-seeded variant fixtures. PostgreSQL FTS uses `tsvector` + GIN indexes and supports `search_query` inside `variants:query`; import/export/delete/rebuild/cohort/database-overview/renderer settings remain deferred.
@@ -12,7 +14,7 @@
 
 ## Reference Documents
 
-- Spec: `.planning/specs/2026-04-24-postgresql-parity-phase-7-variants-read-parity.md`
+- Spec: `.planning/archive/completed-specs/2026-04-24-postgresql-parity-phase-7-variants-read-parity.md`
 - Previous phase: `.planning/specs/2026-04-24-postgresql-parity-phase-6-case-metadata-and-cases-filters.md`
 - Readiness input: `.planning/artifacts/postgres-parity-phase-6-wgs-readiness.md`
 - Existing SQLite query behavior: `src/main/database/VariantRepository.ts`

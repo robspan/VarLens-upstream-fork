@@ -207,7 +207,7 @@ export async function searchVariants(
     throw new Error('PostgreSQL variants:search is deferred from Phase 7')
   }
 
-  const pool = deps.session !== undefined ? deps.getDbPool?.() : deps.getDbPool?.()
+  const pool = deps.getDbPool?.()
   if (pool) {
     return await pool.run({
       type: 'variants:search',

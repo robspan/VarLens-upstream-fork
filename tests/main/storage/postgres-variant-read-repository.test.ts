@@ -180,6 +180,62 @@ describe('PostgresVariantReadRepository', () => {
     expect(pool.query.mock.calls[1][0]).toContain('_str_repeat_id')
   })
 
+  it('normalizes numeric extension projection aliases returned as strings', async () => {
+    const pool = {
+      query: vi
+        .fn()
+        .mockResolvedValueOnce({ rows: [{ count: '1' }] })
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: '3',
+              case_id: '1',
+              chr: '2',
+              pos: '2000',
+              ref: 'N',
+              alt: '<DEL>',
+              variant_type: 'sv',
+              _sv_support: '12',
+              _sv_dr: '8',
+              _sv_dv: '4',
+              _sv_is_precise: '1'
+            }
+          ]
+        })
+    }
+    const repository = new PostgresVariantReadRepository(pool as never, 'public')
+
+    await expect(
+      repository.queryVariants({ case_id: 1, variant_type: 'sv' }, 25, 0, undefined, false, false)
+    ).resolves.toMatchObject({
+      data: [
+        expect.objectContaining({
+          _sv_support: 12,
+          _sv_dr: 8,
+          _sv_dv: 4,
+          _sv_is_precise: 1
+        })
+      ]
+    })
+  })
+
+  it('rejects unsupported postgres column filter keys instead of ignoring them', async () => {
+    const pool = { query: vi.fn().mockResolvedValue({ rows: [] }) }
+    const repository = new PostgresVariantReadRepository(pool as never, 'public')
+
+    await expect(
+      repository.queryVariants(
+        { case_id: 1, column_filters: { 'sv.support': { operator: '>', value: 1 } } },
+        25,
+        0,
+        undefined,
+        false,
+        false
+      )
+    ).rejects.toThrow('Unsupported PostgreSQL column filter(s): sv.support')
+    expect(pool.query).not.toHaveBeenCalled()
+  })
+
   it('fails filter metadata reads with explicit Phase 7 deferral errors', async () => {
     const repository = new PostgresVariantReadRepository({ query: vi.fn() } as never, 'public')
 

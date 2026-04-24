@@ -22,7 +22,21 @@ const NUMERIC_VARIANT_FIELDS = new Set([
   'dp',
   'ad_ref',
   'ad_alt',
-  'internal_af'
+  'internal_af',
+  '_sv_support',
+  '_sv_dr',
+  '_sv_dv',
+  '_sv_vaf',
+  '_sv_is_precise',
+  '_sv_stdev_len',
+  '_sv_stdev_pos',
+  '_cnv_copy_number',
+  '_cnv_gq',
+  '_cnv_ho_ref',
+  '_cnv_ho_alt',
+  '_str_ref_copies',
+  '_str_normal_max',
+  '_str_pathologic_min'
 ])
 
 function toNumber(value: unknown): number {
@@ -334,9 +348,15 @@ export class PostgresVariantReadRepository {
   ): void {
     if (filter.column_filters === undefined) return
 
+    const unsupportedColumns = Object.keys(filter.column_filters).filter(
+      (column) => POSTGRES_BASE_SORT_COLUMNS[column] === undefined
+    )
+    if (unsupportedColumns.length > 0) {
+      throw new Error(`Unsupported PostgreSQL column filter(s): ${unsupportedColumns.join(', ')}`)
+    }
+
     for (const [column, filterDef] of Object.entries(filter.column_filters)) {
       const sqlColumn = POSTGRES_BASE_SORT_COLUMNS[column]
-      if (sqlColumn === undefined) continue
       const { operator, value } = filterDef
 
       if (operator === 'in' && Array.isArray(value)) {

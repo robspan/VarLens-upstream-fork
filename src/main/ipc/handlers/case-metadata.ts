@@ -106,7 +106,10 @@ const ExternalIdDeleteSchema = z.object({
  *           case-metadata:createCohort, case-metadata:updateCohort, case-metadata:deleteCohort, case-metadata:getCohortByName,
  *           case-metadata:getCaseCohorts, case-metadata:assignCohort, case-metadata:removeCohort,
  *           case-metadata:setCohorts, case-metadata:getHpoTerms, case-metadata:assignHpoTerm,
- *           case-metadata:removeHpoTerm, case-metadata:getFullMetadata
+ *           case-metadata:removeHpoTerm, case-metadata:getDataInfo, case-metadata:upsertDataInfo,
+ *           case-metadata:listExternalIds, case-metadata:upsertExternalId, case-metadata:deleteExternalId,
+ *           case-metadata:distinctHpoTerms, case-metadata:distinctPlatforms,
+ *           case-metadata:distinctExternalIdTypes, case-metadata:getFullMetadata
  */
 export function registerCaseMetadataHandlers({ ipcMain, getDbManager }: HandlerDependencies): void {
   const getSession = () => getDbManager().getCurrentSession()

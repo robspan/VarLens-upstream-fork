@@ -199,12 +199,12 @@ describe('PostgresCaseMetadataRepository', () => {
   it('returns stable distinct HPO terms grouped by hpo_id', async () => {
     const { pool } = makePool()
     pool.query.mockResolvedValueOnce({
-      rows: [{ hpo_id: 'HP:0001250', hpo_label: 'Seizure', case_count: '2' }]
+      rows: [{ hpo_id: 'HP:0001250', hpo_label: 'Seizure' }]
     })
     const repository = new PostgresCaseMetadataRepository(pool, 'public')
 
     await expect(repository.getDistinctHpoTerms()).resolves.toStrictEqual([
-      { hpo_id: 'HP:0001250', hpo_label: 'Seizure', case_count: 2 }
+      { hpo_id: 'HP:0001250', hpo_label: 'Seizure' }
     ])
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('GROUP BY hpo_id'), [])
   })
@@ -221,6 +221,7 @@ describe('PostgresCaseMetadataRepository', () => {
     const sql = pool.query.mock.calls[0][0] as string
     expect(sql).toContain('MIN(hpo_label) AS hpo_label')
     expect(sql).toContain('GROUP BY hpo_id')
+    expect(sql).not.toContain('case_count')
     expect(sql).not.toContain('GROUP BY hpo_id, hpo_label')
   })
 })

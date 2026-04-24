@@ -374,7 +374,7 @@ export class PostgresCaseMetadataRepository {
   async getDistinctHpoTerms(): Promise<unknown[]> {
     const result = await this.pool.query<Row>(
       `
-        SELECT hpo_id, MIN(hpo_label) AS hpo_label, COUNT(DISTINCT case_id)::int AS case_count
+        SELECT hpo_id, MIN(hpo_label) AS hpo_label
         FROM ${this.table('case_hpo_terms')}
         GROUP BY hpo_id
         ORDER BY hpo_label

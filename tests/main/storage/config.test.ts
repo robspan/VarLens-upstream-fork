@@ -154,6 +154,14 @@ describe('buildPostgresPoolConfig', () => {
     })
   })
 
+  it('enables keepAlive on the pg pool to survive long imports', () => {
+    const config = getPostgresStorageConfig({
+      VARLENS_PG_URL: 'postgres://varlens:secret@127.0.0.1:55432/varlens_dev'
+    })
+
+    expect(buildPostgresPoolConfig(config!).keepAlive).toBe(true)
+  })
+
   it('rejects ssl mode prefer until fallback semantics are implemented correctly', () => {
     const config = getPostgresStorageConfig({
       VARLENS_PG_URL: 'postgres://varlens:secret@127.0.0.1:55432/varlens_dev',

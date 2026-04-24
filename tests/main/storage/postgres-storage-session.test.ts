@@ -250,6 +250,21 @@ describe('PostgresStorageSession', () => {
     expect(pool.query.mock.calls[0][0]).toContain('"phase6_metadata"."case_metadata"')
   })
 
+  it('returns an import executor with the storage-import contract surface', () => {
+    const session = new PostgresStorageSession({
+      config: makeConfig(),
+      pool: {
+        query: vi.fn(),
+        end: vi.fn(),
+        on: vi.fn(),
+        connect: vi.fn()
+      } as never
+    })
+    const executor = session.getImportExecutor()
+    expect(typeof executor.importSingleFile).toBe('function')
+    expect(typeof executor.cancel).toBe('function')
+  })
+
   it('routes variant small reads through the session-owned postgres read executor', async () => {
     const pool = {
       query: vi.fn().mockResolvedValue({

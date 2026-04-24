@@ -9,10 +9,10 @@ import { Worker } from 'worker_threads'
 import { resolve } from 'node:path'
 import { mainLogger } from '../../services/MainLogger'
 import type { DatabaseService } from '../../database/DatabaseService'
-import type { DbPool } from '../../database/DbPool'
 import type { StorageReadTask } from '../../storage/read-executor'
 import type { StorageSession } from '../../storage/session'
 import type { DeleteWorkerRequest, DeleteWorkerResponse } from '../../workers/delete-worker'
+import type { AvailableBuild } from '../../../shared/types/database'
 import type { ValidatedCaseSearchParams } from '../../../shared/types/ipc-schemas'
 
 /** Callbacks for emitting events to the renderer during delete operations. */
@@ -106,18 +106,14 @@ export async function queryCases(
  * Used by the cohort view to populate the genome build selector.
  */
 export async function getAvailableBuilds(
-  getDb: () => DatabaseService,
-  getDbPool?: () => DbPool | null
-): Promise<Array<{ build: string; caseCount: number }>> {
-  const pool = getDbPool?.()
-  if (pool) {
-    return (await pool.run({ type: 'cases:availableBuilds', params: [] })) as Array<{
-      build: string
-      caseCount: number
-    }>
+  getSession: () => StorageSession
+): Promise<AvailableBuild[]> {
+  const task: StorageReadTask = {
+    type: 'cases:availableBuilds',
+    params: []
   }
-  const db = getDb()
-  return db.cases.getAvailableGenomeBuilds()
+
+  return (await getSession().getReadExecutor().execute(task)) as AvailableBuild[]
 }
 
 /**

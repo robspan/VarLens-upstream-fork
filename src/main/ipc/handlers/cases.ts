@@ -23,6 +23,16 @@ const deleteCallbacks: DeleteCallbacks = {
   onCohortStale: (data) => safeEmit('cohort:summaryRebuilt', data)
 }
 
+function assertFileBackedWorkerWritesSupported(
+  operation: 'cases:delete' | 'cases:deleteAll' | 'cases:deleteBatch',
+  getDbManager: HandlerDependencies['getDbManager']
+): void {
+  const session = getDbManager().getCurrentSession()
+  if (!session.capabilities.supportsFileBackedWorkerWrites) {
+    throw new Error(`${operation} is SQLite-only in Phase 4`)
+  }
+}
+
 /**
  * Cases IPC handlers
  * Channels: cases:list, cases:query, cases:delete, cases:deleteAll, cases:deleteBatch
@@ -59,13 +69,17 @@ export function registerCaseHandlers({
         mainLogger.error(`Invalid cases:delete params: ${validated.error.message}`, 'cases')
         throw new Error('Invalid parameters')
       }
+      assertFileBackedWorkerWritesSupported('cases:delete', getDbManager)
       await deleteSingleCase(validated.data, getDb, deleteCallbacks)
       return undefined
     })
   })
 
   ipcMain.handle('cases:deleteAll', async () => {
-    return wrapHandler(() => deleteAllCases(getDb, deleteCallbacks))
+    return wrapHandler(() => {
+      assertFileBackedWorkerWritesSupported('cases:deleteAll', getDbManager)
+      return deleteAllCases(getDb, deleteCallbacks)
+    })
   })
 
   ipcMain.handle('cases:deleteBatch', async (_event, ids: unknown) => {
@@ -75,6 +89,7 @@ export function registerCaseHandlers({
         mainLogger.error(`Invalid cases:deleteBatch params: ${validated.error.message}`, 'cases')
         throw new Error('Invalid parameters')
       }
+      assertFileBackedWorkerWritesSupported('cases:deleteBatch', getDbManager)
       return deleteBatchCases(validated.data, getDb, deleteCallbacks)
     })
   })

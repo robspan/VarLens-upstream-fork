@@ -44,6 +44,7 @@ describe('PostgresStorageSession', () => {
       supportsLocalFileLifecycle: false,
       supportsHostedConnectionLifecycle: true,
       supportsWorkerReadPool: false,
+      supportsFileBackedWorkerWrites: false,
       supportsFullTextSearch: false
     })
   })

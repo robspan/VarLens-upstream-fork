@@ -10,7 +10,15 @@ export interface StorageSession {
 
   listCases(): Promise<Case[]>
   getReadExecutor(): StorageReadExecutor
+  /**
+   * Compatibility escape hatch for legacy SQLite-only paths.
+   * New migrated slices must use getReadExecutor().
+   */
   getDatabaseService(): DatabaseService
+  /**
+   * Compatibility escape hatch for legacy SQLite-only paths.
+   * New migrated slices must use getReadExecutor().
+   */
   getDbPool(): DbPool | null
   getEncryptionKey(): string | undefined
   needsStartupRebuild(): boolean

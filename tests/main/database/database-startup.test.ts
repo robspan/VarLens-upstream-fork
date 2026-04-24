@@ -52,9 +52,15 @@ describe('openConfiguredDatabase', () => {
         supportsLocalFileLifecycle: false,
         supportsHostedConnectionLifecycle: true,
         supportsWorkerReadPool: false,
+        supportsFileBackedWorkerWrites: false,
         supportsFullTextSearch: false
       },
       listCases: async () => [],
+      getReadExecutor: () => ({
+        execute: async () => {
+          throw new Error('not available')
+        }
+      }),
       getDatabaseService: () => {
         throw new Error('not available')
       },
@@ -136,9 +142,15 @@ describe('openConfiguredDatabase', () => {
         supportsLocalFileLifecycle: false,
         supportsHostedConnectionLifecycle: true,
         supportsWorkerReadPool: false,
+        supportsFileBackedWorkerWrites: false,
         supportsFullTextSearch: false
       },
       listCases: async () => [],
+      getReadExecutor: () => ({
+        execute: async () => {
+          throw new Error('not available')
+        }
+      }),
       getDatabaseService: () => {
         throw new Error('not available')
       },

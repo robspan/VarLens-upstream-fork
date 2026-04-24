@@ -17,6 +17,7 @@ const SQLITE_CAPABILITIES: StorageCapabilities = {
   supportsLocalFileLifecycle: true,
   supportsHostedConnectionLifecycle: false,
   supportsWorkerReadPool: true,
+  supportsFileBackedWorkerWrites: true,
   supportsFullTextSearch: true
 }
 

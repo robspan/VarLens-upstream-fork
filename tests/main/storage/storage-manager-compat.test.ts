@@ -66,6 +66,7 @@ describe('DatabaseManager storage-session compatibility', () => {
         supportsLocalFileLifecycle: false,
         supportsHostedConnectionLifecycle: true,
         supportsWorkerReadPool: false,
+        supportsFileBackedWorkerWrites: false,
         supportsFullTextSearch: false
       },
       listCases: async () => [],

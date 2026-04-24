@@ -6,6 +6,7 @@ export interface StorageCapabilities {
   readonly supportsLocalFileLifecycle: boolean
   readonly supportsHostedConnectionLifecycle: boolean
   readonly supportsWorkerReadPool: boolean
+  readonly supportsFileBackedWorkerWrites: boolean
   readonly supportsFullTextSearch: boolean
 }
 

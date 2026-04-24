@@ -28,6 +28,7 @@ const POSTGRES_CAPABILITIES: StorageCapabilities = {
   supportsLocalFileLifecycle: false,
   supportsHostedConnectionLifecycle: true,
   supportsWorkerReadPool: false,
+  supportsFileBackedWorkerWrites: false,
   supportsFullTextSearch: false
 }
 

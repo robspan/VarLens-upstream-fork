@@ -5,6 +5,7 @@ import type { DatabaseService } from '../../database/DatabaseService'
 import type { DbPool } from '../../database/DbPool'
 import type { Case } from '../../../shared/types/database'
 import { PostgresCaseListRepository } from './PostgresCaseListRepository'
+import type { StorageReadExecutor } from '../read-executor'
 import {
   buildPostgresConnectionLabel,
   redactPostgresConnectionUrl,
@@ -41,10 +42,16 @@ export class PostgresStorageSession implements StorageSession {
     schema: string
   ) => PostgresCaseListRepository
   private readonly pool: Pool
+  private readonly readExecutor: StorageReadExecutor
   private cases: PostgresCaseListRepository | null = null
 
   constructor(options: PostgresStorageSessionOptions) {
     this.pool = options.pool
+    this.readExecutor = {
+      execute: async () => {
+        throw new Error('Storage read executor is not implemented for postgres sessions')
+      }
+    }
     this.createCaseListRepository =
       options.createCaseListRepository ??
       ((pool: Pool, schema: string) => new PostgresCaseListRepository(pool, schema))
@@ -73,6 +80,10 @@ export class PostgresStorageSession implements StorageSession {
     }
 
     return await this.cases.listCases()
+  }
+
+  getReadExecutor(): StorageReadExecutor {
+    return this.readExecutor
   }
 
   getDatabaseService(): DatabaseService {

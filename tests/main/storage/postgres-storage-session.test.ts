@@ -147,4 +147,53 @@ describe('PostgresStorageSession', () => {
     expect(createCaseListRepository).toHaveBeenCalledWith(pool, 'varlens_app')
     expect(repository.listCases).toHaveBeenCalledTimes(1)
   })
+
+  it('routes cases:query through the session-owned postgres read executor', async () => {
+    const pool = {
+      query: vi
+        .fn()
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: '1',
+              name: 'postgres-case',
+              file_path: '/postgres.vcf',
+              file_size: '1024',
+              variant_count: '2',
+              created_at: '1000',
+              genome_build: 'GRCh38',
+              affected_status: null,
+              sex: null,
+              cohort_names: [],
+              cohort_ids: []
+            }
+          ]
+        })
+        .mockResolvedValueOnce({ rows: [{ total_count: 1 }] }),
+      end: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn()
+    }
+    const session = new PostgresStorageSession({
+      config: makeConfig({ schema: 'phase4_cases' }),
+      pool: pool as never
+    })
+
+    await expect(
+      session.getReadExecutor().execute({
+        type: 'cases:query',
+        params: {
+          limit: 25,
+          offset: 0,
+          sort_order: 'desc'
+        }
+      })
+    ).resolves.toMatchObject({
+      data: [
+        {
+          name: 'postgres-case'
+        }
+      ],
+      total_count: 1
+    })
+  })
 })

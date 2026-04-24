@@ -2,9 +2,9 @@
 
 **Date:** 2026-04-22  
 **Branch:** `main`  
-**Head:** `1449c74`  
+**Head:** `15f5dc2`  
 **Baseline reviewed:** `.planning/archive/completed-docs/CODEBASE-REVIEW-2026-04-16.md`  
-**Scope:** Current repository state after planning cleanup, workflow hardening, initial Electron fuse hardening, Mol* integration cleanup, and recent type-safety fixes
+**Scope:** Current repository state after planning cleanup, workflow hardening, Electron fuse hardening, Mol* integration cleanup, recent type-safety fixes, and PostgreSQL storage-session parity work through Phase 7
 
 ## Update — 2026-04-23
 
@@ -30,7 +30,7 @@
 
 ## Update — 2026-04-24
 
-**Current HEAD:** `75dbdc8`
+**Current HEAD:** `15f5dc2`
 
 **Shipped since the 2026-04-23 update:**
 
@@ -39,19 +39,31 @@
 - Phase 5 execution docs have been archived:
   - `.planning/archive/completed-plans/2026-04-24-storage-session-phase-5-cases-available-builds.md`
   - `.planning/archive/completed-specs/2026-04-24-storage-session-phase-5-cases-available-builds.md`
+- **v0.56.13 released** (tag `v0.56.13`, release workflow `24906248599`, published 2026-04-24). Includes PR #177: PostgreSQL Parity Phase 7 variant read parity.
+- Phase 7 is complete and archived:
+  - `.planning/archive/completed-plans/2026-04-24-postgresql-parity-phase-7-variants-read-parity.md`
+  - `.planning/archive/completed-specs/2026-04-24-postgresql-parity-phase-7-variants-read-parity.md`
+- Variant read parity now has a PostgreSQL-backed schema, seed data, read repository, storage-session routing, and gated Docker-backed E2E coverage for the Phase 7 slice.
+- Phase 7 deliberately deferred PostgreSQL `variants:filterOptions` and `variants:columnMeta`; that deferral is recorded in `.planning/artifacts/postgres-parity-phase-7-filter-metadata-deferral.md`.
 
-**Priority C remains open but has moved from design-only to parity execution.** The next PostgreSQL work should focus on full backend parity, not another isolated read task. The fastest credible path is:
+**Priority C is now partially resolved as architecture and partially open as parity execution.** The storage-session boundary exists and has carried real cases and variants vertical slices, but PostgreSQL mode is still not ready for users. The fastest credible path remains:
 
 1. close the remaining read-side gaps by domain,
 2. introduce backend-aware write/import/export/delete/rebuild execution,
 3. add Docker-backed PostgreSQL integration tests once schema coverage is stable,
 4. only then expose renderer storage settings.
 
+**Planning state to reconcile next:**
+
+- Phase 6 case metadata/cases-filter docs are still active/proposed under `.planning/plans` and `.planning/specs`.
+- Phase 7 variant read parity has already shipped and is archived.
+- The next PostgreSQL step should either execute Phase 6 next or intentionally rewrite/archive it if the implementation order has superseded it. Do not open a Phase 8 plan until this Phase 6 status is resolved.
+
 **Still not ready for user-facing PostgreSQL mode:**
 
 - import/export/delete/rebuild workers are still SQLite-file-backed,
 - `database:overview` is still SQLite-path logic,
-- most variant/cohort/tag/metadata queries are not PostgreSQL-backed,
+- variant read parity exists, but variant filter metadata, cohort, tag, annotation, transcript, gene-list, region-file, panel, analysis-group, auth, comments/metrics, audit, and preset parity remain incomplete,
 - lifecycle UX is still local-file-centric.
 
 ## Executive Summary
@@ -66,9 +78,9 @@ The codebase is in a materially better state than that review described:
 4. The Electron security baseline is stronger: key fuses are now checked in, and the old fragile pdbe-molstar public-script packaging path is gone.
 5. The planning tree has been cleaned up enough that stale live plans/specs are no longer the main source of confusion.
 
-**Updated overall rating: 8.0 / 10**
+**Updated overall rating: 8.4 / 10**
 
-VarLens is now a well-structured Electron desktop app with credible local-security defaults, a strong typed IPC boundary, solid CI/release discipline, and much better repo hygiene than the prior reviews captured. The remaining work is narrower and more strategic: storage-boundary design, the next renderer-performance phase, packaged-app integrity follow-through, and small local workflow rough edges.
+VarLens is now a well-structured Electron desktop app with credible local-security defaults, a strong typed IPC boundary, solid CI/release discipline, and much better repo hygiene than the prior reviews captured. The remaining work is narrower and more strategic: PostgreSQL parity execution on top of the storage-session boundary, the next renderer-performance phase, packaged-app integrity follow-through beyond Linux smoke, and small local workflow rough edges.
 
 ## Method
 
@@ -81,7 +93,7 @@ That distinction mattered in this pass. The remaining live plan/spec docs had be
 - `.planning/archive/completed-plans/2026-04-15-performance-measurement-and-renderer-tables-phase1-plan.md`
 - `.planning/archive/completed-specs/2026-04-15-performance-measurement-and-renderer-tables-design.md`
 
-At this point, today's review is the only live code-review snapshot, and there are no active execution plans/specs left in `.planning/plans` or `.planning/specs` until the next real phase is intentionally opened.
+At this point, today's review is the live code-review snapshot. The active planning set is small but not empty: Phase 6 case metadata/cases-filter docs and the storage-session boundary design remain active, while Phase 7 has been completed and archived.
 
 ## Current Strengths
 
@@ -200,7 +212,7 @@ There has been useful prep work:
 - FTS trigger lifecycle management is more isolated
 - incremental cohort-summary SQL exists
 
-But that is still preparatory. It does not change the headline conclusion that a true storage adapter boundary does not exist yet. VarLens is operationally stronger now, but it is still not prepared for a hosted-Postgres pivot or much larger-scale data growth without deliberate architecture work.
+That conclusion now needs a narrower wording. A true storage-session boundary does exist, and PostgreSQL vertical slices have shipped through cases and variants reads. What still does not exist is complete backend parity: writes, imports, exports, deletes, summary rebuilds, overview/lifecycle UX, and most non-variant domains are still SQLite-oriented. VarLens is operationally stronger now, but it is still not prepared for a user-facing hosted-Postgres mode or much larger-scale data growth without continued parity work.
 
 Sources:
 - https://kysely.dev/docs/dialects
@@ -243,18 +255,18 @@ That matters because it removes a misleading source of “repo instability” th
 
 ## Updated Scorecard
 
-| Area | 2026-04-16 | 2026-04-22 | 2026-04-23 | Notes |
-|---|---:|---:|---:|---|
-| Security / desktop boundary | 8.0 | 8.3 | 8.7 | `onlyLoadAppFromAsar` flipped; strict-require drift detector live; packaged-binary smoke on Linux |
-| Architecture | 7.5 | 8.1 | 8.1 | No change |
-| Maintainability | 7.5 | 8.3 | 8.4 | Fuse baseline is now a documented invariant with a single source of truth |
-| Testability / CI trust | 7.5 | 8.4 | 8.6 | New packaged-binary smoke wired into `ci-full` and `build.yml` |
-| UX / snappiness | 7.0 | 7.2 | 7.2 | Unchanged — Priority B still open |
-| PostgreSQL / hosted backend readiness | 3.0 | 3.3 | 3.3 | Unchanged — Priority C still open |
-| Supply chain / CI posture | 7.0 | 8.0 | 8.2 | Dependency batch resolved under pinned Node; `download-artifact` bumped; 4 Dependabot PRs consolidated |
-| WGS-scale readiness | 4.0 | 4.0 | 4.0 | No change |
-| Dev workflow / agent-readiness | 7.0 | 8.5 | 8.5 | No change |
-| **Overall** | **7.0** | **8.0** | **8.3** | Priority A + D shipped; remaining work is B (perf) and C (storage adapter) |
+| Area | 2026-04-16 | 2026-04-22 | 2026-04-23 | 2026-04-24 | Notes |
+|---|---:|---:|---:|---:|---|
+| Security / desktop boundary | 8.0 | 8.3 | 8.7 | 8.7 | `onlyLoadAppFromAsar` flipped; strict-require drift detector live; packaged-binary smoke on Linux |
+| Architecture | 7.5 | 8.1 | 8.1 | 8.4 | Storage-session boundary is now carrying real PostgreSQL vertical slices |
+| Maintainability | 7.5 | 8.3 | 8.4 | 8.5 | Phase docs are mostly archived promptly; Phase 6 status still needs reconciliation |
+| Testability / CI trust | 7.5 | 8.4 | 8.6 | 8.7 | Release gate verified on exact tagged SHA; Phase 7 added Docker-backed PostgreSQL E2E coverage |
+| UX / snappiness | 7.0 | 7.2 | 7.2 | 7.2 | Unchanged — Priority B still open |
+| PostgreSQL / hosted backend readiness | 3.0 | 3.3 | 3.3 | 4.2 | Cases and variant read slices exist; writes/import/export/delete/rebuild and many domains remain open |
+| Supply chain / CI posture | 7.0 | 8.0 | 8.2 | 8.2 | No material change after dependency batch |
+| WGS-scale readiness | 4.0 | 4.0 | 4.0 | 4.5 | Variant read schema/query slice improves read readiness, but import/scale path remains open |
+| Dev workflow / agent-readiness | 7.0 | 8.5 | 8.5 | 8.6 | Agent plan/archive discipline improved; active Phase 6 status needs cleanup |
+| **Overall** | **7.0** | **8.0** | **8.3** | **8.4** | Priority A + D shipped; C is now in parity execution; B and E remain open |
 
 ## Revised Priorities
 
@@ -271,11 +283,12 @@ That matters because it removes a misleading source of “repo instability” th
 - use the current perf harness as the entry point
 - choose the next renderer move from actual bottlenecks, not generic frontend advice
 
-### Priority C — Introduce a real storage adapter boundary before any Postgres work
+### Priority C — Continue PostgreSQL parity on the storage-session boundary — 🟡 Partially resolved
 
-- isolate SQLite-specific repository behavior
-- define adapter boundaries around query and rebuild flows
-- keep Kysely as a tool inside the boundary, not the boundary itself
+- storage-session/read-executor architecture exists and has shipped through cases and variant read slices
+- keep Kysely as a tool inside backend-specific repositories, not the boundary itself
+- next reconcile the still-active Phase 6 case metadata/cases-filter docs, then close that parity gap or explicitly supersede/archive the docs
+- do not expose renderer PostgreSQL settings until write/import/export/delete/rebuild and remaining major read domains are honest
 
 ### Priority D — Make local verification hermetic — ✅ Resolved (commit `a8a80fc`)
 
@@ -287,13 +300,13 @@ That matters because it removes a misleading source of “repo instability” th
 
 ## Bottom Line
 
-**As of 2026-04-23**, packaged-app integrity hardening and local-verification hermeticity (the two tactical items on this review) have shipped in v0.56.6. The remaining work is genuinely strategic:
+**As of 2026-04-24**, packaged-app integrity hardening and local-verification hermeticity have shipped, and PostgreSQL parity has moved from architecture-only work into real vertical slices through v0.56.13. The remaining work is genuinely strategic:
 
 - **B** — choose the next renderer-performance phase from evidence, using the current perf harness as the entry point.
-- **C** — design a real storage adapter boundary if larger-scale or hosted data is still on the roadmap.
+- **C** — continue PostgreSQL parity on the storage-session boundary, starting by reconciling or executing the still-active Phase 6 case metadata/cases-filter docs.
 - **E** — optional `package.json` script mirroring for discoverability.
 
-VarLens is no longer primarily paying down shell chaos, IPC sprawl, or stale planning drift, and now also no longer paying down packaged-app hardening or local-verification friction. The next review should start from whichever of B or C gets picked up.
+VarLens is no longer primarily paying down shell chaos, IPC sprawl, stale planning drift, packaged-app hardening, or local-verification friction. The next review should start from whichever of B or C gets picked up, but the immediate planning cleanup is to resolve the Phase 6 document state before opening new PostgreSQL phases.
 
 ## External References
 

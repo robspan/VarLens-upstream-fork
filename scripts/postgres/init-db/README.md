@@ -32,6 +32,11 @@ Current init files:
 - `21-phase7-seed-variants.sql` seeds deterministic variant rows for gated
   Phase 7 E2E tests. It is not an import path.
 
+**Phase 8 (2026-04-24):** `cases.id` is now a `BIGSERIAL` generated column so
+imports can create new datasets after seeded IDs. `20-phase3-seed-cases.sql`
+resets the sequence to `MAX(id)` so the first imported case receives id 4 or
+higher.
+
 Future phases may add development-only helper objects here if they improve local
 iteration. Production migrations must not depend on this folder because these
 scripts are a Docker convenience, not the application's migration system.

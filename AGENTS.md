@@ -142,6 +142,7 @@ Test data lives at `tests/test-data/vcf/` (GIAB Chinese Trio, chr22:29M–30.5M,
 
 ## Commit & PR Conventions
 
+- **Branch & PR workflow.** Do not commit feature or implementation work directly to `main`. All implementation work must happen on a dedicated branch intended for a pull request. Use git worktrees when useful or when the current checkout should remain clean. Documentation/archive housekeeping may be committed directly to `main` only when explicitly requested.
 - **Conventional Commits.** Types used in this repo: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `style`, `chore`, `ci`, `merge`. Optional scope in parentheses: `refactor(ipc): …`, `fix(renderer): …`. Read `git log --oneline -30` before opening a PR if you're unsure of current phrasing.
 - **Release flow.** Versions are tagged `vX.Y.Z`. `.github/workflows/release.yml` **refuses to publish** if `build.yml` has not passed on the exact tagged SHA. Do not tag until CI is green on the commit you're tagging.
 - **PRs.** Small, focused, green CI. If a change spans shell + IPC + database, split it unless the atomicity is load-bearing. Reference the `.planning/` plan or review that motivates the change.

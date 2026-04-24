@@ -2,6 +2,10 @@ import type { DatabaseService } from '../../database/DatabaseService'
 import type { DbPool } from '../../database/DbPool'
 import type { StorageReadExecutor, StorageReadTask } from '../read-executor'
 
+function deferredVariantReadTask(taskType: string): never {
+  throw new Error(`${taskType} is not implemented by this storage executor yet`)
+}
+
 export class SqliteReadExecutor implements StorageReadExecutor {
   constructor(
     private readonly databaseService: DatabaseService,
@@ -127,6 +131,14 @@ export class SqliteReadExecutor implements StorageReadExecutor {
         }
 
         return this.databaseService.metadata.getFullCaseMetadata(task.params[0])
+
+      case 'variants:typeCounts':
+      case 'variants:typesPresent':
+      case 'variants:geneSymbols':
+      case 'variants:query':
+      case 'variants:filterOptions':
+      case 'variants:columnMeta':
+        return deferredVariantReadTask(task.type)
     }
 
     const _exhaustive: never = task

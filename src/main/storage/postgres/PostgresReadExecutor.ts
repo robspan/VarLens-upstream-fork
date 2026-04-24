@@ -3,6 +3,10 @@ import type { PostgresAvailableBuildsRepository } from './PostgresAvailableBuild
 import type { PostgresCaseMetadataRepository } from './PostgresCaseMetadataRepository'
 import type { PostgresCasesQueryRepository } from './PostgresCasesQueryRepository'
 
+function deferredVariantReadTask(taskType: string): never {
+  throw new Error(`${taskType} is not implemented by this storage executor yet`)
+}
+
 interface PostgresReadExecutorRepositories {
   casesQuery: Pick<PostgresCasesQueryRepository, 'queryCases'>
   availableBuilds: Pick<PostgresAvailableBuildsRepository, 'getAvailableGenomeBuilds'>
@@ -65,6 +69,14 @@ export class PostgresReadExecutor implements StorageReadExecutor {
 
       case 'case-metadata:getFullMetadata':
         return await this.repositories.caseMetadata.getFullCaseMetadata(task.params[0])
+
+      case 'variants:typeCounts':
+      case 'variants:typesPresent':
+      case 'variants:geneSymbols':
+      case 'variants:query':
+      case 'variants:filterOptions':
+      case 'variants:columnMeta':
+        return deferredVariantReadTask(task.type)
     }
 
     const _exhaustive: never = task

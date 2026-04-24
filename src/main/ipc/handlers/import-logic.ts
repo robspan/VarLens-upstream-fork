@@ -1,15 +1,22 @@
 /**
  * Pure business logic for import IPC handlers.
  *
- * All functions take explicit dependencies (db, callbacks) as parameters
+ * All functions take explicit dependencies (session, db, callbacks) as parameters
  * and never touch IPC/Electron APIs directly. This makes them testable
  * without mocking Electron internals.
+ *
+ * As of PostgreSQL parity Phase 8, `startImport` routes through the active
+ * `StorageSession`'s `StorageImportExecutor`, allowing SQLite and
+ * (future-phase) PostgreSQL backends to expose the same single-file import
+ * surface. `startMultiFileImport` remains SQLite-only and is guarded at the
+ * handler/logic routing layer.
  */
-import { ImportWorkerClient } from '../../workers/import-worker-client'
 import { mainLogger } from '../../services/MainLogger'
 import { API_CONFIG } from '../../../shared/config/api.config'
 import type { DatabaseService } from '../../database/DatabaseService'
 import type { ImportFilters } from '../../import/vcf/import-filters'
+import type { StorageImportExecutor } from '../../storage/import-executor'
+import type { StorageSession } from '../../storage/session'
 
 /** Callbacks for emitting events to the renderer during import operations. */
 export interface ImportCallbacks {
@@ -43,112 +50,46 @@ export interface VcfImportOptions {
   genomeBuild?: string
 }
 
-// Keep a reference to the active worker for cancellation
-let workerClient: ImportWorkerClient | null = null
+// Keep a reference to the active storage import executor for cancellation.
+let activeImportExecutor: StorageImportExecutor | null = null
 
 /**
- * Start an import operation using a worker thread.
- * Returns a promise that resolves with the import result.
+ * Start a single-file import through the active storage session's executor.
+ *
+ * The session abstracts SQLite vs PostgreSQL. Cancellation is routed back
+ * into the same executor via `cancelImport`.
  */
-export function startImport(
+export async function startImport(
   filePath: string,
   caseName: string,
   vcfOptions: VcfImportOptions | undefined,
-  getDb: () => DatabaseService,
+  getSession: () => StorageSession,
   callbacks: ImportCallbacks
 ): Promise<ImportResult> {
-  const db = getDb()
-
-  if (workerClient?.isRunning === true) {
-    throw new Error('An import is already in progress')
-  }
-
-  workerClient = new ImportWorkerClient()
-
-  return new Promise((resolve, reject) => {
-    let capturedCaseId = 0
-
-    workerClient!.start({
-      files: [
-        {
-          filePath,
-          caseName,
-          isDuplicate: false,
-          duplicateStrategy: 'skip',
-          vcfSelectedSamples:
-            vcfOptions?.selectedSample != null && vcfOptions.selectedSample !== ''
-              ? [vcfOptions.selectedSample]
-              : undefined,
-          vcfGenomeBuild: vcfOptions?.genomeBuild
-        }
-      ],
-      dbPath: db.getPath(),
-      encryptionKey: db.getEncryptionKey(),
+  const session = getSession()
+  const executor = session.getImportExecutor()
+  activeImportExecutor = executor
+  try {
+    return await executor.importSingleFile({
+      filePath,
+      caseName,
+      vcfOptions,
       throttleMs: API_CONFIG.PROGRESS_THROTTLE_MS,
-      onProgress: (msg) => {
-        callbacks.onProgress?.({
-          phase: msg.phase === 'finalizing' ? 'inserting' : msg.phase,
-          count: msg.variantCount,
-          elapsed: 0,
-          skipped: msg.skipped
-        })
-      },
-      onFileComplete: (msg) => {
-        capturedCaseId = msg.result.caseId
-      },
-      onComplete: (msg) => {
-        workerClient = null
-        if (msg.results.cancelled === true) {
-          resolve({
-            caseId: 0,
-            variantCount: 0,
-            skipped: 0,
-            errors: ['Import cancelled by user'],
-            elapsed: 0
-          })
-          return
-        }
-        const detail = msg.results.details[0]
-        if (detail !== undefined && detail.status === 'success') {
-          callbacks.onProgress?.({
-            phase: 'inserting',
-            count: detail.variantCount ?? 0,
-            elapsed: 0,
-            skipped: 0
-          })
-          // Update internal variant frequency counts
-          try {
-            db.variants.updateFrequencies(capturedCaseId)
-          } catch (freqError) {
-            mainLogger.warn(`Failed to update variant frequencies: ${freqError}`, 'import')
-          }
-          resolve({
-            caseId: capturedCaseId,
-            variantCount: detail.variantCount ?? 0,
-            skipped: 0,
-            errors: [],
-            elapsed: 0
-          })
-        } else {
-          reject(new Error(detail?.error ?? 'Import failed'))
-        }
-      },
-      onError: (msg) => {
-        if (msg.fileIndex === -1) {
-          workerClient = null
-          reject(new Error(msg.error))
-        }
-      }
+      onProgress: callbacks.onProgress
     })
-  })
+  } finally {
+    if (activeImportExecutor === executor) {
+      activeImportExecutor = null
+    }
+  }
 }
 
 /**
  * Cancel the active import operation.
  */
 export function cancelImport(): void {
-  if (workerClient !== null) {
-    workerClient.cancel()
+  if (activeImportExecutor !== null) {
+    activeImportExecutor.cancel()
   }
 }
 
@@ -205,11 +146,17 @@ export interface MultiFileImportResult {
  * match the build detected from the first file's header (or match the
  * wizard-selected build). Mismatches abort the whole session before any
  * inserts for the offending file are performed.
+ *
+ * Phase 8 guard: multi-file import remains SQLite-only. A PostgreSQL session
+ * is rejected upfront. The guard lives here so handler-layer code does not
+ * accidentally route a PostgreSQL session through the SQLite-only append
+ * pipeline.
  */
 export async function startMultiFileImport(
   caseName: string,
   files: MultiFileImportSpec[],
   vcfOptions: VcfImportOptions | undefined,
+  getSession: () => StorageSession,
   getDb: () => DatabaseService,
   callbacks: ImportCallbacks,
   importFilters?: ImportFilters
@@ -218,6 +165,11 @@ export async function startMultiFileImport(
 
   if (files.length === 0) {
     throw new Error('No files provided for import')
+  }
+
+  const session = getSession()
+  if (session.capabilities.backend !== 'sqlite') {
+    throw new Error('PostgreSQL multi-file import is not supported in Phase 8')
   }
 
   const db = getDb()
@@ -254,7 +206,7 @@ export async function startMultiFileImport(
     firstFile.filePath,
     caseName,
     vcfOptions,
-    getDb,
+    getSession,
     wrapCallbacksForFile(firstFile, 0)
   )
 

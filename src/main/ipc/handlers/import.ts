@@ -13,6 +13,7 @@ import {
 } from './import-logic'
 import type { ImportCallbacks, MultiFileImportSpec } from './import-logic'
 import type { ImportFilters } from '../../import/vcf/import-filters'
+import type { StorageSession } from '../../storage/session'
 import { BedFilter } from '../../import/vcf/bed-filter'
 import { mainLogger } from '../../services/MainLogger'
 
@@ -80,7 +81,12 @@ const importCallbacks: ImportCallbacks = {
   onProgress: (data) => safeEmit('import:progress', data)
 }
 
-export function registerImportHandlers({ ipcMain, getDb }: HandlerDependencies): void {
+export function registerImportHandlers({
+  ipcMain,
+  getDb,
+  getDbManager
+}: HandlerDependencies): void {
+  const getSession = (): StorageSession => getDbManager().getCurrentSession()
   ipcMain.handle('import:selectFile', async () => {
     return wrapHandler(async () => {
       const settings = await loadSettings()
@@ -117,7 +123,7 @@ export function registerImportHandlers({ ipcMain, getDb }: HandlerDependencies):
       vcfOptions?: { selectedSample?: string; genomeBuild?: string }
     ) => {
       return wrapHandler(async () => {
-        return startImport(filePath, caseName, vcfOptions, getDb, importCallbacks)
+        return startImport(filePath, caseName, vcfOptions, getSession, importCallbacks)
       })
     }
   )
@@ -137,6 +143,7 @@ export function registerImportHandlers({ ipcMain, getDb }: HandlerDependencies):
           caseName,
           files,
           vcfOptions,
+          getSession,
           getDb,
           importCallbacks,
           importFilters

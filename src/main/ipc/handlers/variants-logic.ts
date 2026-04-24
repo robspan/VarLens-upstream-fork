@@ -8,8 +8,55 @@
 import type { VariantFilter, SortItem } from '../../database/types'
 import type { DatabaseService } from '../../database/DatabaseService'
 import type { DbPool } from '../../database/DbPool'
+import type { StorageSession } from '../../storage/session'
 import type { ColumnFilterMeta } from '../../../shared/types/column-filters'
 import { computePanelIntervals } from './panelIntervalHelper'
+
+type GetSession = () => StorageSession
+type GetDb = () => DatabaseService
+type GetDbPool = () => DbPool | null
+
+function isStorageSession(value: unknown): value is StorageSession {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    ('getReadExecutor' in value || 'capabilities' in value)
+  )
+}
+
+function resolveReadDependencies(
+  getSessionOrDb: GetSession | GetDb,
+  getDbOrPool?: GetDb | GetDbPool,
+  getDbPool?: GetDbPool
+):
+  | { session: StorageSession; getDb?: GetDb; getDbPool?: GetDbPool }
+  | { session?: undefined; db: DatabaseService; getDb: GetDb; getDbPool?: GetDbPool } {
+  let value: StorageSession | DatabaseService
+  try {
+    value = getSessionOrDb()
+  } catch (error) {
+    if (getDbOrPool === undefined) throw error
+    const getDb = getDbOrPool as GetDb
+    return {
+      db: getDb(),
+      getDb,
+      getDbPool
+    }
+  }
+  if (isStorageSession(value)) {
+    return {
+      session: value,
+      getDb: getDbOrPool as GetDb | undefined,
+      getDbPool
+    }
+  }
+
+  return {
+    db: value,
+    getDb: getSessionOrDb as GetDb,
+    getDbPool: getDbOrPool as GetDbPool | undefined
+  }
+}
 
 /**
  * Build a full variant filter, resolving panel intervals if needed.
@@ -20,7 +67,8 @@ export function buildVariantFilter(
   caseId: number,
   filters: Partial<VariantFilter>,
   getDb: () => DatabaseService,
-  getDbPool?: () => DbPool | null
+  getDbPool?: () => DbPool | null,
+  getSession?: () => StorageSession
 ): VariantFilter {
   const fullFilter: VariantFilter = {
     case_id: caseId,
@@ -28,6 +76,16 @@ export function buildVariantFilter(
   }
 
   if (fullFilter.active_panel_ids && fullFilter.active_panel_ids.length > 0) {
+    if (getSession !== undefined) {
+      try {
+        if (getSession().capabilities.backend === 'postgres') {
+          return fullFilter
+        }
+      } catch {
+        // Legacy tests and compatibility callers may not provide a session yet.
+      }
+    }
+
     const pool = getDbPool?.()
     if (pool) {
       // Pool path: let the worker resolve intervals off the main thread.
@@ -78,10 +136,19 @@ export async function queryVariants(
   sortBy: SortItem[] | undefined,
   skipCount: boolean,
   includeUnfilteredCount: boolean,
-  getDb: () => DatabaseService,
-  getDbPool?: () => DbPool | null
+  getSessionOrDb: GetSession | GetDb,
+  getDbOrPool?: GetDb | GetDbPool,
+  getDbPool?: GetDbPool
 ): Promise<unknown> {
-  const pool = getDbPool?.()
+  const deps = resolveReadDependencies(getSessionOrDb, getDbOrPool, getDbPool)
+  if (deps.session !== undefined) {
+    return await deps.session.getReadExecutor().execute({
+      type: 'variants:query',
+      params: [fullFilter, limit, offset, sortBy, skipCount, includeUnfilteredCount]
+    })
+  }
+
+  const pool = deps.getDbPool?.()
   if (pool) {
     return await pool.run({
       type: 'variants:query',
@@ -89,8 +156,7 @@ export async function queryVariants(
     })
   }
 
-  const db = getDb()
-  return db.variants.getVariants(
+  return deps.db.variants.getVariants(
     fullFilter,
     limit,
     offset,
@@ -105,16 +171,24 @@ export async function queryVariants(
  */
 export async function getFilterOptions(
   caseId: number,
-  getDb: () => DatabaseService,
-  getDbPool?: () => DbPool | null
+  getSessionOrDb: GetSession | GetDb,
+  getDbOrPool?: GetDb | GetDbPool,
+  getDbPool?: GetDbPool
 ): Promise<unknown> {
-  const pool = getDbPool?.()
+  const deps = resolveReadDependencies(getSessionOrDb, getDbOrPool, getDbPool)
+  if (deps.session !== undefined) {
+    return await deps.session.getReadExecutor().execute({
+      type: 'variants:filterOptions',
+      params: [caseId]
+    })
+  }
+
+  const pool = deps.getDbPool?.()
   if (pool) {
     return await pool.run({ type: 'variants:filterOptions', params: [caseId] })
   }
 
-  const db = getDb()
-  return db.variants.getFilterOptions(caseId)
+  return deps.db.variants.getFilterOptions(caseId)
 }
 
 /**
@@ -124,10 +198,16 @@ export async function searchVariants(
   caseId: number,
   query: string,
   limit: number,
-  getDb: () => DatabaseService,
-  getDbPool?: () => DbPool | null
+  getSessionOrDb: GetSession | GetDb,
+  getDbOrPool?: GetDb | GetDbPool,
+  getDbPool?: GetDbPool
 ): Promise<unknown> {
-  const pool = getDbPool?.()
+  const deps = resolveReadDependencies(getSessionOrDb, getDbOrPool, getDbPool)
+  if (deps.session?.capabilities.backend === 'postgres') {
+    throw new Error('PostgreSQL variants:search is deferred from Phase 7')
+  }
+
+  const pool = deps.session !== undefined ? deps.getDbPool?.() : deps.getDbPool?.()
   if (pool) {
     return await pool.run({
       type: 'variants:search',
@@ -135,7 +215,10 @@ export async function searchVariants(
     })
   }
 
-  const db = getDb()
+  const db = deps.session !== undefined ? deps.getDb?.() : deps.db
+  if (db === undefined) {
+    throw new Error('DatabaseService is required for variants:search')
+  }
   return db.variants.searchVariants(caseId, query, limit)
 }
 
@@ -146,10 +229,19 @@ export async function getGeneSymbols(
   caseId: number,
   query: string,
   limit: number,
-  getDb: () => DatabaseService,
-  getDbPool?: () => DbPool | null
+  getSessionOrDb: GetSession | GetDb,
+  getDbOrPool?: GetDb | GetDbPool,
+  getDbPool?: GetDbPool
 ): Promise<unknown> {
-  const pool = getDbPool?.()
+  const deps = resolveReadDependencies(getSessionOrDb, getDbOrPool, getDbPool)
+  if (deps.session !== undefined) {
+    return await deps.session.getReadExecutor().execute({
+      type: 'variants:geneSymbols',
+      params: [caseId, query, limit]
+    })
+  }
+
+  const pool = deps.getDbPool?.()
   if (pool) {
     return await pool.run({
       type: 'variants:geneSymbols',
@@ -157,8 +249,7 @@ export async function getGeneSymbols(
     })
   }
 
-  const db = getDb()
-  return db.variants.getGeneSymbols(caseId, query, limit)
+  return deps.db.variants.getGeneSymbols(caseId, query, limit)
 }
 
 /**
@@ -166,10 +257,19 @@ export async function getGeneSymbols(
  */
 export async function getVariantTypeCounts(
   caseId: number,
-  getDb: () => DatabaseService,
-  getDbPool?: () => DbPool | null
+  getSessionOrDb: GetSession | GetDb,
+  getDbOrPool?: GetDb | GetDbPool,
+  getDbPool?: GetDbPool
 ): Promise<Record<string, number>> {
-  const pool = getDbPool?.()
+  const deps = resolveReadDependencies(getSessionOrDb, getDbOrPool, getDbPool)
+  if (deps.session !== undefined) {
+    return (await deps.session.getReadExecutor().execute({
+      type: 'variants:typeCounts',
+      params: [caseId]
+    })) as Record<string, number>
+  }
+
+  const pool = deps.getDbPool?.()
   if (pool) {
     return (await pool.run({
       type: 'variants:typeCounts',
@@ -177,8 +277,7 @@ export async function getVariantTypeCounts(
     })) as Record<string, number>
   }
 
-  const db = getDb()
-  return db.variants.getVariantTypeCounts(caseId)
+  return deps.db.variants.getVariantTypeCounts(caseId)
 }
 
 /**
@@ -195,10 +294,19 @@ export async function getVariantTypeCounts(
 export async function getColumnMetaForKey(
   scope: { caseId: number } | { caseIds: number[] },
   columnKey: string,
-  getDb: () => DatabaseService,
-  getDbPool?: () => DbPool | null
+  getSessionOrDb: GetSession | GetDb,
+  getDbOrPool?: GetDb | GetDbPool,
+  getDbPool?: GetDbPool
 ): Promise<ColumnFilterMeta> {
-  const pool = getDbPool?.()
+  const deps = resolveReadDependencies(getSessionOrDb, getDbOrPool, getDbPool)
+  if (deps.session !== undefined) {
+    return (await deps.session.getReadExecutor().execute({
+      type: 'variants:columnMeta',
+      params: [scope, columnKey]
+    })) as ColumnFilterMeta
+  }
+
+  const pool = deps.getDbPool?.()
   if (pool) {
     return (await pool.run({
       type: 'variants:columnMeta',
@@ -206,8 +314,7 @@ export async function getColumnMetaForKey(
     })) as ColumnFilterMeta
   }
 
-  const db = getDb()
-  return db.variants.getColumnMeta(scope, columnKey)
+  return deps.db.variants.getColumnMeta(scope, columnKey)
 }
 
 /**
@@ -221,10 +328,19 @@ export async function getColumnMetaForKey(
  */
 export async function getVariantTypesPresent(
   scope: { caseId: number } | { caseIds: number[] },
-  getDb: () => DatabaseService,
-  getDbPool?: () => DbPool | null
+  getSessionOrDb: GetSession | GetDb,
+  getDbOrPool?: GetDb | GetDbPool,
+  getDbPool?: GetDbPool
 ): Promise<string[]> {
-  const pool = getDbPool?.()
+  const deps = resolveReadDependencies(getSessionOrDb, getDbOrPool, getDbPool)
+  if (deps.session !== undefined) {
+    return (await deps.session.getReadExecutor().execute({
+      type: 'variants:typesPresent',
+      params: [scope]
+    })) as string[]
+  }
+
+  const pool = deps.getDbPool?.()
   if (pool) {
     // Worker already serializes Set → string[] (structured-clone drops Set
     // contents across thread boundaries); just forward the array.
@@ -234,6 +350,5 @@ export async function getVariantTypesPresent(
     })) as string[]
   }
 
-  const db = getDb()
-  return Array.from(db.variants.getVariantTypesPresent(scope))
+  return Array.from(deps.db.variants.getVariantTypesPresent(scope))
 }

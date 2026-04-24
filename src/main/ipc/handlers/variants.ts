@@ -35,7 +35,14 @@ export { clearPanelIntervalCache }
 // Schema for search query params
 const SearchQuerySchema = z.string().min(1).max(100)
 
-export function registerVariantHandlers({ ipcMain, getDb, getDbPool }: HandlerDependencies): void {
+export function registerVariantHandlers({
+  ipcMain,
+  getDb,
+  getDbManager,
+  getDbPool
+}: HandlerDependencies): void {
+  const getSession = () => getDbManager().getCurrentSession()
+
   ipcMain.handle(
     'variants:query',
     async (
@@ -115,7 +122,8 @@ export function registerVariantHandlers({ ipcMain, getDb, getDbPool }: HandlerDe
           validatedCaseId.data,
           validatedFilters.data,
           getDb,
-          getDbPool
+          getDbPool,
+          getSession
         )
 
         return queryVariants(
@@ -125,6 +133,7 @@ export function registerVariantHandlers({ ipcMain, getDb, getDbPool }: HandlerDe
           validatedSortBy,
           validatedSkipCount,
           validatedIncludeUnfilteredCount,
+          getSession,
           getDb,
           getDbPool
         )
@@ -144,7 +153,7 @@ export function registerVariantHandlers({ ipcMain, getDb, getDbPool }: HandlerDe
         throw new Error('Invalid case ID')
       }
 
-      return getFilterOptions(validatedCaseId.data, getDb, getDbPool)
+      return getFilterOptions(validatedCaseId.data, getSession, getDb, getDbPool)
     })
   })
 
@@ -192,6 +201,7 @@ export function registerVariantHandlers({ ipcMain, getDb, getDbPool }: HandlerDe
           validatedCaseId.data,
           validatedQuery.data,
           validatedLimit,
+          getSession,
           getDb,
           getDbPool
         )
@@ -238,6 +248,7 @@ export function registerVariantHandlers({ ipcMain, getDb, getDbPool }: HandlerDe
           validatedCaseId.data,
           validatedQuery.data,
           validatedLimit,
+          getSession,
           getDb,
           getDbPool
         )
@@ -261,7 +272,7 @@ export function registerVariantHandlers({ ipcMain, getDb, getDbPool }: HandlerDe
         throw new Error('Invalid case ID')
       }
 
-      return getVariantTypeCounts(validatedCaseId.data, getDb, getDbPool)
+      return getVariantTypeCounts(validatedCaseId.data, getSession, getDb, getDbPool)
     })
   })
 
@@ -290,7 +301,7 @@ export function registerVariantHandlers({ ipcMain, getDb, getDbPool }: HandlerDe
       const { caseId, caseIds, columnKey } = validated.data
       const scope: { caseId: number } | { caseIds: number[] } =
         caseIds !== undefined ? { caseIds } : { caseId: caseId as number }
-      return getColumnMetaForKey(scope, columnKey, getDb, getDbPool)
+      return getColumnMetaForKey(scope, columnKey, getSession, getDb, getDbPool)
     })
   })
 
@@ -318,7 +329,7 @@ export function registerVariantHandlers({ ipcMain, getDb, getDbPool }: HandlerDe
       const { caseId, caseIds } = validated.data
       const scope: { caseId: number } | { caseIds: number[] } =
         caseIds !== undefined ? { caseIds } : { caseId: caseId as number }
-      return getVariantTypesPresent(scope, getDb, getDbPool)
+      return getVariantTypesPresent(scope, getSession, getDb, getDbPool)
     })
   })
 }

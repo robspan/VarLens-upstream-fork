@@ -102,15 +102,15 @@ describe('PostgresJsonImportRepository', () => {
     expect(client.release).toHaveBeenCalledWith()
 
     // Duplicate check
-    const dupCheck = findCall(client, /SELECT\s+id\s+FROM\s+"public"\."cases"\s+WHERE\s+name\s*=\s*\$1/i)
+    const dupCheck = findCall(
+      client,
+      /SELECT\s+id\s+FROM\s+"public"\."cases"\s+WHERE\s+name\s*=\s*\$1/i
+    )
     expect(dupCheck).toBeDefined()
     expect(dupCheck?.params).toStrictEqual(['Imported JSON'])
 
     // Case insert RETURNING id
-    const caseInsert = findCall(
-      client,
-      /INSERT INTO\s+"public"\."cases"[\s\S]+RETURNING\s+id/i
-    )
+    const caseInsert = findCall(client, /INSERT INTO\s+"public"\."cases"[\s\S]+RETURNING\s+id/i)
     expect(caseInsert).toBeDefined()
 
     // Variant batch uses jsonb_to_recordset
@@ -251,9 +251,7 @@ describe('PostgresJsonImportRepository', () => {
           ref: 'A',
           alt: 'G',
           gene_symbol: 'BRCA1',
-          _transcripts: [
-            { transcript_id: 'ENST00000001', gene_symbol: 'BRCA1', is_selected: 1 }
-          ]
+          _transcripts: [{ transcript_id: 'ENST00000001', gene_symbol: 'BRCA1', is_selected: 1 }]
         }
       ])
     })
@@ -316,9 +314,7 @@ describe('PostgresJsonImportRepository', () => {
     )
     expect(transcriptInsert).toBeDefined()
     expect(transcriptInsert?.params).toHaveLength(1)
-    const parsed = JSON.parse(String(transcriptInsert?.params[0])) as Array<
-      Record<string, unknown>
-    >
+    const parsed = JSON.parse(String(transcriptInsert?.params[0])) as Array<Record<string, unknown>>
     expect(parsed).toHaveLength(2)
     for (const row of parsed) {
       expect(row.variant_id).toBe(10)
@@ -493,9 +489,7 @@ describe('PostgresJsonImportRepository', () => {
       /INSERT INTO\s+"public"\."variants"\s*\(([^)]+)\)/i
     )
     expect(colListMatch).not.toBeNull()
-    const columns = (colListMatch?.[1] ?? '')
-      .split(',')
-      .map((c) => c.trim().replace(/"/g, ''))
+    const columns = (colListMatch?.[1] ?? '').split(',').map((c) => c.trim().replace(/"/g, ''))
     expect(columns).not.toContain('search_document')
   })
 
@@ -537,7 +531,10 @@ describe('PostgresJsonImportRepository', () => {
     expect(pool.connect).toHaveBeenCalledTimes(1)
 
     // Two separate variant batch INSERTs (no coalescing)
-    const variantBatches = findAllCalls(client, /INSERT INTO\s+"public"\."variants"[\s\S]+jsonb_to_recordset/i)
+    const variantBatches = findAllCalls(
+      client,
+      /INSERT INTO\s+"public"\."variants"[\s\S]+jsonb_to_recordset/i
+    )
     expect(variantBatches).toHaveLength(2)
 
     const calls = queryCalls(client)

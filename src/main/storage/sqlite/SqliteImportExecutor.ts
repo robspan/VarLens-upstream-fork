@@ -32,9 +32,7 @@ export class SqliteImportExecutor implements StorageImportExecutor {
     this.createWorkerClient = options.createWorkerClient ?? (() => new ImportWorkerClient())
   }
 
-  importSingleFile(
-    params: StorageImportSingleFileParams
-  ): Promise<StorageImportSingleFileResult> {
+  importSingleFile(params: StorageImportSingleFileParams): Promise<StorageImportSingleFileResult> {
     if (this.workerClient !== null && this.workerClient.isRunning) {
       return Promise.reject(new Error('An import is already in progress'))
     }

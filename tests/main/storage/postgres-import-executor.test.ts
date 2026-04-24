@@ -74,8 +74,7 @@ describe('PostgresImportExecutor', () => {
 
     const executor = new PostgresImportExecutor({
       repository,
-      detectFormat: async () =>
-        ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
+      detectFormat: async () => ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
       createMapperPipeline: async () => makeReadable(variants),
       statFile: () => ({ size: 123 }),
       now: () => 1_000_000
@@ -112,8 +111,7 @@ describe('PostgresImportExecutor', () => {
 
     const executor = new PostgresImportExecutor({
       repository,
-      detectFormat: async () =>
-        ({ format: 'object', caseKey: 'case1' }) satisfies FormatInfo,
+      detectFormat: async () => ({ format: 'object', caseKey: 'case1' }) satisfies FormatInfo,
       createMapperPipeline: async () => makeReadable(variants),
       statFile: () => ({ size: 50 }),
       now: () => 1_000_000
@@ -183,8 +181,7 @@ describe('PostgresImportExecutor', () => {
     const variants = [{ chr: '1', pos: 1, ref: 'A', alt: 'G' }]
     const executor = new PostgresImportExecutor({
       repository,
-      detectFormat: async () =>
-        ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
+      detectFormat: async () => ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
       createMapperPipeline: async () => makeReadable(variants),
       statFile: () => ({ size: 100 }),
       now: () => 1_714_060_810_000
@@ -219,20 +216,15 @@ describe('PostgresImportExecutor', () => {
         _req: PostgresJsonImportRequest,
         writeVariants: (session: PostgresJsonImportSession) => Promise<void>
       ): Promise<PostgresJsonImportBatchResult> => {
-        try {
-          await writeVariants({
-            caseId: 9,
-            insertVariantBatch: async (variants) => {
-              await insertVariantBatch(variants)
-              return variants.length
-            }
-          })
-          committed = true
-          return { caseId: 9, variantCount: 0 }
-        } catch (e) {
-          // simulate rollback path: rethrow so executor sees it
-          throw e
-        }
+        await writeVariants({
+          caseId: 9,
+          insertVariantBatch: async (variants) => {
+            await insertVariantBatch(variants)
+            return variants.length
+          }
+        })
+        committed = true
+        return { caseId: 9, variantCount: 0 }
       }
     )
     const repository = { runJsonImport } as unknown as PostgresJsonImportRepository
@@ -245,8 +237,7 @@ describe('PostgresImportExecutor', () => {
 
     const executor = new PostgresImportExecutor({
       repository,
-      detectFormat: async () =>
-        ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
+      detectFormat: async () => ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
       createMapperPipeline: async () => makeReadable(variants),
       statFile: () => ({ size: 1 }),
       now: () => 1_714_060_810_000
@@ -281,8 +272,7 @@ describe('PostgresImportExecutor', () => {
     const onProgress = vi.fn()
     const executor = new PostgresImportExecutor({
       repository,
-      detectFormat: async () =>
-        ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
+      detectFormat: async () => ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
       createMapperPipeline: async () => makeReadable(variants),
       statFile: () => ({ size: 1 }),
       now: () => 0
@@ -319,8 +309,7 @@ describe('PostgresImportExecutor', () => {
 
     const executor = new PostgresImportExecutor({
       repository,
-      detectFormat: async () =>
-        ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
+      detectFormat: async () => ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
       createMapperPipeline: async () => makeReadable(variants),
       statFile: () => ({ size: 1 }),
       now: () => 0
@@ -343,10 +332,8 @@ describe('PostgresImportExecutor', () => {
     const { repository } = createFakeRepository()
     const executor = new PostgresImportExecutor({
       repository,
-      detectFormat: async () =>
-        ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
-      createMapperPipeline: async () =>
-        makeReadable([{ chr: '1', pos: 1, ref: 'A', alt: 'G' }]),
+      detectFormat: async () => ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
+      createMapperPipeline: async () => makeReadable([{ chr: '1', pos: 1, ref: 'A', alt: 'G' }]),
       statFile: () => ({ size: 1 }),
       now: () => 0
     })

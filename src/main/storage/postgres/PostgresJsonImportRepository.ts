@@ -225,17 +225,9 @@ export class PostgresJsonImportRepository {
          (name, file_path, file_size, variant_count, created_at, genome_build)
          VALUES ($1, $2, $3, 0, $4, $5)
          RETURNING id`,
-        [
-          request.caseName,
-          request.filePath,
-          request.fileSize,
-          createdAt,
-          request.genomeBuild
-        ]
+        [request.caseName, request.filePath, request.fileSize, createdAt, request.genomeBuild]
       )
-      const caseId = toNumericId(
-        (caseInsert.rows[0] as { id: unknown } | undefined)?.id
-      )
+      const caseId = toNumericId((caseInsert.rows[0] as { id: unknown } | undefined)?.id)
 
       let totalVariantCount = 0
 
@@ -264,10 +256,10 @@ export class PostgresJsonImportRepository {
         [caseId, request.fileName, request.importFileType, createdAt]
       )
 
-      await client.query(
-        `UPDATE ${this.schemaName}."cases" SET variant_count = $1 WHERE id = $2`,
-        [totalVariantCount, caseId]
-      )
+      await client.query(`UPDATE ${this.schemaName}."cases" SET variant_count = $1 WHERE id = $2`, [
+        totalVariantCount,
+        caseId
+      ])
 
       // Refresh variant_frequency once, after all variant batches.
       // GROUP BY de-duplicates coordinates repeated within this case so internal
@@ -403,9 +395,7 @@ export class PostgresJsonImportRepository {
           event_id: 'text',
           mate_id: 'text'
         },
-        svPayload.map((row) =>
-          pickColumns(row, VARIANT_SV_COLUMNS as unknown as readonly string[])
-        )
+        svPayload.map((row) => pickColumns(row, VARIANT_SV_COLUMNS as unknown as readonly string[]))
       )
     }
 

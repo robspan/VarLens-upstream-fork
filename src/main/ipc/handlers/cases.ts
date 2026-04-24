@@ -48,7 +48,7 @@ export function registerCaseHandlers({
         mainLogger.error(`Invalid cases:query params: ${validated.error.message}`, 'cases')
         throw new Error('Invalid parameters')
       }
-      return queryCases(validated.data, getDb, getDbPool)
+      return queryCases(validated.data, () => getDbManager().getCurrentSession())
     })
   })
 

@@ -10,6 +10,7 @@ import { resolve } from 'node:path'
 import { mainLogger } from '../../services/MainLogger'
 import type { DatabaseService } from '../../database/DatabaseService'
 import type { DbPool } from '../../database/DbPool'
+import type { StorageReadTask } from '../../storage/read-executor'
 import type { StorageSession } from '../../storage/session'
 import type { DeleteWorkerRequest, DeleteWorkerResponse } from '../../workers/delete-worker'
 import type { ValidatedCaseSearchParams } from '../../../shared/types/ipc-schemas'
@@ -90,15 +91,14 @@ export async function listCases(getSession: () => StorageSession): Promise<unkno
  */
 export async function queryCases(
   params: ValidatedCaseSearchParams,
-  getDb: () => DatabaseService,
-  getDbPool?: () => DbPool | null
+  getSession: () => StorageSession
 ): Promise<unknown> {
-  const pool = getDbPool?.()
-  if (pool) {
-    return await pool.run({ type: 'cases:query', params: [params] })
+  const task: StorageReadTask = {
+    type: 'cases:query',
+    params
   }
-  const db = getDb()
-  return db.cases.queryCases(params)
+
+  return await getSession().getReadExecutor().execute(task)
 }
 
 /**

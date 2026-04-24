@@ -154,6 +154,56 @@ describe('cases IPC handlers', () => {
       })
     ])
   })
+
+  it('routes cases:query through the active storage read executor', async () => {
+    const expected = { data: [], total_count: 0 }
+    const execute = vi.fn().mockResolvedValue(expected)
+    const currentSession = {
+      getReadExecutor: () => ({ execute })
+    }
+    const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>()
+    const ipcMain = {
+      handle: vi.fn((channel: string, handler: (...args: unknown[]) => Promise<unknown>) => {
+        handlers.set(channel, handler)
+      })
+    }
+
+    const { registerCaseHandlers } = await import('../../../src/main/ipc/handlers/cases')
+
+    registerCaseHandlers({
+      ipcMain: ipcMain as never,
+      getDb: (() => {
+        throw new Error('getDb should not be called for cases:query')
+      }) as never,
+      getDbManager: (() => ({
+        getCurrentSession: () => currentSession
+      })) as never,
+      getDbPool: (() => {
+        throw new Error('getDbPool should not be called for cases:query')
+      }) as never
+    })
+
+    const handler = handlers.get('cases:query')
+    expect(handler).toBeTypeOf('function')
+
+    const result = await handler!(undefined, {
+      limit: 25,
+      offset: 0,
+      sort_by: 'created_at',
+      sort_order: 'desc'
+    })
+
+    expect(result).toBe(expected)
+    expect(execute).toHaveBeenCalledWith({
+      type: 'cases:query',
+      params: {
+        limit: 25,
+        offset: 0,
+        sort_by: 'created_at',
+        sort_order: 'desc'
+      }
+    })
+  })
 })
 
 describe('database:overview handler', () => {

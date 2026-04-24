@@ -11,6 +11,24 @@ describe('SqliteReadExecutor', () => {
     sort_order: 'desc'
   }
 
+  const caseMetadataReadTasks = [
+    {
+      task: { type: 'case-metadata:get' as const, params: [1] as [number] },
+      metadataMethod: 'getCaseMetadata',
+      expectedArgs: [1]
+    },
+    {
+      task: { type: 'case-metadata:listCohorts' as const, params: [] as [] },
+      metadataMethod: 'listCohortGroups',
+      expectedArgs: []
+    },
+    {
+      task: { type: 'case-metadata:getFullMetadata' as const, params: [1] as [number] },
+      metadataMethod: 'getFullCaseMetadata',
+      expectedArgs: [1]
+    }
+  ]
+
   it('uses the worker read pool for cases:query when a pool exists', async () => {
     const expected = { data: [], total_count: 0 }
     const dbPool = {
@@ -80,4 +98,37 @@ describe('SqliteReadExecutor', () => {
     )
     expect(databaseService.cases.getAvailableGenomeBuilds).toHaveBeenCalledWith()
   })
+
+  it.each(caseMetadataReadTasks)(
+    'uses the worker read pool for $task.type when a pool exists',
+    async ({ task }) => {
+      const expected = { ok: true }
+      const dbPool = {
+        run: vi.fn().mockResolvedValue(expected)
+      }
+      const databaseService = {
+        metadata: {}
+      }
+      const executor = new SqliteReadExecutor(databaseService as never, dbPool as never)
+
+      await expect(executor.execute(task)).resolves.toBe(expected)
+      expect(dbPool.run).toHaveBeenCalledWith(task)
+    }
+  )
+
+  it.each(caseMetadataReadTasks)(
+    'falls back to DatabaseService metadata for $task.type when no pool exists',
+    async ({ task, metadataMethod, expectedArgs }) => {
+      const expected = { ok: true }
+      const databaseService = {
+        metadata: {
+          [metadataMethod]: vi.fn().mockReturnValue(expected)
+        }
+      }
+      const executor = new SqliteReadExecutor(databaseService as never, null)
+
+      await expect(executor.execute(task)).resolves.toBe(expected)
+      expect(databaseService.metadata[metadataMethod]).toHaveBeenCalledWith(...expectedArgs)
+    }
+  )
 })

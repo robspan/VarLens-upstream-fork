@@ -75,6 +75,9 @@ describe('DatabaseManager storage-session compatibility', () => {
           throw new Error('not implemented')
         }
       }),
+      getWriteExecutor: () => ({
+        execute: vi.fn()
+      }),
       getDatabaseService: () => {
         throw new Error('DatabaseService is not available for postgres sessions')
       },

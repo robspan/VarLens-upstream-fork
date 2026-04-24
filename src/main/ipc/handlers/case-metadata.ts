@@ -38,7 +38,9 @@ const CohortIdSchema = z.number().int().positive()
 const MetadataUpsertSchema = z.object({
   affected_status: z.string().nullish(),
   sex: z.string().nullish(),
-  notes: z.string().nullish()
+  notes: z.string().nullish(),
+  age: z.number().nullish(),
+  date_of_birth: z.string().nullish()
 })
 
 const CohortCreateSchema = z.object({
@@ -104,13 +106,14 @@ const ExternalIdDeleteSchema = z.object({
  *           case-metadata:createCohort, case-metadata:updateCohort, case-metadata:deleteCohort, case-metadata:getCohortByName,
  *           case-metadata:getCaseCohorts, case-metadata:assignCohort, case-metadata:removeCohort,
  *           case-metadata:setCohorts, case-metadata:getHpoTerms, case-metadata:assignHpoTerm,
- *           case-metadata:removeHpoTerm, case-metadata:getFullMetadata
+ *           case-metadata:removeHpoTerm, case-metadata:getDataInfo, case-metadata:upsertDataInfo,
+ *           case-metadata:listExternalIds, case-metadata:upsertExternalId, case-metadata:deleteExternalId,
+ *           case-metadata:distinctHpoTerms, case-metadata:distinctPlatforms,
+ *           case-metadata:distinctExternalIdTypes, case-metadata:getFullMetadata
  */
-export function registerCaseMetadataHandlers({
-  ipcMain,
-  getDb,
-  getDbPool
-}: HandlerDependencies): void {
+export function registerCaseMetadataHandlers({ ipcMain, getDbManager }: HandlerDependencies): void {
+  const getSession = () => getDbManager().getCurrentSession()
+
   // ============================================================
   // Case Metadata Handlers
   // ============================================================
@@ -125,7 +128,7 @@ export function registerCaseMetadataHandlers({
         )
         throw new Error('Invalid parameters')
       }
-      return getMetadata(validated.data, getDb, getDbPool)
+      return getMetadata(validated.data, getSession)
     })
   })
 
@@ -149,7 +152,7 @@ export function registerCaseMetadataHandlers({
         throw new Error('Invalid parameters')
       }
 
-      return upsertMetadata(validatedId.data, validatedUpdates.data, getDb)
+      return upsertMetadata(validatedId.data, validatedUpdates.data, getSession)
     })
   })
 
@@ -159,7 +162,7 @@ export function registerCaseMetadataHandlers({
 
   ipcMain.handle('case-metadata:listCohorts', async () => {
     return wrapHandler(async () => {
-      return listCohorts(getDb, getDbPool)
+      return listCohorts(getSession)
     })
   })
 
@@ -175,7 +178,7 @@ export function registerCaseMetadataHandlers({
           )
           throw new Error('Invalid parameters')
         }
-        return createCohort(validated.data, getDb)
+        return createCohort(validated.data, getSession)
       })
     }
   )
@@ -202,7 +205,7 @@ export function registerCaseMetadataHandlers({
           throw new Error('Invalid parameters')
         }
 
-        return updateCohort(validatedId.data, validatedUpdates.data, getDb)
+        return updateCohort(validatedId.data, validatedUpdates.data, getSession)
       })
     }
   )
@@ -218,8 +221,7 @@ export function registerCaseMetadataHandlers({
         throw new Error('Invalid parameters')
       }
 
-      deleteCohort(validatedId.data, getDb)
-      return undefined
+      return deleteCohort(validatedId.data, getSession)
     })
   })
 
@@ -233,7 +235,7 @@ export function registerCaseMetadataHandlers({
         )
         throw new Error('Invalid parameters')
       }
-      return getCohortByName(validated.data, getDb, getDbPool)
+      return getCohortByName(validated.data, getSession)
     })
   })
 
@@ -251,7 +253,7 @@ export function registerCaseMetadataHandlers({
         )
         throw new Error('Invalid parameters')
       }
-      return getCaseCohorts(validated.data, getDb, getDbPool)
+      return getCaseCohorts(validated.data, getSession)
     })
   })
 
@@ -268,8 +270,7 @@ export function registerCaseMetadataHandlers({
           throw new Error('Invalid parameters')
         }
 
-        assignCohort(validated.data.caseId, validated.data.cohortId, getDb)
-        return undefined
+        return assignCohort(validated.data.caseId, validated.data.cohortId, getSession)
       })
     }
   )
@@ -287,8 +288,7 @@ export function registerCaseMetadataHandlers({
           throw new Error('Invalid parameters')
         }
 
-        removeCohort(validated.data.caseId, validated.data.cohortId, getDb)
-        return undefined
+        return removeCohort(validated.data.caseId, validated.data.cohortId, getSession)
       })
     }
   )
@@ -306,8 +306,7 @@ export function registerCaseMetadataHandlers({
           throw new Error('Invalid parameters')
         }
 
-        setCohorts(validated.data.caseId, validated.data.cohortIds, getDb)
-        return undefined
+        return setCohorts(validated.data.caseId, validated.data.cohortIds, getSession)
       })
     }
   )
@@ -326,7 +325,7 @@ export function registerCaseMetadataHandlers({
         )
         throw new Error('Invalid parameters')
       }
-      return getHpoTerms(validated.data, getDb, getDbPool)
+      return getHpoTerms(validated.data, getSession)
     })
   })
 
@@ -347,7 +346,7 @@ export function registerCaseMetadataHandlers({
           validated.data.caseId,
           validated.data.hpoId,
           validated.data.hpoLabel,
-          getDb
+          getSession
         )
       })
     }
@@ -364,8 +363,7 @@ export function registerCaseMetadataHandlers({
         throw new Error('Invalid parameters')
       }
 
-      removeHpoTerm(validated.data.caseId, validated.data.hpoId, getDb)
-      return undefined
+      return removeHpoTerm(validated.data.caseId, validated.data.hpoId, getSession)
     })
   })
 
@@ -383,7 +381,7 @@ export function registerCaseMetadataHandlers({
         )
         throw new Error('Invalid parameters')
       }
-      return getDataInfo(validated.data, getDb, getDbPool)
+      return getDataInfo(validated.data, getSession)
     })
   })
 
@@ -409,7 +407,7 @@ export function registerCaseMetadataHandlers({
           throw new Error('Invalid parameters')
         }
 
-        return upsertDataInfo(validatedId.data, validatedUpdates.data, getDb)
+        return upsertDataInfo(validatedId.data, validatedUpdates.data, getSession)
       })
     }
   )
@@ -428,7 +426,7 @@ export function registerCaseMetadataHandlers({
         )
         throw new Error('Invalid parameters')
       }
-      return listExternalIds(validated.data, getDb, getDbPool)
+      return listExternalIds(validated.data, getSession)
     })
   })
 
@@ -449,7 +447,7 @@ export function registerCaseMetadataHandlers({
           validated.data.caseId,
           validated.data.idType,
           validated.data.idValue,
-          getDb
+          getSession
         )
       })
     }
@@ -468,8 +466,7 @@ export function registerCaseMetadataHandlers({
           throw new Error('Invalid parameters')
         }
 
-        deleteExternalId(validated.data.caseId, validated.data.idType, getDb)
-        return undefined
+        return deleteExternalId(validated.data.caseId, validated.data.idType, getSession)
       })
     }
   )
@@ -480,19 +477,19 @@ export function registerCaseMetadataHandlers({
 
   ipcMain.handle('case-metadata:distinctHpoTerms', async () => {
     return wrapHandler(async () => {
-      return distinctHpoTerms(getDb, getDbPool)
+      return distinctHpoTerms(getSession)
     })
   })
 
   ipcMain.handle('case-metadata:distinctPlatforms', async () => {
     return wrapHandler(async () => {
-      return distinctPlatforms(getDb, getDbPool)
+      return distinctPlatforms(getSession)
     })
   })
 
   ipcMain.handle('case-metadata:distinctExternalIdTypes', async () => {
     return wrapHandler(async () => {
-      return distinctExternalIdTypes(getDb, getDbPool)
+      return distinctExternalIdTypes(getSession)
     })
   })
 
@@ -510,7 +507,7 @@ export function registerCaseMetadataHandlers({
         )
         throw new Error('Invalid parameters')
       }
-      return getFullMetadata(validated.data, getDb, getDbPool)
+      return getFullMetadata(validated.data, getSession)
     })
   })
 }

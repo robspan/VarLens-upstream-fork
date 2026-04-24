@@ -38,6 +38,7 @@ describe('PostgresStorageSession', () => {
     expect(session.workspace.connectionUrlRedacted).toBe('postgres://127.0.0.1:55432/varlens_dev')
     expect(session.workspace.connectionLabel).toBe('127.0.0.1:55432/varlens_dev (public)')
     expect(session.getReadExecutor()).toBeDefined()
+    expect(session.getWriteExecutor()).toBeDefined()
     expect(session.capabilities).toEqual({
       backend: 'postgres',
       supportsEncryptionAtRest: false,
@@ -220,5 +221,32 @@ describe('PostgresStorageSession', () => {
 
     expect(pool.query).toHaveBeenCalledTimes(1)
     expect(pool.query.mock.calls[0][0]).toContain('"phase5_cases"."cases"')
+  })
+
+  it('routes case metadata writes through the session-owned postgres write executor', async () => {
+    const pool = {
+      query: vi.fn().mockResolvedValue({
+        rows: [{ case_id: '1', sex: 'female' }]
+      }),
+      end: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn()
+    }
+    const session = new PostgresStorageSession({
+      config: makeConfig({ schema: 'phase6_metadata' }),
+      pool: pool as never
+    })
+
+    await expect(
+      session.getWriteExecutor().execute({
+        type: 'case-metadata:upsert',
+        params: [1, { sex: 'female' }]
+      })
+    ).resolves.toMatchObject({
+      case_id: 1,
+      sex: 'female'
+    })
+
+    expect(pool.query).toHaveBeenCalledTimes(1)
+    expect(pool.query.mock.calls[0][0]).toContain('"phase6_metadata"."case_metadata"')
   })
 })

@@ -31,6 +31,7 @@ describe('SqliteStorageSession', () => {
     expect(session.getDatabaseService()).toBe(db)
     expect(session.getDbPool()).toBeNull()
     expect(session.getReadExecutor()).toBeDefined()
+    expect(session.getWriteExecutor()).toBeDefined()
     expect(session.capabilities.backend).toBe('sqlite')
     expect(session.capabilities.supportsLocalFileLifecycle).toBe(true)
     expect(session.capabilities.supportsFileBackedWorkerWrites).toBe(true)

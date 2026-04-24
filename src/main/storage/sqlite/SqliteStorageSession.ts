@@ -4,7 +4,9 @@ import type { Case } from '../../../shared/types/database'
 import type { StorageReadExecutor } from '../read-executor'
 import type { StorageSession } from '../session'
 import type { StorageCapabilities, StorageHealth, WorkspaceRef } from '../types'
+import type { StorageWriteExecutor } from '../write-executor'
 import { SqliteReadExecutor } from './SqliteReadExecutor'
+import { SqliteWriteExecutor } from './SqliteWriteExecutor'
 
 interface SqliteStorageSessionOptions {
   databaseService: DatabaseService
@@ -28,11 +30,13 @@ export class SqliteStorageSession implements StorageSession {
   private readonly databaseService: DatabaseService
   private readonly dbPool: DbPool | null
   private readonly readExecutor: StorageReadExecutor
+  private readonly writeExecutor: StorageWriteExecutor
 
   constructor(options: SqliteStorageSessionOptions) {
     this.databaseService = options.databaseService
     this.dbPool = options.dbPool
     this.readExecutor = new SqliteReadExecutor(this.databaseService, this.dbPool)
+    this.writeExecutor = new SqliteWriteExecutor(this.databaseService)
 
     const dbPath = this.databaseService.getPath()
 
@@ -50,6 +54,10 @@ export class SqliteStorageSession implements StorageSession {
 
   getReadExecutor(): StorageReadExecutor {
     return this.readExecutor
+  }
+
+  getWriteExecutor(): StorageWriteExecutor {
+    return this.writeExecutor
   }
 
   async listCases(): Promise<Case[]> {

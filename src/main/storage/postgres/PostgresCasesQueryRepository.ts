@@ -17,20 +17,33 @@ export class PostgresCasesQueryRepository {
     const sortBy = params.sort_by ?? 'created_at'
     const sortOrder = params.sort_order ?? 'desc'
 
+    const values: unknown[] = []
+    const whereClauses: string[] = []
+    const schemaName = quoteIdentifier(this.schema)
+
     if ((params.cohort_ids?.length ?? 0) > 0) {
-      throw new Error(
-        'cases:query cohort_ids filtering is not implemented for postgres sessions in Phase 4'
-      )
+      values.push(params.cohort_ids)
+      whereClauses.push(`
+        EXISTS (
+          SELECT 1
+          FROM ${schemaName}."case_cohort_links" ccl_filter
+          WHERE ccl_filter.case_id = c.id
+            AND ccl_filter.cohort_id = ANY($${values.length}::bigint[])
+        )
+      `)
     }
 
     if ((params.hpo_ids?.length ?? 0) > 0) {
-      throw new Error(
-        'cases:query hpo_ids filtering is not implemented for postgres sessions in Phase 4'
-      )
+      values.push(params.hpo_ids)
+      whereClauses.push(`
+        EXISTS (
+          SELECT 1
+          FROM ${schemaName}."case_hpo_terms" cht_filter
+          WHERE cht_filter.case_id = c.id
+            AND cht_filter.hpo_id = ANY($${values.length}::text[])
+        )
+      `)
     }
-
-    const values: unknown[] = []
-    const whereClauses: string[] = []
 
     if (searchTerm !== undefined && searchTerm !== '') {
       values.push(`%${searchTerm}%`)
@@ -41,7 +54,6 @@ export class PostgresCasesQueryRepository {
       sortBy === 'name' ? 'c.name' : sortBy === 'variant_count' ? 'c.variant_count' : 'c.created_at'
     const orderDirection = sortOrder === 'asc' ? 'ASC' : 'DESC'
     const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
-    const schemaName = quoteIdentifier(this.schema)
 
     const rowsSql = `
       SELECT
@@ -55,7 +67,7 @@ export class PostgresCasesQueryRepository {
         cm.affected_status,
         cm.sex,
         COALESCE(array_agg(DISTINCT cg.name) FILTER (WHERE cg.name IS NOT NULL), '{}'::text[]) AS cohort_names,
-        COALESCE(array_agg(DISTINCT cg.id) FILTER (WHERE cg.id IS NOT NULL), '{}'::int[]) AS cohort_ids
+        COALESCE(array_agg(DISTINCT cg.id) FILTER (WHERE cg.id IS NOT NULL), '{}'::bigint[]) AS cohort_ids
       FROM ${schemaName}."cases" c
       LEFT JOIN ${schemaName}."case_metadata" cm ON cm.case_id = c.id
       LEFT JOIN ${schemaName}."case_cohort_links" ccl ON ccl.case_id = c.id

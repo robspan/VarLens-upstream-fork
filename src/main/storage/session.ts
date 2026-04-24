@@ -3,6 +3,7 @@ import type { DbPool } from '../database/DbPool'
 import type { Case } from '../../shared/types/database'
 import type { StorageReadExecutor } from './read-executor'
 import type { StorageCapabilities, StorageHealth, WorkspaceRef } from './types'
+import type { StorageWriteExecutor } from './write-executor'
 
 export interface StorageSession {
   readonly workspace: WorkspaceRef
@@ -10,6 +11,7 @@ export interface StorageSession {
 
   listCases(): Promise<Case[]>
   getReadExecutor(): StorageReadExecutor
+  getWriteExecutor(): StorageWriteExecutor
   /**
    * Compatibility escape hatch for legacy SQLite-only paths.
    * New migrated slices must use getReadExecutor().

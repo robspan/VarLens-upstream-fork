@@ -6,9 +6,11 @@ import type { DbPool } from '../../database/DbPool'
 import type { Case } from '../../../shared/types/database'
 import { PostgresAvailableBuildsRepository } from './PostgresAvailableBuildsRepository'
 import { PostgresCaseListRepository } from './PostgresCaseListRepository'
+import { PostgresCaseMetadataRepository } from './PostgresCaseMetadataRepository'
 import { PostgresCasesQueryRepository } from './PostgresCasesQueryRepository'
 import { PostgresReadExecutor } from './PostgresReadExecutor'
 import type { StorageReadExecutor } from '../read-executor'
+import { PostgresWriteExecutor } from './PostgresWriteExecutor'
 import {
   buildPostgresConnectionLabel,
   redactPostgresConnectionUrl,
@@ -16,6 +18,7 @@ import {
 } from '../config'
 import type { StorageSession } from '../session'
 import type { StorageCapabilities, StorageHealth, WorkspaceRef } from '../types'
+import type { StorageWriteExecutor } from '../write-executor'
 
 interface PostgresStorageSessionOptions {
   config: PostgresStorageConfig
@@ -47,14 +50,18 @@ export class PostgresStorageSession implements StorageSession {
   ) => PostgresCaseListRepository
   private readonly pool: Pool
   private readonly readExecutor: StorageReadExecutor
+  private readonly writeExecutor: StorageWriteExecutor
   private cases: PostgresCaseListRepository | null = null
 
   constructor(options: PostgresStorageSessionOptions) {
     this.pool = options.pool
+    const caseMetadata = new PostgresCaseMetadataRepository(options.pool, options.config.schema)
     this.readExecutor = new PostgresReadExecutor({
       casesQuery: new PostgresCasesQueryRepository(options.pool, options.config.schema),
-      availableBuilds: new PostgresAvailableBuildsRepository(options.pool, options.config.schema)
+      availableBuilds: new PostgresAvailableBuildsRepository(options.pool, options.config.schema),
+      caseMetadata
     })
+    this.writeExecutor = new PostgresWriteExecutor(caseMetadata)
     this.createCaseListRepository =
       options.createCaseListRepository ??
       ((pool: Pool, schema: string) => new PostgresCaseListRepository(pool, schema))
@@ -87,6 +94,10 @@ export class PostgresStorageSession implements StorageSession {
 
   getReadExecutor(): StorageReadExecutor {
     return this.readExecutor
+  }
+
+  getWriteExecutor(): StorageWriteExecutor {
+    return this.writeExecutor
   }
 
   getDatabaseService(): DatabaseService {

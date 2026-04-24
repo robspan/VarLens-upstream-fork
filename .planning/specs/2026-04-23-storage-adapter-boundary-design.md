@@ -1,7 +1,7 @@
 # Storage Session Boundary — Design
 
 **Date:** 2026-04-23  
-**Status:** Implemented through Phase 2; retained as active architectural reference  
+**Status:** Implemented through Phase 5; retained as active architectural reference
 **Motivation:** VarLens needs a realistic path from SQLite-only local storage to optional hosted PostgreSQL without destabilizing the current app. The codebase does not support a thin driver swap under `DatabaseService`; the seam needs to sit above the current SQLite runtime.
 
 ## Summary
@@ -16,6 +16,29 @@ The key decision is:
 - **Do** add PostgreSQL as a second backend through a new session implementation, not by pretending existing repositories are already portable.
 
 This is a more honest design for the current codebase and a safer path to an experimental hosted PostgreSQL mode.
+
+## Current implementation status — 2026-04-24
+
+The session boundary is now real but still partial.
+
+Implemented:
+
+- SQLite storage session wraps the existing `DatabaseService` and optional read pool.
+- PostgreSQL session/config/health/capability scaffolding exists.
+- Backend-specific read-executor strategy exists.
+- Cases-domain slices now routed through the session boundary:
+  - `cases:list`
+  - `cases:query`
+  - `cases:availableBuilds`
+- Phase 5 available-builds execution has been implemented and archived under completed plans/specs.
+
+Not yet PostgreSQL-parity:
+
+- most read domains outside cases remain SQLite-oriented,
+- `database:overview` still uses legacy SQLite pool/direct logic,
+- import/export/delete/rebuild workers remain SQLite-file-backed,
+- write-side repository behavior is not backend-neutral,
+- renderer storage settings are intentionally deferred until runtime parity is higher.
 
 ## Why the previous design was wrong
 
@@ -300,6 +323,14 @@ Design constraints:
 - add backend-aware tests and CI coverage
 - add renderer storage settings when the runtime is ready
 
+### Next parity phase
+
+- inventory every remaining SQLite-only read/write path by IPC domain
+- migrate `database:overview` only after its component queries have PostgreSQL-backed services
+- add PostgreSQL-backed implementations for variant, cohort, tag, metadata, annotation, transcript, gene-list, and region-file paths
+- design backend-aware import/export/delete/rebuild execution before exposing PostgreSQL as a user-selectable backend
+- add Docker-backed PostgreSQL integration tests once schema and fixture setup can be kept deterministic in CI
+
 ## Locked decisions
 
 1. The old low-level `StorageAdapter` design is obsolete and removed.
@@ -333,6 +364,9 @@ This design is satisfied when:
 - PostgreSQL Docker development is a first-class explicit workflow
 - the architecture preserves current SQLite behavior while creating a credible seam for PostgreSQL
 
-## Relationship to the plan
+## Relationship to completed plans
 
-The Phase 1 execution plan is archived at [2026-04-23-storage-adapter-phase-1-scaffold-plan.md](../archive/completed-plans/2026-04-23-storage-adapter-phase-1-scaffold-plan.md). Phase 2 is also complete, with its completed execution docs archived under `.planning/archive/`.
+Completed execution docs are archived under `.planning/archive/`, including:
+
+- Phase 1: [2026-04-23-storage-adapter-phase-1-scaffold-plan.md](../archive/completed-plans/2026-04-23-storage-adapter-phase-1-scaffold-plan.md)
+- Phase 5: [2026-04-24-storage-session-phase-5-cases-available-builds.md](../archive/completed-plans/2026-04-24-storage-session-phase-5-cases-available-builds.md)

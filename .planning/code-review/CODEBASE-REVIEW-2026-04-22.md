@@ -28,6 +28,32 @@
 - Moving the renderer off `file://` toward a custom protocol (Electron's longer-term hardening direction).
 - Two open Dependabot CVEs nested inside `vitepress` (`vite`, `esbuild`); tracked in #154 pending a vitepress major upgrade.
 
+## Update — 2026-04-24
+
+**Current HEAD:** `75dbdc8`
+
+**Shipped since the 2026-04-23 update:**
+
+- **v0.56.11 released** (tag `v0.56.11`, 10 platform artifacts published). Includes PR #175: `cases:availableBuilds` now routes through the active `StorageSession` read executor, with SQLite pool/fallback coverage and a PostgreSQL implementation.
+- The storage-session migration has progressed through Phase 5. `cases:list`, `cases:query`, and `cases:availableBuilds` are now the first cases-domain vertical slices behind the session/executor boundary.
+- Phase 5 execution docs have been archived:
+  - `.planning/archive/completed-plans/2026-04-24-storage-session-phase-5-cases-available-builds.md`
+  - `.planning/archive/completed-specs/2026-04-24-storage-session-phase-5-cases-available-builds.md`
+
+**Priority C remains open but has moved from design-only to parity execution.** The next PostgreSQL work should focus on full backend parity, not another isolated read task. The fastest credible path is:
+
+1. close the remaining read-side gaps by domain,
+2. introduce backend-aware write/import/export/delete/rebuild execution,
+3. add Docker-backed PostgreSQL integration tests once schema coverage is stable,
+4. only then expose renderer storage settings.
+
+**Still not ready for user-facing PostgreSQL mode:**
+
+- import/export/delete/rebuild workers are still SQLite-file-backed,
+- `database:overview` is still SQLite-path logic,
+- most variant/cohort/tag/metadata queries are not PostgreSQL-backed,
+- lifecycle UX is still local-file-centric.
+
 ## Executive Summary
 
 The 2026-04-16 review is now fully superseded.

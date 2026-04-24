@@ -6,9 +6,15 @@
 import { DbPool } from '../database/DbPool'
 import { mainLogger } from '../services/MainLogger'
 import { resolveGeneRefDbPath } from '../database/geneReferenceLoader'
+import type { StorageSession } from '../storage/session'
 
 /** Singleton DbPool instance — created lazily when a database is opened */
 let dbPool: DbPool | null = null
+type DbPoolSource = {
+  capabilities: Pick<StorageSession['capabilities'], 'backend'>
+  getDbPool: StorageSession['getDbPool']
+}
+let getActiveSession: (() => DbPoolSource | null) | null = null
 
 /**
  * User-configured worker thread count.
@@ -21,7 +27,22 @@ let configuredWorkerThreads = 0
  * Get the current DbPool instance (or null if not yet initialised).
  */
 export function getDbPool(): DbPool | null {
+  const activeSession = getActiveSession?.() ?? null
+
+  if (activeSession?.capabilities.backend === 'postgres') {
+    return null
+  }
+
+  const sessionPool = activeSession?.getDbPool() ?? null
+  if (sessionPool !== null) {
+    return sessionPool
+  }
+
   return dbPool
+}
+
+export function setActiveSessionResolver(resolver: () => DbPoolSource | null): void {
+  getActiveSession = resolver
 }
 
 /**

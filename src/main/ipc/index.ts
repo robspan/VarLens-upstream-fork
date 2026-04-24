@@ -2,7 +2,7 @@ import { ipcMain } from 'electron'
 import { mainLogger } from '../services/MainLogger'
 import type { HandlerDependencies } from './types'
 import { getDatabaseService, getDatabaseManager } from '../database'
-import { getDbPool } from './dbPoolManager'
+import { getDbPool, setActiveSessionResolver } from './dbPoolManager'
 
 // Domain-module registrations (one per WindowAPI top-level key)
 import { registerAnalysisGroupsDomain } from './domains/analysis-groups'
@@ -53,6 +53,14 @@ export { initDbPool, destroyDbPool } from './dbPoolManager'
  * `HandlerDependencies` shape.
  */
 export function registerIpcHandlers(): void {
+  setActiveSessionResolver(() => {
+    try {
+      return getDatabaseManager().getCurrentSession()
+    } catch {
+      return null
+    }
+  })
+
   const deps: HandlerDependencies = {
     ipcMain,
     getDb: getDatabaseService,

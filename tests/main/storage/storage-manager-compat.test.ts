@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -56,6 +56,11 @@ describe('DatabaseManager storage-session compatibility', () => {
         supportsFullTextSearch: false
       },
       listCases: async () => [],
+      getReadExecutor: () => ({
+        execute: async () => {
+          throw new Error('not implemented')
+        }
+      }),
       getDatabaseService: () => {
         throw new Error('DatabaseService is not available for postgres sessions')
       },
@@ -100,5 +105,49 @@ describe('DatabaseManager storage-session compatibility', () => {
     expect(manager.getCurrentSession()).toBe(sqliteSession)
 
     await manager.close()
+  })
+
+  it('resolves the legacy db pool from the active sqlite session', async () => {
+    vi.resetModules()
+
+    const sessionPool = {
+      run: vi.fn(),
+      destroy: vi.fn()
+    }
+    const { getDbPool, setActiveSessionResolver } = await import(
+      '../../../src/main/ipc/dbPoolManager'
+    )
+
+    setActiveSessionResolver(() => ({
+      capabilities: {
+        backend: 'sqlite'
+      },
+      getDbPool: () => sessionPool
+    }))
+
+    expect(getDbPool()).toBe(sessionPool)
+
+    setActiveSessionResolver(() => null)
+  })
+
+  it('returns null from the legacy db pool bridge for an active postgres session', async () => {
+    vi.resetModules()
+
+    const { getDbPool, setActiveSessionResolver } = await import(
+      '../../../src/main/ipc/dbPoolManager'
+    )
+
+    setActiveSessionResolver(() => ({
+      capabilities: {
+        backend: 'postgres'
+      },
+      getDbPool: () => {
+        throw new Error('DbPool is not available for postgres sessions')
+      }
+    }))
+
+    expect(getDbPool()).toBeNull()
+
+    setActiveSessionResolver(() => null)
   })
 })

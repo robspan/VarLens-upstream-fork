@@ -21,8 +21,6 @@ import type {
   PostgresClientConfig
 } from '../../../shared/types/postgres-import-worker'
 
-const CANCELLATION_MESSAGE = 'Import cancelled by user'
-
 export interface PostgresImportExecutorOptions {
   schema: string
   clientConfig: PostgresClientConfig
@@ -42,7 +40,7 @@ export class PostgresImportExecutor implements StorageImportExecutor {
   async importSingleFile(
     params: StorageImportSingleFileParams
   ): Promise<StorageImportSingleFileResult> {
-    if ((params as unknown as Record<string, unknown>).filters !== undefined) {
+    if ('filters' in (params as object)) {
       throw new Error('Filters are only supported on import:startMultiFile')
     }
     if (this.inProgress) {
@@ -58,7 +56,8 @@ export class PostgresImportExecutor implements StorageImportExecutor {
         mode: 'single-file',
         caseName: params.caseName,
         vcfOptions: params.vcfOptions,
-        filePath: params.filePath
+        filePath: params.filePath,
+        throttleMs: params.throttleMs
       }
       const result = await this.runWorker(start, params.onProgress, startedAt)
       return {
@@ -91,8 +90,7 @@ export class PostgresImportExecutor implements StorageImportExecutor {
     errors: string[]
     elapsed: number
   }> {
-    const factory =
-      this.options.workerClientFactory ?? (() => new PostgresImportWorkerClient())
+    const factory = this.options.workerClientFactory ?? (() => new PostgresImportWorkerClient())
     const client = factory()
     this.currentClient = client
     return new Promise((resolvePromise, reject) => {
@@ -131,5 +129,3 @@ export class PostgresImportExecutor implements StorageImportExecutor {
     })
   }
 }
-
-export { CANCELLATION_MESSAGE }

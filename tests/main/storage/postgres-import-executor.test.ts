@@ -216,7 +216,13 @@ describe('PostgresImportExecutor (worker-dispatch)', () => {
     capturedCallbacks.onComplete({
       type: 'complete',
       mode: 'single-file',
-      result: { caseId: 0, variantCount: 0, skipped: 0, errors: ['Import cancelled by user'], elapsed: 0 }
+      result: {
+        caseId: 0,
+        variantCount: 0,
+        skipped: 0,
+        errors: ['Import cancelled by user'],
+        elapsed: 0
+      }
     })
     await importPromise
   })
@@ -316,6 +322,27 @@ describe('PostgresImportExecutor (worker-dispatch)', () => {
         throttleMs: 0
       })
     ).rejects.toThrow('not yet implemented (Phase 9 Task 11)')
+  })
+
+  it('cancel() called before importSingleFile is a no-op (no worker exists yet)', async () => {
+    const fake = new FakeWorkerClient()
+    const executor = new PostgresImportExecutor({
+      schema: 'public',
+      clientConfig: TEST_CLIENT_CONFIG,
+      workerClientFactory: () => fake as never
+    })
+    // Pre-flight cancel — no worker exists yet
+    expect(() => executor.cancel()).not.toThrow()
+    // Subsequent import proceeds normally
+    const result = await executor.importSingleFile({
+      filePath: '/tmp/a.json',
+      caseName: 'X',
+      throttleMs: 0
+    })
+    expect(result.caseId).toBe(99)
+    expect(fake.start).toHaveBeenCalledTimes(1)
+    // The pre-flight cancel did NOT touch the worker
+    expect(fake.cancel).not.toHaveBeenCalled()
   })
 
   it('allows a new import after the previous one completes', async () => {

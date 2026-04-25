@@ -2,6 +2,14 @@ import type { ClientConfig } from 'pg'
 import type { MultiFileImportSpec } from './api'
 
 /**
+ * Standard cancellation message produced by the postgres import worker
+ * when the user cancels an in-flight import. Both the worker (sender)
+ * and the executor (receiver, for routing logic) import this so the
+ * string is the same on both sides.
+ */
+export const POSTGRES_IMPORT_CANCELLATION_MESSAGE = 'Import cancelled by user'
+
+/**
  * pg.Client config plumbed from main to worker. Mirrors the connection-relevant
  * fields of buildPostgresPoolConfig minus pool-only fields. SSL is serialized
  * as a discriminated descriptor since `tls.SecureContextOptions` does not
@@ -22,9 +30,7 @@ export interface PostgresClientConfig {
    * connection string or PG environment variables (PGSSLCERT, PGSSLKEY, PGSSLROOTCERT)
    * which pg consumes natively.
    */
-  ssl?:
-    | { mode: 'disable' }
-    | { mode: 'require'; rejectUnauthorized: boolean }
+  ssl?: { mode: 'disable' } | { mode: 'require'; rejectUnauthorized: boolean }
 }
 
 /**

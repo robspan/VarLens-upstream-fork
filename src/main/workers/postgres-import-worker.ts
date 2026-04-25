@@ -4,11 +4,12 @@ import { statSync } from 'node:fs'
 import type { Readable } from 'node:stream'
 import { Client, type ClientConfig, type Pool, type PoolClient } from 'pg'
 
-import type {
-  PostgresImportWorkerInboundMessage,
-  PostgresImportWorkerOutboundMessage,
-  PostgresImportWorkerStartMessage,
-  PostgresClientConfig
+import {
+  POSTGRES_IMPORT_CANCELLATION_MESSAGE,
+  type PostgresImportWorkerInboundMessage,
+  type PostgresImportWorkerOutboundMessage,
+  type PostgresImportWorkerStartMessage,
+  type PostgresClientConfig
 } from '../../shared/types/postgres-import-worker'
 import {
   PostgresJsonImportRepository,
@@ -20,7 +21,6 @@ import type { FormatInfo } from '../import/strategies/ImportStrategy'
 import { createMapperPipeline as defaultCreateMapperPipeline } from './import-pipeline'
 
 const POSTGRES_JSON_IMPORT_BATCH_SIZE = 1000
-const CANCELLATION_MESSAGE = 'Import cancelled by user'
 
 let cancelled = false
 
@@ -77,7 +77,8 @@ export async function runImport(
 
     if (start.mode === 'single-file') {
       const filePath = start.filePath
-      if (filePath === undefined || filePath === '') throw new Error('postgres-import-worker: single-file mode requires filePath')
+      if (filePath === undefined || filePath === '')
+        throw new Error('postgres-import-worker: single-file mode requires filePath')
 
       // Always detect the concrete JSON sub-format (simple/object/columnar) regardless
       // of the hint — the hint isn't strong enough to skip detection because we need
@@ -108,7 +109,7 @@ export async function runImport(
 
       let totalInserted = 0
       const writeVariants = async (session: PostgresJsonImportSession): Promise<void> => {
-        if (cancelled) throw new Error(CANCELLATION_MESSAGE)
+        if (cancelled) throw new Error(POSTGRES_IMPORT_CANCELLATION_MESSAGE)
         const stream = await deps.createMapperPipeline(filePath, formatInfo)
         let batch: Array<Record<string, unknown>> = []
         const flush = async (): Promise<void> => {
@@ -122,19 +123,19 @@ export async function runImport(
           for await (const chunk of stream) {
             if (cancelled) {
               stream.destroy()
-              throw new Error(CANCELLATION_MESSAGE)
+              throw new Error(POSTGRES_IMPORT_CANCELLATION_MESSAGE)
             }
             if (chunk === null || chunk === undefined) continue
             batch.push(chunk as Record<string, unknown>)
             if (batch.length >= batchSize) {
               await flush()
-              if (cancelled) throw new Error(CANCELLATION_MESSAGE)
+              if (cancelled) throw new Error(POSTGRES_IMPORT_CANCELLATION_MESSAGE)
             }
           }
           if (!cancelled) {
             await flush()
           } else {
-            throw new Error(CANCELLATION_MESSAGE)
+            throw new Error(POSTGRES_IMPORT_CANCELLATION_MESSAGE)
           }
         } catch (err) {
           stream.destroy()
@@ -166,7 +167,11 @@ export async function runImport(
         writeVariants
       )
 
-      await rebuildVariantFrequencyForCase(client as unknown as Pick<PoolClient, 'query'>, start.schema, caseId)
+      await rebuildVariantFrequencyForCase(
+        client as unknown as Pick<PoolClient, 'query'>,
+        start.schema,
+        caseId
+      )
       await client.query('COMMIT')
       committed = true
 
@@ -185,7 +190,9 @@ export async function runImport(
     }
 
     // Multi-file branch implemented in Task 11.
-    throw new Error('Multi-file mode not yet implemented in postgres-import-worker (Phase 9 Task 11)')
+    throw new Error(
+      'Multi-file mode not yet implemented in postgres-import-worker (Phase 9 Task 11)'
+    )
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     if (beganTransaction && !committed) {
@@ -200,7 +207,7 @@ export async function runImport(
         )
       }
     }
-    if (message === CANCELLATION_MESSAGE) {
+    if (message === POSTGRES_IMPORT_CANCELLATION_MESSAGE) {
       post({
         type: 'complete',
         mode: start.mode,
@@ -208,7 +215,7 @@ export async function runImport(
           caseId: 0,
           variantCount: 0,
           skipped: 0,
-          errors: [CANCELLATION_MESSAGE],
+          errors: [POSTGRES_IMPORT_CANCELLATION_MESSAGE],
           elapsed: 0
         }
       })

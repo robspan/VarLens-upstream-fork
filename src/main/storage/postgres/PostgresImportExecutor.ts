@@ -35,9 +35,9 @@ const VCF_REJECTION_MESSAGE = 'PostgreSQL import currently supports JSON files o
 const CANCELLATION_MESSAGE = 'Import cancelled by user'
 
 /**
- * Sentinel thrown inside the repository writeVariants callback so the repo's
- * BEGIN/COMMIT wrapper triggers ROLLBACK. The executor catches this sentinel
- * and maps it to the standard cancellation result shape.
+ * Sentinel thrown inside the writeVariants callback during cooperative
+ * cancellation. The executor's outer catch block issues ROLLBACK and maps
+ * this sentinel to the standard cancellation result shape.
  */
 class PostgresImportCancelled extends Error {
   constructor() {

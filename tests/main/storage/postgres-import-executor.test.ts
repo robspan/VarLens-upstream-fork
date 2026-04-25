@@ -147,7 +147,7 @@ describe('PostgresImportExecutor', () => {
     expect(commitIndex).toBeGreaterThan(freqIndex) // freq before COMMIT
   })
 
-  it('on cancellation: ROLLBACK precedes release(Error)', async () => {
+  it('pre-flight cancel returns cancellation result without acquiring a client', async () => {
     const { repository } = createFakeRepository()
     const client = makeFakeClient()
     const pool = makeFakePool(client)
@@ -170,12 +170,7 @@ describe('PostgresImportExecutor', () => {
     })
 
     expect(result.errors).toContain('Import cancelled by user')
-    // A pre-flight cancel bypasses pool.connect — so only check if connect was called
-    // If connect was never called, ROLLBACK is irrelevant.
-    if (pool.connect.mock.calls.length > 0) {
-      expect(client.queries).toContain('ROLLBACK')
-      expect(client.release).toHaveBeenCalledWith(expect.any(Error))
-    }
+    expect(pool.connect).not.toHaveBeenCalled()
   })
 
   it('on write error: ROLLBACK issued, client released with Error, error re-thrown', async () => {
@@ -426,6 +421,8 @@ describe('PostgresImportExecutor', () => {
     expect(result.errors).toContain('Import cancelled by user')
     expect(committed).toBe(false)
     expect(client.queries).toContain('ROLLBACK')
+    expect(client.release).toHaveBeenCalledTimes(1)
+    expect(client.release.mock.calls[0]?.[0]).toBeInstanceOf(Error)
   })
 
   it('progress callback receives parsing and inserting phases', async () => {

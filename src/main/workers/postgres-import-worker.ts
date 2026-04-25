@@ -1,7 +1,9 @@
 import { parentPort } from 'node:worker_threads'
 import { basename } from 'node:path'
-import { statSync } from 'node:fs'
+import { statSync, createReadStream } from 'node:fs'
 import type { Readable } from 'node:stream'
+import { createGunzip } from 'node:zlib'
+import { createInterface } from 'node:readline'
 import { Client, type ClientConfig, type Pool, type PoolClient } from 'pg'
 
 import {
@@ -16,26 +18,105 @@ import {
   rebuildVariantFrequencyForCase,
   type PostgresJsonImportSession
 } from '../storage/postgres/PostgresJsonImportRepository'
+import {
+  PostgresVcfImportRepository,
+  type PostgresVcfImportRequest
+} from '../storage/postgres/PostgresVcfImportRepository'
+import { quoteIdentifier } from '../storage/postgres/identifiers'
 import { detectFormat as defaultDetectFormat } from '../import/format-detection'
 import type { FormatInfo } from '../import/strategies/ImportStrategy'
 import { createMapperPipeline as defaultCreateMapperPipeline } from './import-pipeline'
+import { parseVcfHeaderFromLines } from '../import/vcf/vcf-header-parser'
+import { parseVcfLine } from '../import/vcf/vcf-line-parser'
+import { mapVcfRecord } from '../import/vcf/VcfMapper'
+import { detectCaller } from '../import/vcf/caller-detector'
+import { DEFAULT_INFO_FIELD_MAPPINGS } from '../import/vcf/info-field-registry'
+import { isGzipped } from '../import/stream-utils'
+import type { VcfHeader, VcfMappedVariant } from '../import/vcf/types'
 
 const POSTGRES_JSON_IMPORT_BATCH_SIZE = 1000
 
 let cancelled = false
+
+/**
+ * Async generator yielding mapped VCF variants one at a time.
+ * Mirrors the streamInsertVcf parsing pipeline (header lines, parseVcfLine,
+ * mapVcfRecord) but emits mapped variants instead of inserting them.
+ */
+async function* streamMappedVcfRows(
+  filePath: string,
+  selectedSample: string
+): AsyncGenerator<VcfMappedVariant, void, void> {
+  const raw = createReadStream(filePath)
+  const stream = isGzipped(filePath) ? raw.pipe(createGunzip()) : raw
+  const rl = createInterface({ input: stream, crlfDelay: Infinity })
+
+  const headerLines: string[] = []
+  let header: VcfHeader | null = null
+  let activeSample = ''
+  let callerName: string | null = null
+
+  try {
+    for await (const line of rl) {
+      if (line.startsWith('#')) {
+        headerLines.push(line)
+        continue
+      }
+
+      if (header === null) {
+        header = parseVcfHeaderFromLines(headerLines)
+        activeSample = selectedSample !== '' ? selectedSample : (header.samples[0] ?? '')
+        if (activeSample === '') {
+          // No selectable sample — drain quietly.
+          break
+        }
+        const callerInfo = detectCaller(headerLines)
+        callerName = callerInfo.name !== 'unknown' ? callerInfo.name : null
+      }
+
+      try {
+        const record = parseVcfLine(line, header.samples)
+        if (record === null) continue
+        const mapped = mapVcfRecord(
+          record,
+          header,
+          activeSample,
+          DEFAULT_INFO_FIELD_MAPPINGS,
+          callerName
+        )
+        for (const variant of mapped) yield variant
+      } catch (e) {
+        // Skip unparseable lines — same behavior as streamInsertVcf
+        console.warn(
+          '[postgres-import-worker] Skipping unparseable VCF line:',
+          e instanceof Error ? e.message : String(e)
+        )
+      }
+    }
+  } finally {
+    raw.destroy()
+  }
+}
 
 export interface RunImportDeps {
   createClient: (config: ClientConfig) => Client
   detectFormat: (filePath: string) => Promise<FormatInfo>
   createMapperPipeline: (filePath: string, formatInfo: FormatInfo) => Promise<Readable>
   statFile: (filePath: string) => { size: number }
+  /** VCF mapped-row producer for the PG worker's VCF branch. */
+  createVcfMappedStream: (
+    filePath: string,
+    options: { selectedSample: string; genomeBuild: string }
+  ) => Promise<AsyncIterable<VcfMappedVariant>>
 }
 
 const defaultDeps: RunImportDeps = {
   createClient: (config) => new Client(config),
   detectFormat: defaultDetectFormat,
   createMapperPipeline: defaultCreateMapperPipeline,
-  statFile: (path: string) => ({ size: statSync(path).size })
+  statFile: (path: string) => ({ size: statSync(path).size }),
+  createVcfMappedStream: async (filePath, options) =>
+    streamMappedVcfRows(filePath, options.selectedSample)
 }
 
 function clientConfigFromMessage(message: PostgresClientConfig): ClientConfig {
@@ -86,10 +167,138 @@ export async function runImport(
       const formatInfo = await deps.detectFormat(filePath)
 
       if (formatInfo.format === 'vcf') {
-        // Implemented in Task 10.
-        throw new Error(
-          'VCF import not yet implemented in postgres-import-worker (Phase 9 Task 10)'
-        )
+        const selectedSample = start.vcfOptions?.selectedSample
+        if (selectedSample === undefined || selectedSample === '') {
+          throw new Error('VCF import requires vcfOptions.selectedSample')
+        }
+        const genomeBuild = start.vcfOptions?.genomeBuild ?? 'GRCh38'
+        const vcfFileName = basename(filePath)
+        let vcfFileSize = 0
+        try {
+          vcfFileSize = deps.statFile(filePath).size
+        } catch {
+          // ignore — used only for provenance
+        }
+
+        const repo = new PostgresVcfImportRepository(start.schema)
+        const stream = await deps.createVcfMappedStream(filePath, { selectedSample, genomeBuild })
+
+        let variants: Array<Record<string, unknown>> = []
+        let transcripts: Array<Record<string, unknown> & { ordinal: number }> = []
+        let sv: Array<Record<string, unknown> & { ordinal: number }> = []
+        let cnv: Array<Record<string, unknown> & { ordinal: number }> = []
+        let str: Array<Record<string, unknown> & { ordinal: number }> = []
+        let ordinal = 0
+        let totalInserted = 0
+        let caseId = 0
+        let firstWritten = false
+
+        const flush = async (): Promise<void> => {
+          if (variants.length === 0) return
+          const request: PostgresVcfImportRequest = firstWritten
+            ? {
+                mode: 'multi-file',
+                fileIndex: 1,
+                caseName: start.caseName,
+                fileName: vcfFileName,
+                filePath,
+                fileSize: vcfFileSize,
+                genomeBuild,
+                caller: null,
+                annotationFormat: null,
+                variantType: 'snv-indel',
+                variants,
+                transcripts,
+                sv,
+                cnv,
+                str
+              }
+            : {
+                mode: 'single-file',
+                caseName: start.caseName,
+                fileName: vcfFileName,
+                filePath,
+                fileSize: vcfFileSize,
+                genomeBuild,
+                caller: null,
+                annotationFormat: null,
+                variantType: 'snv-indel',
+                variants,
+                transcripts,
+                sv,
+                cnv,
+                str
+              }
+          const result = await repo.writeVcfFile(
+            client as unknown as Pick<PoolClient, 'query'>,
+            request
+          )
+          if (!firstWritten) caseId = result.caseId
+          totalInserted += result.variantCount
+          firstWritten = true
+          post({ type: 'progress', phase: 'inserting', rowsProcessed: totalInserted, filePath })
+          variants = []
+          transcripts = []
+          sv = []
+          cnv = []
+          str = []
+          ordinal = 0
+        }
+
+        for await (const row of stream) {
+          if (cancelled) {
+            throw new Error(POSTGRES_IMPORT_CANCELLATION_MESSAGE)
+          }
+          const { _transcripts, _sv, _cnv, _str, ...base } = row
+          variants.push(base as unknown as Record<string, unknown>)
+          if (Array.isArray(_transcripts)) {
+            for (const t of _transcripts as unknown as Array<Record<string, unknown>>) {
+              transcripts.push({ ordinal, ...t })
+            }
+          }
+          if (_sv !== undefined && _sv !== null) {
+            sv.push({ ordinal, ...(_sv as unknown as Record<string, unknown>) })
+          }
+          if (_cnv !== undefined && _cnv !== null) {
+            cnv.push({ ordinal, ...(_cnv as unknown as Record<string, unknown>) })
+          }
+          if (_str !== undefined && _str !== null) {
+            str.push({ ordinal, ...(_str as unknown as Record<string, unknown>) })
+          }
+          ordinal += 1
+
+          if (variants.length >= batchSize) {
+            await flush()
+          }
+        }
+        await flush()
+
+        if (caseId !== 0) {
+          await client.query(
+            `UPDATE ${quoteIdentifier(start.schema)}."cases" SET variant_count = $1 WHERE id = $2`,
+            [totalInserted, caseId]
+          )
+          await rebuildVariantFrequencyForCase(
+            client as unknown as Pick<PoolClient, 'query'>,
+            start.schema,
+            caseId
+          )
+        }
+        await client.query('COMMIT')
+        committed = true
+
+        post({
+          type: 'complete',
+          mode: 'single-file',
+          result: {
+            caseId,
+            variantCount: totalInserted,
+            skipped: 0,
+            errors: [],
+            elapsed: Date.now() - startedAt
+          }
+        })
+        return
       }
 
       const fileName = basename(filePath)

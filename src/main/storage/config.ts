@@ -168,7 +168,7 @@ export function buildPostgresConnectionLabel(redactedUrl: string, schema: string
   return `${parsed.hostname}:${port}/${databaseName} (${schema})`
 }
 
-function buildPostgresSslConfig(sslMode: PostgresSslMode): PoolConfig['ssl'] {
+function buildPostgresSslConfig(sslMode: PostgresSslMode): ClientConfig['ssl'] {
   if (sslMode === 'disable') {
     return undefined
   }

@@ -5,12 +5,17 @@
  * `scripts/postgres/init-db/12-phase7-variants.sql`:
  *
  *     digest(
- *       int4send(octet_length(convert_to(chr, 'UTF8'))) || convert_to(chr, 'UTF8') ||
+ *       int4send(octet_length(chr::bytea)) || chr::bytea ||
  *       int8send(pos) ||
- *       int4send(octet_length(convert_to(ref, 'UTF8'))) || convert_to(ref, 'UTF8') ||
- *       int4send(octet_length(convert_to(alt, 'UTF8'))) || convert_to(alt, 'UTF8'),
+ *       int4send(octet_length(ref::bytea)) || ref::bytea ||
+ *       int4send(octet_length(alt::bytea)) || alt::bytea,
  *       'sha256'
  *     )
+ *
+ * `col::bytea` returns the raw server-encoding bytes. VarLens always runs
+ * postgres with `server_encoding = UTF8`, so the cast is byte-identical to
+ * `convert_to(col, 'UTF8')` — and unlike `convert_to` it is IMMUTABLE,
+ * which PostgreSQL 18 requires inside a `GENERATED ALWAYS AS` expression.
  *
  * Both test fixtures and the live-postgres E2E use this helper to construct
  * expected `coord_hash` values. If postgres and JS ever drift, the unit test

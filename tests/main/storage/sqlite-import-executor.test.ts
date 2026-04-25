@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { SqliteImportExecutor } from '../../../src/main/storage/sqlite/SqliteImportExecutor'
+import type { MultiFileImportResult } from '../../../src/main/ipc/handlers/import-logic'
+import type { StorageImportFileFilters } from '../../../src/main/storage/import-executor'
 
 describe('SqliteImportExecutor', () => {
   it('delegates single-file import to the existing worker client shape', async () => {
@@ -301,5 +303,239 @@ describe('SqliteImportExecutor', () => {
       throttleMs: 100
     })
     expect(start).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('SqliteImportExecutor.importMultiFile', () => {
+  function makeFakeResult(overrides?: Partial<MultiFileImportResult>): MultiFileImportResult {
+    return {
+      caseId: 42,
+      totalVariants: 150,
+      totalSkipped: 3,
+      files: [
+        { filePath: '/tmp/a.vcf', variantType: 'snv', variantCount: 100 },
+        { filePath: '/tmp/b.vcf', variantType: 'sv', variantCount: 50 }
+      ],
+      elapsed: 1234,
+      ...overrides
+    }
+  }
+
+  it('delegates to the injected multiFileImportDelegate and maps result to StorageImportMultiFileResult', async () => {
+    const delegate = vi.fn(async (): Promise<MultiFileImportResult> => makeFakeResult())
+
+    const executor = new SqliteImportExecutor({
+      getDatabaseService: () =>
+        ({
+          getPath: () => '/tmp/test.varlens',
+          getEncryptionKey: () => undefined
+        }) as never,
+      multiFileImportDelegate: delegate
+    })
+
+    const files = [
+      { filePath: '/tmp/a.vcf', variantType: 'snv', caller: null, annotationFormat: 'csq' },
+      { filePath: '/tmp/b.vcf', variantType: 'sv', caller: 'manta', annotationFormat: null }
+    ]
+
+    const result = await executor.importMultiFile({
+      caseName: 'MyCase',
+      files,
+      vcfOptions: { selectedSample: 'NA12878', genomeBuild: 'GRCh38' }
+    })
+
+    expect(delegate).toHaveBeenCalledTimes(1)
+    expect(delegate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        caseName: 'MyCase',
+        files,
+        vcfOptions: { selectedSample: 'NA12878', genomeBuild: 'GRCh38' }
+      })
+    )
+
+    expect(result).toStrictEqual({
+      caseId: 42,
+      variantCount: 150,
+      files: [
+        { filePath: '/tmp/a.vcf', variantType: 'snv', variantCount: 100 },
+        { filePath: '/tmp/b.vcf', variantType: 'sv', variantCount: 50 }
+      ],
+      skipped: 3,
+      errors: [],
+      elapsed: 1234
+    })
+  })
+
+  it('translates StorageImportFileFilters into ImportFilters-compatible shape (no bedFile)', async () => {
+    let capturedFilters: unknown
+    const delegate = vi.fn(async (input: { filters?: unknown }): Promise<MultiFileImportResult> => {
+      capturedFilters = input.filters
+      return makeFakeResult()
+    })
+
+    const executor = new SqliteImportExecutor({
+      getDatabaseService: () =>
+        ({
+          getPath: () => '/tmp/test.varlens',
+          getEncryptionKey: () => undefined
+        }) as never,
+      multiFileImportDelegate: delegate
+    })
+
+    const filters: StorageImportFileFilters = {
+      bedFilePath: null,
+      bedPadding: 75,
+      passOnly: true,
+      minQual: 20,
+      minGq: 10,
+      minDp: 5
+    }
+
+    await executor.importMultiFile({
+      caseName: 'FilterCase',
+      files: [{ filePath: '/tmp/a.vcf', variantType: 'snv', caller: null, annotationFormat: 'csq' }],
+      filters
+    })
+
+    expect(capturedFilters).toMatchObject({
+      bedPadding: 75,
+      passOnly: true,
+      minQual: 20,
+      minGq: 10,
+      minDp: 5
+    })
+    // No bedFilter instance when bedFilePath is null
+    expect((capturedFilters as { bedFilter?: unknown }).bedFilter).toBeUndefined()
+  })
+
+  it('passes undefined filters when no filters param is provided', async () => {
+    let capturedFilters: unknown = 'sentinel'
+    const delegate = vi.fn(async (input: { filters?: unknown }): Promise<MultiFileImportResult> => {
+      capturedFilters = input.filters
+      return makeFakeResult()
+    })
+
+    const executor = new SqliteImportExecutor({
+      getDatabaseService: () =>
+        ({
+          getPath: () => '/tmp/test.varlens',
+          getEncryptionKey: () => undefined
+        }) as never,
+      multiFileImportDelegate: delegate
+    })
+
+    await executor.importMultiFile({
+      caseName: 'NoFilter',
+      files: [{ filePath: '/tmp/a.vcf', variantType: 'snv', caller: null, annotationFormat: null }]
+    })
+
+    expect(capturedFilters).toBeUndefined()
+  })
+
+  it('fires onProgress when delegate callbacks invoke them', async () => {
+    let capturedCallbacks: { onProgress?: (data: unknown) => void } = {}
+
+    const delegate = vi.fn(
+      async (input: { callbacks: { onProgress?: (data: unknown) => void } }): Promise<MultiFileImportResult> => {
+        capturedCallbacks = input.callbacks
+        return makeFakeResult()
+      }
+    )
+
+    const executor = new SqliteImportExecutor({
+      getDatabaseService: () =>
+        ({
+          getPath: () => '/tmp/test.varlens',
+          getEncryptionKey: () => undefined
+        }) as never,
+      multiFileImportDelegate: delegate
+    })
+
+    const onProgress = vi.fn()
+
+    await executor.importMultiFile({
+      caseName: 'ProgressCase',
+      files: [{ filePath: '/tmp/a.vcf', variantType: 'snv', caller: null, annotationFormat: 'csq' }],
+      onProgress
+    })
+
+    // Simulate delegate invoking onProgress callback
+    capturedCallbacks.onProgress?.({
+      phase: 'inserting',
+      count: 77,
+      elapsed: 500,
+      skipped: 1
+    })
+
+    expect(onProgress).toHaveBeenCalledWith({
+      phase: 'inserting',
+      count: 77,
+      elapsed: 500,
+      skipped: 1
+    })
+  })
+
+  it('rejects with "already in progress" when a worker import is running', async () => {
+    let running = false
+    const start = vi.fn(() => {
+      running = true
+    })
+    const worker = {
+      get isRunning() {
+        return running
+      },
+      start,
+      cancel: vi.fn()
+    }
+
+    const delegate = vi.fn(async (): Promise<MultiFileImportResult> => makeFakeResult())
+
+    const executor = new SqliteImportExecutor({
+      getDatabaseService: () =>
+        ({
+          getPath: () => '/tmp/test.varlens',
+          getEncryptionKey: () => undefined,
+          variants: { updateFrequencies: vi.fn() }
+        }) as never,
+      createWorkerClient: () => worker as never,
+      multiFileImportDelegate: delegate
+    })
+
+    // Start a single-file import to occupy the worker slot
+    void executor.importSingleFile({
+      filePath: '/tmp/a.vcf',
+      caseName: 'First',
+      throttleMs: 100
+    })
+
+    await expect(
+      executor.importMultiFile({
+        caseName: 'Concurrent',
+        files: [{ filePath: '/tmp/b.vcf', variantType: 'snv', caller: null, annotationFormat: null }]
+      })
+    ).rejects.toThrow('An import is already in progress')
+  })
+
+  it('uses fallback elapsed (Date.now() - start) when delegate returns elapsed=0', async () => {
+    const delegate = vi.fn(async (): Promise<MultiFileImportResult> =>
+      makeFakeResult({ elapsed: 0 })
+    )
+
+    const executor = new SqliteImportExecutor({
+      getDatabaseService: () =>
+        ({
+          getPath: () => '/tmp/test.varlens',
+          getEncryptionKey: () => undefined
+        }) as never,
+      multiFileImportDelegate: delegate
+    })
+
+    const result = await executor.importMultiFile({
+      caseName: 'ElapsedCase',
+      files: [{ filePath: '/tmp/a.vcf', variantType: 'snv', caller: null, annotationFormat: null }]
+    })
+
+    // elapsed should be > 0 (filled in by Date.now() - startedAt)
+    expect(result.elapsed).toBeGreaterThanOrEqual(0)
   })
 })

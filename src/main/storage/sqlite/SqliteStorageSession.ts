@@ -41,7 +41,8 @@ export class SqliteStorageSession implements StorageSession {
     this.readExecutor = new SqliteReadExecutor(this.databaseService, this.dbPool)
     this.writeExecutor = new SqliteWriteExecutor(this.databaseService)
     this.importExecutor = new SqliteImportExecutor({
-      getDatabaseService: () => this.databaseService
+      getDatabaseService: () => this.databaseService,
+      getSession: () => this
     })
 
     const dbPath = this.databaseService.getPath()

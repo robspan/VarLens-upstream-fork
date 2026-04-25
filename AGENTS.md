@@ -98,6 +98,18 @@ The **Makefile is the source of truth**. GitHub Actions workflows mirror it targ
 - **E2E**: Playwright's native Electron support (`_electron.launch`) against the built `out/main/index.js`. See `tests/e2e/helpers/electron-app.ts` for the shared launcher (isolated `userData`, perf-mode hooks, failure capture). `make build` first.
 - **Startup smoke**: `tests/e2e/startup-smoke.e2e.ts` asserts `app-ready`, `window-created`, `renderer-interactive` perf milestones. It is a first-class CI gate on Linux via `xvfb-run`. Treat failures as release blockers.
 - **Perf**: `tests/e2e/renderer-perf-phase1.e2e.ts` + `scripts/perf/compare-phase1.mjs` produce reproducible frozen-fixture comparisons under `.planning/artifacts/perf/phase1/`. Any renderer-perf claim must come with a before/after comparison from this harness.
+- **WGS perf benchmarks**: Phase 9 introduced gated WGS import benchmarks for both backends. They are opt-in (`VARLENS_RUN_WGS_PERF=1`) and never run in CI.
+
+  ```bash
+  scripts/postgres/download-wgs-fixture.sh   # one-time; idempotent; writes to tests/.cache/wgs/ (gitignored)
+  make pg-reset && make pg-up
+  VARLENS_RUN_WGS_PERF=1 npx vitest run tests/perf/postgres-vcf-wgs-import.perf.test.ts
+  VARLENS_RUN_WGS_PERF=1 npx vitest run tests/perf/sqlite-vcf-wgs-import.perf.test.ts
+  node scripts/perf/compare-wgs-import.mjs
+  make pg-down
+  ```
+
+  Each run writes a per-backend baseline artifact and a comparison file under `.planning/artifacts/perf/wgs-import/` (also gitignored). `BUDGET_S` per backend is `1.5×` the baseline. If the postgres baseline exceeds the sqlite baseline by more than `2×`, open a follow-up phase to escalate postgres to `COPY FROM STDIN` via `pg-copy-streams`.
 - **Preload contract**: `tests/shared/types/preload-contract.test.ts` locks the IPC surface to `IpcResult<T>` return types. If you touch IPC, this test is your first-line guardrail.
 - **Coverage**: `COVERAGE=1 vitest run --coverage`. **Do not lower thresholds to make a failing suite pass** — add tests or fix the code.
 

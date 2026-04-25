@@ -398,9 +398,241 @@ export async function runImport(
       return
     }
 
-    // Multi-file branch implemented in Task 11.
+    // -------------------------------------------------------------------------
+    // Multi-file branch
+    // -------------------------------------------------------------------------
+    if (start.mode === 'multi-file') {
+      if (!start.files || start.files.length === 0) {
+        throw new Error('postgres-import-worker: multi-file mode requires non-empty files[]')
+      }
+      // Multi-file uses its own per-file transaction lifecycle. Roll back the
+      // outer BEGIN we already started so each file gets a clean transaction.
+      await client.query('ROLLBACK')
+      beganTransaction = false
+
+      const fileResults: Array<{
+        filePath: string
+        variantType: string
+        variantCount: number
+        error?: string
+      }> = []
+      let caseId = 0
+      let totalVariantCount = 0
+      const repo = new PostgresVcfImportRepository(start.schema)
+      const selectedSample = start.vcfOptions?.selectedSample ?? ''
+      const genomeBuild = start.vcfOptions?.genomeBuild ?? 'GRCh38'
+
+      for (let i = 0; i < start.files.length; i += 1) {
+        if (cancelled) break
+        const fileSpec = start.files[i]
+        let fileVariantCount = 0
+        try {
+          await client.query('BEGIN')
+          beganTransaction = true
+          const fileName = basename(fileSpec.filePath)
+          let fileSize = 0
+          try {
+            fileSize = deps.statFile(fileSpec.filePath).size
+          } catch {
+            // ignore — used only for provenance
+          }
+
+          const stream = await deps.createVcfMappedStream(fileSpec.filePath, {
+            selectedSample,
+            genomeBuild
+          })
+
+          let variants: Array<Record<string, unknown>> = []
+          let transcripts: Array<Record<string, unknown> & { ordinal: number }> = []
+          let sv: Array<Record<string, unknown> & { ordinal: number }> = []
+          let cnv: Array<Record<string, unknown> & { ordinal: number }> = []
+          let str: Array<Record<string, unknown> & { ordinal: number }> = []
+          let ordinal = 0
+          let firstBatch = true
+
+          const flushBatch = async (): Promise<void> => {
+            if (variants.length === 0) return
+            // Only the first batch of the first file uses fileIndex: 0 (case-create).
+            // Every other batch uses fileIndex: 1 (case-lookup).
+            const isFirstFileFirstBatch = i === 0 && firstBatch
+            const request: PostgresVcfImportRequest = isFirstFileFirstBatch
+              ? {
+                  mode: 'multi-file',
+                  fileIndex: 0,
+                  caseName: start.caseName,
+                  fileName,
+                  filePath: fileSpec.filePath,
+                  fileSize,
+                  genomeBuild,
+                  caller: fileSpec.caller ?? null,
+                  annotationFormat: fileSpec.annotationFormat ?? null,
+                  variantType: fileSpec.variantType,
+                  variants,
+                  transcripts,
+                  sv,
+                  cnv,
+                  str
+                }
+              : {
+                  mode: 'multi-file',
+                  fileIndex: 1,
+                  caseName: start.caseName,
+                  fileName,
+                  filePath: fileSpec.filePath,
+                  fileSize,
+                  genomeBuild,
+                  caller: fileSpec.caller ?? null,
+                  annotationFormat: fileSpec.annotationFormat ?? null,
+                  variantType: fileSpec.variantType,
+                  variants,
+                  transcripts,
+                  sv,
+                  cnv,
+                  str
+                }
+            const result = await repo.writeVcfFile(
+              client as unknown as Pick<PoolClient, 'query'>,
+              request
+            )
+            if (caseId === 0) caseId = result.caseId
+            fileVariantCount += result.variantCount
+            firstBatch = false
+            post({
+              type: 'progress',
+              phase: 'inserting',
+              rowsProcessed: totalVariantCount + fileVariantCount,
+              filePath: fileSpec.filePath
+            })
+            variants = []
+            transcripts = []
+            sv = []
+            cnv = []
+            str = []
+            ordinal = 0
+          }
+
+          for await (const row of stream) {
+            if (cancelled) break
+            const { _transcripts, _sv, _cnv, _str, ...base } = row
+            variants.push(base as unknown as Record<string, unknown>)
+            if (Array.isArray(_transcripts)) {
+              for (const t of _transcripts as unknown as Array<Record<string, unknown>>) {
+                transcripts.push({ ordinal, ...t })
+              }
+            }
+            if (_sv !== undefined && _sv !== null) {
+              sv.push({ ordinal, ...(_sv as unknown as Record<string, unknown>) })
+            }
+            if (_cnv !== undefined && _cnv !== null) {
+              cnv.push({ ordinal, ...(_cnv as unknown as Record<string, unknown>) })
+            }
+            if (_str !== undefined && _str !== null) {
+              str.push({ ordinal, ...(_str as unknown as Record<string, unknown>) })
+            }
+            ordinal += 1
+            if (variants.length >= batchSize) await flushBatch()
+          }
+
+          if (cancelled) {
+            // Flush whatever was buffered before cancellation was detected
+            // then commit and break — partial state is left committed.
+            await flushBatch()
+            await client.query('COMMIT')
+            beganTransaction = false
+            committed = true
+            totalVariantCount += fileVariantCount
+            fileResults.push({
+              filePath: fileSpec.filePath,
+              variantType: fileSpec.variantType,
+              variantCount: fileVariantCount
+            })
+            post({
+              type: 'file-complete',
+              filePath: fileSpec.filePath,
+              caseId,
+              variantCount: fileVariantCount
+            })
+            break
+          }
+
+          await flushBatch()
+          await client.query('COMMIT')
+          beganTransaction = false
+          committed = true
+          totalVariantCount += fileVariantCount
+          fileResults.push({
+            filePath: fileSpec.filePath,
+            variantType: fileSpec.variantType,
+            variantCount: fileVariantCount
+          })
+          post({
+            type: 'file-complete',
+            filePath: fileSpec.filePath,
+            caseId,
+            variantCount: fileVariantCount
+          })
+        } catch (err) {
+          beganTransaction = false
+          try {
+            await client.query('ROLLBACK')
+          } catch {
+            // swallow rollback error
+          }
+          const message = err instanceof Error ? err.message : String(err)
+          fileResults.push({
+            filePath: fileSpec.filePath,
+            variantType: fileSpec.variantType,
+            variantCount: 0,
+            error: message
+          })
+        }
+      }
+
+      // Post-loop bookkeeping — only if at least one file committed.
+      if (caseId !== 0) {
+        await client.query('BEGIN')
+        beganTransaction = true
+        try {
+          await client.query(
+            `UPDATE ${quoteIdentifier(start.schema)}."cases" SET variant_count = $1 WHERE id = $2`,
+            [totalVariantCount, caseId]
+          )
+          await rebuildVariantFrequencyForCase(
+            client as unknown as Pick<PoolClient, 'query'>,
+            start.schema,
+            caseId
+          )
+          await client.query('COMMIT')
+          beganTransaction = false
+          committed = true
+        } catch (err) {
+          beganTransaction = false
+          try {
+            await client.query('ROLLBACK')
+          } catch {
+            // swallow
+          }
+          throw err
+        }
+      }
+
+      post({
+        type: 'complete',
+        mode: 'multi-file',
+        result: {
+          caseId,
+          variantCount: totalVariantCount,
+          files: fileResults,
+          skipped: 0,
+          errors: cancelled ? [POSTGRES_IMPORT_CANCELLATION_MESSAGE] : [],
+          elapsed: Date.now() - startedAt
+        }
+      })
+      return
+    }
+
     throw new Error(
-      'Multi-file mode not yet implemented in postgres-import-worker (Phase 9 Task 11)'
+      `postgres-import-worker: unknown mode: ${String((start as { mode: string }).mode)}`
     )
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

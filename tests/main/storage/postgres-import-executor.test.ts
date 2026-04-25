@@ -311,17 +311,61 @@ describe('PostgresImportExecutor (worker-dispatch)', () => {
     expect(result.errors).toContain('Import cancelled by user')
   })
 
-  it('importMultiFile throws not-yet-implemented', async () => {
-    const fakeClient = new FakeWorkerClient()
-    const executor = makeExecutor(fakeClient)
-
-    await expect(
-      executor.importMultiFile({
-        caseName: 'M',
-        files: [],
-        throttleMs: 0
-      })
-    ).rejects.toThrow('not yet implemented (Phase 9 Task 11)')
+  it('importMultiFile builds multi-file start message and resolves with worker result', async () => {
+    const fake = new FakeWorkerClient()
+    // Override its start to simulate a multi-file complete
+    fake.start = vi.fn(
+      (_msg: PostgresImportWorkerStartMessage, callbacks: PostgresImportWorkerCallbacks) => {
+        queueMicrotask(() => {
+          callbacks.onFileComplete({
+            type: 'file-complete',
+            filePath: '/abs/a.vcf',
+            caseId: 11,
+            variantCount: 5
+          })
+          callbacks.onComplete({
+            type: 'complete',
+            mode: 'multi-file',
+            result: {
+              caseId: 11,
+              variantCount: 8,
+              files: [
+                { filePath: '/abs/a.vcf', variantType: 'snv-indel', variantCount: 5 },
+                { filePath: '/abs/b.vcf', variantType: 'snv-indel', variantCount: 3 }
+              ],
+              skipped: 0,
+              errors: [],
+              elapsed: 10
+            }
+          })
+        })
+      }
+    )
+    const onFileComplete = vi.fn()
+    const executor = new PostgresImportExecutor({
+      schema: 'public',
+      clientConfig: { connectionString: 'postgres://x' },
+      workerClientFactory: () => fake as never
+    })
+    const result = await executor.importMultiFile({
+      caseName: 'M',
+      files: [
+        { filePath: '/abs/a.vcf', variantType: 'snv-indel', annotationFormat: null, caller: null },
+        { filePath: '/abs/b.vcf', variantType: 'snv-indel', annotationFormat: null, caller: null }
+      ],
+      onFileComplete
+    })
+    expect(fake.start).toHaveBeenCalledTimes(1)
+    const sentMessage = fake.start.mock.calls[0][0] as PostgresImportWorkerStartMessage
+    expect(sentMessage.mode).toBe('multi-file')
+    expect(sentMessage.files).toHaveLength(2)
+    expect(onFileComplete).toHaveBeenCalledWith({
+      filePath: '/abs/a.vcf',
+      caseId: 11,
+      variantCount: 5
+    })
+    expect(result.caseId).toBe(11)
+    expect(result.files).toHaveLength(2)
   })
 
   it('cancel() called before importSingleFile is a no-op (no worker exists yet)', async () => {

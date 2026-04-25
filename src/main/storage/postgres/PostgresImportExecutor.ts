@@ -74,18 +74,61 @@ export class PostgresImportExecutor implements StorageImportExecutor {
   }
 
   async importMultiFile(
-    _params: StorageImportMultiFileParams
+    params: StorageImportMultiFileParams
   ): Promise<StorageImportMultiFileResult> {
-    throw new Error('PostgresImportExecutor.importMultiFile not yet implemented (Phase 9 Task 11)')
+    if (this.inProgress) throw new Error('An import is already in progress')
+    this.inProgress = true
+    const startedAt = Date.now()
+    try {
+      const start: PostgresImportWorkerStartMessage = {
+        type: 'start',
+        client: this.options.clientConfig,
+        schema: this.options.schema,
+        mode: 'multi-file',
+        caseName: params.caseName,
+        files: params.files,
+        vcfOptions: params.vcfOptions,
+        throttleMs: params.throttleMs,
+        filters: params.filters
+          ? {
+              bedFilePath: params.filters.bedFilePath ?? null,
+              bedPadding: params.filters.bedPadding,
+              passOnly: params.filters.passOnly,
+              minQual: params.filters.minQual,
+              minGq: params.filters.minGq,
+              minDp: params.filters.minDp
+            }
+          : undefined
+      }
+      const result = await this.runWorker(
+        start,
+        params.onProgress,
+        startedAt,
+        params.onFileComplete
+      )
+      return {
+        caseId: result.caseId,
+        variantCount: result.variantCount,
+        files: result.files ?? [],
+        skipped: result.skipped,
+        errors: result.errors,
+        elapsed: result.elapsed
+      }
+    } finally {
+      this.inProgress = false
+      this.currentClient = null
+    }
   }
 
   private runWorker(
     start: PostgresImportWorkerStartMessage,
     onProgress: StorageImportSingleFileParams['onProgress'],
-    startedAt: number
+    startedAt: number,
+    onFileComplete?: StorageImportMultiFileParams['onFileComplete']
   ): Promise<{
     caseId: number
     variantCount: number
+    files?: Array<{ filePath: string; variantType: string; variantCount: number; error?: string }>
     skipped: number
     errors: string[]
     elapsed: number
@@ -103,8 +146,12 @@ export class PostgresImportExecutor implements StorageImportExecutor {
             skipped: 0
           })
         },
-        onFileComplete: () => {
-          // Single-file ignores per-file completions; multi-file (Task 11) will use this.
+        onFileComplete: (msg) => {
+          onFileComplete?.({
+            filePath: msg.filePath,
+            caseId: msg.caseId,
+            variantCount: msg.variantCount
+          })
         },
         onComplete: (msg) => {
           // Use the worker-provided elapsed when available; otherwise fall back to wall clock.
@@ -112,6 +159,7 @@ export class PostgresImportExecutor implements StorageImportExecutor {
           resolvePromise({
             caseId: msg.result.caseId,
             variantCount: msg.result.variantCount,
+            files: msg.result.files,
             skipped: msg.result.skipped,
             errors: msg.result.errors,
             elapsed

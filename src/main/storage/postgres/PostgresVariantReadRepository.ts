@@ -228,7 +228,7 @@ export class PostgresVariantReadRepository {
     this.addColumnFilters(filter, addParam, addWhere)
 
     const joins = [
-      `LEFT JOIN ${this.schemaName}."variant_frequency" vf ON vf.chr = v.chr AND vf.pos = v.pos AND vf.ref = v.ref AND vf.alt = v.alt`
+      `LEFT JOIN ${this.schemaName}."variant_frequency" vf ON vf.coord_hash = v.coord_hash`
     ]
     const projections = [`v.*`, `${internalAfExpression} AS internal_af`]
 

@@ -12,7 +12,7 @@ import type {
 
 export interface PostgresImportWorkerCallbacks {
   onProgress: (message: PostgresImportWorkerProgressMessage) => void
-  onFileComplete: (message: Omit<PostgresImportWorkerFileCompleteMessage, 'type'>) => void
+  onFileComplete: (message: PostgresImportWorkerFileCompleteMessage) => void
   onComplete: (message: PostgresImportWorkerCompleteMessage) => void
   onError: (message: PostgresImportWorkerErrorMessage) => void
 }
@@ -46,11 +46,9 @@ export class PostgresImportWorkerClient {
         case 'progress':
           callbacks.onProgress(msg)
           break
-        case 'file-complete': {
-          const { type: _type, ...fileCompletePayload } = msg
-          callbacks.onFileComplete(fileCompletePayload)
+        case 'file-complete':
+          callbacks.onFileComplete(msg)
           break
-        }
         case 'complete':
           callbacks.onComplete(msg)
           break
@@ -63,14 +61,16 @@ export class PostgresImportWorkerClient {
     this.worker.on('error', (err: Error) => {
       mainLogger.error(`Postgres import worker error: ${err.message}`, 'PostgresImportWorkerClient')
       callbacks.onError({ type: 'error', message: err.message })
+      this.worker = null
     })
 
     this.worker.on('exit', (code: number) => {
-      if (code !== 0) {
+      if (code !== 0 && this.worker !== null) {
         const message = `Postgres import worker exited with code ${code}`
         mainLogger.error(message, 'PostgresImportWorkerClient')
         callbacks.onError({ type: 'error', message })
       }
+      this.worker = null
     })
 
     this.worker.postMessage(message)
@@ -86,7 +86,7 @@ export class PostgresImportWorkerClient {
     try {
       await this.worker.terminate()
     } catch (e) {
-      mainLogger.error(
+      mainLogger.warn(
         `Postgres import worker termination failed: ${e instanceof Error ? e.message : String(e)}`,
         'PostgresImportWorkerClient'
       )

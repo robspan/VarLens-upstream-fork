@@ -102,6 +102,18 @@ test('postgres dev mode imports a 9.7 KB allele and stores its coord_hash', asyn
       const expected = hashCoord('chr6', 31311231, 'A', bigAlt)
       expect(row.coord_hash.equals(expected)).toBe(true)
 
+      // Also verify the normal SNV row's coord_hash to catch regressions on
+      // the short-allele path. Without this, a regression that only handles
+      // long alleles correctly would still pass `variantCount === 2`.
+      const snv = await client.query<{ coord_hash: Buffer }>(
+        `SELECT coord_hash
+         FROM ${pgSchema}.variants
+         WHERE case_id = $1 AND pos = 31000000`,
+        [caseId]
+      )
+      expect(snv.rows).toHaveLength(1)
+      expect(snv.rows[0].coord_hash.equals(hashCoord('chr6', 31000000, 'G', 'A'))).toBe(true)
+
       // variant_frequency rebuild has run; the row should be there with case_count = 1.
       const freq = await client.query<{ case_count: string; coord_hash: Buffer }>(
         `SELECT case_count, coord_hash
@@ -110,7 +122,11 @@ test('postgres dev mode imports a 9.7 KB allele and stores its coord_hash', asyn
         [expected]
       )
       expect(freq.rows).toHaveLength(1)
-      expect(Number(freq.rows[0].case_count)).toBe(1)
+      // The frequency row's case_count counts how many distinct cases hold this
+      // coord_hash. Re-running the test without pg-reset accumulates additional
+      // cases, so we assert the lower bound (≥ 1) — the freshly-imported case
+      // is guaranteed to be counted.
+      expect(Number(freq.rows[0].case_count)).toBeGreaterThanOrEqual(1)
     } finally {
       await client.end()
     }

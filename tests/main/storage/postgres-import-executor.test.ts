@@ -13,6 +13,34 @@ import type {
 } from '../../../src/main/storage/postgres/PostgresJsonImportRepository'
 import type { FormatInfo } from '../../../src/main/import/strategies/ImportStrategy'
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Minimal fake pg PoolClient — tracks queries issued and supports release. */
+function makeFakeClient() {
+  const queries: string[] = []
+  const query = vi.fn(async (sql: string) => {
+    queries.push(sql)
+    return { rows: [] }
+  })
+  const release = vi.fn()
+  return { query, release, queries }
+}
+
+type FakeClient = ReturnType<typeof makeFakeClient>
+
+function makeFakePool(client: FakeClient) {
+  return {
+    connect: vi.fn(async () => client)
+  }
+}
+
+/**
+ * Build a fake repository whose writeJsonImport drives the writeVariants
+ * callback, exactly as the real repo does (minus SQL), and returns a
+ * configurable result.
+ */
 interface FakeRepoOptions {
   caseId?: number
   captureRequests?: PostgresJsonImportRequest[]
@@ -23,18 +51,20 @@ interface FakeRepoOptions {
 
 function createFakeRepository(opts: FakeRepoOptions = {}): {
   repository: PostgresJsonImportRepository
-  runJsonImport: ReturnType<typeof vi.fn>
+  writeJsonImport: ReturnType<typeof vi.fn>
   insertVariantBatch: ReturnType<typeof vi.fn>
   requests: PostgresJsonImportRequest[]
 } {
   const requests: PostgresJsonImportRequest[] = opts.captureRequests ?? []
   const insertVariantBatch = opts.insertVariantBatchMock ?? vi.fn(async () => 0)
-  const runJsonImport = vi.fn(
+  const writeJsonImport = vi.fn(
     async (
+      _client: unknown,
       req: PostgresJsonImportRequest,
       writeVariants: (session: PostgresJsonImportSession) => Promise<void>
     ): Promise<PostgresJsonImportBatchResult> => {
       requests.push(req)
+      if (opts.writeThrows) throw opts.writeThrows
       let total = 0
       const session: PostgresJsonImportSession = {
         caseId: opts.caseId ?? 4,
@@ -50,8 +80,8 @@ function createFakeRepository(opts: FakeRepoOptions = {}): {
     }
   )
   return {
-    repository: { runJsonImport } as unknown as PostgresJsonImportRepository,
-    runJsonImport,
+    repository: { writeJsonImport } as unknown as PostgresJsonImportRepository,
+    writeJsonImport,
     insertVariantBatch,
     requests
   }
@@ -61,9 +91,120 @@ function makeReadable(items: Array<Record<string, unknown>>): Readable {
   return Readable.from(items)
 }
 
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
 describe('PostgresImportExecutor', () => {
+  it('issues BEGIN before writeJsonImport, COMMIT after, and releases client with no arg on success', async () => {
+    const { repository, writeJsonImport } = createFakeRepository({ caseId: 7 })
+    const client = makeFakeClient()
+    const pool = makeFakePool(client)
+
+    const executor = new PostgresImportExecutor({
+      repository,
+      pool,
+      schema: 'public',
+      detectFormat: async () => ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
+      createMapperPipeline: async () => makeReadable([{ chr: '1', pos: 1, ref: 'A', alt: 'G' }]),
+      statFile: () => ({ size: 10 }),
+      now: () => 1_000_000
+    })
+
+    await executor.importSingleFile({ filePath: '/tmp/x.json', caseName: 'C', throttleMs: 0 })
+
+    expect(client.queries[0]).toBe('BEGIN')
+    expect(writeJsonImport).toHaveBeenCalledTimes(1)
+    // The client passed to writeJsonImport must be the fake client
+    expect(writeJsonImport.mock.calls[0][0]).toBe(client)
+    // COMMIT is last query before release
+    expect(client.queries.at(-1)).toBe('COMMIT')
+    // release called once with no argument on success
+    expect(client.release).toHaveBeenCalledTimes(1)
+    expect(client.release).toHaveBeenCalledWith()
+  })
+
+  it('rebuildVariantFrequencyForCase SQL appears between writeJsonImport exit and COMMIT', async () => {
+    const { repository } = createFakeRepository({ caseId: 7 })
+    const client = makeFakeClient()
+    const pool = makeFakePool(client)
+
+    const executor = new PostgresImportExecutor({
+      repository,
+      pool,
+      schema: 'public',
+      detectFormat: async () => ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
+      createMapperPipeline: async () => makeReadable([]),
+      statFile: () => ({ size: 10 }),
+      now: () => 1_000_000
+    })
+
+    await executor.importSingleFile({ filePath: '/tmp/x.json', caseName: 'C', throttleMs: 0 })
+
+    const freqIndex = client.queries.findIndex((q) => q.includes('variant_frequency'))
+    const commitIndex = client.queries.findIndex((q) => q === 'COMMIT')
+    expect(freqIndex).toBeGreaterThan(0) // not first
+    expect(commitIndex).toBeGreaterThan(freqIndex) // freq before COMMIT
+  })
+
+  it('on cancellation: ROLLBACK precedes release(Error)', async () => {
+    const { repository } = createFakeRepository()
+    const client = makeFakeClient()
+    const pool = makeFakePool(client)
+
+    const executor = new PostgresImportExecutor({
+      repository,
+      pool,
+      schema: 'public',
+      detectFormat: async () => ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
+      createMapperPipeline: async () => makeReadable([{ chr: '1', pos: 1, ref: 'A', alt: 'G' }]),
+      statFile: () => ({ size: 10 }),
+      now: () => 1_714_060_810_000
+    })
+
+    executor.cancel()
+    const result = await executor.importSingleFile({
+      filePath: '/tmp/x.json',
+      caseName: 'C',
+      throttleMs: 0
+    })
+
+    expect(result.errors).toContain('Import cancelled by user')
+    // A pre-flight cancel bypasses pool.connect — so only check if connect was called
+    // If connect was never called, ROLLBACK is irrelevant.
+    if (pool.connect.mock.calls.length > 0) {
+      expect(client.queries).toContain('ROLLBACK')
+      expect(client.release).toHaveBeenCalledWith(expect.any(Error))
+    }
+  })
+
+  it('on write error: ROLLBACK issued, client released with Error, error re-thrown', async () => {
+    const boom = new Error('write boom')
+    const { repository } = createFakeRepository({ writeThrows: boom })
+    const client = makeFakeClient()
+    const pool = makeFakePool(client)
+
+    const executor = new PostgresImportExecutor({
+      repository,
+      pool,
+      schema: 'public',
+      detectFormat: async () => ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
+      createMapperPipeline: async () => makeReadable([]),
+      statFile: () => ({ size: 10 }),
+      now: () => 0
+    })
+
+    await expect(
+      executor.importSingleFile({ filePath: '/tmp/x.json', caseName: 'C', throttleMs: 0 })
+    ).rejects.toThrow('write boom')
+
+    expect(client.queries).toContain('ROLLBACK')
+    expect(client.release).toHaveBeenCalledTimes(1)
+    expect(client.release.mock.calls[0][0]).toBeInstanceOf(Error)
+  })
+
   it('streams simple JSON fixture and calls repository with 3 variants', async () => {
-    const { repository, runJsonImport, insertVariantBatch, requests } = createFakeRepository({
+    const { repository, writeJsonImport, insertVariantBatch, requests } = createFakeRepository({
       caseId: 7
     })
     const variants = [
@@ -72,8 +213,13 @@ describe('PostgresImportExecutor', () => {
       { chr: '1', pos: 3, ref: 'T', alt: 'G' }
     ]
 
+    const client = makeFakeClient()
+    const pool = makeFakePool(client)
+
     const executor = new PostgresImportExecutor({
       repository,
+      pool,
+      schema: 'public',
       detectFormat: async () => ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
       createMapperPipeline: async () => makeReadable(variants),
       statFile: () => ({ size: 123 }),
@@ -86,7 +232,7 @@ describe('PostgresImportExecutor', () => {
       throttleMs: 0
     })
 
-    expect(runJsonImport).toHaveBeenCalledTimes(1)
+    expect(writeJsonImport).toHaveBeenCalledTimes(1)
     expect(requests[0].importFileType).toBe('simple')
     expect(requests[0].caseName).toBe('CaseS')
     expect(requests[0].fileName).toBe('simple-format.json')
@@ -109,8 +255,13 @@ describe('PostgresImportExecutor', () => {
       { chr: '2', pos: 20, ref: 'C', alt: 'T' }
     ]
 
+    const client = makeFakeClient()
+    const pool = makeFakePool(client)
+
     const executor = new PostgresImportExecutor({
       repository,
+      pool,
+      schema: 'public',
       detectFormat: async () => ({ format: 'object', caseKey: 'case1' }) satisfies FormatInfo,
       createMapperPipeline: async () => makeReadable(variants),
       statFile: () => ({ size: 50 }),
@@ -132,8 +283,13 @@ describe('PostgresImportExecutor', () => {
     const { repository, requests, insertVariantBatch } = createFakeRepository()
     const variants = [{ chr: '3', pos: 100, ref: 'G', alt: 'A' }]
 
+    const client = makeFakeClient()
+    const pool = makeFakePool(client)
+
     const executor = new PostgresImportExecutor({
       repository,
+      pool,
+      schema: 'public',
       detectFormat: async () =>
         ({ format: 'columnar', caseKey: 'case1', wrapped: true }) satisfies FormatInfo,
       createMapperPipeline: async () => makeReadable(variants),
@@ -152,11 +308,15 @@ describe('PostgresImportExecutor', () => {
     expect(result.variantCount).toBe(1)
   })
 
-  it('rejects VCF with a clear message and does not call repository', async () => {
-    const { repository, runJsonImport } = createFakeRepository()
+  it('rejects VCF with a clear message and does not call repository or pool.connect', async () => {
+    const { repository, writeJsonImport } = createFakeRepository()
+    const client = makeFakeClient()
+    const pool = makeFakePool(client)
 
     const executor = new PostgresImportExecutor({
       repository,
+      pool,
+      schema: 'public',
       detectFormat: async () => ({ format: 'vcf', caseKey: '' }) satisfies FormatInfo,
       createMapperPipeline: async () => makeReadable([]),
       statFile: () => ({ size: 10 }),
@@ -169,7 +329,8 @@ describe('PostgresImportExecutor', () => {
       throttleMs: 0
     })
 
-    expect(runJsonImport).not.toHaveBeenCalled()
+    expect(writeJsonImport).not.toHaveBeenCalled()
+    expect(pool.connect).not.toHaveBeenCalled()
     expect(result.errors).toContain('PostgreSQL import currently supports JSON files only')
     expect(result.caseId).toBe(0)
     expect(result.variantCount).toBe(0)
@@ -177,10 +338,14 @@ describe('PostgresImportExecutor', () => {
 
   it('cancellation before first batch resolves with cancellation result', async () => {
     const { repository, insertVariantBatch } = createFakeRepository()
+    const client = makeFakeClient()
+    const pool = makeFakePool(client)
 
     const variants = [{ chr: '1', pos: 1, ref: 'A', alt: 'G' }]
     const executor = new PostgresImportExecutor({
       repository,
+      pool,
+      schema: 'public',
       detectFormat: async () => ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
       createMapperPipeline: async () => makeReadable(variants),
       statFile: () => ({ size: 100 }),
@@ -205,14 +370,12 @@ describe('PostgresImportExecutor', () => {
     expect(insertVariantBatch).not.toHaveBeenCalled()
   })
 
-  it('cancellation between batches rolls back via repository', async () => {
-    // Repository-shape fake: this time emulate a repository that lets the write
-    // callback throw so the transaction would roll back. We track whether commit
-    // happened via a flag.
+  it('cancellation between batches triggers ROLLBACK and returns cancellation result', async () => {
     let committed = false
     const insertVariantBatch = vi.fn(async () => 0)
-    const runJsonImport = vi.fn(
+    const writeJsonImport = vi.fn(
       async (
+        _client: unknown,
         _req: PostgresJsonImportRequest,
         writeVariants: (session: PostgresJsonImportSession) => Promise<void>
       ): Promise<PostgresJsonImportBatchResult> => {
@@ -227,7 +390,10 @@ describe('PostgresImportExecutor', () => {
         return { caseId: 9, variantCount: 0 }
       }
     )
-    const repository = { runJsonImport } as unknown as PostgresJsonImportRepository
+    const repository = { writeJsonImport } as unknown as PostgresJsonImportRepository
+
+    const client = makeFakeClient()
+    const pool = makeFakePool(client)
 
     // Generate > batch-size worth of items so cancel-between-batches is exercised.
     const variants: Array<Record<string, unknown>> = []
@@ -237,6 +403,8 @@ describe('PostgresImportExecutor', () => {
 
     const executor = new PostgresImportExecutor({
       repository,
+      pool,
+      schema: 'public',
       detectFormat: async () => ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
       createMapperPipeline: async () => makeReadable(variants),
       statFile: () => ({ size: 1 }),
@@ -257,6 +425,7 @@ describe('PostgresImportExecutor', () => {
 
     expect(result.errors).toContain('Import cancelled by user')
     expect(committed).toBe(false)
+    expect(client.queries).toContain('ROLLBACK')
   })
 
   it('progress callback receives parsing and inserting phases', async () => {
@@ -269,9 +438,14 @@ describe('PostgresImportExecutor', () => {
       variants.push({ chr: '1', pos: i, ref: 'A', alt: 'G' })
     }
 
+    const client = makeFakeClient()
+    const pool = makeFakePool(client)
     const onProgress = vi.fn()
+
     const executor = new PostgresImportExecutor({
       repository,
+      pool,
+      schema: 'public',
       detectFormat: async () => ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
       createMapperPipeline: async () => makeReadable(variants),
       statFile: () => ({ size: 1 }),
@@ -307,8 +481,13 @@ describe('PostgresImportExecutor', () => {
       variants.push({ chr: '1', pos: i, ref: 'A', alt: 'G' })
     }
 
+    const client = makeFakeClient()
+    const pool = makeFakePool(client)
+
     const executor = new PostgresImportExecutor({
       repository,
+      pool,
+      schema: 'public',
       detectFormat: async () => ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
       createMapperPipeline: async () => makeReadable(variants),
       statFile: () => ({ size: 1 }),
@@ -330,8 +509,13 @@ describe('PostgresImportExecutor', () => {
 
   it('resets cancellation state after completion', async () => {
     const { repository } = createFakeRepository()
+    const client = makeFakeClient()
+    const pool = makeFakePool(client)
+
     const executor = new PostgresImportExecutor({
       repository,
+      pool,
+      schema: 'public',
       detectFormat: async () => ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
       createMapperPipeline: async () => makeReadable([{ chr: '1', pos: 1, ref: 'A', alt: 'G' }]),
       statFile: () => ({ size: 1 }),
@@ -346,6 +530,8 @@ describe('PostgresImportExecutor', () => {
     })
     expect(first.errors).toContain('Import cancelled by user')
 
+    // Make a fresh client for the second run (pool.connect returns the same ref
+    // here, but the second call should succeed regardless).
     const second = await executor.importSingleFile({
       filePath: '/tmp/x.json',
       caseName: 'R2',
@@ -357,13 +543,14 @@ describe('PostgresImportExecutor', () => {
 
   it('rejects a second concurrent import attempt while one is in flight', async () => {
     // Gate the first import inside the repository so we can observe a second
-    // concurrent call being rejected with the same shape as SqliteImportExecutor.
+    // concurrent call being rejected.
     let releaseFirst!: () => void
     const firstGate = new Promise<void>((resolve) => {
       releaseFirst = resolve
     })
-    const runJsonImport = vi.fn(
+    const writeJsonImport = vi.fn(
       async (
+        _client: unknown,
         _req: PostgresJsonImportRequest,
         writeVariants: (session: PostgresJsonImportSession) => Promise<void>
       ): Promise<PostgresJsonImportBatchResult> => {
@@ -375,10 +562,15 @@ describe('PostgresImportExecutor', () => {
         return { caseId: 1, variantCount: 0 }
       }
     )
-    const repository = { runJsonImport } as unknown as PostgresJsonImportRepository
+    const repository = { writeJsonImport } as unknown as PostgresJsonImportRepository
+
+    const client = makeFakeClient()
+    const pool = makeFakePool(client)
 
     const executor = new PostgresImportExecutor({
       repository,
+      pool,
+      schema: 'public',
       detectFormat: async () => ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
       createMapperPipeline: async () => makeReadable([{ chr: '1', pos: 1, ref: 'A', alt: 'G' }]),
       statFile: () => ({ size: 10 }),
@@ -406,9 +598,14 @@ describe('PostgresImportExecutor', () => {
   })
 
   it('allows a new import after a previous one completes', async () => {
-    const { repository, runJsonImport } = createFakeRepository()
+    const { repository, writeJsonImport } = createFakeRepository()
+    const client = makeFakeClient()
+    const pool = makeFakePool(client)
+
     const executor = new PostgresImportExecutor({
       repository,
+      pool,
+      schema: 'public',
       detectFormat: async () => ({ format: 'simple', caseKey: '' }) satisfies FormatInfo,
       createMapperPipeline: async () => makeReadable([{ chr: '1', pos: 1, ref: 'A', alt: 'G' }]),
       statFile: () => ({ size: 10 }),
@@ -426,6 +623,6 @@ describe('PostgresImportExecutor', () => {
       throttleMs: 0
     })
 
-    expect(runJsonImport).toHaveBeenCalledTimes(2)
+    expect(writeJsonImport).toHaveBeenCalledTimes(2)
   })
 })

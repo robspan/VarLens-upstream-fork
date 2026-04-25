@@ -193,111 +193,75 @@ export class PostgresJsonImportRepository {
   private readonly schemaName: string
 
   constructor(
-    private readonly pool: Pick<Pool, 'connect'>,
+    _pool: Pick<Pool, 'connect'>,
     schema: string
   ) {
     this.schemaName = quoteIdentifier(schema)
   }
 
-  async runJsonImport(
+  async writeJsonImport(
+    client: Pick<PoolClient, 'query'>,
     request: PostgresJsonImportRequest,
     writeVariants: (session: PostgresJsonImportSession) => Promise<void>
   ): Promise<PostgresJsonImportBatchResult> {
-    const client = (await this.pool.connect()) as PoolClient
-    let started = false
-    let commitSucceeded = false
-    try {
-      await client.query('BEGIN')
-      started = true
-
-      // Duplicate case-name check. Fail fast before any writes.
-      const dupResult = await client.query(
-        `SELECT id FROM ${this.schemaName}."cases" WHERE name = $1`,
-        [request.caseName]
-      )
-      if (dupResult.rows.length > 0) {
-        throw new Error(`Duplicate case name: ${request.caseName}`)
-      }
-
-      const createdAt = Date.now()
-      const caseInsert = await client.query(
-        `INSERT INTO ${this.schemaName}."cases"
-         (name, file_path, file_size, variant_count, created_at, genome_build)
-         VALUES ($1, $2, $3, 0, $4, $5)
-         RETURNING id`,
-        [request.caseName, request.filePath, request.fileSize, createdAt, request.genomeBuild]
-      )
-      const caseId = toNumericId((caseInsert.rows[0] as { id: unknown } | undefined)?.id)
-
-      let totalVariantCount = 0
-
-      const session: PostgresJsonImportSession = {
-        caseId,
-        insertVariantBatch: async (variants) => {
-          const inserted = await this.insertVariantBatch(client, caseId, variants)
-          totalVariantCount += inserted
-          return inserted
-        }
-      }
-
-      await writeVariants(session)
-
-      // case_data_info provenance.
-      // IMPORTANT: use only columns from scripts/postgres/init-db/11-phase6-case-metadata.sql.
-      // Do not add ad-hoc provenance columns here (e.g. import_date, imported_at).
-      await client.query(
-        `INSERT INTO ${this.schemaName}."case_data_info"
-           (case_id, import_file_name, import_file_type, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $4)
-         ON CONFLICT (case_id) DO UPDATE SET
-           import_file_name = EXCLUDED.import_file_name,
-           import_file_type = EXCLUDED.import_file_type,
-           updated_at = EXCLUDED.updated_at`,
-        [caseId, request.fileName, request.importFileType, createdAt]
-      )
-
-      await client.query(`UPDATE ${this.schemaName}."cases" SET variant_count = $1 WHERE id = $2`, [
-        totalVariantCount,
-        caseId
-      ])
-
-      // Refresh variant_frequency once, after all variant batches.
-      // GROUP BY de-duplicates coordinates repeated within this case so internal
-      // frequency increments at most once per case.
-      await client.query(
-        `INSERT INTO ${this.schemaName}."variant_frequency" (chr, pos, ref, alt, case_count)
-         SELECT chr, pos, ref, alt, 1
-         FROM ${this.schemaName}."variants"
-         WHERE case_id = $1
-         GROUP BY chr, pos, ref, alt
-         ON CONFLICT (chr, pos, ref, alt)
-         DO UPDATE SET case_count = ${this.schemaName}."variant_frequency".case_count + 1`,
-        [caseId]
-      )
-
-      await client.query('COMMIT')
-      commitSucceeded = true
-      // Success: release with no argument so pg keeps the client in the pool.
-      client.release()
-      return { caseId, variantCount: totalVariantCount }
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error))
-      if (started && !commitSucceeded) {
-        try {
-          await client.query('ROLLBACK')
-        } catch {
-          // swallow rollback errors so the original error reaches the caller
-        }
-      }
-      // Release with the error object so pg discards a dirty connection
-      // rather than returning it to the pool.
-      client.release(err)
-      throw err
+    // Duplicate-name check (single-file mode). Multi-file callers in Phase 9
+    // perform pre-existing-case rejection at file 1; subsequent files look up
+    // the case and append, so they bypass this check.
+    const dupResult = await client.query(
+      `SELECT id FROM ${this.schemaName}."cases" WHERE name = $1`,
+      [request.caseName]
+    )
+    if (dupResult.rows.length > 0) {
+      throw new Error(`Duplicate case name: ${request.caseName}`)
     }
+
+    const createdAt = Date.now()
+    const caseInsert = await client.query(
+      `INSERT INTO ${this.schemaName}."cases"
+       (name, file_path, file_size, variant_count, created_at, genome_build)
+       VALUES ($1, $2, $3, 0, $4, $5)
+       RETURNING id`,
+      [request.caseName, request.filePath, request.fileSize, createdAt, request.genomeBuild]
+    )
+    const caseId = toNumericId((caseInsert.rows[0] as { id: unknown } | undefined)?.id)
+
+    let totalVariantCount = 0
+
+    const session: PostgresJsonImportSession = {
+      caseId,
+      insertVariantBatch: async (variants) => {
+        const inserted = await this.insertVariantBatch(client, caseId, variants)
+        totalVariantCount += inserted
+        return inserted
+      }
+    }
+
+    await writeVariants(session)
+
+    // case_data_info provenance.
+    // IMPORTANT: use only columns from scripts/postgres/init-db/11-phase6-case-metadata.sql.
+    // Do not add ad-hoc provenance columns here (e.g. import_date, imported_at).
+    await client.query(
+      `INSERT INTO ${this.schemaName}."case_data_info"
+         (case_id, import_file_name, import_file_type, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $4)
+       ON CONFLICT (case_id) DO UPDATE SET
+         import_file_name = EXCLUDED.import_file_name,
+         import_file_type = EXCLUDED.import_file_type,
+         updated_at = EXCLUDED.updated_at`,
+      [caseId, request.fileName, request.importFileType, createdAt]
+    )
+
+    await client.query(
+      `UPDATE ${this.schemaName}."cases" SET variant_count = $1 WHERE id = $2`,
+      [totalVariantCount, caseId]
+    )
+
+    return { caseId, variantCount: totalVariantCount }
   }
 
   private async insertVariantBatch(
-    client: PoolClient,
+    client: Pick<PoolClient, 'query'>,
     caseId: number,
     variants: Array<Record<string, unknown>>
   ): Promise<number> {
@@ -454,7 +418,7 @@ export class PostgresJsonImportRepository {
   }
 
   private async insertBaseOnlyBatch(
-    client: PoolClient,
+    client: Pick<PoolClient, 'query'>,
     caseId: number,
     rows: Array<Record<string, unknown>>
   ): Promise<void> {
@@ -488,7 +452,7 @@ export class PostgresJsonImportRepository {
   }
 
   private async insertBaseRowSingle(
-    client: PoolClient,
+    client: Pick<PoolClient, 'query'>,
     caseId: number,
     row: Record<string, unknown>
   ): Promise<number> {
@@ -515,7 +479,7 @@ export class PostgresJsonImportRepository {
   }
 
   private async insertExtensionBatch(
-    client: PoolClient,
+    client: Pick<PoolClient, 'query'>,
     table: string,
     columns: readonly string[],
     recordsetTypes: Record<string, string>,
@@ -533,4 +497,22 @@ export class PostgresJsonImportRepository {
 
     await client.query(sql, [JSON.stringify(rows)])
   }
+}
+
+export async function rebuildVariantFrequencyForCase(
+  client: Pick<PoolClient, 'query'>,
+  schema: string,
+  caseId: number
+): Promise<void> {
+  const schemaName = quoteIdentifier(schema)
+  await client.query(
+    `INSERT INTO ${schemaName}."variant_frequency" (chr, pos, ref, alt, case_count)
+     SELECT chr, pos, ref, alt, 1
+     FROM ${schemaName}."variants"
+     WHERE case_id = $1
+     GROUP BY chr, pos, ref, alt
+     ON CONFLICT (chr, pos, ref, alt)
+     DO UPDATE SET case_count = ${schemaName}."variant_frequency".case_count + 1`,
+    [caseId]
+  )
 }

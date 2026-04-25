@@ -11,6 +11,8 @@ import { basename } from 'node:path'
 import { statSync } from 'node:fs'
 import type { Readable } from 'node:stream'
 
+import type { Pool, PoolClient } from 'pg'
+
 import { detectFormat as defaultDetectFormat } from '../../import/format-detection'
 import type { FormatInfo } from '../../import/strategies/ImportStrategy'
 import { createMapperPipeline as defaultCreateMapperPipeline } from '../../workers/import-pipeline'
@@ -20,10 +22,11 @@ import type {
   StorageImportSingleFileParams,
   StorageImportSingleFileResult
 } from '../import-executor'
-import type {
-  PostgresJsonImportFileType,
-  PostgresJsonImportRepository,
-  PostgresJsonImportSession
+import {
+  rebuildVariantFrequencyForCase,
+  type PostgresJsonImportFileType,
+  type PostgresJsonImportRepository,
+  type PostgresJsonImportSession
 } from './PostgresJsonImportRepository'
 
 export const POSTGRES_JSON_IMPORT_BATCH_SIZE = 1000
@@ -45,6 +48,8 @@ class PostgresImportCancelled extends Error {
 
 export interface PostgresImportExecutorOptions {
   repository: PostgresJsonImportRepository
+  pool: Pick<Pool, 'connect'>
+  schema: string
   detectFormat?: (filePath: string) => Promise<FormatInfo>
   createMapperPipeline?: (filePath: string, formatInfo: FormatInfo) => Promise<Readable>
   statFile?: (filePath: string) => { size: number }
@@ -66,6 +71,8 @@ function mapFormatToImportFileType(format: FormatInfo['format']): PostgresJsonIm
 
 export class PostgresImportExecutor implements StorageImportExecutor {
   private readonly repository: PostgresJsonImportRepository
+  private readonly pool: Pick<Pool, 'connect'>
+  private readonly schema: string
   private readonly detectFormat: (filePath: string) => Promise<FormatInfo>
   private readonly createMapperPipeline: (
     filePath: string,
@@ -78,6 +85,8 @@ export class PostgresImportExecutor implements StorageImportExecutor {
 
   constructor(options: PostgresImportExecutorOptions) {
     this.repository = options.repository
+    this.pool = options.pool
+    this.schema = options.schema
     this.detectFormat = options.detectFormat ?? defaultDetectFormat
     this.createMapperPipeline = options.createMapperPipeline ?? defaultCreateMapperPipeline
     this.statFile = options.statFile ?? ((path: string) => ({ size: statSync(path).size }))
@@ -137,8 +146,15 @@ export class PostgresImportExecutor implements StorageImportExecutor {
 
       let totalInserted = 0
 
+      const client = (await this.pool.connect()) as PoolClient
+      let transactionBegan = false
+      let commitSucceeded = false
       try {
-        const { caseId, variantCount } = await this.repository.runJsonImport(
+        await client.query('BEGIN')
+        transactionBegan = true
+
+        const { caseId, variantCount } = await this.repository.writeJsonImport(
+          client,
           {
             filePath: params.filePath,
             fileName,
@@ -196,6 +212,12 @@ export class PostgresImportExecutor implements StorageImportExecutor {
           }
         )
 
+        await rebuildVariantFrequencyForCase(client, this.schema, caseId)
+        await client.query('COMMIT')
+        commitSucceeded = true
+        // Success: release with no argument so pg keeps the client in the pool.
+        client.release()
+
         return {
           caseId,
           variantCount,
@@ -204,6 +226,16 @@ export class PostgresImportExecutor implements StorageImportExecutor {
           elapsed: this.now() - started
         }
       } catch (err) {
+        if (transactionBegan && !commitSucceeded) {
+          try {
+            await client.query('ROLLBACK')
+          } catch {
+            // swallow rollback failure so the original error reaches the caller
+          }
+        }
+        // Release with the error object so pg discards a dirty connection
+        // rather than returning it to the pool.
+        client.release(err instanceof Error ? err : new Error(String(err)))
         if (err instanceof PostgresImportCancelled) {
           return this.cancellationResult()
         }

@@ -69,7 +69,9 @@ export class PostgresStorageSession implements StorageSession {
     })
     this.writeExecutor = new PostgresWriteExecutor(caseMetadata)
     this.importExecutor = new PostgresImportExecutor({
-      repository: new PostgresJsonImportRepository(options.pool, options.config.schema)
+      repository: new PostgresJsonImportRepository(options.pool, options.config.schema),
+      pool: options.pool,
+      schema: options.config.schema
     })
     this.createCaseListRepository =
       options.createCaseListRepository ??

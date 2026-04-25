@@ -63,10 +63,7 @@ export class PostgresJsonImportRepository {
   // which constructs the repository with a stubbed pool and passes its own Client
   // through writeJsonImport(client, ...). The repository itself never opens a
   // connection; the executor (or worker) owns the transaction lifecycle.
-  constructor(
-    _pool: Pick<Pool, 'connect'>,
-    schema: string
-  ) {
+  constructor(_pool: Pick<Pool, 'connect'>, schema: string) {
     this.schemaName = quoteIdentifier(schema)
   }
 
@@ -123,10 +120,10 @@ export class PostgresJsonImportRepository {
       [caseId, request.fileName, request.importFileType, createdAt]
     )
 
-    await client.query(
-      `UPDATE ${this.schemaName}."cases" SET variant_count = $1 WHERE id = $2`,
-      [totalVariantCount, caseId]
-    )
+    await client.query(`UPDATE ${this.schemaName}."cases" SET variant_count = $1 WHERE id = $2`, [
+      totalVariantCount,
+      caseId
+    ])
 
     return { caseId, variantCount: totalVariantCount }
   }

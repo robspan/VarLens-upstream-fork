@@ -12,7 +12,11 @@ const makeFakeClient = () => {
       queries.push({ text, params })
       if (text.startsWith('SELECT id FROM') && text.includes('"cases"')) return { rows: [] }
       if (text.startsWith('INSERT INTO') && text.includes('"cases"')) return { rows: [{ id: 31 }] }
-      if (text.startsWith('INSERT INTO') && text.includes('"variants"') && text.includes('jsonb_to_recordset')) {
+      if (
+        text.startsWith('INSERT INTO') &&
+        text.includes('"variants"') &&
+        text.includes('jsonb_to_recordset')
+      ) {
         // The batch insert is `INSERT ... SELECT ... FROM jsonb_to_recordset($1::jsonb)`.
         // Tests construct a small payload and assert the SQL shape; ordinal-aware
         // RETURNING is exercised by checking the response shape.
@@ -81,7 +85,8 @@ describe('PostgresVcfImportRepository.writeVcfFile', () => {
     const { client, queries } = makeFakeClient()
     client.query.mockImplementation(async (sql: unknown) => {
       const text = typeof sql === 'string' ? sql : (sql as { text: string }).text
-      if (text.startsWith('SELECT id FROM') && text.includes('"cases"')) return { rows: [{ id: 7 }] }
+      if (text.startsWith('SELECT id FROM') && text.includes('"cases"'))
+        return { rows: [{ id: 7 }] }
       return { rows: [] }
     })
     const repo = new PostgresVcfImportRepository('public')
@@ -103,7 +108,9 @@ describe('PostgresVcfImportRepository.writeVcfFile', () => {
       str: []
     })
     // No INSERT INTO cases for fileIndex >= 1
-    expect(queries.find((q) => q.text.startsWith('INSERT INTO') && q.text.includes('"cases"'))).toBeUndefined()
+    expect(
+      queries.find((q) => q.text.startsWith('INSERT INTO') && q.text.includes('"cases"'))
+    ).toBeUndefined()
   })
 
   it('batches base variants and extension rows with jsonb_to_recordset', async () => {
@@ -130,9 +137,13 @@ describe('PostgresVcfImportRepository.writeVcfFile', () => {
       cnv: [],
       str: []
     })
-    const variantsInsert = queries.find((q) => q.text.includes('"variants"') && q.text.includes('jsonb_to_recordset'))
+    const variantsInsert = queries.find(
+      (q) => q.text.includes('"variants"') && q.text.includes('jsonb_to_recordset')
+    )
     expect(variantsInsert).toBeDefined()
-    const transcriptsInsert = queries.find((q) => q.text.includes('"variant_transcripts"') && q.text.includes('jsonb_to_recordset'))
+    const transcriptsInsert = queries.find(
+      (q) => q.text.includes('"variant_transcripts"') && q.text.includes('jsonb_to_recordset')
+    )
     expect(transcriptsInsert).toBeDefined()
   })
 
@@ -223,7 +234,11 @@ describe('PostgresVcfImportRepository.writeVcfFile', () => {
       queries.push({ text, params })
       if (text.startsWith('SELECT id FROM') && text.includes('"cases"')) return { rows: [] }
       if (text.startsWith('INSERT INTO') && text.includes('"cases"')) return { rows: [{ id: 13 }] }
-      if (text.startsWith('INSERT INTO') && text.includes('"variants"') && text.includes('jsonb_to_recordset')) {
+      if (
+        text.startsWith('INSERT INTO') &&
+        text.includes('"variants"') &&
+        text.includes('jsonb_to_recordset')
+      ) {
         return { rows: [{ id: 5000 }, { id: 5001 }] }
       }
       return { rows: [] }
@@ -247,11 +262,15 @@ describe('PostgresVcfImportRepository.writeVcfFile', () => {
         { ordinal: 0, transcript_id: 'ENST1' },
         { ordinal: 1, transcript_id: 'ENST2' }
       ],
-      sv: [], cnv: [], str: []
+      sv: [],
+      cnv: [],
+      str: []
     })
     const transcriptInsert = queries.find((q) => q.text.includes('"variant_transcripts"'))
     expect(transcriptInsert).toBeDefined()
-    const payload = JSON.parse(String(transcriptInsert!.params![0])) as Array<Record<string, unknown>>
+    const payload = JSON.parse(String(transcriptInsert!.params![0])) as Array<
+      Record<string, unknown>
+    >
     expect(payload).toHaveLength(2)
     expect(payload[0].variant_id).toBe(5000)
     expect(payload[1].variant_id).toBe(5001)

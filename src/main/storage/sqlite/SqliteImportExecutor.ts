@@ -20,10 +20,7 @@ import { mainLogger } from '../../services/MainLogger'
 import { BedFilter } from '../../import/vcf/bed-filter'
 import type { DatabaseService } from '../../database/DatabaseService'
 import type { ImportFilters } from '../../import/vcf/import-filters'
-import type {
-  MultiFileImportResult,
-  ImportCallbacks
-} from '../../ipc/handlers/import-logic'
+import type { MultiFileImportResult, ImportCallbacks } from '../../ipc/handlers/import-logic'
 import type { StorageSession } from '../session'
 import type {
   StorageImportExecutor,
@@ -80,8 +77,7 @@ export class SqliteImportExecutor implements StorageImportExecutor {
     this.getDatabaseService = options.getDatabaseService
     this.createWorkerClient = options.createWorkerClient ?? (() => new ImportWorkerClient())
     this.getSession = options.getSession
-    this.multiFileImportDelegate =
-      options.multiFileImportDelegate ?? this.buildDefaultDelegate()
+    this.multiFileImportDelegate = options.multiFileImportDelegate ?? this.buildDefaultDelegate()
   }
 
   /**

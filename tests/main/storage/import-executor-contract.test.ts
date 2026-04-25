@@ -63,8 +63,18 @@ describe('StorageImportExecutor.importMultiFile contract', () => {
     const params: StorageImportMultiFileParams = {
       caseName: 'Multi-file case',
       files: [
-        { filePath: '/abs/a.vcf.gz', variantType: 'snv-indel', annotationFormat: null, caller: null },
-        { filePath: '/abs/b.vcf.gz', variantType: 'snv-indel', annotationFormat: null, caller: null }
+        {
+          filePath: '/abs/a.vcf.gz',
+          variantType: 'snv-indel',
+          annotationFormat: null,
+          caller: null
+        },
+        {
+          filePath: '/abs/b.vcf.gz',
+          variantType: 'snv-indel',
+          annotationFormat: null,
+          caller: null
+        }
       ],
       vcfOptions: { selectedSample: 'NA12878', genomeBuild: 'GRCh38' },
       filters,
@@ -73,17 +83,19 @@ describe('StorageImportExecutor.importMultiFile contract', () => {
 
     const executor: StorageImportExecutor = {
       importSingleFile: vi.fn(),
-      importMultiFile: vi.fn(async (): Promise<StorageImportMultiFileResult> => ({
-        caseId: 7,
-        variantCount: 1234,
-        files: [
-          { filePath: '/abs/a.vcf.gz', variantType: 'snv-indel', variantCount: 800 },
-          { filePath: '/abs/b.vcf.gz', variantType: 'snv-indel', variantCount: 434 }
-        ],
-        skipped: 0,
-        errors: [],
-        elapsed: 250
-      })),
+      importMultiFile: vi.fn(
+        async (): Promise<StorageImportMultiFileResult> => ({
+          caseId: 7,
+          variantCount: 1234,
+          files: [
+            { filePath: '/abs/a.vcf.gz', variantType: 'snv-indel', variantCount: 800 },
+            { filePath: '/abs/b.vcf.gz', variantType: 'snv-indel', variantCount: 434 }
+          ],
+          skipped: 0,
+          errors: [],
+          elapsed: 250
+        })
+      ),
       cancel: vi.fn()
     }
 

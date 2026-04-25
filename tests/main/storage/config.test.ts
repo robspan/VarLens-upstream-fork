@@ -202,7 +202,9 @@ describe('buildPostgresClientConfig', () => {
     expect(client.statement_timeout).toBe(pool.statement_timeout)
     expect(client.query_timeout).toBe(pool.query_timeout)
     expect(client.lock_timeout).toBe(pool.lock_timeout)
-    expect(client.idle_in_transaction_session_timeout).toBe(pool.idle_in_transaction_session_timeout)
+    expect(client.idle_in_transaction_session_timeout).toBe(
+      pool.idle_in_transaction_session_timeout
+    )
     expect(client.keepAlive).toBe(pool.keepAlive)
     expect(client.ssl).toEqual(pool.ssl)
   })

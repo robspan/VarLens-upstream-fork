@@ -52,7 +52,9 @@ describe('postgres-import-worker runImport', () => {
     expect(queries.some((q) => q.includes('"variant_frequency"'))).toBe(true)
     expect(queries.at(-1)).toBe('COMMIT')
 
-    const complete = messages.find((m): m is { type: 'complete' } => (m as { type: string }).type === 'complete')
+    const complete = messages.find(
+      (m): m is { type: 'complete' } => (m as { type: string }).type === 'complete'
+    )
     expect(complete).toBeDefined()
   })
 })

@@ -393,7 +393,9 @@ describe('SqliteImportExecutor.importMultiFile', () => {
 
     await executor.importMultiFile({
       caseName: 'FilterCase',
-      files: [{ filePath: '/tmp/a.vcf', variantType: 'snv', caller: null, annotationFormat: 'csq' }],
+      files: [
+        { filePath: '/tmp/a.vcf', variantType: 'snv', caller: null, annotationFormat: 'csq' }
+      ],
       filters
     })
 
@@ -436,7 +438,9 @@ describe('SqliteImportExecutor.importMultiFile', () => {
     let capturedCallbacks: { onProgress?: (data: unknown) => void } = {}
 
     const delegate = vi.fn(
-      async (input: { callbacks: { onProgress?: (data: unknown) => void } }): Promise<MultiFileImportResult> => {
+      async (input: {
+        callbacks: { onProgress?: (data: unknown) => void }
+      }): Promise<MultiFileImportResult> => {
         capturedCallbacks = input.callbacks
         return makeFakeResult()
       }
@@ -455,7 +459,9 @@ describe('SqliteImportExecutor.importMultiFile', () => {
 
     await executor.importMultiFile({
       caseName: 'ProgressCase',
-      files: [{ filePath: '/tmp/a.vcf', variantType: 'snv', caller: null, annotationFormat: 'csq' }],
+      files: [
+        { filePath: '/tmp/a.vcf', variantType: 'snv', caller: null, annotationFormat: 'csq' }
+      ],
       onProgress
     })
 
@@ -511,14 +517,16 @@ describe('SqliteImportExecutor.importMultiFile', () => {
     await expect(
       executor.importMultiFile({
         caseName: 'Concurrent',
-        files: [{ filePath: '/tmp/b.vcf', variantType: 'snv', caller: null, annotationFormat: null }]
+        files: [
+          { filePath: '/tmp/b.vcf', variantType: 'snv', caller: null, annotationFormat: null }
+        ]
       })
     ).rejects.toThrow('An import is already in progress')
   })
 
   it('uses fallback elapsed (Date.now() - start) when delegate returns elapsed=0', async () => {
-    const delegate = vi.fn(async (): Promise<MultiFileImportResult> =>
-      makeFakeResult({ elapsed: 0 })
+    const delegate = vi.fn(
+      async (): Promise<MultiFileImportResult> => makeFakeResult({ elapsed: 0 })
     )
 
     const executor = new SqliteImportExecutor({

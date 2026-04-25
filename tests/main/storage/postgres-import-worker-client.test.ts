@@ -46,7 +46,12 @@ describe('PostgresImportWorkerClient', () => {
 
     expect(fake.postMessage).toHaveBeenCalledWith(startMessage)
     expect(onProgress).toHaveBeenCalled()
-    expect(onFileComplete).toHaveBeenCalledWith({ type: 'file-complete', filePath: '/tmp/a.json', caseId: 7, variantCount: 100 })
+    expect(onFileComplete).toHaveBeenCalledWith({
+      type: 'file-complete',
+      filePath: '/tmp/a.json',
+      caseId: 7,
+      variantCount: 100
+    })
     expect(onComplete).toHaveBeenCalled()
     expect(onError).not.toHaveBeenCalled()
   })
@@ -85,7 +90,9 @@ describe('PostgresImportWorkerClient', () => {
       { onProgress: vi.fn(), onFileComplete: vi.fn(), onComplete: vi.fn(), onError }
     )
     fake.emit('exit', 1)
-    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('exit') }))
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('exit') })
+    )
   })
 
   it('cancel before start is a no-op (does not throw)', () => {

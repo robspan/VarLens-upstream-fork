@@ -106,8 +106,7 @@ export class PostgresVcfImportRepository {
     request: PostgresVcfImportRequest
   ): Promise<PostgresVcfImportFileResult> {
     const isFirstFile =
-      request.mode === 'single-file' ||
-      (request.mode === 'multi-file' && request.fileIndex === 0)
+      request.mode === 'single-file' || (request.mode === 'multi-file' && request.fileIndex === 0)
 
     let caseId: number
 
@@ -118,9 +117,7 @@ export class PostgresVcfImportRepository {
         [request.caseName]
       )
       if ((dupResult.rows as unknown[]).length > 0) {
-        throw new Error(
-          `case '${request.caseName}' already exists — cannot create a duplicate`
-        )
+        throw new Error(`case '${request.caseName}' already exists — cannot create a duplicate`)
       }
 
       const createdAt = Date.now()
@@ -256,10 +253,7 @@ export class PostgresVcfImportRepository {
     }
 
     if (svRows.length > 0) {
-      const payload = resolveExtension(
-        svRows,
-        VARIANT_SV_COLUMNS as unknown as readonly string[]
-      )
+      const payload = resolveExtension(svRows, VARIANT_SV_COLUMNS as unknown as readonly string[])
       await this.insertExtensionBatch(
         client,
         'variant_sv',
@@ -270,10 +264,7 @@ export class PostgresVcfImportRepository {
     }
 
     if (cnvRows.length > 0) {
-      const payload = resolveExtension(
-        cnvRows,
-        VARIANT_CNV_COLUMNS as unknown as readonly string[]
-      )
+      const payload = resolveExtension(cnvRows, VARIANT_CNV_COLUMNS as unknown as readonly string[])
       await this.insertExtensionBatch(
         client,
         'variant_cnv',
@@ -284,10 +275,7 @@ export class PostgresVcfImportRepository {
     }
 
     if (strRows.length > 0) {
-      const payload = resolveExtension(
-        strRows,
-        VARIANT_STR_COLUMNS as unknown as readonly string[]
-      )
+      const payload = resolveExtension(strRows, VARIANT_STR_COLUMNS as unknown as readonly string[])
       await this.insertExtensionBatch(
         client,
         'variant_str',

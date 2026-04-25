@@ -32,10 +32,7 @@ export class PostgresImportWorkerClient {
     this.workerFactory = options.workerFactory
   }
 
-  start(
-    message: PostgresImportWorkerStartMessage,
-    callbacks: PostgresImportWorkerCallbacks
-  ): void {
+  start(message: PostgresImportWorkerStartMessage, callbacks: PostgresImportWorkerCallbacks): void {
     if (this.worker) {
       throw new Error('PostgresImportWorkerClient already started')
     }

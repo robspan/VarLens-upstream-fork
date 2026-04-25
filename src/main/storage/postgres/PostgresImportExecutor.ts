@@ -20,7 +20,9 @@ import { mainLogger } from '../../services/MainLogger'
 import type {
   StorageImportExecutor,
   StorageImportSingleFileParams,
-  StorageImportSingleFileResult
+  StorageImportSingleFileResult,
+  StorageImportMultiFileParams,
+  StorageImportMultiFileResult
 } from '../import-executor'
 import {
   rebuildVariantFrequencyForCase,
@@ -245,6 +247,10 @@ export class PostgresImportExecutor implements StorageImportExecutor {
       this.cancelled = false
       this.inProgress = false
     }
+  }
+
+  async importMultiFile(_params: StorageImportMultiFileParams): Promise<StorageImportMultiFileResult> {
+    throw new Error('PostgresImportExecutor.importMultiFile not yet implemented (Phase 9 Task 11)')
   }
 
   private cancellationResult(): StorageImportSingleFileResult {

@@ -14,7 +14,9 @@ import type { DatabaseService } from '../../database/DatabaseService'
 import type {
   StorageImportExecutor,
   StorageImportSingleFileParams,
-  StorageImportSingleFileResult
+  StorageImportSingleFileResult,
+  StorageImportMultiFileParams,
+  StorageImportMultiFileResult
 } from '../import-executor'
 
 export interface SqliteImportExecutorOptions {
@@ -136,6 +138,10 @@ export class SqliteImportExecutor implements StorageImportExecutor {
         reject(err instanceof Error ? err : new Error(String(err)))
       }
     })
+  }
+
+  async importMultiFile(_params: StorageImportMultiFileParams): Promise<StorageImportMultiFileResult> {
+    throw new Error('SqliteImportExecutor.importMultiFile not yet implemented (Phase 9 Task 8)')
   }
 
   cancel(): void {

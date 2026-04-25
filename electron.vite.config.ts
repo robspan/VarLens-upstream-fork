@@ -14,6 +14,7 @@ export default defineConfig({
           index: resolve(__dirname, 'src/main/index.ts'),
           'statistics-worker': resolve(__dirname, 'src/main/statistics/worker.ts'),
           'import-worker': resolve(__dirname, 'src/main/workers/import-worker.ts'),
+          'postgres-import-worker': resolve(__dirname, 'src/main/workers/postgres-import-worker.ts'),
           'delete-worker': resolve(__dirname, 'src/main/workers/delete-worker.ts'),
           'export-worker': resolve(__dirname, 'src/main/workers/export-worker.ts'),
           'rebuild-summary-worker': resolve(

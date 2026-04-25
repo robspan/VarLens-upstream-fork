@@ -1,0 +1,97 @@
+import { Worker } from 'node:worker_threads'
+import { resolve } from 'node:path'
+import { mainLogger } from '../../services/MainLogger'
+import type {
+  PostgresImportWorkerStartMessage,
+  PostgresImportWorkerOutboundMessage,
+  PostgresImportWorkerProgressMessage,
+  PostgresImportWorkerFileCompleteMessage,
+  PostgresImportWorkerCompleteMessage,
+  PostgresImportWorkerErrorMessage
+} from '../../../shared/types/postgres-import-worker'
+
+export interface PostgresImportWorkerCallbacks {
+  onProgress: (message: PostgresImportWorkerProgressMessage) => void
+  onFileComplete: (message: Omit<PostgresImportWorkerFileCompleteMessage, 'type'>) => void
+  onComplete: (message: PostgresImportWorkerCompleteMessage) => void
+  onError: (message: PostgresImportWorkerErrorMessage) => void
+}
+
+export interface PostgresImportWorkerClientOptions {
+  /** Override worker construction. Default loads the built worker bundle. */
+  workerFactory?: () => Worker
+}
+
+export class PostgresImportWorkerClient {
+  private worker: Worker | null = null
+  private readonly workerPath: string
+  private readonly workerFactory?: () => Worker
+
+  constructor(options: PostgresImportWorkerClientOptions = {}) {
+    this.workerPath = resolve(__dirname, 'postgres-import-worker.js')
+    this.workerFactory = options.workerFactory
+  }
+
+  start(
+    message: PostgresImportWorkerStartMessage,
+    callbacks: PostgresImportWorkerCallbacks
+  ): void {
+    if (this.worker) {
+      throw new Error('PostgresImportWorkerClient already started')
+    }
+    this.worker = this.workerFactory ? this.workerFactory() : new Worker(this.workerPath)
+
+    this.worker.on('message', (msg: PostgresImportWorkerOutboundMessage) => {
+      switch (msg.type) {
+        case 'progress':
+          callbacks.onProgress(msg)
+          break
+        case 'file-complete': {
+          const { type: _type, ...fileCompletePayload } = msg
+          callbacks.onFileComplete(fileCompletePayload)
+          break
+        }
+        case 'complete':
+          callbacks.onComplete(msg)
+          break
+        case 'error':
+          callbacks.onError(msg)
+          break
+      }
+    })
+
+    this.worker.on('error', (err: Error) => {
+      mainLogger.error(`Postgres import worker error: ${err.message}`, 'PostgresImportWorkerClient')
+      callbacks.onError({ type: 'error', message: err.message })
+    })
+
+    this.worker.on('exit', (code: number) => {
+      if (code !== 0) {
+        const message = `Postgres import worker exited with code ${code}`
+        mainLogger.error(message, 'PostgresImportWorkerClient')
+        callbacks.onError({ type: 'error', message })
+      }
+    })
+
+    this.worker.postMessage(message)
+  }
+
+  cancel(): void {
+    if (!this.worker) return
+    this.worker.postMessage({ type: 'cancel' })
+  }
+
+  async terminate(): Promise<void> {
+    if (!this.worker) return
+    try {
+      await this.worker.terminate()
+    } catch (e) {
+      mainLogger.error(
+        `Postgres import worker termination failed: ${e instanceof Error ? e.message : String(e)}`,
+        'PostgresImportWorkerClient'
+      )
+    } finally {
+      this.worker = null
+    }
+  }
+}

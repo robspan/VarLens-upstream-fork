@@ -7,7 +7,7 @@ describe('postgres-import-worker runImport', () => {
     const queries: string[] = []
     const client = {
       connect: vi.fn(async () => undefined),
-      query: vi.fn(async (sql: string | { text: string }, params?: unknown[]) => {
+      query: vi.fn(async (sql: string | { text: string }) => {
         const text = typeof sql === 'string' ? sql : sql.text
         queries.push(text)
         if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rows: [] }

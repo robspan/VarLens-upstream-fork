@@ -46,6 +46,13 @@ export interface PostgresImportWorkerStartMessage {
   vcfOptions?: { selectedSample?: string; genomeBuild?: string }
   // Single-file:
   filePath?: string
+  /**
+   * Advisory format hint. The worker always re-detects via detectFormat()
+   * because JSON variants (simple/object/columnar) need caseKey + wrapped
+   * data that a bare hint cannot supply. Callers may pass it for symmetry
+   * with the file-extension-based hint pipeline, but the worker does not
+   * short-circuit on it.
+   */
   format?: 'json' | 'vcf'
   // Multi-file:
   files?: MultiFileImportSpec[]

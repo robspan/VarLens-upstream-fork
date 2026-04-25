@@ -2,7 +2,7 @@ import { parentPort } from 'node:worker_threads'
 import { basename } from 'node:path'
 import { statSync } from 'node:fs'
 import type { Readable } from 'node:stream'
-import { Client, type ClientConfig } from 'pg'
+import { Client, type ClientConfig, type Pool, type PoolClient } from 'pg'
 
 import type {
   PostgresImportWorkerInboundMessage,
@@ -60,7 +60,12 @@ export async function runImport(
   start: PostgresImportWorkerStartMessage,
   post: (msg: PostgresImportWorkerOutboundMessage) => void
 ): Promise<void> {
+  cancelled = false // reset at entry; the parentPort handler also resets, this covers test/direct paths
   const startedAt = Date.now()
+  const batchSize =
+    start.batchSize !== undefined && start.batchSize > 0
+      ? start.batchSize
+      : POSTGRES_JSON_IMPORT_BATCH_SIZE
   const client = deps.createClient(clientConfigFromMessage(start.client))
   let beganTransaction = false
   let committed = false
@@ -72,7 +77,7 @@ export async function runImport(
 
     if (start.mode === 'single-file') {
       const filePath = start.filePath
-      if (!filePath) throw new Error('postgres-import-worker: single-file mode requires filePath')
+      if (filePath === undefined || filePath === '') throw new Error('postgres-import-worker: single-file mode requires filePath')
 
       // Always detect the concrete JSON sub-format (simple/object/columnar) regardless
       // of the hint — the hint isn't strong enough to skip detection because we need
@@ -97,7 +102,7 @@ export async function runImport(
       // `_pool` is ignored by PostgresJsonImportRepository — the repo accepts a
       // stubbed pool and the caller passes the actual client through writeJsonImport.
       const repo = new PostgresJsonImportRepository(
-        { connect: async () => client as never } as never,
+        { connect: async () => client as unknown as PoolClient } as Pick<Pool, 'connect'>,
         start.schema
       )
 
@@ -121,7 +126,7 @@ export async function runImport(
             }
             if (chunk === null || chunk === undefined) continue
             batch.push(chunk as Record<string, unknown>)
-            if (batch.length >= POSTGRES_JSON_IMPORT_BATCH_SIZE) {
+            if (batch.length >= batchSize) {
               await flush()
               if (cancelled) throw new Error(CANCELLATION_MESSAGE)
             }
@@ -149,7 +154,7 @@ export async function runImport(
                 })()
 
       const { caseId, variantCount } = await repo.writeJsonImport(
-        client as never,
+        client as unknown as Pick<PoolClient, 'query'>,
         {
           filePath,
           fileName,
@@ -161,7 +166,7 @@ export async function runImport(
         writeVariants
       )
 
-      await rebuildVariantFrequencyForCase(client as never, start.schema, caseId)
+      await rebuildVariantFrequencyForCase(client as unknown as Pick<PoolClient, 'query'>, start.schema, caseId)
       await client.query('COMMIT')
       committed = true
 
@@ -186,8 +191,13 @@ export async function runImport(
     if (beganTransaction && !committed) {
       try {
         await client.query('ROLLBACK')
-      } catch {
-        // swallow
+      } catch (rollbackErr) {
+        // Worker has no mainLogger access; console.warn is the documented
+        // worker exception (see AGENTS.md). Swallow but preserve diagnostics.
+        console.warn(
+          '[postgres-import-worker] ROLLBACK failed:',
+          rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)
+        )
       }
     }
     if (message === CANCELLATION_MESSAGE) {

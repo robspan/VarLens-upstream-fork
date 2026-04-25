@@ -138,6 +138,9 @@ export function registerImportHandlers({
       filtersPayload?: ImportFiltersIpcPayload
     ) => {
       return wrapHandler(async () => {
+        // Build the SQLite-path ImportFilters (loads BedFilter into memory).
+        // The PG path receives filtersPayload directly so it can extract the
+        // BED file path without going through the BedFilter constructor.
         const importFilters = buildImportFiltersFromIpc(filtersPayload)
         return startMultiFileImport(
           caseName,
@@ -146,7 +149,8 @@ export function registerImportHandlers({
           getSession,
           getDb,
           importCallbacks,
-          importFilters
+          importFilters,
+          filtersPayload
         )
       })
     }

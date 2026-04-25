@@ -5,18 +5,51 @@
  * and never touch IPC/Electron APIs directly. This makes them testable
  * without mocking Electron internals.
  *
- * As of PostgreSQL parity Phase 8, `startImport` routes through the active
- * `StorageSession`'s `StorageImportExecutor`, allowing SQLite and
- * (future-phase) PostgreSQL backends to expose the same single-file import
- * surface. `startMultiFileImport` remains SQLite-only and is guarded at the
- * handler/logic routing layer.
+ * As of PostgreSQL parity Phase 9, `startImport` routes through the active
+ * `StorageSession`'s `StorageImportExecutor` for both SQLite and PostgreSQL
+ * backends (including VCF files). `startMultiFileImport` is now backend-aware:
+ * PostgreSQL sessions dispatch through `executor.importMultiFile()`; SQLite
+ * sessions continue through the existing append pipeline
+ * (`startMultiFileImportSqlite`).
  */
 import { mainLogger } from '../../services/MainLogger'
 import { API_CONFIG } from '../../../shared/config/api.config'
 import type { DatabaseService } from '../../database/DatabaseService'
 import type { ImportFilters } from '../../import/vcf/import-filters'
-import type { StorageImportExecutor } from '../../storage/import-executor'
+import type { StorageImportExecutor, StorageImportFileFilters } from '../../storage/import-executor'
 import type { StorageSession } from '../../storage/session'
+
+/**
+ * Serializable filter payload as sent from the renderer over IPC.
+ * Mirrors `ImportFiltersIpcPayload` in `import.ts` — kept here so
+ * `startMultiFileImport` can translate directly without requiring callers
+ * to pre-build an `ImportFilters` (which loses the BED file path).
+ */
+export interface ImportFiltersPayload {
+  bedFile?: string | null
+  bedPadding?: number
+  passOnly?: boolean
+  minQual?: number | null
+  minGq?: number | null
+  minDp?: number | null
+}
+
+/**
+ * Translate a raw IPC filter payload into `StorageImportFileFilters`.
+ *
+ * The IPC payload uses `bedFile` (path string); the storage/worker layer
+ * uses `bedFilePath`. All other fields are passed through verbatim.
+ */
+function translateFiltersPayloadToStorage(payload: ImportFiltersPayload): StorageImportFileFilters {
+  return {
+    bedFilePath: payload.bedFile ?? null,
+    bedPadding: payload.bedPadding,
+    passOnly: payload.passOnly,
+    minQual: payload.minQual,
+    minGq: payload.minGq,
+    minDp: payload.minDp
+  }
+}
 
 /** Callbacks for emitting events to the renderer during import operations. */
 export interface ImportCallbacks {
@@ -130,7 +163,7 @@ export interface MultiFileImportResult {
 }
 
 /**
- * Import multiple VCF files into a single case sequentially.
+ * SQLite-specific implementation of multi-file import.
  *
  * The first file is imported via startImport (which creates the case via
  * the worker with its own bulk-insert session). Remaining files are appended
@@ -147,12 +180,10 @@ export interface MultiFileImportResult {
  * wizard-selected build). Mismatches abort the whole session before any
  * inserts for the offending file are performed.
  *
- * Phase 8 guard: multi-file import remains SQLite-only. A PostgreSQL session
- * is rejected upfront. The guard lives here so handler-layer code does not
- * accidentally route a PostgreSQL session through the SQLite-only append
- * pipeline.
+ * Do NOT call this directly — use `startMultiFileImport` which dispatches
+ * to this function for SQLite sessions and to the executor for PostgreSQL.
  */
-export async function startMultiFileImport(
+async function startMultiFileImportSqlite(
   caseName: string,
   files: MultiFileImportSpec[],
   vcfOptions: VcfImportOptions | undefined,
@@ -165,11 +196,6 @@ export async function startMultiFileImport(
 
   if (files.length === 0) {
     throw new Error('No files provided for import')
-  }
-
-  const session = getSession()
-  if (session.capabilities.backend !== 'sqlite') {
-    throw new Error('PostgreSQL multi-file import is not supported in Phase 8')
   }
 
   const db = getDb()
@@ -405,6 +431,67 @@ export async function startMultiFileImport(
     files: fileResults,
     elapsed: Date.now() - startTime
   }
+}
+
+/**
+ * Backend-aware entry point for multi-file import.
+ *
+ * - PostgreSQL: delegates to `session.getImportExecutor().importMultiFile()`.
+ *   The raw `filtersPayload` (IPC shape) is translated directly to
+ *   `StorageImportFileFilters` so the BED file path is preserved — the
+ *   worker re-loads the BED file from that path rather than receiving a
+ *   pre-built `BedFilter` instance.
+ *
+ * - SQLite: delegates to `startMultiFileImportSqlite`, which is the full
+ *   append pipeline unchanged from Phase 8. The caller-supplied
+ *   `importFilters` (already a built `ImportFilters`) is forwarded as-is.
+ *
+ * The IPC handler in `import.ts` must call this function (not
+ * `startMultiFileImportSqlite`) so that PostgreSQL sessions are dispatched
+ * correctly.
+ */
+export async function startMultiFileImport(
+  caseName: string,
+  files: MultiFileImportSpec[],
+  vcfOptions: VcfImportOptions | undefined,
+  getSession: () => StorageSession,
+  getDb: () => DatabaseService,
+  callbacks: ImportCallbacks,
+  importFilters?: ImportFilters,
+  filtersPayload?: ImportFiltersPayload
+): Promise<MultiFileImportResult> {
+  const session = getSession()
+
+  if (session.capabilities.backend === 'postgres') {
+    const executor = session.getImportExecutor()
+    const storageFilters =
+      filtersPayload !== undefined ? translateFiltersPayloadToStorage(filtersPayload) : undefined
+    const result = await executor.importMultiFile({
+      caseName,
+      files,
+      vcfOptions,
+      filters: storageFilters,
+      onProgress: callbacks.onProgress
+    })
+    return {
+      caseId: result.caseId,
+      totalVariants: result.variantCount,
+      totalSkipped: result.skipped,
+      files: result.files,
+      elapsed: result.elapsed
+    }
+  }
+
+  // SQLite — existing append pipeline
+  return startMultiFileImportSqlite(
+    caseName,
+    files,
+    vcfOptions,
+    getSession,
+    getDb,
+    callbacks,
+    importFilters
+  )
 }
 
 /**

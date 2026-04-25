@@ -1,3 +1,6 @@
+-- Phase 9.1: hash-keyed coordinate index requires pgcrypto for digest()
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE IF NOT EXISTS variants (
   id BIGSERIAL PRIMARY KEY,
   case_id BIGINT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
@@ -33,7 +36,16 @@ CREATE TABLE IF NOT EXISTS variants (
   sv_type TEXT,
   sv_length BIGINT,
   caller TEXT,
-  search_document tsvector
+  search_document tsvector,
+  coord_hash BYTEA GENERATED ALWAYS AS (
+    digest(
+      int4send(octet_length(chr::bytea)) || chr::bytea ||
+      int8send(pos) ||
+      int4send(octet_length(ref::bytea)) || ref::bytea ||
+      int4send(octet_length(alt::bytea)) || alt::bytea,
+      'sha256'
+    )
+  ) STORED
 );
 
 CREATE TABLE IF NOT EXISTS variant_transcripts (
@@ -53,12 +65,21 @@ CREATE TABLE IF NOT EXISTS variant_transcripts (
 );
 
 CREATE TABLE IF NOT EXISTS variant_frequency (
+  id BIGSERIAL PRIMARY KEY,
   chr TEXT NOT NULL,
   pos BIGINT NOT NULL,
   ref TEXT NOT NULL,
   alt TEXT NOT NULL,
   case_count BIGINT NOT NULL DEFAULT 1,
-  PRIMARY KEY (chr, pos, ref, alt)
+  coord_hash BYTEA GENERATED ALWAYS AS (
+    digest(
+      int4send(octet_length(chr::bytea)) || chr::bytea ||
+      int8send(pos) ||
+      int4send(octet_length(ref::bytea)) || ref::bytea ||
+      int4send(octet_length(alt::bytea)) || alt::bytea,
+      'sha256'
+    )
+  ) STORED
 );
 
 CREATE TABLE IF NOT EXISTS variant_sv (
@@ -165,7 +186,11 @@ CREATE INDEX IF NOT EXISTS idx_variants_case_gene ON variants(case_id, gene_symb
 CREATE INDEX IF NOT EXISTS idx_variants_case_pos ON variants(case_id, chr, pos);
 CREATE INDEX IF NOT EXISTS idx_variants_case_consequence ON variants(case_id, consequence);
 CREATE INDEX IF NOT EXISTS idx_variants_case_func ON variants(case_id, func);
-CREATE INDEX IF NOT EXISTS idx_variants_coord_case ON variants(chr, pos, ref, alt, case_id);
+-- Phase 9.1: hash-keyed cross-case coordinate index (replaces idx_variants_coord_case
+-- which couldn't store entries for variants with ref+alt > ~2 KB).
+CREATE INDEX IF NOT EXISTS idx_variants_coord_hash_case ON variants(coord_hash, case_id);
+CREATE UNIQUE INDEX IF NOT EXISTS variant_frequency_coord_hash_uniq
+  ON variant_frequency(coord_hash);
 CREATE INDEX IF NOT EXISTS idx_variants_search_document ON variants USING GIN(search_document);
 CREATE INDEX IF NOT EXISTS idx_variant_sv_search_document ON variant_sv USING GIN(search_document);
 CREATE INDEX IF NOT EXISTS idx_variant_str_search_document ON variant_str USING GIN(search_document);

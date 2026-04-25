@@ -5,6 +5,14 @@ export interface StorageImportVcfOptions {
   genomeBuild?: string
 }
 
+/**
+ * Storage-layer progress event. Intentionally narrower than the
+ * import-logic ImportCallbacks.onProgress payload, which carries
+ * additional fileIndex / totalFiles / filePath / fileName fields used by
+ * the renderer for per-file attribution in multi-file imports. Storage
+ * callers that need that attribution must subscribe at the IPC layer
+ * directly (Lane F dispatch in Task 13).
+ */
 export interface StorageImportProgress {
   phase: string
   count: number
@@ -71,6 +79,12 @@ export interface StorageImportMultiFileResult {
     error?: string
   }>
   skipped: number
+  /**
+   * Top-level errors reserved for import-orchestrator failures (e.g., the
+   * import session itself could not start). Per-file failures live in
+   * `files[].error`. Both backends should keep this empty unless a
+   * non-file-scoped error occurred.
+   */
   errors: string[]
   elapsed: number
 }

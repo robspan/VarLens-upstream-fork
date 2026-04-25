@@ -227,21 +227,32 @@ export class SqliteImportExecutor implements StorageImportExecutor {
     const startedAt = Date.now()
     const filters = this.translateFilters(params.filters)
 
+    // NOTE: params.onFileComplete is intentionally NOT plumbed through here.
+    // The existing startMultiFileImport / ImportCallbacks shape in
+    // src/main/ipc/handlers/import-logic.ts has no per-file completion
+    // callback — only an onProgress fan-out with fileIndex/totalFiles
+    // metadata embedded in the progress event. Callers that need a
+    // dedicated onFileComplete signal (Task 13's PG multi-file path will
+    // fire one per file) get nothing on the SQLite path until
+    // startMultiFileImport gains a parallel callback.
+    const callbacks: ImportCallbacks = {
+      onProgress: (data) => {
+        params.onProgress?.({
+          phase: data.phase,
+          count: data.count,
+          elapsed: data.elapsed,
+          skipped: data.skipped
+        })
+      }
+      // No onFileComplete: see note above.
+    }
+
     const result = await this.multiFileImportDelegate({
       caseName: params.caseName,
       files: params.files,
       vcfOptions: params.vcfOptions,
       filters,
-      callbacks: {
-        onProgress: (data) => {
-          params.onProgress?.({
-            phase: data.phase,
-            count: data.count,
-            elapsed: data.elapsed,
-            skipped: data.skipped
-          })
-        }
-      }
+      callbacks
     })
 
     return {
@@ -249,6 +260,9 @@ export class SqliteImportExecutor implements StorageImportExecutor {
       variantCount: result.totalVariants,
       files: result.files,
       skipped: result.totalSkipped,
+      // `errors` is intentionally always empty on the SQLite multi-file path:
+      // per-file errors are surfaced in `result.files[].error` by startMultiFileImport,
+      // not at the top level. The PG path (Task 11) follows the same convention.
       errors: [],
       elapsed: result.elapsed > 0 ? result.elapsed : Date.now() - startedAt
     }

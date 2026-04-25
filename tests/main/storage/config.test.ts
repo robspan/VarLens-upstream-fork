@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  buildPostgresClientConfig,
   buildPostgresConnectionLabel,
   buildPostgresPoolConfig,
   getPostgresStorageConfig,
   redactPostgresConnectionUrl
 } from '../../../src/main/storage/config'
+import type { PostgresStorageConfig } from '../../../src/main/storage/config'
 
 describe('getPostgresStorageConfig', () => {
   it('returns null when postgres env is absent', () => {
@@ -169,5 +171,39 @@ describe('buildPostgresPoolConfig', () => {
     })
 
     expect(() => buildPostgresPoolConfig(config!)).toThrow('VARLENS_PG_SSL_MODE=prefer')
+  })
+})
+
+describe('buildPostgresClientConfig', () => {
+  it('returns the same connection-related fields as buildPostgresPoolConfig minus pool-only fields', () => {
+    const config: PostgresStorageConfig = {
+      url: 'postgres://user:pw@127.0.0.1:5432/db',
+      schema: 'public',
+      applicationName: 'varlens-test',
+      sslMode: 'disable',
+      connectionTimeoutMillis: 1000,
+      statementTimeoutMs: 60000,
+      queryTimeoutMs: 60000,
+      lockTimeoutMs: 5000,
+      idleInTransactionSessionTimeoutMs: 30000,
+      poolMax: 4
+    }
+
+    const pool = buildPostgresPoolConfig(config)
+    const client = buildPostgresClientConfig(config)
+
+    // Pool-only fields are absent.
+    expect((client as Record<string, unknown>).max).toBeUndefined()
+
+    // All connection fields match.
+    expect(client.connectionString).toBe(pool.connectionString)
+    expect(client.application_name).toBe(pool.application_name)
+    expect(client.connectionTimeoutMillis).toBe(pool.connectionTimeoutMillis)
+    expect(client.statement_timeout).toBe(pool.statement_timeout)
+    expect(client.query_timeout).toBe(pool.query_timeout)
+    expect(client.lock_timeout).toBe(pool.lock_timeout)
+    expect(client.idle_in_transaction_session_timeout).toBe(pool.idle_in_transaction_session_timeout)
+    expect(client.keepAlive).toBe(pool.keepAlive)
+    expect(client.ssl).toEqual(pool.ssl)
   })
 })

@@ -51,6 +51,8 @@ temp/
 
 # Local performance artifacts
 .planning/artifacts/perf/
+!.planning/artifacts/perf/wgs-import/
+!.planning/artifacts/perf/wgs-import/.gitkeep
 
 # Vendor assets copied from node_modules at build time (see npm run copy:molstar)
 src/renderer/public/pdbe-molstar-component.js
@@ -69,6 +71,11 @@ coverage/
 test-data/
 plan/
 *.json.gz
+
+# WGS perf benchmark fixtures + artifact outputs (Phase 9 Tasks 17–18)
+tests/.cache/wgs/
+.planning/artifacts/perf/wgs-import/
+!.planning/artifacts/perf/wgs-import/.gitkeep
 
 # VitePress — build artifacts only; `docs/.vitepress/config.mts` is tracked
 docs/.vitepress/dist/

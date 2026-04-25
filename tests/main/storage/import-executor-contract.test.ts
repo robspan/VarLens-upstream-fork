@@ -6,7 +6,8 @@ import type {
   StorageImportSingleFileResult,
   StorageImportMultiFileParams,
   StorageImportMultiFileResult,
-  StorageImportFileFilters
+  StorageImportFileFilters,
+  ImportFileCompleteEvent
 } from '../../../src/main/storage/import-executor'
 
 describe('StorageImportExecutor contract', () => {
@@ -72,7 +73,7 @@ describe('StorageImportExecutor.importMultiFile contract', () => {
 
     const executor: StorageImportExecutor = {
       importSingleFile: vi.fn(),
-      importMultiFile: vi.fn(async () => ({
+      importMultiFile: vi.fn(async (): Promise<StorageImportMultiFileResult> => ({
         caseId: 7,
         variantCount: 1234,
         files: [
@@ -84,11 +85,33 @@ describe('StorageImportExecutor.importMultiFile contract', () => {
         elapsed: 250
       })),
       cancel: vi.fn()
-    } as unknown as StorageImportExecutor
+    }
 
     const result: StorageImportMultiFileResult = await executor.importMultiFile(params)
     expect(result.caseId).toBe(7)
     expect(result.files).toHaveLength(2)
     expect(result.files[0].variantCount).toBe(800)
+
+    expectTypeOf<StorageImportMultiFileResult>().toMatchTypeOf<{
+      caseId: number
+      variantCount: number
+      files: Array<{
+        filePath: string
+        variantType: string
+        variantCount: number
+        error?: string
+      }>
+      skipped: number
+      errors: string[]
+      elapsed: number
+    }>()
+  })
+
+  it('ImportFileCompleteEvent has filePath, caseId, variantCount fields', () => {
+    expectTypeOf<ImportFileCompleteEvent>().toEqualTypeOf<{
+      filePath: string
+      caseId: number
+      variantCount: number
+    }>()
   })
 })

@@ -28,6 +28,14 @@ export interface StorageImportSingleFileResult {
   elapsed: number
 }
 
+/**
+ * Storage-layer filter knobs for multi-file import. The IPC layer
+ * (`ImportFiltersIpcPayload` in `src/main/ipc/handlers/import.ts`) uses
+ * `bedFile`; Task 13's import-logic.ts translates that into `bedFilePath`
+ * here. Naming differs because the IPC payload reflects the UI's "selected
+ * file" semantic while the storage/worker layer always works with absolute
+ * filesystem paths.
+ */
 export interface StorageImportFileFilters {
   bedFilePath?: string | null
   bedPadding?: number
@@ -49,7 +57,7 @@ export interface StorageImportMultiFileParams {
   vcfOptions?: StorageImportVcfOptions
   filters?: StorageImportFileFilters
   throttleMs?: number
-  onProgress?: (event: StorageImportProgress) => void
+  onProgress?: (data: StorageImportProgress) => void
   onFileComplete?: (event: ImportFileCompleteEvent) => void
 }
 

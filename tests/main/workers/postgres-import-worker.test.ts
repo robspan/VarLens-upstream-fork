@@ -271,4 +271,74 @@ describe('postgres-import-worker runImport', () => {
     )
     expect(complete).toBeDefined()
   })
+
+  it('loads BedFilter and applies pre/post-mapping filters in multi-file mode', async () => {
+    const queries: string[] = []
+    const client = {
+      connect: vi.fn(async () => undefined),
+      query: vi.fn(async (sql: string | { text: string }, params?: unknown[]) => {
+        const text = typeof sql === 'string' ? sql : sql.text
+        queries.push(text)
+        if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] }
+        if (text.startsWith('SELECT id FROM') && text.includes('"cases"')) return { rows: [] }
+        if (text.startsWith('INSERT INTO') && text.includes('"cases"'))
+          return { rows: [{ id: 11 }] }
+        if (text.includes('"variants"') && text.includes('jsonb_to_recordset')) {
+          const payload = JSON.parse(String((params as unknown[])[0])) as unknown[]
+          return { rows: payload.map((_, i) => ({ id: 6000 + i })) }
+        }
+        return { rows: [] }
+      }),
+      end: vi.fn(async () => undefined)
+    }
+    const { Readable } = await import('node:stream')
+
+    let createVcfMappedStreamCalledWithFilters: unknown = undefined
+    await runImport(
+      {
+        createClient: () => client as never,
+        detectFormat: async () => ({ format: 'vcf', caseKey: '' }) as never,
+        createVcfMappedStream: async (_filePath, options) => {
+          createVcfMappedStreamCalledWithFilters = options.filters
+          return Readable.from([]) as never
+        },
+        createMapperPipeline: async () => Readable.from([]),
+        statFile: () => ({ size: 0 })
+      },
+      {
+        type: 'start',
+        client: { connectionString: 'postgres://x' },
+        schema: 'public',
+        mode: 'multi-file',
+        caseName: 'F',
+        vcfOptions: { selectedSample: 'NA12878', genomeBuild: 'GRCh38' },
+        files: [
+          {
+            filePath: '/tmp/a.vcf.gz',
+            variantType: 'snv-indel',
+            annotationFormat: null,
+            caller: null
+          }
+        ],
+        filters: {
+          passOnly: true,
+          minQual: 30,
+          minGq: 20,
+          minDp: 10
+          // Omit bedFilePath — we don't want to read a real BED file in the test.
+        }
+      },
+      () => {}
+    )
+
+    // Verify the worker constructed an ImportFilters and passed it to the stream factory.
+    expect(createVcfMappedStreamCalledWithFilters).toBeDefined()
+    const filters = createVcfMappedStreamCalledWithFilters as Record<string, unknown>
+    expect(filters.passOnly).toBe(true)
+    expect(filters.minQual).toBe(30)
+    expect(filters.minGq).toBe(20)
+    expect(filters.minDp).toBe(10)
+    // bedFilter is undefined because we didn't supply a bedFilePath.
+    expect(filters.bedFilter).toBeUndefined()
+  })
 })

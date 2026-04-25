@@ -89,7 +89,7 @@ describe('PostgresJsonImportRepository.writeJsonImport', () => {
   it('issues no transaction-lifecycle SQL — caller owns BEGIN/COMMIT/ROLLBACK', async () => {
     const queries: string[] = []
     const client = {
-      query: async (sql: string | { text: string }, _params?: unknown[]) => {
+      query: async (sql: string | { text: string }) => {
         const text = typeof sql === 'string' ? sql : sql.text
         queries.push(text)
         if (text.startsWith('SELECT id FROM')) return { rows: [] }

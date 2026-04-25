@@ -16,11 +16,27 @@ export interface PostgresClientConfig {
   lock_timeout?: number
   idle_in_transaction_session_timeout?: number
   keepAlive?: boolean
+  /**
+   * Discriminated SSL descriptor — structuredClone-safe at the worker boundary.
+   * Cert/key/ca material is intentionally not supported here; pass it via the
+   * connection string or PG environment variables (PGSSLCERT, PGSSLKEY, PGSSLROOTCERT)
+   * which pg consumes natively.
+   */
   ssl?:
     | { mode: 'disable' }
     | { mode: 'require'; rejectUnauthorized: boolean }
 }
 
+/**
+ * Inbound start message. The interface is intentionally wide — single-file and
+ * multi-file modes share most fields, and the worker only ever receives one
+ * message per invocation. Field validity per mode:
+ *   - single-file: filePath required; format optional (worker auto-detects);
+ *     files/filters/batchSize/throttleMs ignored
+ *   - multi-file: files required (non-empty); filters optional; filePath/format
+ *     ignored
+ * The worker validates the right combination at runtime in Task 6/11.
+ */
 export interface PostgresImportWorkerStartMessage {
   type: 'start'
   client: PostgresClientConfig
@@ -75,6 +91,7 @@ export interface PostgresImportWorkerCompleteMessage {
   result: {
     caseId: number
     variantCount: number
+    /** Present and non-empty only when the matching start message had `mode === 'multi-file'`. */
     files?: Array<{
       filePath: string
       variantType: string
@@ -109,9 +126,18 @@ export function toPostgresClientConfigMessage(
   let ssl: PostgresClientConfig['ssl']
   if (client.ssl === undefined) {
     ssl = { mode: 'disable' }
+  } else if (client.ssl === false) {
+    ssl = { mode: 'disable' }
+  } else if (client.ssl === true) {
+    // pg's boolean shorthand: true means "require SSL, trust all certs".
+    ssl = { mode: 'require', rejectUnauthorized: true }
   } else if (typeof client.ssl === 'object' && 'rejectUnauthorized' in client.ssl) {
     ssl = { mode: 'require', rejectUnauthorized: Boolean(client.ssl.rejectUnauthorized) }
   } else {
+    // Unknown shape (e.g. cert/key payload) — conservatively disable.
+    // Future callers needing cert material must pass it through the connection
+    // string or via PG environment variables; the worker boundary does not
+    // marshal cert/key/ca buffers across structuredClone.
     ssl = { mode: 'disable' }
   }
   return {

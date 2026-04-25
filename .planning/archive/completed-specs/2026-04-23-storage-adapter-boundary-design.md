@@ -1,7 +1,7 @@
 # Storage Session Boundary — Design
 
 **Date:** 2026-04-23  
-**Status:** Implemented through Phase 5; retained as active architectural reference
+**Status:** Completed
 **Motivation:** VarLens needs a realistic path from SQLite-only local storage to optional hosted PostgreSQL without destabilizing the current app. The codebase does not support a thin driver swap under `DatabaseService`; the seam needs to sit above the current SQLite runtime.
 
 ## Summary

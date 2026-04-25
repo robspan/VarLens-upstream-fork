@@ -1,7 +1,7 @@
 # PostgreSQL Parity Phase 8: Import and Dataset Creation
 
 **Date:** 2026-04-24
-**Status:** Proposed
+**Status:** Completed
 **Depends on:**
 - [Storage Session Boundary Design](./2026-04-23-storage-adapter-boundary-design.md)
 - [PostgreSQL Parity Phase 6: Case Metadata and Cases Filters](../archive/completed-specs/2026-04-24-postgresql-parity-phase-6-case-metadata-and-cases-filters.md)

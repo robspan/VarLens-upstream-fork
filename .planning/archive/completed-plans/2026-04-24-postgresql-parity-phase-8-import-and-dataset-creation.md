@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status:** Completed
+
 **Goal:** Add PostgreSQL single-file JSON import so PostgreSQL mode can create a real case/dataset from user data and read it back through existing cases, case metadata, and variants APIs.
 
 **Architecture:** Keep SQLite on the existing file-backed `ImportWorkerClient` path and add a narrow `StorageImportExecutor` to the storage-session boundary. PostgreSQL gets a focused JSON import executor/repository that streams mapped JSON variants, writes them transactionally with `pg`, uses `jsonb_to_recordset($1::jsonb)` for batch inserts, refreshes `variant_frequency` once after all batches, and reports the same `import:start` result/progress shape. VCF, multi-file import, export, delete, rebuild, cohort parity, database overview, and renderer PostgreSQL settings stay out of scope.
@@ -12,8 +14,8 @@
 
 ## Reference Documents
 
-- Spec: `.planning/specs/2026-04-24-postgresql-parity-phase-8-import-and-dataset-creation.md`
-- Storage boundary: `.planning/specs/2026-04-23-storage-adapter-boundary-design.md`
+- Spec: `.planning/archive/completed-specs/2026-04-24-postgresql-parity-phase-8-import-and-dataset-creation.md`
+- Storage boundary: `.planning/archive/completed-specs/2026-04-23-storage-adapter-boundary-design.md`
 - Previous completed phase: `.planning/archive/completed-specs/2026-04-24-postgresql-parity-phase-7-variants-read-parity.md`
 - Phase 7 metadata deferral: `.planning/artifacts/postgres-parity-phase-7-filter-metadata-deferral.md`
 - Current SQLite worker import: `src/main/workers/import-worker.ts`

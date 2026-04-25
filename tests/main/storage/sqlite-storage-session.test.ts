@@ -80,6 +80,24 @@ describe('SqliteStorageSession', () => {
     await session.close()
   })
 
+  it('getImportExecutor returns an executor with importSingleFile + cancel functions', async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'varlens-storage-session-'))
+    const dbPath = join(tempDir, 'session.db')
+    const db = new DatabaseService(dbPath)
+
+    const session = new SqliteStorageSession({
+      databaseService: db,
+      dbPool: null
+    })
+
+    const executor = session.getImportExecutor()
+    expect(executor).toBeDefined()
+    expect(typeof executor.importSingleFile).toBe('function')
+    expect(typeof executor.cancel).toBe('function')
+
+    await session.close()
+  })
+
   it('uses the worker read pool for listCases when one is available', async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'varlens-storage-session-'))
     const dbPath = join(tempDir, 'session.db')

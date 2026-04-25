@@ -55,6 +55,7 @@ ON CONFLICT (id) DO UPDATE SET
   numeric_value = EXCLUDED.numeric_value,
   updated_at = EXCLUDED.updated_at;
 
+SELECT setval(pg_get_serial_sequence('public.cases', 'id'), COALESCE((SELECT MAX(id) FROM cases), 1), true);
 SELECT setval(pg_get_serial_sequence('public.case_metadata', 'id'), COALESCE((SELECT MAX(id) FROM case_metadata), 1), true);
 SELECT setval(pg_get_serial_sequence('public.cohort_groups', 'id'), COALESCE((SELECT MAX(id) FROM cohort_groups), 1), true);
 SELECT setval(pg_get_serial_sequence('public.case_comments', 'id'), COALESCE((SELECT MAX(id) FROM case_comments), 1), true);

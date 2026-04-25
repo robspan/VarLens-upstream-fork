@@ -8,8 +8,11 @@ import { PostgresAvailableBuildsRepository } from './PostgresAvailableBuildsRepo
 import { PostgresCaseListRepository } from './PostgresCaseListRepository'
 import { PostgresCaseMetadataRepository } from './PostgresCaseMetadataRepository'
 import { PostgresCasesQueryRepository } from './PostgresCasesQueryRepository'
+import { PostgresImportExecutor } from './PostgresImportExecutor'
+import { PostgresJsonImportRepository } from './PostgresJsonImportRepository'
 import { PostgresReadExecutor } from './PostgresReadExecutor'
 import { PostgresVariantReadRepository } from './PostgresVariantReadRepository'
+import type { StorageImportExecutor } from '../import-executor'
 import type { StorageReadExecutor } from '../read-executor'
 import { PostgresWriteExecutor } from './PostgresWriteExecutor'
 import {
@@ -52,6 +55,7 @@ export class PostgresStorageSession implements StorageSession {
   private readonly pool: Pool
   private readonly readExecutor: StorageReadExecutor
   private readonly writeExecutor: StorageWriteExecutor
+  private readonly importExecutor: StorageImportExecutor
   private cases: PostgresCaseListRepository | null = null
 
   constructor(options: PostgresStorageSessionOptions) {
@@ -64,6 +68,9 @@ export class PostgresStorageSession implements StorageSession {
       variants: new PostgresVariantReadRepository(options.pool, options.config.schema)
     })
     this.writeExecutor = new PostgresWriteExecutor(caseMetadata)
+    this.importExecutor = new PostgresImportExecutor({
+      repository: new PostgresJsonImportRepository(options.pool, options.config.schema)
+    })
     this.createCaseListRepository =
       options.createCaseListRepository ??
       ((pool: Pool, schema: string) => new PostgresCaseListRepository(pool, schema))
@@ -100,6 +107,10 @@ export class PostgresStorageSession implements StorageSession {
 
   getWriteExecutor(): StorageWriteExecutor {
     return this.writeExecutor
+  }
+
+  getImportExecutor(): StorageImportExecutor {
+    return this.importExecutor
   }
 
   getDatabaseService(): DatabaseService {

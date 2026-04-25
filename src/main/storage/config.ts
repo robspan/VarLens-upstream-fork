@@ -194,6 +194,9 @@ export function buildPostgresPoolConfig(config: PostgresStorageConfig): PoolConf
     lock_timeout: config.lockTimeoutMs,
     idle_in_transaction_session_timeout: config.idleInTransactionSessionTimeoutMs,
     max: config.poolMax,
+    // TCP keepalive keeps long-running import connections alive across NAT
+    // idle timeouts and other network middleboxes.
+    keepAlive: true,
     ssl: buildPostgresSslConfig(config.sslMode)
   }
 }

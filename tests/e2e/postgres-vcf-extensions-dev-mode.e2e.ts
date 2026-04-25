@@ -157,9 +157,9 @@ test('postgres dev mode imports synthetic-str.vcf and populates variant_str', as
 
     const results = await launched.window.evaluate(
       async ({ strPath, caseName }) => {
-        // synthetic-str.vcf — check its CHROM line for the sample name;
-        // it uses a single sample. selectedSample is auto-detected if omitted.
+        // synthetic-str.vcf has a single sample column named SAMPLE1.
         const importResult = await window.api.import.start(strPath, caseName, {
+          selectedSample: 'SAMPLE1',
           genomeBuild: 'GRCh38'
         })
         const caseId =

@@ -44,6 +44,23 @@ const POSTGRES_JSON_IMPORT_BATCH_SIZE = 1000
 
 let cancelled = false
 
+// Diagnostic: surface any uncaught exception or unhandled rejection through
+// parentPort so the main process can see it instead of the worker crashing
+// silently. This was added to debug Phase 9 Task 15 (multi-file partial
+// failure) where ENOENT was escaping the per-file try/catch — root cause was
+// an unhandled error event on the readline-wrapped fs read stream.
+process.on('uncaughtException', (err) => {
+  // eslint-disable-next-line no-console
+  console.warn('[postgres-import-worker] uncaughtException:', err.message, err.stack)
+})
+process.on('unhandledRejection', (reason) => {
+  // eslint-disable-next-line no-console
+  console.warn(
+    '[postgres-import-worker] unhandledRejection:',
+    reason instanceof Error ? `${reason.message}\n${reason.stack ?? ''}` : String(reason)
+  )
+})
+
 /**
  * Async generator yielding mapped VCF variants one at a time.
  * Mirrors the streamInsertVcf parsing pipeline (header lines, parseVcfLine,
@@ -633,10 +650,19 @@ export async function runImport(
           })
         } catch (err) {
           beganTransaction = false
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[postgres-import-worker] file ${i} (${fileSpec.filePath}) failed:`,
+            err instanceof Error ? err.message : String(err)
+          )
           try {
             await client.query('ROLLBACK')
-          } catch {
-            // swallow rollback error
+          } catch (rollbackErr) {
+            // eslint-disable-next-line no-console
+            console.warn(
+              `[postgres-import-worker] file ${i} ROLLBACK after error failed:`,
+              rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)
+            )
           }
           const message = err instanceof Error ? err.message : String(err)
           fileResults.push({

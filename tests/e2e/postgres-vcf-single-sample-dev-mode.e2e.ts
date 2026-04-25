@@ -120,8 +120,12 @@ test('postgres dev mode imports a VEP-annotated single-sample VCF and verifies a
     expect((internalAf as { total_count: number }).total_count).toBeGreaterThan(0)
 
     // The case's build should appear in the availableBuilds list
-    const builds = expectSuccessfulIpcResult(results.availableBuilds)
-    expect(builds).toContain('GRCh38')
+    // (The IPC returns Array<{ build: string; caseCount: number }>.)
+    const builds = expectSuccessfulIpcResult(results.availableBuilds) as Array<{
+      build: string
+      caseCount: number
+    }>
+    expect(builds.map((b) => b.build)).toContain('GRCh38')
   } finally {
     if (launched !== undefined) {
       await launched.cleanup()

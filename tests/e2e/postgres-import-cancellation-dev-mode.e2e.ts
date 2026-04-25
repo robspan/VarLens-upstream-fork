@@ -92,16 +92,20 @@ test('postgres dev mode import cancellation surfaces the cancellation error', as
       | { errors?: string[]; variantCount?: number; caseId?: number }
       | { code: string; message: string }
 
+    // Three valid outcomes (cancellation is inherently racy):
+    //   1. Cancel won the race → errors[] contains the cancellation message
+    //   2. Import won the race → errors[] is empty AND variantCount > 0
+    //   3. Should never happen → SerializableError envelope with non-import code
     if ('errors' in importResult && Array.isArray(importResult.errors)) {
-      // Cancellation path: errors array contains the cancellation message
-      const hasCancelError = importResult.errors.some((e: string) =>
-        e.includes('Import cancelled by user')
-      )
-      expect(hasCancelError).toBe(true)
+      const errors = importResult.errors
+      const hasCancelError = errors.some((e: string) => e.includes('Import cancelled by user'))
+      const variantCount = (importResult as { variantCount?: number }).variantCount ?? 0
+      const importFinishedFirst = errors.length === 0 && variantCount > 0
+      // Pass if either cancel won OR import finished cleanly; fail only if
+      // errors are populated but DON'T mention cancellation.
+      expect(hasCancelError || importFinishedFirst).toBe(true)
     } else {
-      // If the import completed before the cancel fired, the test still passes —
-      // cancellation is inherently racy. Only fail if we received an unexpected
-      // error envelope unrelated to the import lifecycle.
+      // SerializableError envelope: only fail for codes unrelated to imports.
       const isUnexpectedError =
         'code' in importResult &&
         typeof (importResult as { code: string }).code === 'string' &&

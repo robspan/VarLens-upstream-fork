@@ -42,18 +42,14 @@ test('postgres dev mode multi-file import surfaces per-file errors without abort
     'Set VARLENS_RUN_POSTGRES_E2E=1 after starting the local postgres container to run this test.'
   )
 
-  // Create a temp directory + malformed VCF before launching Electron so the
-  // path is available to both the test runner and the renderer evaluate call.
+  // Create a temp directory; the "malformed" file is a path that does NOT
+  // exist on disk — this surfaces as an ENOENT inside the per-file
+  // transaction. Unparseable individual VCF lines are intentionally swallowed
+  // by the worker (matching SQLite behavior), so the only reliable way to
+  // produce a per-file failure is to make the whole file unreachable.
   const tmpDir = mkdtempSync(join(tmpdir(), 'varlens-pg-e2e-partial-'))
-  const malformedPath = join(tmpDir, 'malformed.vcf')
-  writeFileSync(
-    malformedPath,
-    [
-      '##fileformat=VCFv4.2',
-      '#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE1',
-      'NOT_A_VALID_VCF_LINE'
-    ].join('\n')
-  )
+  const malformedPath = join(tmpDir, 'does-not-exist.vcf')
+  // intentionally do NOT create the file
 
   let launched: Awaited<ReturnType<typeof launchElectronApp>> | undefined
 

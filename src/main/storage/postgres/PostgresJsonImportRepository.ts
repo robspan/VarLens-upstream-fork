@@ -321,7 +321,7 @@ export async function rebuildVariantFrequencyForCase(
      FROM ${schemaName}."variants"
      WHERE case_id = $1
      GROUP BY chr, pos, ref, alt
-     ON CONFLICT (chr, pos, ref, alt)
+     ON CONFLICT (coord_hash)
      DO UPDATE SET case_count = ${schemaName}."variant_frequency".case_count + 1`,
     [caseId]
   )

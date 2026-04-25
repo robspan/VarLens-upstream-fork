@@ -16,9 +16,11 @@ ON CONFLICT (id) DO UPDATE SET
 -- Phase 7 seed uses bare chromosome names (`1`, `2`, `3`, `4`) consistently
 -- so variant_frequency joins match the seeded variants literally.
 
+-- Phase 9.1: variant_frequency unique constraint moved to coord_hash;
+-- the generated column is computed from chr/pos/ref/alt automatically.
 INSERT INTO variant_frequency (chr, pos, ref, alt, case_count)
 VALUES ('1', 1000, 'A', 'G', 2)
-ON CONFLICT (chr, pos, ref, alt) DO UPDATE SET case_count = EXCLUDED.case_count;
+ON CONFLICT (coord_hash) DO UPDATE SET case_count = EXCLUDED.case_count;
 
 INSERT INTO variant_sv (variant_id, support, event_id, mate_id)
 VALUES (3, 12, 'MANTA_EVENT_001', 'MATE_001')

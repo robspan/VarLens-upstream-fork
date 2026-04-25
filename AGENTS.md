@@ -110,6 +110,7 @@ The **Makefile is the source of truth**. GitHub Actions workflows mirror it targ
   ```
 
   Each run writes a per-backend baseline artifact and a comparison file under `.planning/artifacts/perf/wgs-import/` (also gitignored). `BUDGET_S` per backend is `1.5×` the baseline. If the postgres baseline exceeds the sqlite baseline by more than `2×`, open a follow-up phase to escalate postgres to `COPY FROM STDIN` via `pg-copy-streams`.
+
 - **Preload contract**: `tests/shared/types/preload-contract.test.ts` locks the IPC surface to `IpcResult<T>` return types. If you touch IPC, this test is your first-line guardrail.
 - **Coverage**: `COVERAGE=1 vitest run --coverage`. **Do not lower thresholds to make a failing suite pass** — add tests or fix the code.
 

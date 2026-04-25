@@ -22,7 +22,7 @@ VCF_TBI_FILE="${VCF_FILE}.tbi"
 # Pin after the first verified download:
 #   sha256sum tests/.cache/wgs/HG002_GRCh38_1_22_v4.2.1_benchmark.vcf.gz
 # then paste the value below to enable verification on subsequent runs.
-VCF_SHA256=""
+VCF_SHA256="adb4d4a50048aa13353a06b84fcfcbca09a5d17525efaa4cea44f8822e81175c"
 
 download_if_missing() {
   local url="$1"

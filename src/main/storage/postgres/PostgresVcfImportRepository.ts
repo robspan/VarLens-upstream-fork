@@ -1,147 +1,19 @@
 import type { PoolClient } from 'pg'
 
 import { quoteIdentifier } from './identifiers'
-
-// ---------------------------------------------------------------------------
-// Column lists — kept in sync with PostgresJsonImportRepository.
-// search_document is intentionally excluded: the trigger
-// `variants_search_document_tg` populates it on BEFORE INSERT.
-// ---------------------------------------------------------------------------
-
-const VARIANT_BASE_COLUMNS = [
-  'case_id',
-  'chr',
-  'pos',
-  'ref',
-  'alt',
-  'gene_symbol',
-  'omim_mim_number',
-  'consequence',
-  'gnomad_af',
-  'cadd',
-  'clinvar',
-  'gt_num',
-  'func',
-  'qual',
-  'hpo_sim_score',
-  'transcript',
-  'cdna',
-  'aa_change',
-  'moi',
-  'gq',
-  'dp',
-  'ad_ref',
-  'ad_alt',
-  'ab',
-  'filter',
-  'info_json',
-  'source_format',
-  'variant_type',
-  'end_pos',
-  'sv_type',
-  'sv_length',
-  'caller'
-] as const
-
-const VARIANT_BATCH_RECORDSET_TYPES: Record<string, string> = {
-  chr: 'text',
-  pos: 'bigint',
-  ref: 'text',
-  alt: 'text',
-  gene_symbol: 'text',
-  omim_mim_number: 'text',
-  consequence: 'text',
-  gnomad_af: 'double precision',
-  cadd: 'double precision',
-  clinvar: 'text',
-  gt_num: 'text',
-  func: 'text',
-  qual: 'double precision',
-  hpo_sim_score: 'double precision',
-  transcript: 'text',
-  cdna: 'text',
-  aa_change: 'text',
-  moi: 'text',
-  gq: 'double precision',
-  dp: 'bigint',
-  ad_ref: 'bigint',
-  ad_alt: 'bigint',
-  ab: 'double precision',
-  filter: 'text',
-  info_json: 'text',
-  source_format: 'text',
-  variant_type: 'text',
-  end_pos: 'bigint',
-  sv_type: 'text',
-  sv_length: 'bigint',
-  caller: 'text'
-}
-
-const VARIANT_TRANSCRIPT_COLUMNS = [
-  'variant_id',
-  'transcript_id',
-  'gene_symbol',
-  'consequence',
-  'cdna',
-  'aa_change',
-  'hpo_sim_score',
-  'moi',
-  'is_selected',
-  'is_mane_select',
-  'is_canonical'
-] as const
-
-const VARIANT_SV_COLUMNS = [
-  'variant_id',
-  'sv_is_precise',
-  'cipos_left',
-  'cipos_right',
-  'ciend_left',
-  'ciend_right',
-  'support',
-  'coverage',
-  'strand',
-  'stdev_len',
-  'stdev_pos',
-  'vaf',
-  'dr',
-  'dv',
-  'pe_support',
-  'sr_support',
-  'event_id',
-  'mate_id'
-] as const
-
-const VARIANT_CNV_COLUMNS = [
-  'variant_id',
-  'copy_number',
-  'copy_number_quality',
-  'homozygosity_ref',
-  'homozygosity_alt',
-  'sm',
-  'bin_count'
-] as const
-
-const VARIANT_STR_COLUMNS = [
-  'variant_id',
-  'repeat_id',
-  'variant_catalog_id',
-  'repeat_unit',
-  'display_repeat_unit',
-  'ref_copies',
-  'alt_copies',
-  'repeat_length',
-  'str_status',
-  'normal_max',
-  'pathologic_min',
-  'disease',
-  'inheritance_mode',
-  'source_display',
-  'rank_score',
-  'locus_coverage',
-  'support_type',
-  'confidence_interval'
-] as const
+import {
+  CNV_RECORDSET_TYPES,
+  STR_RECORDSET_TYPES,
+  SV_RECORDSET_TYPES,
+  TRANSCRIPT_RECORDSET_TYPES,
+  VARIANT_BASE_COLUMNS,
+  VARIANT_BATCH_RECORDSET_TYPES,
+  VARIANT_CNV_COLUMNS,
+  VARIANT_STR_COLUMNS,
+  VARIANT_SV_COLUMNS,
+  VARIANT_TRANSCRIPT_COLUMNS,
+  toNumericId
+} from './postgres-import-columns'
 
 // ---------------------------------------------------------------------------
 // Request / result types
@@ -156,7 +28,7 @@ export type VcfSvRow = Record<string, unknown> & { ordinal: number }
 export type VcfCnvRow = Record<string, unknown> & { ordinal: number }
 export type VcfStrRow = Record<string, unknown> & { ordinal: number }
 
-interface WriteVcfFileRequestBase {
+interface PostgresVcfImportRequestBase {
   caseName: string
   fileName: string
   filePath: string
@@ -172,19 +44,21 @@ interface WriteVcfFileRequestBase {
   str: VcfStrRow[]
 }
 
-export interface WriteVcfFileSingleFileRequest extends WriteVcfFileRequestBase {
+export interface PostgresVcfImportSingleFileRequest extends PostgresVcfImportRequestBase {
   mode: 'single-file'
 }
 
-export interface WriteVcfFileMultiFileRequest extends WriteVcfFileRequestBase {
+export interface PostgresVcfImportMultiFileRequest extends PostgresVcfImportRequestBase {
   mode: 'multi-file'
   /** 0 = first file (creates the case), >= 1 = subsequent files (looks up the case). */
   fileIndex: number
 }
 
-export type WriteVcfFileRequest = WriteVcfFileSingleFileRequest | WriteVcfFileMultiFileRequest
+export type PostgresVcfImportRequest =
+  | PostgresVcfImportSingleFileRequest
+  | PostgresVcfImportMultiFileRequest
 
-export interface WriteVcfFileResult {
+export interface PostgresVcfImportFileResult {
   caseId: number
   variantCount: number
 }
@@ -202,12 +76,6 @@ function pickColumns<T extends string>(
     out[col] = row[col] ?? null
   }
   return out
-}
-
-function toNumericId(value: unknown): number {
-  if (typeof value === 'number') return value
-  if (typeof value === 'string') return Number(value)
-  throw new Error(`Expected numeric id, received: ${String(value)}`)
 }
 
 // ---------------------------------------------------------------------------
@@ -235,8 +103,8 @@ export class PostgresVcfImportRepository {
    */
   async writeVcfFile(
     client: Pick<PoolClient, 'query'>,
-    request: WriteVcfFileRequest
-  ): Promise<WriteVcfFileResult> {
+    request: PostgresVcfImportRequest
+  ): Promise<PostgresVcfImportFileResult> {
     const isFirstFile =
       request.mode === 'single-file' ||
       (request.mode === 'multi-file' && request.fileIndex === 0)
@@ -304,7 +172,7 @@ export class PostgresVcfImportRepository {
   private async insertVariants(
     client: Pick<PoolClient, 'query'>,
     caseId: number,
-    request: WriteVcfFileRequest
+    request: PostgresVcfImportRequest
   ): Promise<number> {
     const { variants, transcripts, sv, cnv, str } = request
     if (variants.length === 0) return 0
@@ -358,12 +226,14 @@ export class PostgresVcfImportRepository {
     strRows: VcfStrRow[]
   ): Promise<void> {
     // Helper: resolve ordinal → variant_id and build the payload for a table.
+    // Guard both bounds: negative ordinals index from the end in JS arrays and
+    // would silently produce undefined, causing a FK violation downstream.
     const resolveExtension = (
       rows: Array<Record<string, unknown> & { ordinal: number }>,
       columns: readonly string[]
     ): Array<Record<string, unknown>> =>
       rows
-        .filter((r) => r.ordinal < variantIds.length)
+        .filter((r) => r.ordinal >= 0 && r.ordinal < variantIds.length)
         .map((r) => {
           const variantId = variantIds[r.ordinal]
           const picked = pickColumns(r, columns)
@@ -380,19 +250,7 @@ export class PostgresVcfImportRepository {
         client,
         'variant_transcripts',
         VARIANT_TRANSCRIPT_COLUMNS as unknown as readonly string[],
-        {
-          variant_id: 'bigint',
-          transcript_id: 'text',
-          gene_symbol: 'text',
-          consequence: 'text',
-          cdna: 'text',
-          aa_change: 'text',
-          hpo_sim_score: 'double precision',
-          moi: 'text',
-          is_selected: 'integer',
-          is_mane_select: 'integer',
-          is_canonical: 'integer'
-        },
+        TRANSCRIPT_RECORDSET_TYPES,
         payload
       )
     }
@@ -406,26 +264,7 @@ export class PostgresVcfImportRepository {
         client,
         'variant_sv',
         VARIANT_SV_COLUMNS as unknown as readonly string[],
-        {
-          variant_id: 'bigint',
-          sv_is_precise: 'integer',
-          cipos_left: 'bigint',
-          cipos_right: 'bigint',
-          ciend_left: 'bigint',
-          ciend_right: 'bigint',
-          support: 'bigint',
-          coverage: 'text',
-          strand: 'text',
-          stdev_len: 'double precision',
-          stdev_pos: 'double precision',
-          vaf: 'double precision',
-          dr: 'bigint',
-          dv: 'bigint',
-          pe_support: 'bigint',
-          sr_support: 'bigint',
-          event_id: 'text',
-          mate_id: 'text'
-        },
+        SV_RECORDSET_TYPES,
         payload
       )
     }
@@ -439,15 +278,7 @@ export class PostgresVcfImportRepository {
         client,
         'variant_cnv',
         VARIANT_CNV_COLUMNS as unknown as readonly string[],
-        {
-          variant_id: 'bigint',
-          copy_number: 'bigint',
-          copy_number_quality: 'bigint',
-          homozygosity_ref: 'double precision',
-          homozygosity_alt: 'double precision',
-          sm: 'double precision',
-          bin_count: 'bigint'
-        },
+        CNV_RECORDSET_TYPES,
         payload
       )
     }
@@ -461,26 +292,7 @@ export class PostgresVcfImportRepository {
         client,
         'variant_str',
         VARIANT_STR_COLUMNS as unknown as readonly string[],
-        {
-          variant_id: 'bigint',
-          repeat_id: 'text',
-          variant_catalog_id: 'text',
-          repeat_unit: 'text',
-          display_repeat_unit: 'text',
-          ref_copies: 'double precision',
-          alt_copies: 'text',
-          repeat_length: 'bigint',
-          str_status: 'text',
-          normal_max: 'bigint',
-          pathologic_min: 'bigint',
-          disease: 'text',
-          inheritance_mode: 'text',
-          source_display: 'text',
-          rank_score: 'text',
-          locus_coverage: 'double precision',
-          support_type: 'text',
-          confidence_interval: 'text'
-        },
+        STR_RECORDSET_TYPES,
         payload
       )
     }

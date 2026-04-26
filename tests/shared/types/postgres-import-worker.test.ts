@@ -50,9 +50,9 @@ describe('toPostgresClientConfigMessage', () => {
     expect(result.ssl).toEqual({ mode: 'disable' })
   })
 
-  it('maps boolean true ssl to require with rejectUnauthorized: true (pg shorthand)', () => {
+  it('maps boolean true ssl to require with rejectUnauthorized: false (pg shorthand for trust-all)', () => {
     const result = toPostgresClientConfigMessage({ connectionString: 'postgres://x', ssl: true })
-    expect(result.ssl).toEqual({ mode: 'require', rejectUnauthorized: true })
+    expect(result.ssl).toEqual({ mode: 'require', rejectUnauthorized: false })
   })
 
   it('maps object ssl with rejectUnauthorized: true to require mode', () => {
@@ -71,12 +71,13 @@ describe('toPostgresClientConfigMessage', () => {
     expect(result.ssl).toEqual({ mode: 'require', rejectUnauthorized: false })
   })
 
-  it('maps unknown ssl object (e.g. cert payload) to disable mode conservatively', () => {
-    const result = toPostgresClientConfigMessage({
-      connectionString: 'postgres://x',
-      ssl: { ca: 'cert-material' } as never
-    })
-    expect(result.ssl).toEqual({ mode: 'disable' })
+  it('throws on unknown ssl object (e.g. cert/key/ca payload) instead of silently disabling SSL', () => {
+    expect(() =>
+      toPostgresClientConfigMessage({
+        connectionString: 'postgres://x',
+        ssl: { ca: 'cert-material' } as never
+      })
+    ).toThrow(/Unsupported postgres ssl configuration/)
   })
 
   it('omits statement_timeout when pg passes false (boolean shorthand for "no timeout")', () => {

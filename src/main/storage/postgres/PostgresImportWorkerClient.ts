@@ -48,9 +48,18 @@ export class PostgresImportWorkerClient {
           break
         case 'complete':
           callbacks.onComplete(msg)
+          // Terminate the worker on success so we don't leak idle threads
+          // across imports — a fresh client+worker is created per import by
+          // PostgresImportExecutor. Errors are intentionally not awaited:
+          // termination cleanup is best-effort.
+          void this.terminate()
           break
         case 'error':
           callbacks.onError(msg)
+          // Same rationale as 'complete' — release the worker once an error
+          // has been surfaced. Without this an unrecoverable error path
+          // would leave a zombie worker thread alive until app exit.
+          void this.terminate()
           break
       }
     })

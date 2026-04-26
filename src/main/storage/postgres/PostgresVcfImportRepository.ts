@@ -54,9 +54,22 @@ export interface PostgresVcfImportMultiFileRequest extends PostgresVcfImportRequ
   fileIndex: number
 }
 
+/**
+ * Append-mode request for subsequent batches of the same file. The caller
+ * already holds the resolved `caseId` (from the first batch's
+ * PostgresVcfImportFileResult), so writeVcfFile skips both the case-name
+ * lookup and the per-batch case_data_info upsert. Saves O(N) redundant
+ * `SELECT id FROM cases` queries and `case_data_info` writes per file.
+ */
+export interface PostgresVcfImportAppendRequest extends PostgresVcfImportRequestBase {
+  mode: 'append'
+  caseId: number
+}
+
 export type PostgresVcfImportRequest =
   | PostgresVcfImportSingleFileRequest
   | PostgresVcfImportMultiFileRequest
+  | PostgresVcfImportAppendRequest
 
 export interface PostgresVcfImportFileResult {
   caseId: number
@@ -90,27 +103,36 @@ export class PostgresVcfImportRepository {
   }
 
   /**
-   * Write one VCF file worth of variants into the database.
+   * Write one batch worth of VCF variants into the database.
    *
    * The caller MUST own the transaction (BEGIN/COMMIT/ROLLBACK). This method
    * issues NO transaction-lifecycle SQL. variant_frequency is also NOT updated
    * here — the worker handles that after all writeVcfFile calls complete.
    *
-   * Multi-file semantics:
-   *  - mode: 'single-file'           — duplicate check + case insert
-   *  - mode: 'multi-file', index: 0  — duplicate check + case insert
-   *  - mode: 'multi-file', index: N  — look up existing case by name (reject if missing)
+   * Per-mode semantics:
+   *  - mode: 'single-file'             — duplicate check + case insert + provenance
+   *  - mode: 'multi-file', index: 0    — duplicate check + case insert + provenance
+   *  - mode: 'multi-file', index: N    — look up existing case by name + provenance
+   *  - mode: 'append', caseId          — variants only; no case lookup, no provenance
+   *
+   * The 'append' shape is the WGS-friendly path: subsequent batches of the
+   * same file pass the resolved caseId from the first batch's result and
+   * skip the per-batch `SELECT id FROM cases` + `case_data_info` upsert.
    */
   async writeVcfFile(
     client: Pick<PoolClient, 'query'>,
     request: PostgresVcfImportRequest
   ): Promise<PostgresVcfImportFileResult> {
-    const isFirstFile =
-      request.mode === 'single-file' || (request.mode === 'multi-file' && request.fileIndex === 0)
-
     let caseId: number
+    let writeProvenance = true
 
-    if (isFirstFile) {
+    if (request.mode === 'append') {
+      caseId = request.caseId
+      writeProvenance = false
+    } else if (
+      request.mode === 'single-file' ||
+      (request.mode === 'multi-file' && request.fileIndex === 0)
+    ) {
       // Check for pre-existing case and create if absent.
       const dupResult = await client.query(
         `SELECT id FROM ${this.schemaName}."cases" WHERE name = $1`,
@@ -146,18 +168,22 @@ export class PostgresVcfImportRepository {
     // Insert variants and their extension rows.
     const variantCount = await this.insertVariants(client, caseId, request)
 
-    // Write per-file provenance.
-    const createdAt = Date.now()
-    await client.query(
-      `INSERT INTO ${this.schemaName}."case_data_info"
-         (case_id, import_file_name, import_file_type, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $4)
-       ON CONFLICT (case_id) DO UPDATE SET
-         import_file_name = EXCLUDED.import_file_name,
-         import_file_type = EXCLUDED.import_file_type,
-         updated_at = EXCLUDED.updated_at`,
-      [caseId, request.fileName, 'vcf', createdAt]
-    )
+    // Write per-file provenance — only on the first batch of a file.
+    // Subsequent batches (`mode: 'append'`) skip this; the row is already
+    // there with the correct file_name + file_type.
+    if (writeProvenance) {
+      const createdAt = Date.now()
+      await client.query(
+        `INSERT INTO ${this.schemaName}."case_data_info"
+           (case_id, import_file_name, import_file_type, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $4)
+         ON CONFLICT (case_id) DO UPDATE SET
+           import_file_name = EXCLUDED.import_file_name,
+           import_file_type = EXCLUDED.import_file_type,
+           updated_at = EXCLUDED.updated_at`,
+        [caseId, request.fileName, 'vcf', createdAt]
+      )
+    }
 
     return { caseId, variantCount }
   }

@@ -142,16 +142,22 @@ export function toPostgresClientConfigMessage(
   } else if (client.ssl === false) {
     ssl = { mode: 'disable' }
   } else if (client.ssl === true) {
-    // pg's boolean shorthand: true means "require SSL, trust all certs".
-    ssl = { mode: 'require', rejectUnauthorized: true }
+    // pg's boolean shorthand: true means "require SSL, trust all certs"
+    // (i.e. the equivalent of `{ rejectUnauthorized: false }`).
+    ssl = { mode: 'require', rejectUnauthorized: false }
   } else if (typeof client.ssl === 'object' && 'rejectUnauthorized' in client.ssl) {
     ssl = { mode: 'require', rejectUnauthorized: Boolean(client.ssl.rejectUnauthorized) }
   } else {
-    // Unknown shape (e.g. cert/key payload) — conservatively disable.
-    // Future callers needing cert material must pass it through the connection
-    // string or via PG environment variables; the worker boundary does not
-    // marshal cert/key/ca buffers across structuredClone.
-    ssl = { mode: 'disable' }
+    // Unknown shape (e.g. cert/key/ca buffers). Silently downgrading to
+    // `disable` would mask a real SSL configuration error, so refuse to
+    // serialize and tell the caller how to express cert material in a
+    // worker-safe way.
+    throw new Error(
+      'Unsupported postgres ssl configuration for worker serialization. ' +
+        'SSL cert/key/ca material must be provided via the connection string or ' +
+        'PG environment variables (PGSSLCERT, PGSSLKEY, PGSSLROOTCERT) — ' +
+        'these are consumed by pg natively and survive the structuredClone boundary.'
+    )
   }
   return {
     connectionString: client.connectionString,

@@ -44,21 +44,35 @@ const POSTGRES_JSON_IMPORT_BATCH_SIZE = 1000
 
 let cancelled = false
 
-// Diagnostic: surface any uncaught exception or unhandled rejection through
-// parentPort so the main process can see it instead of the worker crashing
-// silently. This was added to debug Phase 9 Task 15 (multi-file partial
-// failure) where ENOENT was escaping the per-file try/catch — root cause was
-// an unhandled error event on the readline-wrapped fs read stream.
+// Diagnostic: surface any uncaught exception or unhandled rejection both via
+// console.warn (stderr — visible during dev/E2E runs) AND, when the worker is
+// running under a parent thread, as a structured `error` outbound message so
+// the main process sees a real failure instead of a silently-crashing worker.
+// Added to debug Phase 9 Task 15 (multi-file partial failure) where ENOENT
+// was escaping the per-file try/catch — root cause was an unhandled error
+// event on the readline-wrapped fs read stream.
 process.on('uncaughtException', (err) => {
   // eslint-disable-next-line no-console
   console.warn('[postgres-import-worker] uncaughtException:', err.message, err.stack)
+  parentPort?.postMessage({
+    type: 'error',
+    message: `uncaughtException: ${err.message}`,
+    cause: err.stack
+  } satisfies PostgresImportWorkerOutboundMessage)
 })
 process.on('unhandledRejection', (reason) => {
+  const message = reason instanceof Error ? reason.message : String(reason)
+  const stack = reason instanceof Error ? reason.stack : undefined
   // eslint-disable-next-line no-console
   console.warn(
     '[postgres-import-worker] unhandledRejection:',
-    reason instanceof Error ? `${reason.message}\n${reason.stack ?? ''}` : String(reason)
+    stack !== undefined ? `${message}\n${stack}` : message
   )
+  parentPort?.postMessage({
+    type: 'error',
+    message: `unhandledRejection: ${message}`,
+    cause: stack
+  } satisfies PostgresImportWorkerOutboundMessage)
 })
 
 /**
@@ -75,9 +89,31 @@ async function* streamMappedVcfRows(
   selectedSample: string,
   filters?: ImportFilters
 ): AsyncGenerator<VcfMappedVariant, void, void> {
+  // Fail fast (synchronously, with a stack we can attach to the per-file
+  // result) for the most common open-time error class: missing/unreadable
+  // file. createReadStream defers `open(2)` to the next tick, so an ENOENT
+  // would otherwise surface as an asynchronous `error` event on the raw
+  // stream — and if no listener is attached when it fires, Node escalates
+  // it to an `uncaughtException`, tearing the whole worker down (Phase 9
+  // Task 15 root cause).
+  statSync(filePath)
+
   const raw = createReadStream(filePath)
-  const stream = isGzipped(filePath) ? raw.pipe(createGunzip()) : raw
+  const gunzip = isGzipped(filePath) ? createGunzip() : null
+  const stream = gunzip !== null ? raw.pipe(gunzip) : raw
   const rl = createInterface({ input: stream, crlfDelay: Infinity })
+
+  // Belt-and-suspenders: also capture any post-open stream errors (gzip
+  // corruption mid-file, EIO, etc.) and re-throw them from the generator so
+  // the caller's per-file `try/catch` handles them. Without this an
+  // unhandled `error` event would still surface as `uncaughtException`.
+  let streamError: Error | null = null
+  const onStreamError = (err: Error): void => {
+    if (streamError === null) streamError = err
+    rl.close()
+  }
+  raw.on('error', onStreamError)
+  gunzip?.on('error', onStreamError)
 
   const headerLines: string[] = []
   let header: VcfHeader | null = null
@@ -86,6 +122,7 @@ async function* streamMappedVcfRows(
 
   try {
     for await (const line of rl) {
+      if (streamError !== null) throw streamError
       if (line.startsWith('#')) {
         headerLines.push(line)
         continue
@@ -128,7 +165,12 @@ async function* streamMappedVcfRows(
         )
       }
     }
+    // Stream errors that fire AFTER the readline iterator drains (e.g. a
+    // gunzip integrity check at end-of-stream) still need to propagate.
+    if (streamError !== null) throw streamError
   } finally {
+    raw.off('error', onStreamError)
+    gunzip?.off('error', onStreamError)
     raw.destroy()
   }
 }
@@ -202,10 +244,10 @@ export async function runImport(
       const formatInfo = await deps.detectFormat(filePath)
 
       if (formatInfo.format === 'vcf') {
-        const selectedSample = start.vcfOptions?.selectedSample
-        if (selectedSample === undefined || selectedSample === '') {
-          throw new Error('VCF import requires vcfOptions.selectedSample')
-        }
+        // Empty string lets streamMappedVcfRows auto-pick the first header
+        // sample, matching the SQLite path; the generator throws cleanly if
+        // the VCF has no selectable sample at all.
+        const selectedSample = start.vcfOptions?.selectedSample ?? ''
         const genomeBuild = start.vcfOptions?.genomeBuild ?? 'GRCh38'
         const vcfFileName = basename(filePath)
         let vcfFileSize = 0
@@ -236,10 +278,16 @@ export async function runImport(
 
         const flush = async (): Promise<void> => {
           if (variants.length === 0) return
+          // First batch creates the case + writes provenance; subsequent
+          // batches use 'append' mode with the already-resolved caseId so we
+          // skip the per-batch `SELECT id FROM cases` lookup AND the
+          // per-batch case_data_info upsert (the row is already correct
+          // after the first batch). Saves O(N) redundant queries on WGS
+          // imports.
           const request: PostgresVcfImportRequest = firstWritten
             ? {
-                mode: 'multi-file',
-                fileIndex: 1,
+                mode: 'append',
+                caseId,
                 caseName: start.caseName,
                 fileName: vcfFileName,
                 filePath,
@@ -490,10 +538,7 @@ export async function runImport(
           start.filters.bedFilePath !== ''
         ) {
           try {
-            bedFilter = BedFilter.fromFile(
-              start.filters.bedFilePath,
-              start.filters.bedPadding ?? 50
-            )
+            bedFilter = BedFilter.fromFile(start.filters.bedFilePath, start.filters.bedPadding ?? 0)
           } catch (err) {
             // Worker can't use mainLogger; console.warn is the documented
             // worker exception (see AGENTS.md). Continue without BED filtering
@@ -506,7 +551,9 @@ export async function runImport(
         }
         importFilters = {
           bedFilter,
-          bedPadding: start.filters.bedPadding ?? 50,
+          // Match the SQLite-side IPC default (`payload.bedPadding ?? 0`) so the
+          // same UI inputs include the same variants on both backends.
+          bedPadding: start.filters.bedPadding ?? 0,
           passOnly: start.filters.passOnly ?? false,
           minQual: start.filters.minQual ?? null,
           minGq: start.filters.minGq ?? null,
@@ -545,13 +592,19 @@ export async function runImport(
 
           const flushBatch = async (): Promise<void> => {
             if (variants.length === 0) return
-            // Only the first batch of the first file uses fileIndex: 0 (case-create).
-            // Every other batch uses fileIndex: 1 (case-lookup).
+            // Per-batch shape:
+            //   - file 0, batch 0:  mode: 'multi-file', fileIndex: 0
+            //                       (creates case + writes provenance)
+            //   - file N, batch 0:  mode: 'multi-file', fileIndex: 1
+            //                       (looks up case + writes per-file provenance)
+            //   - any file, batch >0: mode: 'append', caseId
+            //                       (no lookup, no provenance — saves O(N) queries)
             const isFirstFileFirstBatch = i === 0 && firstBatch
-            const request: PostgresVcfImportRequest = isFirstFileFirstBatch
+            const isAppend = !firstBatch && caseId !== 0
+            const request: PostgresVcfImportRequest = isAppend
               ? {
-                  mode: 'multi-file',
-                  fileIndex: 0,
+                  mode: 'append',
+                  caseId,
                   caseName: start.caseName,
                   fileName,
                   filePath: fileSpec.filePath,
@@ -566,23 +619,41 @@ export async function runImport(
                   cnv,
                   str
                 }
-              : {
-                  mode: 'multi-file',
-                  fileIndex: 1,
-                  caseName: start.caseName,
-                  fileName,
-                  filePath: fileSpec.filePath,
-                  fileSize,
-                  genomeBuild,
-                  caller: fileSpec.caller ?? null,
-                  annotationFormat: fileSpec.annotationFormat ?? null,
-                  variantType: fileSpec.variantType,
-                  variants,
-                  transcripts,
-                  sv,
-                  cnv,
-                  str
-                }
+              : isFirstFileFirstBatch
+                ? {
+                    mode: 'multi-file',
+                    fileIndex: 0,
+                    caseName: start.caseName,
+                    fileName,
+                    filePath: fileSpec.filePath,
+                    fileSize,
+                    genomeBuild,
+                    caller: fileSpec.caller ?? null,
+                    annotationFormat: fileSpec.annotationFormat ?? null,
+                    variantType: fileSpec.variantType,
+                    variants,
+                    transcripts,
+                    sv,
+                    cnv,
+                    str
+                  }
+                : {
+                    mode: 'multi-file',
+                    fileIndex: 1,
+                    caseName: start.caseName,
+                    fileName,
+                    filePath: fileSpec.filePath,
+                    fileSize,
+                    genomeBuild,
+                    caller: fileSpec.caller ?? null,
+                    annotationFormat: fileSpec.annotationFormat ?? null,
+                    variantType: fileSpec.variantType,
+                    variants,
+                    transcripts,
+                    sv,
+                    cnv,
+                    str
+                  }
             const result = await repo.writeVcfFile(
               client as unknown as Pick<PoolClient, 'query'>,
               request

@@ -52,5 +52,7 @@ export function encodeCoord(chr: string, pos: number, ref: string, alt: string):
 }
 
 export function hashCoord(chr: string, pos: number, ref: string, alt: string): Buffer {
-  return createHash('sha256').update(encodeCoord(chr, pos, ref, alt)).digest()
+  return createHash('sha256')
+    .update(encodeCoord(chr, pos, ref, alt))
+    .digest()
 }

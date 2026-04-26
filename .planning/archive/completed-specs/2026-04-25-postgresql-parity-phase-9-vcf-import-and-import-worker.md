@@ -1,7 +1,7 @@
 # PostgreSQL Parity Phase 9: VCF Import and PostgreSQL Import Worker
 
 **Date:** 2026-04-25
-**Status:** Proposed
+**Status:** Implemented in v0.56.14 (PR #179, merged 2026-04-26)
 **Depends on:**
 
 - [Storage Session Boundary Design](../archive/completed-specs/2026-04-23-storage-adapter-boundary-design.md)

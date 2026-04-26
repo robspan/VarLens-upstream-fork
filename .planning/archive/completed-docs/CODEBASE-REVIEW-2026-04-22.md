@@ -321,3 +321,30 @@ VarLens is no longer primarily paying down shell chaos, IPC sprawl, stale planni
 - Kysely dialects: https://kysely.dev/docs/dialects
 - PostgreSQL partitioning: https://www.postgresql.org/docs/current/ddl-partitioning.html
 - PostgreSQL text search tables and indexes: https://www.postgresql.org/docs/current/textsearch-tables.html
+
+---
+
+## Update — 2026-04-26
+
+**Current HEAD:** `66bcebc` (post-merge of PR #179, version-bumped to 0.56.14)
+
+**Shipped since the 2026-04-23 update:**
+
+- **v0.56.13** (tag `v0.56.13`) — Phase 8 PostgreSQL JSON import landed in PR #178 (commit `2a4468b`). Adds the storage-session-routed JSON import path on the postgres backend, with the duplicate-name check and case insert handled inside a transaction-scoped repository.
+- **Phase 9 + 9.1 landed in PR #179** (merged at `3fb361d`, tagged for release as v0.56.14):
+  - **Phase 9:** PostgreSQL VCF import via a dedicated `worker_threads` worker (`src/main/workers/postgres-import-worker.ts`). Single-file + multi-file, BED filtering, extension tables (SV/CNV/STR), structured cancellation, and Docker-gated Playwright E2Es covering 10 scenarios.
+  - **Phase 9.1:** stored generated `coord_hash BYTEA` column on `variants` and `variant_frequency`, sha256 of length-prefixed encoding (PG-18 IMMUTABLE-clean via `col::bytea`), replacing the column-tuple btree that crashed on HLA mega-alleles. Schema change requires `make pg-reset && make pg-up` on existing dev databases.
+  - **WGS perf fix:** per-batch commits in the postgres import worker bring the GIAB HG002 v4.2.1 fixture inside a 1 GB Node-heap budget — was OOMing at 64 GB before. Fits on 8 GB-RAM machines. New `mode: 'append'` request shape skips redundant per-batch case-name lookups + `case_data_info` upserts on large imports.
+  - **Worker hardening:** stream error listeners + early `statSync` for fast-fail on ENOENT; `uncaughtException` handler now posts a structured `error` outbound message via `parentPort` instead of just `console.warn`'ing; `PostgresImportWorkerClient` now `terminate()`s the worker thread on `complete` / `error` (was leaking idle workers).
+  - **Copilot review:** addressed all substantive items (SSL `rejectUnauthorized` semantics, `bedPadding` default mismatch with the SQLite path, `selectedSample` fallback, etc.) in commit `071d1cc`.
+- **Postgres-blocker artifact resolved** — `.planning/artifacts/perf/wgs-import/2026-04-25-postgres-blocker.md` now carries a "Resolution" footer pointing at the spec/plan and the post-fix WGS comparison (PG 170.93 s, SQLite 52.88 s, ratio 3.09×).
+
+**Now-open priorities:**
+
+- **Priority B** (renderer perf) — unchanged.
+- **Priority C** (storage adapter boundary) — Phase 9 + 9.1 close the import side of the postgres-parity arc. Open follow-ups inside the same theme:
+  - Phase 9.x cleanup: pre-existing test-isolation issue between `postgres-variants-read-dev-mode.e2e.ts` / `postgres-cases-list-dev-mode.e2e.ts` (assume seed-only DB) and the import-writing E2Es; tests pass on a fresh `pg-reset` but fail when sharing the dev container with imports.
+  - Phase 16 polish: postgres `COPY FROM STDIN` escalation — the WGS PG/SQLite ratio is 3.09× (above the 2× threshold the spec set as the trigger). Would close the perf gap and is the documented next step per AGENTS.md.
+- **Priority E** (script mirroring) — unchanged.
+
+VarLens is now functionally at backend parity for VCF imports across SQLite and PostgreSQL, with WGS-scale fixtures running in budget on commodity hardware. The remaining postgres-side perf work is the COPY-FROM-STDIN escalation, not the schema or worker shape.

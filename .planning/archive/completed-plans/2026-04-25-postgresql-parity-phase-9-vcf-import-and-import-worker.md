@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Proposed
+**Status:** Implemented in v0.56.14 (PR #179, merged 2026-04-26)
 
 **Goal:** Add PostgreSQL VCF import (single-file, single-sample-per-file, multi-file/append-within-import, BED filter, extension tables) and move all PG import work — JSON and VCF — into a `worker_threads`-based PostgreSQL import worker. The Electron main process must never block on parsing or batched writes.
 
@@ -14,7 +14,7 @@
 
 ## Reference Documents
 
-- Spec: `.planning/specs/2026-04-25-postgresql-parity-phase-9-vcf-import-and-import-worker.md`
+- Spec: `.planning/archive/completed-specs/2026-04-25-postgresql-parity-phase-9-vcf-import-and-import-worker.md`
 - Storage boundary: `.planning/archive/completed-specs/2026-04-23-storage-adapter-boundary-design.md`
 - Phase 8 (JSON import): `.planning/archive/completed-specs/2026-04-24-postgresql-parity-phase-8-import-and-dataset-creation.md`
 - Phase 7 (variant reads): `.planning/archive/completed-specs/2026-04-24-postgresql-parity-phase-7-variants-read-parity.md`

@@ -1,33 +1,93 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const bulkCopyCalls: Array<{
+  sql: string
+  columnNames: string[]
+  rows: Array<Record<string, unknown>>
+}> = []
+
+vi.mock('../../../src/main/storage/postgres/postgres-bulk-write', () => ({
+  runBulkCopy: vi.fn(
+    async (params: {
+      sql: string
+      columns: ReadonlyArray<{ name: string }>
+      rows: AsyncIterable<Record<string, unknown>> | Iterable<Record<string, unknown>>
+    }) => {
+      const collected: Array<Record<string, unknown>> = []
+      // The runBulkCopy contract accepts both Iterable and AsyncIterable.
+      // The repository hands plain arrays today, but we materialize via
+      // for-await to also exercise the AsyncIterable contract for free.
+      for await (const row of params.rows as AsyncIterable<Record<string, unknown>>) {
+        collected.push(row)
+      }
+      bulkCopyCalls.push({
+        sql: params.sql,
+        columnNames: params.columns.map((c) => c.name),
+        rows: collected
+      })
+    }
+  )
+}))
+
 import {
   PostgresVcfImportRepository,
   type PostgresVcfImportRequest
 } from '../../../src/main/storage/postgres/PostgresVcfImportRepository'
+import {
+  VARIANT_COPY_COLUMNS,
+  VARIANT_TRANSCRIPT_COPY_COLUMNS,
+  VARIANT_SV_COPY_COLUMNS,
+  VARIANT_STR_COPY_COLUMNS,
+  VARIANT_CNV_COPY_COLUMNS
+} from '../../../src/main/storage/postgres/postgres-import-columns'
+
+interface RecordedQuery {
+  text: string
+  params?: unknown[]
+}
 
 const makeFakeClient = () => {
-  const queries: Array<{ text: string; params?: unknown[] }> = []
+  const queries: Array<RecordedQuery> = []
   const client = {
     query: vi.fn(async (sql: string | { text: string }, params?: unknown[]) => {
       const text = typeof sql === 'string' ? sql : sql.text
       queries.push({ text, params })
-      if (text.startsWith('SELECT id FROM') && text.includes('"cases"')) return { rows: [] }
-      if (text.startsWith('INSERT INTO') && text.includes('"cases"')) return { rows: [{ id: 31 }] }
-      if (
-        text.startsWith('INSERT INTO') &&
-        text.includes('"variants"') &&
-        text.includes('jsonb_to_recordset')
-      ) {
-        // The batch insert is `INSERT ... SELECT ... FROM jsonb_to_recordset($1::jsonb)`.
-        // Tests construct a small payload and assert the SQL shape; ordinal-aware
-        // RETURNING is exercised by checking the response shape.
-        const payload = JSON.parse(String((params as unknown[])[0])) as unknown[]
-        return { rows: payload.map((_, i) => ({ ordinal: i, id: 1000 + i })) }
+      // Case lookup (default: not found).
+      if (text.startsWith('SELECT id FROM') && text.includes('"cases"')) {
+        return { rows: [] }
+      }
+      // Case insert.
+      if (text.startsWith('INSERT INTO') && text.includes('"cases"')) {
+        return { rows: [{ id: 31 }] }
+      }
+      // ID-reservation query: SELECT g.ord ... nextval(pg_get_serial_sequence...).
+      // Returns { ordinal, id } rows aligned with the requested N.
+      if (text.includes('pg_get_serial_sequence') && text.includes('generate_series')) {
+        const n = (params?.[1] as number) ?? 0
+        return {
+          rows: Array.from({ length: n }, (_, i) => ({
+            ordinal: String(i),
+            id: String(1000 + i)
+          }))
+        }
+      }
+      // case_data_info upsert.
+      if (text.startsWith('INSERT INTO') && text.includes('"case_data_info"')) {
+        return { rows: [] }
+      }
+      // search_document bulk UPDATEs.
+      if (text.startsWith('UPDATE') && text.includes('search_document')) {
+        return { rows: [] }
       }
       return { rows: [] }
     })
   }
   return { client, queries }
 }
+
+beforeEach(() => {
+  bulkCopyCalls.length = 0
+})
 
 describe('PostgresVcfImportRepository.writeVcfFile', () => {
   it('issues no transaction-lifecycle SQL', async () => {
@@ -50,10 +110,13 @@ describe('PostgresVcfImportRepository.writeVcfFile', () => {
       str: []
     }
     await repo.writeVcfFile(client as never, req)
-    expect(queries.map((q) => q.text)).not.toContain('BEGIN')
-    expect(queries.map((q) => q.text)).not.toContain('COMMIT')
-    expect(queries.map((q) => q.text)).not.toContain('ROLLBACK')
+    const texts = queries.map((q) => q.text)
+    expect(texts).not.toContain('BEGIN')
+    expect(texts).not.toContain('COMMIT')
+    expect(texts).not.toContain('ROLLBACK')
     expect(queries.find((q) => q.text.includes('"variant_frequency"'))).toBeUndefined()
+    // No COPY either when there are zero variants.
+    expect(bulkCopyCalls).toHaveLength(0)
   })
 
   it('rejects pre-existing case in multi-file mode at file index 0', async () => {
@@ -85,6 +148,7 @@ describe('PostgresVcfImportRepository.writeVcfFile', () => {
     const { client, queries } = makeFakeClient()
     client.query.mockImplementation(async (sql: unknown) => {
       const text = typeof sql === 'string' ? sql : (sql as { text: string }).text
+      queries.push({ text })
       if (text.startsWith('SELECT id FROM') && text.includes('"cases"'))
         return { rows: [{ id: 7 }] }
       return { rows: [] }
@@ -107,44 +171,9 @@ describe('PostgresVcfImportRepository.writeVcfFile', () => {
       cnv: [],
       str: []
     })
-    // No INSERT INTO cases for fileIndex >= 1
     expect(
       queries.find((q) => q.text.startsWith('INSERT INTO') && q.text.includes('"cases"'))
     ).toBeUndefined()
-  })
-
-  it('batches base variants and extension rows with jsonb_to_recordset', async () => {
-    const { client, queries } = makeFakeClient()
-    const repo = new PostgresVcfImportRepository('public')
-    await repo.writeVcfFile(client as never, {
-      mode: 'single-file',
-      caseName: 'X',
-      fileName: 'a.vcf.gz',
-      filePath: '/tmp/a.vcf.gz',
-      fileSize: 0,
-      genomeBuild: 'GRCh38',
-      caller: null,
-      annotationFormat: null,
-      variantType: 'snv-indel',
-      variants: [
-        { chr: '1', pos: 100, ref: 'A', alt: 'T' },
-        { chr: '1', pos: 200, ref: 'G', alt: 'C' }
-      ],
-      transcripts: [
-        { ordinal: 0, hgvs_c: 'c.1A>T', hgvs_p: null, gene_symbol: 'BRCA1', is_selected: 1 }
-      ],
-      sv: [],
-      cnv: [],
-      str: []
-    })
-    const variantsInsert = queries.find(
-      (q) => q.text.includes('"variants"') && q.text.includes('jsonb_to_recordset')
-    )
-    expect(variantsInsert).toBeDefined()
-    const transcriptsInsert = queries.find(
-      (q) => q.text.includes('"variant_transcripts"') && q.text.includes('jsonb_to_recordset')
-    )
-    expect(transcriptsInsert).toBeDefined()
   })
 
   it('single-file mode rejects pre-existing case name', async () => {
@@ -225,24 +254,53 @@ describe('PostgresVcfImportRepository.writeVcfFile', () => {
     expect(cdiInsert).toBeDefined()
   })
 
-  it('correlates variant_id from RETURNING into extension rows by ordinal', async () => {
-    const { client, queries } = makeFakeClient()
-    // Make the variants insert return ids 5000, 5001 in order.
-    // Must also push to `queries` so the transcript insert is visible for assertions.
-    client.query.mockImplementation(async (sql: unknown, params?: unknown[]) => {
-      const text = typeof sql === 'string' ? sql : (sql as { text: string }).text
-      queries.push({ text, params })
-      if (text.startsWith('SELECT id FROM') && text.includes('"cases"')) return { rows: [] }
-      if (text.startsWith('INSERT INTO') && text.includes('"cases"')) return { rows: [{ id: 13 }] }
-      if (
-        text.startsWith('INSERT INTO') &&
-        text.includes('"variants"') &&
-        text.includes('jsonb_to_recordset')
-      ) {
-        return { rows: [{ id: 5000 }, { id: 5001 }] }
-      }
-      return { rows: [] }
+  it('COPYs base variants and extension rows with pre-reserved IDs', async () => {
+    const { client } = makeFakeClient()
+    const repo = new PostgresVcfImportRepository('public')
+    await repo.writeVcfFile(client as never, {
+      mode: 'single-file',
+      caseName: 'X',
+      fileName: 'a.vcf.gz',
+      filePath: '/tmp/a.vcf.gz',
+      fileSize: 0,
+      genomeBuild: 'GRCh38',
+      caller: null,
+      annotationFormat: null,
+      variantType: 'snv-indel',
+      variants: [
+        { chr: '1', pos: 100, ref: 'A', alt: 'T' },
+        { chr: '1', pos: 200, ref: 'G', alt: 'C' }
+      ],
+      transcripts: [
+        { ordinal: 0, transcript_id: 'ENST1', gene_symbol: 'BRCA1', is_selected: 1 }
+      ],
+      sv: [],
+      cnv: [],
+      str: []
     })
+
+    const variantsCopy = bulkCopyCalls.find((c) => c.sql.includes('"variants"'))
+    expect(variantsCopy).toBeDefined()
+    expect(variantsCopy!.columnNames).toEqual(VARIANT_COPY_COLUMNS as unknown as string[])
+    // First two columns are id, case_id.
+    expect(variantsCopy!.columnNames[0]).toBe('id')
+    expect(variantsCopy!.columnNames[1]).toBe('case_id')
+    expect(variantsCopy!.rows).toHaveLength(2)
+    // Pre-reserved IDs are 1000, 1001 (mock returns 1000 + i).
+    expect(variantsCopy!.rows[0].id).toBe(1000n)
+    expect(variantsCopy!.rows[1].id).toBe(1001n)
+
+    const transcriptsCopy = bulkCopyCalls.find((c) => c.sql.includes('"variant_transcripts"'))
+    expect(transcriptsCopy).toBeDefined()
+    expect(transcriptsCopy!.columnNames).toEqual(
+      VARIANT_TRANSCRIPT_COPY_COLUMNS as unknown as string[]
+    )
+    expect(transcriptsCopy!.rows).toHaveLength(1)
+    expect(transcriptsCopy!.rows[0].variant_id).toBe(1000n)
+  })
+
+  it('correlates variant_id from pre-reserved IDs into extension rows by ordinal', async () => {
+    const { client } = makeFakeClient()
     const repo = new PostgresVcfImportRepository('public')
     await repo.writeVcfFile(client as never, {
       mode: 'single-file',
@@ -266,13 +324,114 @@ describe('PostgresVcfImportRepository.writeVcfFile', () => {
       cnv: [],
       str: []
     })
-    const transcriptInsert = queries.find((q) => q.text.includes('"variant_transcripts"'))
-    expect(transcriptInsert).toBeDefined()
-    const payload = JSON.parse(String(transcriptInsert!.params![0])) as Array<
-      Record<string, unknown>
-    >
-    expect(payload).toHaveLength(2)
-    expect(payload[0].variant_id).toBe(5000)
-    expect(payload[1].variant_id).toBe(5001)
+
+    const transcriptsCopy = bulkCopyCalls.find((c) => c.sql.includes('"variant_transcripts"'))
+    expect(transcriptsCopy).toBeDefined()
+    expect(transcriptsCopy!.rows).toHaveLength(2)
+    expect(transcriptsCopy!.rows[0].variant_id).toBe(1000n)
+    expect(transcriptsCopy!.rows[1].variant_id).toBe(1001n)
+  })
+
+  it('issues scoped bulk UPDATE for search_document on variants', async () => {
+    const { client, queries } = makeFakeClient()
+    const repo = new PostgresVcfImportRepository('public')
+    await repo.writeVcfFile(client as never, {
+      mode: 'single-file',
+      caseName: 'SD',
+      fileName: 'a.vcf.gz',
+      filePath: '/tmp/a.vcf.gz',
+      fileSize: 0,
+      genomeBuild: 'GRCh38',
+      caller: null,
+      annotationFormat: null,
+      variantType: 'snv-indel',
+      variants: [
+        { chr: '1', pos: 100, ref: 'A', alt: 'T' },
+        { chr: '1', pos: 200, ref: 'G', alt: 'C' }
+      ],
+      transcripts: [],
+      sv: [],
+      cnv: [],
+      str: []
+    })
+
+    const variantsUpdate = queries.find(
+      (q) =>
+        q.text.startsWith('UPDATE') &&
+        q.text.includes('"variants"') &&
+        q.text.includes('compute_variants_search_document') &&
+        q.text.includes('id = ANY($1::bigint[])')
+    )
+    expect(variantsUpdate).toBeDefined()
+    expect((variantsUpdate!.params![0] as bigint[]).map(String)).toEqual(['1000', '1001'])
+
+    const svUpdate = queries.find(
+      (q) => q.text.startsWith('UPDATE') && q.text.includes('"variant_sv"')
+    )
+    expect(svUpdate).toBeUndefined()
+    const strUpdate = queries.find(
+      (q) => q.text.startsWith('UPDATE') && q.text.includes('"variant_str"')
+    )
+    expect(strUpdate).toBeUndefined()
+  })
+
+  it('issues scoped bulk UPDATEs on variant_sv and variant_str only when those tables had rows', async () => {
+    const { client, queries } = makeFakeClient()
+    const repo = new PostgresVcfImportRepository('public')
+    await repo.writeVcfFile(client as never, {
+      mode: 'single-file',
+      caseName: 'SVStr',
+      fileName: 'a.vcf.gz',
+      filePath: '/tmp/a.vcf.gz',
+      fileSize: 0,
+      genomeBuild: 'GRCh38',
+      caller: null,
+      annotationFormat: null,
+      variantType: 'snv-indel',
+      variants: [
+        { chr: '1', pos: 100, ref: 'A', alt: 'T' },
+        { chr: '1', pos: 200, ref: 'G', alt: 'C' }
+      ],
+      transcripts: [],
+      sv: [{ ordinal: 0, sv_is_precise: 1 }],
+      cnv: [],
+      str: []
+    })
+
+    const variantsUpdate = queries.find(
+      (q) =>
+        q.text.startsWith('UPDATE') &&
+        q.text.includes('"variants"') &&
+        q.text.includes('compute_variants_search_document')
+    )
+    expect(variantsUpdate).toBeDefined()
+
+    const svUpdate = queries.find(
+      (q) =>
+        q.text.startsWith('UPDATE') &&
+        q.text.includes('"variant_sv"') &&
+        q.text.includes('compute_variant_sv_search_document') &&
+        q.text.includes('variant_id = ANY($1::bigint[])')
+    )
+    expect(svUpdate).toBeDefined()
+    expect((svUpdate!.params![0] as bigint[]).map(String)).toEqual(['1000'])
+
+    const strUpdate = queries.find(
+      (q) => q.text.startsWith('UPDATE') && q.text.includes('"variant_str"')
+    )
+    expect(strUpdate).toBeUndefined()
+  })
+
+  it('regression guard: COPY column lists exclude coord_hash and search_document', () => {
+    expect(VARIANT_COPY_COLUMNS as unknown as string[]).not.toContain('coord_hash')
+    expect(VARIANT_COPY_COLUMNS as unknown as string[]).not.toContain('search_document')
+    expect(VARIANT_SV_COPY_COLUMNS as unknown as string[]).not.toContain('coord_hash')
+    expect(VARIANT_SV_COPY_COLUMNS as unknown as string[]).not.toContain('search_document')
+    expect(VARIANT_STR_COPY_COLUMNS as unknown as string[]).not.toContain('coord_hash')
+    expect(VARIANT_STR_COPY_COLUMNS as unknown as string[]).not.toContain('search_document')
+    expect(VARIANT_TRANSCRIPT_COPY_COLUMNS as unknown as string[]).not.toContain('coord_hash')
+    expect(VARIANT_TRANSCRIPT_COPY_COLUMNS as unknown as string[]).not.toContain('search_document')
+    expect(VARIANT_CNV_COPY_COLUMNS as unknown as string[]).not.toContain('coord_hash')
+    expect(VARIANT_CNV_COPY_COLUMNS as unknown as string[]).not.toContain('search_document')
   })
 })

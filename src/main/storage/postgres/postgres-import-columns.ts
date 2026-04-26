@@ -52,42 +52,6 @@ export const VARIANT_BASE_COLUMNS = [
   'caller'
 ] as const
 
-// jsonb_to_recordset requires a record type definition. We align it with the
-// variants base columns (excluding case_id which we set from the outer scope).
-export const VARIANT_BATCH_RECORDSET_TYPES: Record<string, string> = {
-  chr: 'text',
-  pos: 'bigint',
-  ref: 'text',
-  alt: 'text',
-  gene_symbol: 'text',
-  omim_mim_number: 'text',
-  consequence: 'text',
-  gnomad_af: 'double precision',
-  cadd: 'double precision',
-  clinvar: 'text',
-  gt_num: 'text',
-  func: 'text',
-  qual: 'double precision',
-  hpo_sim_score: 'double precision',
-  transcript: 'text',
-  cdna: 'text',
-  aa_change: 'text',
-  moi: 'text',
-  gq: 'double precision',
-  dp: 'bigint',
-  ad_ref: 'bigint',
-  ad_alt: 'bigint',
-  ab: 'double precision',
-  filter: 'text',
-  info_json: 'text',
-  source_format: 'text',
-  variant_type: 'text',
-  end_pos: 'bigint',
-  sv_type: 'text',
-  sv_length: 'bigint',
-  caller: 'text'
-}
-
 export const VARIANT_TRANSCRIPT_COLUMNS = [
   'variant_id',
   'transcript_id',
@@ -280,76 +244,6 @@ export const VARIANT_COLUMN_ENCODERS: Record<string, CopyColumnEncoder> = {
   locus_coverage: encodeFloat,
   support_type: encodeText,
   confidence_interval: encodeText
-}
-
-// ---------------------------------------------------------------------------
-// Extension-table recordset type maps (used by insertExtensionBatch callers).
-// ---------------------------------------------------------------------------
-
-export const TRANSCRIPT_RECORDSET_TYPES: Record<string, string> = {
-  variant_id: 'bigint',
-  transcript_id: 'text',
-  gene_symbol: 'text',
-  consequence: 'text',
-  cdna: 'text',
-  aa_change: 'text',
-  hpo_sim_score: 'double precision',
-  moi: 'text',
-  is_selected: 'integer',
-  is_mane_select: 'integer',
-  is_canonical: 'integer'
-}
-
-export const SV_RECORDSET_TYPES: Record<string, string> = {
-  variant_id: 'bigint',
-  sv_is_precise: 'integer',
-  cipos_left: 'bigint',
-  cipos_right: 'bigint',
-  ciend_left: 'bigint',
-  ciend_right: 'bigint',
-  support: 'bigint',
-  coverage: 'text',
-  strand: 'text',
-  stdev_len: 'double precision',
-  stdev_pos: 'double precision',
-  vaf: 'double precision',
-  dr: 'bigint',
-  dv: 'bigint',
-  pe_support: 'bigint',
-  sr_support: 'bigint',
-  event_id: 'text',
-  mate_id: 'text'
-}
-
-export const CNV_RECORDSET_TYPES: Record<string, string> = {
-  variant_id: 'bigint',
-  copy_number: 'bigint',
-  copy_number_quality: 'bigint',
-  homozygosity_ref: 'double precision',
-  homozygosity_alt: 'double precision',
-  sm: 'double precision',
-  bin_count: 'bigint'
-}
-
-export const STR_RECORDSET_TYPES: Record<string, string> = {
-  variant_id: 'bigint',
-  repeat_id: 'text',
-  variant_catalog_id: 'text',
-  repeat_unit: 'text',
-  display_repeat_unit: 'text',
-  ref_copies: 'double precision',
-  alt_copies: 'text',
-  repeat_length: 'bigint',
-  str_status: 'text',
-  normal_max: 'bigint',
-  pathologic_min: 'bigint',
-  disease: 'text',
-  inheritance_mode: 'text',
-  source_display: 'text',
-  rank_score: 'text',
-  locus_coverage: 'double precision',
-  support_type: 'text',
-  confidence_interval: 'text'
 }
 
 // ---------------------------------------------------------------------------

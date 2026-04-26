@@ -1,17 +1,14 @@
 import type { PoolClient } from 'pg'
 
 import { quoteIdentifier } from './identifiers'
+import { runBulkCopy } from './postgres-bulk-write'
 import {
-  CNV_RECORDSET_TYPES,
-  STR_RECORDSET_TYPES,
-  SV_RECORDSET_TYPES,
-  TRANSCRIPT_RECORDSET_TYPES,
-  VARIANT_BASE_COLUMNS,
-  VARIANT_BATCH_RECORDSET_TYPES,
-  VARIANT_CNV_COLUMNS,
-  VARIANT_STR_COLUMNS,
-  VARIANT_SV_COLUMNS,
-  VARIANT_TRANSCRIPT_COLUMNS,
+  VARIANT_CNV_COPY_COLUMNS,
+  VARIANT_COLUMN_ENCODERS,
+  VARIANT_COPY_COLUMNS,
+  VARIANT_STR_COPY_COLUMNS,
+  VARIANT_SV_COPY_COLUMNS,
+  VARIANT_TRANSCRIPT_COPY_COLUMNS,
   toNumericId
 } from './postgres-import-columns'
 
@@ -198,137 +195,159 @@ export class PostgresVcfImportRepository {
     request: PostgresVcfImportRequest
   ): Promise<number> {
     const { variants, transcripts, sv, cnv, str } = request
-    if (variants.length === 0) return 0
+    const N = variants.length
+    if (N === 0) return 0
 
-    // Build the base-column portion of the recordset signature (excludes case_id).
-    const batchCols = Object.keys(VARIANT_BATCH_RECORDSET_TYPES)
-    const recordsetSignature = batchCols
-      .map((col) => `"${col}" ${VARIANT_BATCH_RECORDSET_TYPES[col]}`)
-      .join(', ')
+    // Pre-reserve N IDs with an explicit ordinal column. The ORDER BY g.ord
+    // guarantees the returned rows are aligned with the variants array index,
+    // which is what the extension-row ordinal lookup later depends on.
+    //
+    // pg_get_serial_sequence takes an unquoted bare schema.table identifier
+    // (regclass-style), so we strip the quotes from this.schemaName.
+    const idResult = await client.query(
+      `SELECT g.ord                                              AS ordinal,
+              nextval(pg_get_serial_sequence($1, 'id'))::bigint  AS id
+       FROM   generate_series(0, $2 - 1) AS g(ord)
+       ORDER BY g.ord`,
+      [`${unquoteSchema(this.schemaName)}.variants`, N]
+    )
+    const idRows = idResult.rows as Array<{ ordinal: unknown; id: unknown }>
+    const variantIds: bigint[] = idRows.map((r) => BigInt(r.id as string | number | bigint))
 
-    // Embed case_id and a 0-based ordinal (n) into each payload row.
-    // Embedding n into the JSON and using jsonb_to_recordset lets us ORDER BY n
-    // in the SELECT. PostgreSQL guarantees that INSERT ... SELECT ... ORDER BY n
-    // returns RETURNING rows in the same order as the SELECT, so the i-th returned
-    // id corresponds to ordinal i.
-    const payload = variants.map((row, i) => {
-      const picked = pickColumns(row, batchCols as readonly string[])
+    // Build the per-row payload aligned by ordinal with the variants array.
+    // pickColumns projects to exactly the COPY column list and sets nulls for
+    // missing keys; we then add the pre-reserved id and the resolved case_id.
+    const variantsRowsWithIds = variants.map((row, i) => {
+      const picked = pickColumns(row, VARIANT_COPY_COLUMNS as readonly string[])
       if (picked.variant_type === null) picked.variant_type = 'snv'
-      return { n: i, case_id: caseId, ...picked }
+      picked.id = variantIds[i]
+      picked.case_id = caseId
+      return picked as Record<string, unknown>
     })
 
-    const sql = `INSERT INTO ${this.schemaName}."variants"
-        (${VARIANT_BASE_COLUMNS.map((c) => `"${c}"`).join(', ')})
-      SELECT ${VARIANT_BASE_COLUMNS.map((c) => `v."${c}"`).join(', ')}
-      FROM jsonb_to_recordset($1::jsonb) AS v(
-        "n" integer,
-        "case_id" bigint,
-        ${recordsetSignature}
-      )
-      ORDER BY v."n"
-      RETURNING id`
+    // COPY base variants. VARIANT_COPY_COLUMNS prepends `id` and excludes
+    // both `coord_hash` (generated) and `search_document` (deferred to the
+    // scoped bulk UPDATE below).
+    await runBulkCopy({
+      client,
+      sql:
+        `COPY ${this.schemaName}."variants" ` +
+        `(${(VARIANT_COPY_COLUMNS as readonly string[])
+          .map((c) => quoteIdentifier(c))
+          .join(', ')}) ` +
+        `FROM STDIN`,
+      columns: (VARIANT_COPY_COLUMNS as readonly string[]).map((name) => ({
+        name,
+        encoder: VARIANT_COLUMN_ENCODERS[name]
+      })),
+      rows: variantsRowsWithIds
+    })
 
-    const result = await client.query(sql, [JSON.stringify(payload)])
-    const returnedRows = result.rows as Array<{ id: unknown }>
+    // COPY extension tables sequentially. Each helper resolves
+    // ordinal → variant_id at iterate time and skips out-of-range ordinals.
+    await this.copyExtensions(client, variantIds, transcripts, sv, cnv, str)
 
-    // Build a mapping: ordinal (array index) → variant_id
-    const variantIds: number[] = returnedRows.map((r) => toNumericId(r.id))
+    // Per-batch scoped bulk UPDATEs for search_document.
+    //
+    // The triggers that would otherwise populate search_document on insert are
+    // disabled at the worker level (Phase 16 bracket transaction); these
+    // UPDATEs do NOT retrigger because the disabled state still applies.
+    await client.query(
+      `UPDATE ${this.schemaName}."variants"
+       SET    search_document = compute_variants_search_document(variants)
+       WHERE  id = ANY($1::bigint[])`,
+      [variantIds]
+    )
 
-    // Insert extension rows, replacing ordinal with the resolved variant_id.
-    await this.insertExtensionRows(client, variantIds, transcripts, sv, cnv, str)
+    if (sv.length > 0) {
+      const svVariantIds = sv
+        .filter((r) => r.ordinal >= 0 && r.ordinal < variantIds.length)
+        .map((r) => variantIds[r.ordinal])
+      if (svVariantIds.length > 0) {
+        await client.query(
+          `UPDATE ${this.schemaName}."variant_sv"
+           SET    search_document = compute_variant_sv_search_document(variant_sv)
+           WHERE  variant_id = ANY($1::bigint[])`,
+          [svVariantIds]
+        )
+      }
+    }
+
+    if (str.length > 0) {
+      const strVariantIds = str
+        .filter((r) => r.ordinal >= 0 && r.ordinal < variantIds.length)
+        .map((r) => variantIds[r.ordinal])
+      if (strVariantIds.length > 0) {
+        await client.query(
+          `UPDATE ${this.schemaName}."variant_str"
+           SET    search_document = compute_variant_str_search_document(variant_str)
+           WHERE  variant_id = ANY($1::bigint[])`,
+          [strVariantIds]
+        )
+      }
+    }
 
     return variantIds.length
   }
 
-  private async insertExtensionRows(
+  private async copyExtensions(
     client: Pick<PoolClient, 'query'>,
-    variantIds: number[],
+    variantIds: bigint[],
     transcripts: VcfTranscriptRow[],
     svRows: VcfSvRow[],
     cnvRows: VcfCnvRow[],
     strRows: VcfStrRow[]
   ): Promise<void> {
-    // Helper: resolve ordinal → variant_id and build the payload for a table.
-    // Guard both bounds: negative ordinals index from the end in JS arrays and
-    // would silently produce undefined, causing a FK violation downstream.
-    const resolveExtension = (
-      rows: Array<Record<string, unknown> & { ordinal: number }>,
-      columns: readonly string[]
-    ): Array<Record<string, unknown>> =>
-      rows
-        .filter((r) => r.ordinal >= 0 && r.ordinal < variantIds.length)
-        .map((r) => {
-          const variantId = variantIds[r.ordinal]
-          const picked = pickColumns(r, columns)
-          picked['variant_id'] = variantId
-          return picked
-        })
+    const helper = async (
+      table: string,
+      columns: readonly string[],
+      rows: ReadonlyArray<Record<string, unknown> & { ordinal: number }>
+    ): Promise<void> => {
+      if (rows.length === 0) return
 
-    if (transcripts.length > 0) {
-      const payload = resolveExtension(
-        transcripts,
-        VARIANT_TRANSCRIPT_COLUMNS as unknown as readonly string[]
-      )
-      await this.insertExtensionBatch(
+      // Resolve ordinal → variant_id; drop rows whose ordinal is out of bounds
+      // (negative ordinals would silently index from the end in JS arrays).
+      const resolved: Array<Record<string, unknown>> = []
+      for (const row of rows) {
+        if (row.ordinal < 0 || row.ordinal >= variantIds.length) continue
+        const picked = pickColumns(row, columns)
+        picked.variant_id = variantIds[row.ordinal]
+        resolved.push(picked as Record<string, unknown>)
+      }
+      if (resolved.length === 0) return
+
+      const sql =
+        `COPY ${this.schemaName}.${quoteIdentifier(table)} ` +
+        `(${columns.map((c) => quoteIdentifier(c)).join(', ')}) FROM STDIN`
+
+      await runBulkCopy({
         client,
-        'variant_transcripts',
-        VARIANT_TRANSCRIPT_COLUMNS as unknown as readonly string[],
-        TRANSCRIPT_RECORDSET_TYPES,
-        payload
-      )
+        sql,
+        columns: columns.map((name) => ({ name, encoder: VARIANT_COLUMN_ENCODERS[name] })),
+        rows: resolved
+      })
     }
 
-    if (svRows.length > 0) {
-      const payload = resolveExtension(svRows, VARIANT_SV_COLUMNS as unknown as readonly string[])
-      await this.insertExtensionBatch(
-        client,
-        'variant_sv',
-        VARIANT_SV_COLUMNS as unknown as readonly string[],
-        SV_RECORDSET_TYPES,
-        payload
-      )
-    }
-
-    if (cnvRows.length > 0) {
-      const payload = resolveExtension(cnvRows, VARIANT_CNV_COLUMNS as unknown as readonly string[])
-      await this.insertExtensionBatch(
-        client,
-        'variant_cnv',
-        VARIANT_CNV_COLUMNS as unknown as readonly string[],
-        CNV_RECORDSET_TYPES,
-        payload
-      )
-    }
-
-    if (strRows.length > 0) {
-      const payload = resolveExtension(strRows, VARIANT_STR_COLUMNS as unknown as readonly string[])
-      await this.insertExtensionBatch(
-        client,
-        'variant_str',
-        VARIANT_STR_COLUMNS as unknown as readonly string[],
-        STR_RECORDSET_TYPES,
-        payload
-      )
-    }
+    await helper(
+      'variant_transcripts',
+      VARIANT_TRANSCRIPT_COPY_COLUMNS as unknown as readonly string[],
+      transcripts
+    )
+    await helper('variant_sv', VARIANT_SV_COPY_COLUMNS as unknown as readonly string[], svRows)
+    await helper('variant_cnv', VARIANT_CNV_COPY_COLUMNS as unknown as readonly string[], cnvRows)
+    await helper('variant_str', VARIANT_STR_COPY_COLUMNS as unknown as readonly string[], strRows)
   }
+}
 
-  private async insertExtensionBatch(
-    client: Pick<PoolClient, 'query'>,
-    table: string,
-    columns: readonly string[],
-    recordsetTypes: Record<string, string>,
-    rows: Array<Record<string, unknown>>
-  ): Promise<void> {
-    if (rows.length === 0) return
-    const recordsetSignature = columns
-      .map((col) => `"${col}" ${recordsetTypes[col] ?? 'text'}`)
-      .join(', ')
-
-    const sql = `INSERT INTO ${this.schemaName}.${quoteIdentifier(table)}
-      (${columns.map((c) => `"${c}"`).join(', ')})
-      SELECT ${columns.map((c) => `v."${c}"`).join(', ')}
-      FROM jsonb_to_recordset($1::jsonb) AS v(${recordsetSignature})`
-
-    await client.query(sql, [JSON.stringify(rows)])
+/**
+ * Strip surrounding double-quotes from an already-quoted schema identifier so
+ * it can be passed to pg_get_serial_sequence (which requires an unquoted bare
+ * schema.table form). quoteIdentifier always wraps in quotes and doubles any
+ * embedded quotes, so the inverse here unwraps and undoes the doubling.
+ */
+function unquoteSchema(quoted: string): string {
+  if (quoted.startsWith('"') && quoted.endsWith('"')) {
+    return quoted.slice(1, -1).replace(/""/g, '"')
   }
+  return quoted
 }

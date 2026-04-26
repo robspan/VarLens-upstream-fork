@@ -2,18 +2,121 @@ import type { Pool, PoolClient } from 'pg'
 
 import { quoteIdentifier } from './identifiers'
 import {
-  CNV_RECORDSET_TYPES,
-  STR_RECORDSET_TYPES,
-  SV_RECORDSET_TYPES,
-  TRANSCRIPT_RECORDSET_TYPES,
   VARIANT_BASE_COLUMNS,
-  VARIANT_BATCH_RECORDSET_TYPES,
   VARIANT_CNV_COLUMNS,
   VARIANT_STR_COLUMNS,
   VARIANT_SV_COLUMNS,
   VARIANT_TRANSCRIPT_COLUMNS,
   toNumericId
 } from './postgres-import-columns'
+
+// ---------------------------------------------------------------------------
+// Recordset type maps (Phase 16: relocated from postgres-import-columns.ts).
+//
+// The JSON import path still uses `jsonb_to_recordset` for variant + extension
+// inserts. Phase 16 only swapped the VCF path to COPY FROM STDIN, so these
+// type maps remain co-located with their sole consumer here.
+// ---------------------------------------------------------------------------
+
+const VARIANT_BATCH_RECORDSET_TYPES: Record<string, string> = {
+  chr: 'text',
+  pos: 'bigint',
+  ref: 'text',
+  alt: 'text',
+  gene_symbol: 'text',
+  omim_mim_number: 'text',
+  consequence: 'text',
+  gnomad_af: 'double precision',
+  cadd: 'double precision',
+  clinvar: 'text',
+  gt_num: 'text',
+  func: 'text',
+  qual: 'double precision',
+  hpo_sim_score: 'double precision',
+  transcript: 'text',
+  cdna: 'text',
+  aa_change: 'text',
+  moi: 'text',
+  gq: 'double precision',
+  dp: 'bigint',
+  ad_ref: 'bigint',
+  ad_alt: 'bigint',
+  ab: 'double precision',
+  filter: 'text',
+  info_json: 'text',
+  source_format: 'text',
+  variant_type: 'text',
+  end_pos: 'bigint',
+  sv_type: 'text',
+  sv_length: 'bigint',
+  caller: 'text'
+}
+
+const TRANSCRIPT_RECORDSET_TYPES: Record<string, string> = {
+  variant_id: 'bigint',
+  transcript_id: 'text',
+  gene_symbol: 'text',
+  consequence: 'text',
+  cdna: 'text',
+  aa_change: 'text',
+  hpo_sim_score: 'double precision',
+  moi: 'text',
+  is_selected: 'integer',
+  is_mane_select: 'integer',
+  is_canonical: 'integer'
+}
+
+const SV_RECORDSET_TYPES: Record<string, string> = {
+  variant_id: 'bigint',
+  sv_is_precise: 'integer',
+  cipos_left: 'bigint',
+  cipos_right: 'bigint',
+  ciend_left: 'bigint',
+  ciend_right: 'bigint',
+  support: 'bigint',
+  coverage: 'text',
+  strand: 'text',
+  stdev_len: 'double precision',
+  stdev_pos: 'double precision',
+  vaf: 'double precision',
+  dr: 'bigint',
+  dv: 'bigint',
+  pe_support: 'bigint',
+  sr_support: 'bigint',
+  event_id: 'text',
+  mate_id: 'text'
+}
+
+const CNV_RECORDSET_TYPES: Record<string, string> = {
+  variant_id: 'bigint',
+  copy_number: 'bigint',
+  copy_number_quality: 'bigint',
+  homozygosity_ref: 'double precision',
+  homozygosity_alt: 'double precision',
+  sm: 'double precision',
+  bin_count: 'bigint'
+}
+
+const STR_RECORDSET_TYPES: Record<string, string> = {
+  variant_id: 'bigint',
+  repeat_id: 'text',
+  variant_catalog_id: 'text',
+  repeat_unit: 'text',
+  display_repeat_unit: 'text',
+  ref_copies: 'double precision',
+  alt_copies: 'text',
+  repeat_length: 'bigint',
+  str_status: 'text',
+  normal_max: 'bigint',
+  pathologic_min: 'bigint',
+  disease: 'text',
+  inheritance_mode: 'text',
+  source_display: 'text',
+  rank_score: 'text',
+  locus_coverage: 'double precision',
+  support_type: 'text',
+  confidence_interval: 'text'
+}
 
 export type PostgresJsonImportFileType = 'simple' | 'object' | 'columnar'
 

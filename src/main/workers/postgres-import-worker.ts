@@ -284,6 +284,16 @@ export async function runImport(
           cnv = []
           str = []
           ordinal = 0
+          // Commit per-batch so postgres releases per-tuple bookkeeping and
+          // the pg-node client releases its query/result references. Without
+          // this the worker's working set scales linearly with file size on
+          // large WGS imports — the original single-transaction shape OOMed
+          // multi-GB Node heaps on the GIAB HG002 fixture.
+          await client.query('COMMIT')
+          await client.query('BEGIN')
+          if (typeof (globalThis as { gc?: () => void }).gc === 'function') {
+            ;(globalThis as { gc?: () => void }).gc?.()
+          }
         }
 
         for await (const row of stream) {
@@ -368,6 +378,12 @@ export async function runImport(
           totalInserted += batch.length
           batch = []
           post({ type: 'progress', phase: 'inserting', rowsProcessed: totalInserted, filePath })
+          // Commit per-batch — same rationale as the VCF branch above.
+          await client.query('COMMIT')
+          await client.query('BEGIN')
+          if (typeof (globalThis as { gc?: () => void }).gc === 'function') {
+            ;(globalThis as { gc?: () => void }).gc?.()
+          }
         }
         try {
           for await (const chunk of stream) {
@@ -586,6 +602,15 @@ export async function runImport(
             cnv = []
             str = []
             ordinal = 0
+            // Commit per-batch — same rationale as the single-file branch.
+            // The per-file BEGIN/COMMIT around this loop still bounds the
+            // failure semantics ("file N failed" rolls back any in-flight
+            // batch), but each successful batch is now durable immediately.
+            await client.query('COMMIT')
+            await client.query('BEGIN')
+            if (typeof (globalThis as { gc?: () => void }).gc === 'function') {
+              ;(globalThis as { gc?: () => void }).gc?.()
+            }
           }
 
           for await (const row of stream) {

@@ -201,9 +201,11 @@ describe('postgres-import-worker runImport', () => {
       (m) => messages.push(m)
     )
 
-    // outer BEGIN + ROLLBACK, file-1 BEGIN + COMMIT, file-2 BEGIN + ROLLBACK, post-loop BEGIN + COMMIT
+    // outer BEGIN + ROLLBACK, file-1 BEGIN + per-batch COMMIT/BEGIN + final COMMIT,
+    // file-2 BEGIN + ROLLBACK, post-loop BEGIN + COMMIT.
+    // Per-batch commits in flushBatch produce one extra BEGIN per successful file.
     const beginCount = queries.filter((q) => q === 'BEGIN').length
-    expect(beginCount).toBe(4)
+    expect(beginCount).toBe(5)
     expect(queries.includes('ROLLBACK')).toBe(true)
     expect(queries.includes('COMMIT')).toBe(true)
 

@@ -203,84 +203,20 @@ const defaultDeps: RunImportDeps = {
 }
 
 /**
- * Idempotently re-enable the three FTS BEFORE INSERT triggers.
+ * Lift per-statement and idle-in-transaction limits for the import session.
  *
- * Runs in auto-commit (no surrounding transaction) at the top of every
- * `runImport`, before any BEGIN. `ALTER TABLE ... ENABLE TRIGGER` is a
- * no-op when the trigger is already enabled, so this is safe to run on
- * every startup — including JSON imports, which never disable triggers
- * themselves but may inherit a DISABLED state from a prior crashed VCF
- * import.
+ * Phase 16.1 finding: a 5.3M-variant WGS import's post-loop bookkeeping
+ * (`rebuildVariantFrequencyForCase` GROUP BY scan over the full case)
+ * routinely takes longer than the renderer-default `statement_timeout`
+ * of 30 s. Imports run in their own short-lived worker connection, so
+ * relaxing the timeouts here doesn't affect read paths.
  */
-export async function recoverTriggersOnStartup(
-  client: Pick<Client, 'query'>,
-  schemaName: string
+export async function relaxImportSessionLimits(
+  client: Pick<Client, 'query'>
 ): Promise<void> {
-  const q = quoteIdentifier
-  // Auto-commit. Idempotent — ENABLE TRIGGER on an already-enabled trigger is a no-op.
-  await client.query(
-    `ALTER TABLE ${q(schemaName)}."variants"    ENABLE TRIGGER variants_search_document_tg`
-  )
-  await client.query(
-    `ALTER TABLE ${q(schemaName)}."variant_sv"  ENABLE TRIGGER variant_sv_search_document_tg`
-  )
-  await client.query(
-    `ALTER TABLE ${q(schemaName)}."variant_str" ENABLE TRIGGER variant_str_search_document_tg`
-  )
-}
-
-/**
- * Leading bracket transaction: disable the three FTS triggers in a durable
- * commit before a VCF import begins. Runs only for VCF imports — JSON
- * imports rely on the trigger to populate `search_document`.
- *
- * Durability matters here: this commit must survive a worker crash so the
- * recovery shim on the next startup can detect the DISABLED state and
- * re-enable the triggers. Do NOT use `SET LOCAL synchronous_commit = OFF`
- * inside this transaction.
- */
-export async function disableTriggersBeforeVcfImport(
-  client: Pick<Client, 'query'>,
-  schemaName: string
-): Promise<void> {
-  const q = quoteIdentifier
-  await client.query('BEGIN')
-  await client.query(
-    `ALTER TABLE ${q(schemaName)}."variants"    DISABLE TRIGGER variants_search_document_tg`
-  )
-  await client.query(
-    `ALTER TABLE ${q(schemaName)}."variant_sv"  DISABLE TRIGGER variant_sv_search_document_tg`
-  )
-  await client.query(
-    `ALTER TABLE ${q(schemaName)}."variant_str" DISABLE TRIGGER variant_str_search_document_tg`
-  )
-  await client.query('COMMIT')
-}
-
-/**
- * Trailing bracket transaction: re-enable the three FTS triggers in a
- * durable commit after a VCF import finishes. Runs in `finally`, so it
- * fires on success, cancellation, and error paths alike.
- *
- * Like the leading bracket, this commit must be durable. Do NOT use
- * `SET LOCAL synchronous_commit = OFF` inside this transaction.
- */
-export async function enableTriggersAfterVcfImport(
-  client: Pick<Client, 'query'>,
-  schemaName: string
-): Promise<void> {
-  const q = quoteIdentifier
-  await client.query('BEGIN')
-  await client.query(
-    `ALTER TABLE ${q(schemaName)}."variants"    ENABLE TRIGGER variants_search_document_tg`
-  )
-  await client.query(
-    `ALTER TABLE ${q(schemaName)}."variant_sv"  ENABLE TRIGGER variant_sv_search_document_tg`
-  )
-  await client.query(
-    `ALTER TABLE ${q(schemaName)}."variant_str" ENABLE TRIGGER variant_str_search_document_tg`
-  )
-  await client.query('COMMIT')
+  await client.query('SET statement_timeout = 0')
+  await client.query('SET idle_in_transaction_session_timeout = 0')
+  await client.query('SET lock_timeout = 0')
 }
 
 function clientConfigFromMessage(message: PostgresClientConfig): ClientConfig {
@@ -318,13 +254,12 @@ export async function runImport(
   try {
     await client.connect()
     profileStart(`${start.mode}:${start.caseName}`)
-    // Phase 16 recovery shim: re-enable the three FTS triggers idempotently
-    // before any transaction is opened. ENABLE TRIGGER on an already-enabled
-    // trigger is a no-op, so this is safe to run for both VCF and JSON
-    // imports — and necessary, because a prior crashed VCF import may have
-    // left the triggers DISABLED (the trailing bracket transaction never
-    // ran). Auto-commit by design: must complete before any BEGIN.
-    await profilePhase('recovery-shim', () => recoverTriggersOnStartup(client, start.schema))
+    // Phase 16.1: lift the per-statement / idle-in-transaction / lock
+    // timeouts for the import session. Long post-loop bookkeeping
+    // (rebuildVariantFrequencyForCase) on a WGS-sized case can exceed the
+    // renderer-default 30 s statement_timeout. Auto-commit (no BEGIN
+    // required) and per-session, so it does not leak to other connections.
+    await profilePhase('relax-session-limits', () => relaxImportSessionLimits(client))
 
     if (start.mode === 'single-file') {
       const filePath = start.filePath
@@ -339,14 +274,11 @@ export async function runImport(
       const formatInfo = await deps.detectFormat(filePath)
 
       if (formatInfo.format === 'vcf') {
-        // Phase 16 bracket-transaction defer: disable the three FTS triggers
-        // in a durable, auto-commit-style transaction BEFORE the per-batch
-        // VCF import begins. The trailing bracket runs in `finally` so the
-        // triggers are re-enabled on success, cancellation, and error paths
-        // alike. The `try` opens the first per-batch transaction itself —
-        // we deliberately do NOT issue an outer BEGIN before this point.
-        await disableTriggersBeforeVcfImport(client, start.schema)
-        try {
+        // Phase 16.1: search_document is a STORED generated column on the
+        // FTS-bearing tables (variants/variant_sv/variant_str), populated
+        // inline at COPY/INSERT time. No trigger to disable, no bulk UPDATE
+        // to defer, no bracket transactions, no recovery shim.
+        {
           // Empty string lets streamMappedVcfRows auto-pick the first header
           // sample, matching the SQLite path; the generator throws cleanly if
           // the VCF has no selectable sample at all.
@@ -515,12 +447,6 @@ export async function runImport(
             }
           })
           return
-        } finally {
-          // Trailing bracket transaction: re-enable the three FTS triggers
-          // in a durable commit. Runs on success, cancellation, and error
-          // paths alike — bracket-wrap preserves cancellation semantics by
-          // unwinding through this `finally` before the outer error handler.
-          await enableTriggersAfterVcfImport(client, start.schema)
         }
       }
 
@@ -644,13 +570,9 @@ export async function runImport(
       if (!start.files || start.files.length === 0) {
         throw new Error('postgres-import-worker: multi-file mode requires non-empty files[]')
       }
-      // Phase 16 bracket-transaction defer: multi-file is always VCF, so
-      // we wrap the entire per-file loop + post-loop bookkeeping in the
-      // bracket transactions. The leading bracket is the FIRST transaction
-      // this worker opens after the recovery shim — there is NO outer
-      // BEGIN at runImport-entry to roll back.
-      await disableTriggersBeforeVcfImport(client, start.schema)
-      try {
+      // Phase 16.1: search_document is a STORED generated column;
+      // no trigger-defer machinery, no bracket transactions.
+      {
         const fileResults: Array<{
           filePath: string
           variantType: string
@@ -963,12 +885,6 @@ export async function runImport(
           }
         })
         return
-      } finally {
-        // Trailing bracket transaction: re-enable the three FTS triggers in
-        // a durable commit. Runs on success, cancellation (the inner break
-        // out of the file loop falls through here), and any thrown error
-        // alike — the post-loop ROLLBACK above re-throws into this finally.
-        await enableTriggersAfterVcfImport(client, start.schema)
       }
     }
 

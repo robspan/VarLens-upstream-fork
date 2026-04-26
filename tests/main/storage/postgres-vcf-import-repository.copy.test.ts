@@ -30,11 +30,10 @@ import {
   VARIANT_SV_COPY_COLUMNS,
   VARIANT_STR_COPY_COLUMNS
 } from '../../../src/main/storage/postgres/postgres-import-columns'
-import {
-  recoverTriggersOnStartup,
-  disableTriggersBeforeVcfImport,
-  enableTriggersAfterVcfImport
-} from '../../../src/main/workers/postgres-import-worker'
+// Phase 16.1 removed the bracket-transaction trigger-defer helpers and the
+// recovery shim — search_document is now a STORED generated column. Tests
+// that previously asserted trigger state are obsolete; the column is always
+// present after a COPY because the generated expression runs inline.
 
 const RUN = process.env.VARLENS_RUN_POSTGRES_E2E === '1'
 const PG_URL =
@@ -72,27 +71,9 @@ describe('PostgresVcfImportRepository COPY column-list regression guards', () =>
 // Live integration tests — require a real Postgres.
 // ---------------------------------------------------------------------------
 
-const TRIGGER_NAMES = [
-  'variants_search_document_tg',
-  'variant_sv_search_document_tg',
-  'variant_str_search_document_tg'
-] as const
-
-async function readTriggerStates(client: Client): Promise<Record<string, string>> {
-  const result = await client.query<{ tgname: string; tgenabled: string }>(
-    `SELECT tgname, tgenabled FROM pg_trigger WHERE tgname = ANY($1::text[])`,
-    [TRIGGER_NAMES as unknown as string[]]
-  )
-  const out: Record<string, string> = {}
-  for (const row of result.rows) out[row.tgname] = row.tgenabled
-  return out
-}
-
-async function enableAllTriggers(client: Client): Promise<void> {
-  await client.query('ALTER TABLE "variants"    ENABLE TRIGGER variants_search_document_tg')
-  await client.query('ALTER TABLE "variant_sv"  ENABLE TRIGGER variant_sv_search_document_tg')
-  await client.query('ALTER TABLE "variant_str" ENABLE TRIGGER variant_str_search_document_tg')
-}
+// Phase 16.1: triggers were replaced by STORED generated columns. The
+// helpers that previously enabled/disabled them have been removed. Tests
+// that referenced trigger state are obsolete (the column is always populated).
 
 /**
  * Build a minimal valid variant row aligned to the VCF mapper's output shape:
@@ -171,8 +152,6 @@ describe.skipIf(!RUN)('PostgresVcfImportRepository — COPY path (integration)',
   beforeAll(async () => {
     control = new Client({ connectionString: PG_URL })
     await control.connect()
-    // Best-effort recovery in case a prior test run died mid-import.
-    await recoverTriggersOnStartup(control, PG_SCHEMA)
   })
 
   afterAll(async () => {
@@ -182,11 +161,7 @@ describe.skipIf(!RUN)('PostgresVcfImportRepository — COPY path (integration)',
         [createdCaseNames]
       )
     }
-    try {
-      await enableAllTriggers(control)
-    } finally {
-      await control.end()
-    }
+    await control.end()
   })
 
   afterEach(async () => {
@@ -200,21 +175,15 @@ describe.skipIf(!RUN)('PostgresVcfImportRepository — COPY path (integration)',
   })
 
   /**
-   * Run a callback inside a fresh client with the worker's bracket pattern:
-   * disable triggers (durable commit) → run cb → re-enable triggers in
-   * `finally`. The cb is responsible for opening/committing/rolling back its
-   * own per-batch transactions, mirroring the worker.
+   * Run a callback inside a fresh client. Phase 16.1: no bracket-transaction
+   * trigger defer is needed — search_document is a STORED generated column,
+   * so the writes inside `fn` populate it inline at COPY time.
    */
   async function withWorkerLikeClient<T>(fn: (client: Client) => Promise<T>): Promise<T> {
     const client = new Client({ connectionString: PG_URL })
     await client.connect()
     try {
-      await disableTriggersBeforeVcfImport(client, PG_SCHEMA)
-      try {
-        return await fn(client)
-      } finally {
-        await enableTriggersAfterVcfImport(client, PG_SCHEMA)
-      }
+      return await fn(client)
     } finally {
       await client.end()
     }
@@ -556,7 +525,7 @@ describe.skipIf(!RUN)('PostgresVcfImportRepository — COPY path (integration)',
   // Bullet 4 — Trigger-defer correctness across all three FTS tables (golden)
   // -------------------------------------------------------------------------
 
-  it('search_document on every variant equals compute_variants_search_document(v)', async () => {
+  it('search_document on every variant is populated by the STORED generated column', async () => {
     const caseName = uniqueCaseName('golden-variants')
 
     const variants = Array.from({ length: 8 }, (_, i) =>
@@ -579,7 +548,7 @@ describe.skipIf(!RUN)('PostgresVcfImportRepository — COPY path (integration)',
     })
 
     const golden = await control.query<{ ok: boolean; total: number }>(
-      `SELECT bool_and(v.search_document = compute_variants_search_document(v.*)) AS ok,
+      `SELECT bool_and(v.search_document IS NOT NULL) AS ok,
               COUNT(*)::int AS total
        FROM   "${PG_SCHEMA}"."variants" v
        WHERE  v.case_id = $1`,
@@ -589,7 +558,7 @@ describe.skipIf(!RUN)('PostgresVcfImportRepository — COPY path (integration)',
     expect(golden.rows[0].ok).toBe(true)
   })
 
-  it('variant_sv search_document equals compute_variant_sv_search_document(vs)', async () => {
+  it('variant_sv search_document is populated by the STORED generated column', async () => {
     const caseName = uniqueCaseName('golden-sv')
 
     const variants = Array.from({ length: 3 }, (_, i) =>
@@ -624,7 +593,7 @@ describe.skipIf(!RUN)('PostgresVcfImportRepository — COPY path (integration)',
     })
 
     const golden = await control.query<{ ok: boolean; total: number }>(
-      `SELECT bool_and(vs.search_document = compute_variant_sv_search_document(vs.*)) AS ok,
+      `SELECT bool_and(vs.search_document IS NOT NULL) AS ok,
               COUNT(*)::int AS total
        FROM   "${PG_SCHEMA}"."variant_sv" vs
        JOIN   "${PG_SCHEMA}"."variants" v ON v.id = vs.variant_id
@@ -635,7 +604,7 @@ describe.skipIf(!RUN)('PostgresVcfImportRepository — COPY path (integration)',
     expect(golden.rows[0].ok).toBe(true)
   })
 
-  it('variant_str search_document equals compute_variant_str_search_document(vstr)', async () => {
+  it('variant_str search_document is populated by the STORED generated column', async () => {
     const caseName = uniqueCaseName('golden-str')
 
     const variants = Array.from({ length: 3 }, (_, i) =>
@@ -670,7 +639,7 @@ describe.skipIf(!RUN)('PostgresVcfImportRepository — COPY path (integration)',
     })
 
     const golden = await control.query<{ ok: boolean; total: number }>(
-      `SELECT bool_and(vstr.search_document = compute_variant_str_search_document(vstr.*)) AS ok,
+      `SELECT bool_and(vstr.search_document IS NOT NULL) AS ok,
               COUNT(*)::int AS total
        FROM   "${PG_SCHEMA}"."variant_str" vstr
        JOIN   "${PG_SCHEMA}"."variants" v ON v.id = vstr.variant_id
@@ -868,10 +837,8 @@ describe.skipIf(!RUN)('PostgresVcfImportRepository — COPY path (integration)',
     const afterLast = BigInt(seqAfter.rows[0].last_value)
     expect(afterLast - beforeLast).toBeGreaterThanOrEqual(10n)
 
-    // Triggers are re-enabled (the bracket's `finally` ran).
-    const states = await readTriggerStates(control)
-    for (const name of TRIGGER_NAMES) {
-      expect(states[name], `trigger ${name} after failure path`).toBe('O')
-    }
+    // Phase 16.1: no triggers to re-enable — search_document is a STORED
+    // generated column. The remaining-row count + sequence-advance checks
+    // above are sufficient evidence the failure path rolled back cleanly.
   })
 })

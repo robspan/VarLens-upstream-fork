@@ -332,7 +332,10 @@ describe('PostgresVcfImportRepository.writeVcfFile', () => {
     expect(transcriptsCopy!.rows[1].variant_id).toBe(1001n)
   })
 
-  it('issues scoped bulk UPDATE for search_document on variants', async () => {
+  it('issues no UPDATE for search_document — generated column populates inline', async () => {
+    // Phase 16.1: search_document on variants/variant_sv/variant_str is a
+    // STORED generated column. The repository writes the COPY data and
+    // moves on; Postgres computes search_document automatically.
     const { client, queries } = makeFakeClient()
     const repo = new PostgresVcfImportRepository('public')
     await repo.writeVcfFile(client as never, {
@@ -350,76 +353,15 @@ describe('PostgresVcfImportRepository.writeVcfFile', () => {
         { chr: '1', pos: 200, ref: 'G', alt: 'C' }
       ],
       transcripts: [],
-      sv: [],
-      cnv: [],
-      str: []
-    })
-
-    const variantsUpdate = queries.find(
-      (q) =>
-        q.text.startsWith('UPDATE') &&
-        q.text.includes('"variants"') &&
-        q.text.includes('compute_variants_search_document') &&
-        q.text.includes('id = ANY($1::bigint[])')
-    )
-    expect(variantsUpdate).toBeDefined()
-    expect((variantsUpdate!.params![0] as bigint[]).map(String)).toEqual(['1000', '1001'])
-
-    const svUpdate = queries.find(
-      (q) => q.text.startsWith('UPDATE') && q.text.includes('"variant_sv"')
-    )
-    expect(svUpdate).toBeUndefined()
-    const strUpdate = queries.find(
-      (q) => q.text.startsWith('UPDATE') && q.text.includes('"variant_str"')
-    )
-    expect(strUpdate).toBeUndefined()
-  })
-
-  it('issues scoped bulk UPDATEs on variant_sv and variant_str only when those tables had rows', async () => {
-    const { client, queries } = makeFakeClient()
-    const repo = new PostgresVcfImportRepository('public')
-    await repo.writeVcfFile(client as never, {
-      mode: 'single-file',
-      caseName: 'SVStr',
-      fileName: 'a.vcf.gz',
-      filePath: '/tmp/a.vcf.gz',
-      fileSize: 0,
-      genomeBuild: 'GRCh38',
-      caller: null,
-      annotationFormat: null,
-      variantType: 'snv-indel',
-      variants: [
-        { chr: '1', pos: 100, ref: 'A', alt: 'T' },
-        { chr: '1', pos: 200, ref: 'G', alt: 'C' }
-      ],
-      transcripts: [],
       sv: [{ ordinal: 0, sv_is_precise: 1 }],
       cnv: [],
       str: []
     })
 
-    const variantsUpdate = queries.find(
-      (q) =>
-        q.text.startsWith('UPDATE') &&
-        q.text.includes('"variants"') &&
-        q.text.includes('compute_variants_search_document')
+    const searchDocUpdate = queries.find(
+      (q) => q.text.startsWith('UPDATE') && q.text.includes('search_document')
     )
-    expect(variantsUpdate).toBeDefined()
-
-    const svUpdate = queries.find(
-      (q) =>
-        q.text.startsWith('UPDATE') &&
-        q.text.includes('"variant_sv"') &&
-        q.text.includes('compute_variant_sv_search_document') &&
-        q.text.includes('variant_id = ANY($1::bigint[])')
-    )
-    expect(svUpdate).toBeDefined()
-    expect((svUpdate!.params![0] as bigint[]).map(String)).toEqual(['1000'])
-
-    const strUpdate = queries.find(
-      (q) => q.text.startsWith('UPDATE') && q.text.includes('"variant_str"')
-    )
-    expect(strUpdate).toBeUndefined()
+    expect(searchDocUpdate).toBeUndefined()
   })
 
   it('regression guard: COPY column lists exclude coord_hash and search_document', () => {

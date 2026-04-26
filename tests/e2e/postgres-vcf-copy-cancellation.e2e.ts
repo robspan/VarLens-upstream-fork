@@ -55,13 +55,7 @@ import {
   waitForAppShell
 } from './helpers/electron-app'
 
-const TRIGGER_NAMES = [
-  'variants_search_document_tg',
-  'variant_sv_search_document_tg',
-  'variant_str_search_document_tg'
-] as const
-
-test('postgres dev mode VCF COPY import cancellation preserves partial state and re-enables triggers', async () => {
+test('postgres dev mode VCF COPY import cancellation preserves partial state', async () => {
   test.skip(
     process.env.VARLENS_RUN_POSTGRES_E2E !== '1',
     'Set VARLENS_RUN_POSTGRES_E2E=1 after starting the local postgres container to run this test.'
@@ -165,72 +159,19 @@ test('postgres dev mode VCF COPY import cancellation preserves partial state and
     expect(isImportRelated).toBe(true)
   }
 
-  // -------------------------------------------------------------------------
-  // Phase 2: relaunch the app and start another import to drive Phase 16's
-  // recovery shim. The shim runs at the top of every `runImport` and
-  // idempotently re-enables triggers, covering crash/exit paths where the
-  // bracket finally didn't complete. We cancel this second import quickly so
-  // it leaves no lasting state — but the recovery shim runs BEFORE any cancel
-  // check, so triggers are guaranteed to be re-enabled.
-  // -------------------------------------------------------------------------
-  let secondLaunch: Awaited<ReturnType<typeof launchElectronApp>> | undefined
-  try {
-    secondLaunch = await launchElectronApp({
-      env: {
-        VARLENS_EXPERIMENTAL_STORAGE_BACKEND: 'postgres',
-        VARLENS_PG_URL: pgUrl,
-        VARLENS_PG_SCHEMA: pgSchema
-      }
-    })
-
-    await waitForAppShell(secondLaunch.window)
-    await dismissDisclaimerIfPresent(secondLaunch.window)
-
-    const fixturePath = resolve(
-      process.cwd(),
-      'tests/test-data/vcf/large-allele-9.7kb-with-special-info.vcf.gz'
-    )
-    await secondLaunch.window.evaluate(
-      async ({ fixturePath }) => {
-        const cancelPromise = (async () => {
-          await new Promise<void>((r) => setTimeout(r, 50))
-          await window.api.import.cancel()
-        })()
-        const importPromise = window.api.import.start(
-          fixturePath,
-          `Recovery shim trigger ${Date.now()}`,
-          { selectedSample: 'SAMPLE', genomeBuild: 'GRCh38' }
-        )
-        await Promise.all([importPromise, cancelPromise])
-      },
-      { fixturePath }
-    )
-  } finally {
-    if (secondLaunch !== undefined) {
-      await secondLaunch.cleanup()
-    }
-  }
+  // Phase 16.1: no Phase 2 relaunch needed. The recovery-shim path was a
+  // safety net for the bracket-transaction trigger defer; that machinery
+  // is gone, so the test moves straight to post-cancellation assertions.
 
   // -------------------------------------------------------------------------
-  // Phase 3: post-recovery assertions via a control client.
+  // Phase 3: post-cancellation assertions via a control client.
   // -------------------------------------------------------------------------
   const control = new Client({ connectionString: pgUrl })
   await control.connect()
   try {
-    // 3. All three triggers are enabled (tgenabled = 'O' = origin/enabled).
-    //    After recovery-shim invocation, this MUST hold regardless of how
-    //    the first cancel landed.
-    const tg = await control.query<{ tgname: string; tgenabled: string }>(
-      `SELECT tgname, tgenabled
-       FROM pg_trigger
-       WHERE tgname = ANY($1::text[])
-       ORDER BY tgname`,
-      [TRIGGER_NAMES]
-    )
-    expect(tg.rows).toHaveLength(3)
-    for (const row of tg.rows) {
-      expect(row.tgenabled, `trigger ${row.tgname} should be enabled`).toBe('O')
-    }
+    // Phase 16.1: search_document is now a STORED generated column —
+    // no triggers exist to assert state on. The remaining checks
+    // (sequence advance + partial-row cardinality) are sufficient.
 
     // 4. Sequence advanced past seqBefore. A partial batch must have reserved
     //    IDs even if the COPY was rolled back (sequences are non-transactional).

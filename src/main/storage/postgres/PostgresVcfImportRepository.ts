@@ -251,53 +251,11 @@ export class PostgresVcfImportRepository {
 
     // COPY extension tables sequentially. Each helper resolves
     // ordinal → variant_id at iterate time and skips out-of-range ordinals.
-    await this.copyExtensions(client, variantIds, transcripts, sv, cnv, str)
-
-    // Per-batch scoped bulk UPDATEs for search_document.
     //
-    // The triggers that would otherwise populate search_document on insert are
-    // disabled at the worker level (Phase 16 bracket transaction); these
-    // UPDATEs do NOT retrigger because the disabled state still applies.
-    await profilePhase('update-search-doc-variants', () =>
-      client.query(
-        `UPDATE ${this.schemaName}."variants"
-         SET    search_document = compute_variants_search_document(variants)
-         WHERE  id = ANY($1::bigint[])`,
-        [variantIds]
-      )
-    )
-
-    if (sv.length > 0) {
-      const svVariantIds = sv
-        .filter((r) => r.ordinal >= 0 && r.ordinal < variantIds.length)
-        .map((r) => variantIds[r.ordinal])
-      if (svVariantIds.length > 0) {
-        await profilePhase('update-search-doc-sv', () =>
-          client.query(
-            `UPDATE ${this.schemaName}."variant_sv"
-             SET    search_document = compute_variant_sv_search_document(variant_sv)
-             WHERE  variant_id = ANY($1::bigint[])`,
-            [svVariantIds]
-          )
-        )
-      }
-    }
-
-    if (str.length > 0) {
-      const strVariantIds = str
-        .filter((r) => r.ordinal >= 0 && r.ordinal < variantIds.length)
-        .map((r) => variantIds[r.ordinal])
-      if (strVariantIds.length > 0) {
-        await profilePhase('update-search-doc-str', () =>
-          client.query(
-            `UPDATE ${this.schemaName}."variant_str"
-             SET    search_document = compute_variant_str_search_document(variant_str)
-             WHERE  variant_id = ANY($1::bigint[])`,
-            [strVariantIds]
-          )
-        )
-      }
-    }
+    // search_document is populated inline by STORED generated columns on the
+    // variants/variant_sv/variant_str tables (see migration 16-phase16-...);
+    // there is no per-batch bulk UPDATE and no trigger to defer.
+    await this.copyExtensions(client, variantIds, transcripts, sv, cnv, str)
 
     return variantIds.length
   }

@@ -11,6 +11,7 @@ import {
   VARIANT_TRANSCRIPT_COPY_COLUMNS,
   toNumericId
 } from './postgres-import-columns'
+import { profilePhase, profileCount } from './postgres-import-profile'
 
 // ---------------------------------------------------------------------------
 // Request / result types
@@ -204,15 +205,18 @@ export class PostgresVcfImportRepository {
     //
     // pg_get_serial_sequence takes an unquoted bare schema.table identifier
     // (regclass-style), so we strip the quotes from this.schemaName.
-    const idResult = await client.query(
-      `SELECT g.ord                                              AS ordinal,
-              nextval(pg_get_serial_sequence($1, 'id'))::bigint  AS id
-       FROM   generate_series(0, $2 - 1) AS g(ord)
-       ORDER BY g.ord`,
-      [`${unquoteSchema(this.schemaName)}.variants`, N]
+    const idResult = await profilePhase('reserve-ids', () =>
+      client.query(
+        `SELECT g.ord                                              AS ordinal,
+                nextval(pg_get_serial_sequence($1, 'id'))::bigint  AS id
+         FROM   generate_series(0, $2 - 1) AS g(ord)
+         ORDER BY g.ord`,
+        [`${unquoteSchema(this.schemaName)}.variants`, N]
+      )
     )
     const idRows = idResult.rows as Array<{ ordinal: unknown; id: unknown }>
     const variantIds: bigint[] = idRows.map((r) => BigInt(r.id as string | number | bigint))
+    profileCount('rows-variants', N)
 
     // Build the per-row payload aligned by ordinal with the variants array.
     // pickColumns projects to exactly the COPY column list and sets nulls for
@@ -228,20 +232,22 @@ export class PostgresVcfImportRepository {
     // COPY base variants. VARIANT_COPY_COLUMNS prepends `id` and excludes
     // both `coord_hash` (generated) and `search_document` (deferred to the
     // scoped bulk UPDATE below).
-    await runBulkCopy({
-      client,
-      sql:
-        `COPY ${this.schemaName}."variants" ` +
-        `(${(VARIANT_COPY_COLUMNS as readonly string[])
-          .map((c) => quoteIdentifier(c))
-          .join(', ')}) ` +
-        `FROM STDIN`,
-      columns: (VARIANT_COPY_COLUMNS as readonly string[]).map((name) => ({
-        name,
-        encoder: VARIANT_COLUMN_ENCODERS[name]
-      })),
-      rows: variantsRowsWithIds
-    })
+    await profilePhase('copy-variants', () =>
+      runBulkCopy({
+        client,
+        sql:
+          `COPY ${this.schemaName}."variants" ` +
+          `(${(VARIANT_COPY_COLUMNS as readonly string[])
+            .map((c) => quoteIdentifier(c))
+            .join(', ')}) ` +
+          `FROM STDIN`,
+        columns: (VARIANT_COPY_COLUMNS as readonly string[]).map((name) => ({
+          name,
+          encoder: VARIANT_COLUMN_ENCODERS[name]
+        })),
+        rows: variantsRowsWithIds
+      })
+    )
 
     // COPY extension tables sequentially. Each helper resolves
     // ordinal → variant_id at iterate time and skips out-of-range ordinals.
@@ -252,11 +258,13 @@ export class PostgresVcfImportRepository {
     // The triggers that would otherwise populate search_document on insert are
     // disabled at the worker level (Phase 16 bracket transaction); these
     // UPDATEs do NOT retrigger because the disabled state still applies.
-    await client.query(
-      `UPDATE ${this.schemaName}."variants"
-       SET    search_document = compute_variants_search_document(variants)
-       WHERE  id = ANY($1::bigint[])`,
-      [variantIds]
+    await profilePhase('update-search-doc-variants', () =>
+      client.query(
+        `UPDATE ${this.schemaName}."variants"
+         SET    search_document = compute_variants_search_document(variants)
+         WHERE  id = ANY($1::bigint[])`,
+        [variantIds]
+      )
     )
 
     if (sv.length > 0) {
@@ -264,11 +272,13 @@ export class PostgresVcfImportRepository {
         .filter((r) => r.ordinal >= 0 && r.ordinal < variantIds.length)
         .map((r) => variantIds[r.ordinal])
       if (svVariantIds.length > 0) {
-        await client.query(
-          `UPDATE ${this.schemaName}."variant_sv"
-           SET    search_document = compute_variant_sv_search_document(variant_sv)
-           WHERE  variant_id = ANY($1::bigint[])`,
-          [svVariantIds]
+        await profilePhase('update-search-doc-sv', () =>
+          client.query(
+            `UPDATE ${this.schemaName}."variant_sv"
+             SET    search_document = compute_variant_sv_search_document(variant_sv)
+             WHERE  variant_id = ANY($1::bigint[])`,
+            [svVariantIds]
+          )
         )
       }
     }
@@ -278,11 +288,13 @@ export class PostgresVcfImportRepository {
         .filter((r) => r.ordinal >= 0 && r.ordinal < variantIds.length)
         .map((r) => variantIds[r.ordinal])
       if (strVariantIds.length > 0) {
-        await client.query(
-          `UPDATE ${this.schemaName}."variant_str"
-           SET    search_document = compute_variant_str_search_document(variant_str)
-           WHERE  variant_id = ANY($1::bigint[])`,
-          [strVariantIds]
+        await profilePhase('update-search-doc-str', () =>
+          client.query(
+            `UPDATE ${this.schemaName}."variant_str"
+             SET    search_document = compute_variant_str_search_document(variant_str)
+             WHERE  variant_id = ANY($1::bigint[])`,
+            [strVariantIds]
+          )
         )
       }
     }
@@ -320,12 +332,15 @@ export class PostgresVcfImportRepository {
         `COPY ${this.schemaName}.${quoteIdentifier(table)} ` +
         `(${columns.map((c) => quoteIdentifier(c)).join(', ')}) FROM STDIN`
 
-      await runBulkCopy({
-        client,
-        sql,
-        columns: columns.map((name) => ({ name, encoder: VARIANT_COLUMN_ENCODERS[name] })),
-        rows: resolved
-      })
+      await profilePhase(`copy-${table}`, () =>
+        runBulkCopy({
+          client,
+          sql,
+          columns: columns.map((name) => ({ name, encoder: VARIANT_COLUMN_ENCODERS[name] })),
+          rows: resolved
+        })
+      )
+      profileCount(`rows-${table}`, resolved.length)
     }
 
     await helper(

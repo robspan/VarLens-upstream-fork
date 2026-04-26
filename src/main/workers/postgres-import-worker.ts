@@ -22,6 +22,12 @@ import {
   PostgresVcfImportRepository,
   type PostgresVcfImportRequest
 } from '../storage/postgres/PostgresVcfImportRepository'
+import {
+  profileStart,
+  profileFlush,
+  profilePhase,
+  profileCount
+} from '../storage/postgres/postgres-import-profile'
 import { quoteIdentifier } from '../storage/postgres/identifiers'
 import { detectFormat as defaultDetectFormat } from '../import/format-detection'
 import type { FormatInfo } from '../import/strategies/ImportStrategy'
@@ -311,13 +317,14 @@ export async function runImport(
 
   try {
     await client.connect()
+    profileStart(`${start.mode}:${start.caseName}`)
     // Phase 16 recovery shim: re-enable the three FTS triggers idempotently
     // before any transaction is opened. ENABLE TRIGGER on an already-enabled
     // trigger is a no-op, so this is safe to run for both VCF and JSON
     // imports — and necessary, because a prior crashed VCF import may have
     // left the triggers DISABLED (the trailing bracket transaction never
     // ran). Auto-commit by design: must complete before any BEGIN.
-    await recoverTriggersOnStartup(client, start.schema)
+    await profilePhase('recovery-shim', () => recoverTriggersOnStartup(client, start.schema))
 
     if (start.mode === 'single-file') {
       const filePath = start.filePath
@@ -422,10 +429,10 @@ export async function runImport(
                   cnv,
                   str
                 }
-            const result = await repo.writeVcfFile(
-              client as unknown as Pick<PoolClient, 'query'>,
-              request
+            const result = await profilePhase('writeVcfFile', () =>
+              repo.writeVcfFile(client as unknown as Pick<PoolClient, 'query'>, request)
             )
+            profileCount('batch', 1)
             if (!firstWritten) caseId = result.caseId
             totalInserted += result.variantCount
             firstWritten = true
@@ -441,11 +448,13 @@ export async function runImport(
             // this the worker's working set scales linearly with file size on
             // large WGS imports — the original single-transaction shape OOMed
             // multi-GB Node heaps on the GIAB HG002 fixture.
-            await client.query('COMMIT')
-            await client.query('BEGIN')
-            // Re-apply per-batch synchronous_commit lever — SET LOCAL is
-            // transaction-scoped and must be re-issued after every BEGIN.
-            await client.query('SET LOCAL synchronous_commit = OFF')
+            await profilePhase('per-batch-commit-begin', async () => {
+              await client.query('COMMIT')
+              await client.query('BEGIN')
+              // Re-apply per-batch synchronous_commit lever — SET LOCAL is
+              // transaction-scoped and must be re-issued after every BEGIN.
+              await client.query('SET LOCAL synchronous_commit = OFF')
+            })
             if (typeof (globalThis as { gc?: () => void }).gc === 'function') {
               ;(globalThis as { gc?: () => void }).gc?.()
             }
@@ -493,6 +502,7 @@ export async function runImport(
           await client.query('COMMIT')
           committed = true
 
+          profileFlush()
           post({
             type: 'complete',
             mode: 'single-file',
@@ -939,6 +949,7 @@ export async function runImport(
           }
         }
 
+        profileFlush()
         post({
           type: 'complete',
           mode: 'multi-file',
@@ -978,6 +989,18 @@ export async function runImport(
         )
       }
     }
+    // Flush profile BEFORE post('error') / post('complete') — the worker
+    // client terminates the worker thread on receipt, which can cut off
+    // the trailing finally block before its file write completes.
+    profileFlush()
+    // Diagnostic: surface the actual worker error so failed perf runs are
+    // analysable. The renderer test only sees an opaque IpcResult.
+    if (message !== POSTGRES_IMPORT_CANCELLATION_MESSAGE) {
+      console.warn('[postgres-import-worker] runImport failed:', message)
+      if (err instanceof Error && err.stack) {
+        console.warn(err.stack)
+      }
+    }
     if (message === POSTGRES_IMPORT_CANCELLATION_MESSAGE) {
       post({
         type: 'complete',
@@ -999,6 +1022,7 @@ export async function runImport(
     } catch {
       // swallow
     }
+    profileFlush()
   }
 }
 

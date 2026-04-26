@@ -20,10 +20,22 @@ const NULL_TOKEN = '\\N'
  * - empty string  → '' (NOT null)
  * - U+0000        → throws (Postgres `text` cannot store NUL)
  * - Escape order: \ first, then \n, \r, \t.
+ *
+ * Non-string scalars (number, bigint, boolean) are coerced via String().
+ * Other types throw — silently coercing objects to '[object Object]' would
+ * smuggle structurally meaningless tokens into the wire format.
  */
 export const encodeText: CopyColumnEncoder = (value) => {
   if (value === null || value === undefined) return NULL_TOKEN
-  if (typeof value !== 'string') return encodeText(String(value))
+  if (typeof value !== 'string') {
+    if (typeof value === 'number' || typeof value === 'bigint' || typeof value === 'boolean') {
+      return encodeText(String(value))
+    }
+    throw new EncoderInvalidValueError(
+      undefined,
+      `expected string for text encoder, got ${typeof value}`,
+    )
+  }
   if (value.indexOf('\u0000') >= 0) {
     throw new EncoderInvalidValueError(undefined, 'U+0000 not representable in PostgreSQL text')
   }
@@ -34,15 +46,28 @@ export const encodeText: CopyColumnEncoder = (value) => {
     .replace(/\t/g, '\\t')
 }
 
+/**
+ * Encodes an integer value for COPY text format.
+ * Per the locked spec: NULL → \N; otherwise String(value).
+ *
+ * Non-finite or non-integer JS numbers throw rather than silently truncate —
+ * the prior `value | 0` shortcut quietly cast values ≥ 2^31 to int32.
+ */
 export const encodeInteger: CopyColumnEncoder = (value) => {
   if (value === null || value === undefined) return NULL_TOKEN
   if (typeof value === 'bigint') return value.toString()
-  // Verbatim quirk: per JS precedence this parses as
-  //   `value | (0 === value) ? (value | 0) : value`
-  // The boolean → number coercion is a runtime no-op (`true`→1, `false`→0)
-  // but TypeScript strict mode rejects it; the cast preserves identical
-  // runtime behavior without changing the parse.
-  if (typeof value === 'number') return String(value | ((0 === value) as unknown as number) ? (value | 0) : value)
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) {
+      throw new EncoderInvalidValueError(
+        undefined,
+        `non-finite number ${value} not representable in PostgreSQL integer`,
+      )
+    }
+    if (!Number.isInteger(value)) {
+      throw new EncoderInvalidValueError(undefined, `non-integer ${value} passed to integer encoder`)
+    }
+    return String(value)
+  }
   if (typeof value === 'string' && /^-?\d+$/.test(value)) return value
   return String(value)
 }
@@ -60,7 +85,10 @@ export const encodeFloat: CopyColumnEncoder = (value) => {
 
 export const encodeBoolean: CopyColumnEncoder = (value) => {
   if (value === null || value === undefined) return NULL_TOKEN
-  return value === true || value === 't' ? 't' : 'f'
+  if (typeof value !== 'boolean') {
+    throw new EncoderInvalidValueError(undefined, `expected boolean, got ${typeof value}`)
+  }
+  return value ? 't' : 'f'
 }
 
 /**

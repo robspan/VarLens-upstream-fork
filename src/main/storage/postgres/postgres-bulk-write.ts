@@ -1,6 +1,7 @@
 // src/main/storage/postgres/postgres-bulk-write.ts
 import * as stream from 'node:stream'
-import { from as copyFrom } from 'pg-copy-streams'
+import type { Writable } from 'node:stream'
+import { from as copyFrom, type CopyStreamQuery } from 'pg-copy-streams'
 import type { PoolClient } from 'pg'
 import {
   encodeRowsToCopyText,
@@ -13,10 +14,13 @@ export async function runBulkCopy(params: {
   columns: ReadonlyArray<CopyColumn>
   rows: AsyncIterable<Record<string, unknown>> | Iterable<Record<string, unknown>>
 }): Promise<void> {
-  // pg-copy-streams' Writable lives on top of the active query session.
-  const copyStream = (params.client.query as unknown as (q: unknown) => NodeJS.WritableStream)(
-    copyFrom(params.sql),
-  )
+  // `pg.query` is overloaded for QueryConfig and Submittable, but the
+  // published types only expose the QueryConfig overloads. pg-copy-streams'
+  // CopyStreamQuery is a Submittable; the runtime accepts it and returns the
+  // same instance as a Writable. The single residual cast bridges that gap.
+  const submit = copyFrom(params.sql)
+  const queryFn = params.client.query as unknown as (q: CopyStreamQuery) => Writable
+  const copyStream = queryFn(submit)
   await stream.promises.pipeline(
     encodeRowsToCopyText(params.columns, params.rows),
     copyStream,

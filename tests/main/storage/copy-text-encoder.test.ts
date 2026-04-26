@@ -58,10 +58,36 @@ describe('encodeText', () => {
 
 describe('encodeInteger', () => {
   it('null → \\N', () => { expect(encodeInteger(null)).toBe('\\N') })
+  it('undefined → \\N', () => { expect(encodeInteger(undefined)).toBe('\\N') })
   it('0 → "0"', () => { expect(encodeInteger(0)).toBe('0') })
   it('positive number → string', () => { expect(encodeInteger(42)).toBe('42') })
   it('negative number → string', () => { expect(encodeInteger(-7)).toBe('-7') })
   it('bigint → string', () => { expect(encodeInteger(9007199254740992n)).toBe('9007199254740992') })
+  it('preserves values at and beyond int32 boundary (regression: previously truncated via | 0)', () => {
+    expect(encodeInteger(2 ** 31)).toBe('2147483648')
+    expect(encodeInteger(-(2 ** 31) - 1)).toBe('-2147483649')
+  })
+  it('preserves 1e10 (regression: previously truncated via | 0 to "1410065408")', () => {
+    expect(encodeInteger(1e10)).toBe('10000000000')
+  })
+  it('preserves Number.MAX_SAFE_INTEGER', () => {
+    expect(encodeInteger(Number.MAX_SAFE_INTEGER)).toBe('9007199254740991')
+  })
+  it('bigint near 2^63 - 1 (Postgres bigint upper bound)', () => {
+    expect(encodeInteger(9223372036854775807n)).toBe('9223372036854775807')
+  })
+  it('throws EncoderInvalidValueError on non-integer JS number (0.5)', () => {
+    expect(() => encodeInteger(0.5)).toThrow(EncoderInvalidValueError)
+  })
+  it('throws EncoderInvalidValueError on NaN', () => {
+    expect(() => encodeInteger(NaN)).toThrow(EncoderInvalidValueError)
+  })
+  it('throws EncoderInvalidValueError on Infinity', () => {
+    expect(() => encodeInteger(Infinity)).toThrow(EncoderInvalidValueError)
+  })
+  it('throws EncoderInvalidValueError on -Infinity', () => {
+    expect(() => encodeInteger(-Infinity)).toThrow(EncoderInvalidValueError)
+  })
 })
 
 describe('encodeFloat', () => {
@@ -74,8 +100,17 @@ describe('encodeFloat', () => {
 
 describe('encodeBoolean', () => {
   it('null → \\N', () => { expect(encodeBoolean(null)).toBe('\\N') })
+  it('undefined → \\N', () => { expect(encodeBoolean(undefined)).toBe('\\N') })
   it('true → "t"', () => { expect(encodeBoolean(true)).toBe('t') })
   it('false → "f"', () => { expect(encodeBoolean(false)).toBe('f') })
+  it('throws EncoderInvalidValueError on numeric input (regression: was silently "f")', () => {
+    expect(() => encodeBoolean(1)).toThrow(EncoderInvalidValueError)
+    expect(() => encodeBoolean(0)).toThrow(EncoderInvalidValueError)
+  })
+  it('throws EncoderInvalidValueError on string input', () => {
+    expect(() => encodeBoolean('true')).toThrow(EncoderInvalidValueError)
+    expect(() => encodeBoolean('t')).toThrow(EncoderInvalidValueError)
+  })
 })
 
 describe('encodeJsonb (reserved — no Phase 16 caller, but must be correct)', () => {
@@ -177,9 +212,23 @@ describe('property: encodeJsonb round-trip', () => {
       }
       return false
     }
+    // Also filter -0: JSON.stringify(-0) is '0', JSON.parse('0') is +0, but
+    // toEqual distinguishes -0 from +0. This is a JSON-spec asymmetry, not an
+    // encoder issue — the encoder faithfully preserves whatever JSON.stringify
+    // emits.
+    const containsNegativeZero = (v: unknown): boolean => {
+      if (typeof v === 'number') return Object.is(v, -0)
+      if (Array.isArray(v)) return v.some(containsNegativeZero)
+      if (v && typeof v === 'object') {
+        for (const val of Object.values(v as Record<string, unknown>)) {
+          if (containsNegativeZero(val)) return true
+        }
+      }
+      return false
+    }
     fc.assert(
       fc.property(
-        fc.jsonValue().filter((v) => !containsNul(v) && !containsProtoKey(v)),
+        fc.jsonValue().filter((v) => !containsNul(v) && !containsProtoKey(v) && !containsNegativeZero(v)),
         (v) => {
           const wire = encodeJsonb(v)
           const decoded = decodeCopyText(wire)
@@ -193,11 +242,30 @@ describe('property: encodeJsonb round-trip', () => {
 })
 
 describe('property: encodeInteger / encodeFloat / encodeBoolean round-trip', () => {
-  it('integers round-trip via Number(decode(encode(n)))', () => {
-    fc.assert(fc.property(fc.integer(), (n) => {
-      const t = encodeInteger(n)
-      expect(t === '\\N' || Number(t) === n).toBe(true)
-    }))
+  it('integers within safe range round-trip', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: -Number.MAX_SAFE_INTEGER, max: Number.MAX_SAFE_INTEGER }),
+        (n) => {
+          const t = encodeInteger(n)
+          expect(t).not.toBe('\\N')
+          expect(decodeCopyText(t)).toBe(String(n))
+        },
+      ),
+      { numRuns: 200 },
+    )
+  })
+  it('bigints round-trip across the int8 range', () => {
+    fc.assert(
+      fc.property(
+        fc.bigInt({ min: -(2n ** 63n), max: 2n ** 63n - 1n }),
+        (n) => {
+          const t = encodeInteger(n)
+          expect(decodeCopyText(t)).toBe(n.toString())
+        },
+      ),
+      { numRuns: 200 },
+    )
   })
   it('finite floats round-trip', () => {
     fc.assert(fc.property(fc.double({ noNaN: true, noDefaultInfinity: true }), (n) => {
@@ -217,17 +285,21 @@ describe('boundary fillers for 100% coverage', () => {
     expect(err.message).toContain('(column foo)')
   })
 
-  it('encodeText coerces non-string via String() fallback', () => {
-    // exercises `if (typeof value !== 'string') return encodeText(String(value))`
+  it('encodeText coerces non-string scalar (number) via String() fallback', () => {
+    // exercises the number → encodeText(String(value)) recursion path
     expect(encodeText(42)).toBe('42')
   })
 
-  it('encodeInteger numeric else-branch via non-integer JS number', () => {
-    // The verbatim expression `value | 0 === value ? (value | 0) : value`
-    // parses (per JS precedence) as `value | (0 === value)`. For value=0.5,
-    // the condition collapses to 0 (falsy) and the ternary returns `value` —
-    // the only path that hits the `: value` branch.
-    expect(encodeInteger(0.5)).toBe('0.5')
+  it('encodeText coerces bigint via String() fallback', () => {
+    expect(encodeText(9007199254740992n)).toBe('9007199254740992')
+  })
+
+  it('encodeText coerces boolean via String() fallback', () => {
+    expect(encodeText(true)).toBe('true')
+  })
+
+  it('encodeText throws EncoderInvalidValueError on object input (regression: was "[object Object]")', () => {
+    expect(() => encodeText({ foo: 'bar' })).toThrow(EncoderInvalidValueError)
   })
 
   it('encodeInteger numeric-string passthrough', () => {
@@ -240,14 +312,6 @@ describe('boundary fillers for 100% coverage', () => {
 
   it('encodeFloat non-number fallback via String(value)', () => {
     expect(encodeFloat('1.25')).toBe('1.25')
-  })
-
-  it('encodeBoolean truthy non-true value returns "f"', () => {
-    expect(encodeBoolean(0)).toBe('f')
-  })
-
-  it('encodeBoolean accepts the literal "t" string as true', () => {
-    expect(encodeBoolean('t')).toBe('t')
   })
 
   it('encodeBytea throws EncoderInvalidValueError on non-Buffer', () => {

@@ -233,7 +233,7 @@ export async function recoverTriggersOnStartup(
  * re-enable the triggers. Do NOT use `SET LOCAL synchronous_commit = OFF`
  * inside this transaction.
  */
-async function disableTriggersBeforeVcfImport(
+export async function disableTriggersBeforeVcfImport(
   client: Pick<Client, 'query'>,
   schemaName: string
 ): Promise<void> {
@@ -259,7 +259,7 @@ async function disableTriggersBeforeVcfImport(
  * Like the leading bracket, this commit must be durable. Do NOT use
  * `SET LOCAL synchronous_commit = OFF` inside this transaction.
  */
-async function enableTriggersAfterVcfImport(
+export async function enableTriggersAfterVcfImport(
   client: Pick<Client, 'query'>,
   schemaName: string
 ): Promise<void> {

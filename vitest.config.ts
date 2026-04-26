@@ -204,6 +204,12 @@ export default defineConfig({
           branches: 65,
           functions: 75,
           statements: 75
+        },
+        'src/main/storage/postgres/copy-text-encoder.ts': {
+          lines: 100,
+          branches: 100,
+          functions: 100,
+          statements: 100
         }
       },
       // On CI we only need the JSON summary to gate the thresholds and

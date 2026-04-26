@@ -22,6 +22,12 @@ import {
   PostgresVcfImportRepository,
   type PostgresVcfImportRequest
 } from '../storage/postgres/PostgresVcfImportRepository'
+import {
+  profileStart,
+  profileFlush,
+  profilePhase,
+  profileCount
+} from '../storage/postgres/postgres-import-profile'
 import { quoteIdentifier } from '../storage/postgres/identifiers'
 import { detectFormat as defaultDetectFormat } from '../import/format-detection'
 import type { FormatInfo } from '../import/strategies/ImportStrategy'
@@ -52,7 +58,6 @@ let cancelled = false
 // was escaping the per-file try/catch — root cause was an unhandled error
 // event on the readline-wrapped fs read stream.
 process.on('uncaughtException', (err) => {
-  // eslint-disable-next-line no-console
   console.warn('[postgres-import-worker] uncaughtException:', err.message, err.stack)
   parentPort?.postMessage({
     type: 'error',
@@ -63,7 +68,7 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason) => {
   const message = reason instanceof Error ? reason.message : String(reason)
   const stack = reason instanceof Error ? reason.stack : undefined
-  // eslint-disable-next-line no-console
+
   console.warn(
     '[postgres-import-worker] unhandledRejection:',
     stack !== undefined ? `${message}\n${stack}` : message
@@ -196,6 +201,21 @@ const defaultDeps: RunImportDeps = {
     streamMappedVcfRows(filePath, options.selectedSample, options.filters)
 }
 
+/**
+ * Lift per-statement and idle-in-transaction limits for the import session.
+ *
+ * Phase 16.1 finding: a 5.3M-variant WGS import's post-loop bookkeeping
+ * (`rebuildVariantFrequencyForCase` GROUP BY scan over the full case)
+ * routinely takes longer than the renderer-default `statement_timeout`
+ * of 30 s. Imports run in their own short-lived worker connection, so
+ * relaxing the timeouts here doesn't affect read paths.
+ */
+export async function relaxImportSessionLimits(client: Pick<Client, 'query'>): Promise<void> {
+  await client.query('SET statement_timeout = 0')
+  await client.query('SET idle_in_transaction_session_timeout = 0')
+  await client.query('SET lock_timeout = 0')
+}
+
 function clientConfigFromMessage(message: PostgresClientConfig): ClientConfig {
   return {
     connectionString: message.connectionString,
@@ -230,8 +250,13 @@ export async function runImport(
 
   try {
     await client.connect()
-    await client.query('BEGIN')
-    beganTransaction = true
+    profileStart(`${start.mode}:${start.caseName}`)
+    // Phase 16.1: lift the per-statement / idle-in-transaction / lock
+    // timeouts for the import session. Long post-loop bookkeeping
+    // (rebuildVariantFrequencyForCase) on a WGS-sized case can exceed the
+    // renderer-default 30 s statement_timeout. Auto-commit (no BEGIN
+    // required) and per-session, so it does not leak to other connections.
+    await profilePhase('relax-session-limits', () => relaxImportSessionLimits(client))
 
     if (start.mode === 'single-file') {
       const filePath = start.filePath
@@ -240,165 +265,207 @@ export async function runImport(
 
       // Always detect the concrete JSON sub-format (simple/object/columnar) regardless
       // of the hint — the hint isn't strong enough to skip detection because we need
-      // caseKey/wrapped to select the correct mapper pipeline.
+      // caseKey/wrapped to select the correct mapper pipeline. Detection runs OUTSIDE
+      // any transaction (it's a file-format sniffer; no DB work required), which lets
+      // us decide whether to wrap the import in the VCF bracket transactions.
       const formatInfo = await deps.detectFormat(filePath)
 
       if (formatInfo.format === 'vcf') {
-        // Empty string lets streamMappedVcfRows auto-pick the first header
-        // sample, matching the SQLite path; the generator throws cleanly if
-        // the VCF has no selectable sample at all.
-        const selectedSample = start.vcfOptions?.selectedSample ?? ''
-        const genomeBuild = start.vcfOptions?.genomeBuild ?? 'GRCh38'
-        const vcfFileName = basename(filePath)
-        let vcfFileSize = 0
-        try {
-          vcfFileSize = deps.statFile(filePath).size
-        } catch {
-          // ignore — used only for provenance
-        }
+        // Phase 16.1: search_document is a STORED generated column on the
+        // FTS-bearing tables (variants/variant_sv/variant_str), populated
+        // inline at COPY/INSERT time. No trigger to disable, no bulk UPDATE
+        // to defer, no bracket transactions, no recovery shim.
+        {
+          // Empty string lets streamMappedVcfRows auto-pick the first header
+          // sample, matching the SQLite path; the generator throws cleanly if
+          // the VCF has no selectable sample at all.
+          const selectedSample = start.vcfOptions?.selectedSample ?? ''
+          const genomeBuild = start.vcfOptions?.genomeBuild ?? 'GRCh38'
+          const vcfFileName = basename(filePath)
+          let vcfFileSize = 0
+          try {
+            vcfFileSize = deps.statFile(filePath).size
+          } catch {
+            // ignore — used only for provenance
+          }
 
-        const repo = new PostgresVcfImportRepository(start.schema)
-        // Single-file imports reject filters at the executor level, but pass
-        // undefined defensively to keep the contract consistent.
-        const stream = await deps.createVcfMappedStream(filePath, {
-          selectedSample,
-          genomeBuild,
-          filters: undefined
-        })
-
-        let variants: Array<Record<string, unknown>> = []
-        let transcripts: Array<Record<string, unknown> & { ordinal: number }> = []
-        let sv: Array<Record<string, unknown> & { ordinal: number }> = []
-        let cnv: Array<Record<string, unknown> & { ordinal: number }> = []
-        let str: Array<Record<string, unknown> & { ordinal: number }> = []
-        let ordinal = 0
-        let totalInserted = 0
-        let caseId = 0
-        let firstWritten = false
-
-        const flush = async (): Promise<void> => {
-          if (variants.length === 0) return
-          // First batch creates the case + writes provenance; subsequent
-          // batches use 'append' mode with the already-resolved caseId so we
-          // skip the per-batch `SELECT id FROM cases` lookup AND the
-          // per-batch case_data_info upsert (the row is already correct
-          // after the first batch). Saves O(N) redundant queries on WGS
-          // imports.
-          const request: PostgresVcfImportRequest = firstWritten
-            ? {
-                mode: 'append',
-                caseId,
-                caseName: start.caseName,
-                fileName: vcfFileName,
-                filePath,
-                fileSize: vcfFileSize,
-                genomeBuild,
-                caller: null,
-                annotationFormat: null,
-                variantType: 'snv-indel',
-                variants,
-                transcripts,
-                sv,
-                cnv,
-                str
-              }
-            : {
-                mode: 'single-file',
-                caseName: start.caseName,
-                fileName: vcfFileName,
-                filePath,
-                fileSize: vcfFileSize,
-                genomeBuild,
-                caller: null,
-                annotationFormat: null,
-                variantType: 'snv-indel',
-                variants,
-                transcripts,
-                sv,
-                cnv,
-                str
-              }
-          const result = await repo.writeVcfFile(
-            client as unknown as Pick<PoolClient, 'query'>,
-            request
-          )
-          if (!firstWritten) caseId = result.caseId
-          totalInserted += result.variantCount
-          firstWritten = true
-          post({ type: 'progress', phase: 'inserting', rowsProcessed: totalInserted, filePath })
-          variants = []
-          transcripts = []
-          sv = []
-          cnv = []
-          str = []
-          ordinal = 0
-          // Commit per-batch so postgres releases per-tuple bookkeeping and
-          // the pg-node client releases its query/result references. Without
-          // this the worker's working set scales linearly with file size on
-          // large WGS imports — the original single-transaction shape OOMed
-          // multi-GB Node heaps on the GIAB HG002 fixture.
-          await client.query('COMMIT')
+          // Open the first per-batch transaction (formerly the outer BEGIN at
+          // the top of runImport). `SET LOCAL synchronous_commit = OFF` makes
+          // each per-batch COMMIT skip the WAL fsync; the FINAL commit at
+          // the end of the post-loop bookkeeping re-enables synchronous
+          // commit so the import only reports success once every preceding
+          // WAL record has been fsynced (Postgres flushes WAL up to the
+          // last synchronous commit, which transitively makes every earlier
+          // async commit durable).
           await client.query('BEGIN')
-          if (typeof (globalThis as { gc?: () => void }).gc === 'function') {
-            ;(globalThis as { gc?: () => void }).gc?.()
-          }
-        }
+          beganTransaction = true
+          await client.query('SET LOCAL synchronous_commit = OFF')
 
-        for await (const row of stream) {
-          if (cancelled) {
-            throw new Error(POSTGRES_IMPORT_CANCELLATION_MESSAGE)
-          }
-          const { _transcripts, _sv, _cnv, _str, ...base } = row
-          variants.push(base as unknown as Record<string, unknown>)
-          if (Array.isArray(_transcripts)) {
-            for (const t of _transcripts as unknown as Array<Record<string, unknown>>) {
-              transcripts.push({ ordinal, ...t })
+          const repo = new PostgresVcfImportRepository(start.schema)
+          // Single-file imports reject filters at the executor level, but pass
+          // undefined defensively to keep the contract consistent.
+          const stream = await deps.createVcfMappedStream(filePath, {
+            selectedSample,
+            genomeBuild,
+            filters: undefined
+          })
+
+          let variants: Array<Record<string, unknown>> = []
+          let transcripts: Array<Record<string, unknown> & { ordinal: number }> = []
+          let sv: Array<Record<string, unknown> & { ordinal: number }> = []
+          let cnv: Array<Record<string, unknown> & { ordinal: number }> = []
+          let str: Array<Record<string, unknown> & { ordinal: number }> = []
+          let ordinal = 0
+          let totalInserted = 0
+          let caseId = 0
+          let firstWritten = false
+
+          const flush = async (): Promise<void> => {
+            if (variants.length === 0) return
+            // First batch creates the case + writes provenance; subsequent
+            // batches use 'append' mode with the already-resolved caseId so we
+            // skip the per-batch `SELECT id FROM cases` lookup AND the
+            // per-batch case_data_info upsert (the row is already correct
+            // after the first batch). Saves O(N) redundant queries on WGS
+            // imports.
+            const request: PostgresVcfImportRequest = firstWritten
+              ? {
+                  mode: 'append',
+                  caseId,
+                  caseName: start.caseName,
+                  fileName: vcfFileName,
+                  filePath,
+                  fileSize: vcfFileSize,
+                  genomeBuild,
+                  caller: null,
+                  annotationFormat: null,
+                  variantType: 'snv-indel',
+                  variants,
+                  transcripts,
+                  sv,
+                  cnv,
+                  str
+                }
+              : {
+                  mode: 'single-file',
+                  caseName: start.caseName,
+                  fileName: vcfFileName,
+                  filePath,
+                  fileSize: vcfFileSize,
+                  genomeBuild,
+                  caller: null,
+                  annotationFormat: null,
+                  variantType: 'snv-indel',
+                  variants,
+                  transcripts,
+                  sv,
+                  cnv,
+                  str
+                }
+            const result = await profilePhase('writeVcfFile', () =>
+              repo.writeVcfFile(client as unknown as Pick<PoolClient, 'query'>, request)
+            )
+            profileCount('batch', 1)
+            if (!firstWritten) caseId = result.caseId
+            totalInserted += result.variantCount
+            firstWritten = true
+            post({ type: 'progress', phase: 'inserting', rowsProcessed: totalInserted, filePath })
+            variants = []
+            transcripts = []
+            sv = []
+            cnv = []
+            str = []
+            ordinal = 0
+            // Commit per-batch so postgres releases per-tuple bookkeeping and
+            // the pg-node client releases its query/result references. Without
+            // this the worker's working set scales linearly with file size on
+            // large WGS imports — the original single-transaction shape OOMed
+            // multi-GB Node heaps on the GIAB HG002 fixture.
+            await profilePhase('per-batch-commit-begin', async () => {
+              await client.query('COMMIT')
+              await client.query('BEGIN')
+              // Re-apply per-batch synchronous_commit lever — SET LOCAL is
+              // transaction-scoped and must be re-issued after every BEGIN.
+              await client.query('SET LOCAL synchronous_commit = OFF')
+            })
+            if (typeof (globalThis as { gc?: () => void }).gc === 'function') {
+              ;(globalThis as { gc?: () => void }).gc?.()
             }
           }
-          if (_sv !== undefined && _sv !== null) {
-            sv.push({ ordinal, ...(_sv as unknown as Record<string, unknown>) })
-          }
-          if (_cnv !== undefined && _cnv !== null) {
-            cnv.push({ ordinal, ...(_cnv as unknown as Record<string, unknown>) })
-          }
-          if (_str !== undefined && _str !== null) {
-            str.push({ ordinal, ...(_str as unknown as Record<string, unknown>) })
-          }
-          ordinal += 1
 
-          if (variants.length >= batchSize) {
-            await flush()
+          for await (const row of stream) {
+            if (cancelled) {
+              throw new Error(POSTGRES_IMPORT_CANCELLATION_MESSAGE)
+            }
+            const { _transcripts, _sv, _cnv, _str, ...base } = row
+            variants.push(base as unknown as Record<string, unknown>)
+            if (Array.isArray(_transcripts)) {
+              for (const t of _transcripts as unknown as Array<Record<string, unknown>>) {
+                transcripts.push({ ordinal, ...t })
+              }
+            }
+            if (_sv !== undefined && _sv !== null) {
+              sv.push({ ordinal, ...(_sv as unknown as Record<string, unknown>) })
+            }
+            if (_cnv !== undefined && _cnv !== null) {
+              cnv.push({ ordinal, ...(_cnv as unknown as Record<string, unknown>) })
+            }
+            if (_str !== undefined && _str !== null) {
+              str.push({ ordinal, ...(_str as unknown as Record<string, unknown>) })
+            }
+            ordinal += 1
+
+            if (variants.length >= batchSize) {
+              await flush()
+            }
           }
+          await flush()
+
+          if (caseId !== 0) {
+            await client.query(
+              `UPDATE ${quoteIdentifier(start.schema)}."cases" SET variant_count = $1 WHERE id = $2`,
+              [totalInserted, caseId]
+            )
+            await rebuildVariantFrequencyForCase(
+              client as unknown as Pick<PoolClient, 'query'>,
+              start.schema,
+              caseId
+            )
+          }
+          // Force the final commit synchronous so the import only reports
+          // success once the WAL is fsynced. Postgres flushes WAL up to
+          // this commit's LSN, which transitively makes every earlier
+          // async-committed batch durable on disk.
+          await client.query('SET LOCAL synchronous_commit = ON')
+          await client.query('COMMIT')
+          committed = true
+
+          profileFlush()
+          post({
+            type: 'complete',
+            mode: 'single-file',
+            result: {
+              caseId,
+              variantCount: totalInserted,
+              skipped: 0,
+              errors: [],
+              elapsed: Date.now() - startedAt
+            }
+          })
+          return
         }
-        await flush()
-
-        if (caseId !== 0) {
-          await client.query(
-            `UPDATE ${quoteIdentifier(start.schema)}."cases" SET variant_count = $1 WHERE id = $2`,
-            [totalInserted, caseId]
-          )
-          await rebuildVariantFrequencyForCase(
-            client as unknown as Pick<PoolClient, 'query'>,
-            start.schema,
-            caseId
-          )
-        }
-        await client.query('COMMIT')
-        committed = true
-
-        post({
-          type: 'complete',
-          mode: 'single-file',
-          result: {
-            caseId,
-            variantCount: totalInserted,
-            skipped: 0,
-            errors: [],
-            elapsed: Date.now() - startedAt
-          }
-        })
-        return
       }
+
+      // -------------------------------------------------------------------
+      // Single-file JSON branch — no SET LOCAL synchronous_commit lever.
+      // search_document is populated inline by STORED generated columns
+      // on variants/variant_sv/variant_str (Phase 16.1), so the JSON path
+      // gets correct FTS columns automatically without any extra work.
+      // JSON imports keep the standard transaction shape since the WGS-
+      // class tuning (per-batch async commit) is VCF-specific.
+      // -------------------------------------------------------------------
+      await client.query('BEGIN')
+      beganTransaction = true
 
       const fileName = basename(filePath)
       let fileSize = 0
@@ -510,205 +577,233 @@ export async function runImport(
       if (!start.files || start.files.length === 0) {
         throw new Error('postgres-import-worker: multi-file mode requires non-empty files[]')
       }
-      // Multi-file uses its own per-file transaction lifecycle. Roll back the
-      // outer BEGIN we already started so each file gets a clean transaction.
-      await client.query('ROLLBACK')
-      beganTransaction = false
+      // Phase 16.1: search_document is a STORED generated column;
+      // no trigger-defer machinery, no bracket transactions.
+      {
+        const fileResults: Array<{
+          filePath: string
+          variantType: string
+          variantCount: number
+          error?: string
+        }> = []
+        let caseId = 0
+        let totalVariantCount = 0
+        const repo = new PostgresVcfImportRepository(start.schema)
+        const selectedSample = start.vcfOptions?.selectedSample ?? ''
+        const genomeBuild = start.vcfOptions?.genomeBuild ?? 'GRCh38'
 
-      const fileResults: Array<{
-        filePath: string
-        variantType: string
-        variantCount: number
-        error?: string
-      }> = []
-      let caseId = 0
-      let totalVariantCount = 0
-      const repo = new PostgresVcfImportRepository(start.schema)
-      const selectedSample = start.vcfOptions?.selectedSample ?? ''
-      const genomeBuild = start.vcfOptions?.genomeBuild ?? 'GRCh38'
-
-      // Build ImportFilters once before the per-file loop so that
-      // BedFilter.fromFile (a sync file read) runs in the worker, not main.
-      let importFilters: ImportFilters | undefined
-      if (start.filters !== undefined) {
-        let bedFilter: BedFilter | undefined
-        if (
-          start.filters.bedFilePath !== null &&
-          start.filters.bedFilePath !== undefined &&
-          start.filters.bedFilePath !== ''
-        ) {
-          try {
-            bedFilter = BedFilter.fromFile(start.filters.bedFilePath, start.filters.bedPadding ?? 0)
-          } catch (err) {
-            // Worker can't use mainLogger; console.warn is the documented
-            // worker exception (see AGENTS.md). Continue without BED filtering
-            // rather than fail the whole import.
-            console.warn(
-              '[postgres-import-worker] BedFilter.fromFile failed:',
-              err instanceof Error ? err.message : String(err)
-            )
-          }
-        }
-        importFilters = {
-          bedFilter,
-          // Match the SQLite-side IPC default (`payload.bedPadding ?? 0`) so the
-          // same UI inputs include the same variants on both backends.
-          bedPadding: start.filters.bedPadding ?? 0,
-          passOnly: start.filters.passOnly ?? false,
-          minQual: start.filters.minQual ?? null,
-          minGq: start.filters.minGq ?? null,
-          minDp: start.filters.minDp ?? null
-        }
-      }
-
-      for (let i = 0; i < start.files.length; i += 1) {
-        if (cancelled) break
-        const fileSpec = start.files[i]
-        let fileVariantCount = 0
-        try {
-          await client.query('BEGIN')
-          beganTransaction = true
-          const fileName = basename(fileSpec.filePath)
-          let fileSize = 0
-          try {
-            fileSize = deps.statFile(fileSpec.filePath).size
-          } catch {
-            // ignore — used only for provenance
-          }
-
-          const stream = await deps.createVcfMappedStream(fileSpec.filePath, {
-            selectedSample,
-            genomeBuild,
-            filters: importFilters
-          })
-
-          let variants: Array<Record<string, unknown>> = []
-          let transcripts: Array<Record<string, unknown> & { ordinal: number }> = []
-          let sv: Array<Record<string, unknown> & { ordinal: number }> = []
-          let cnv: Array<Record<string, unknown> & { ordinal: number }> = []
-          let str: Array<Record<string, unknown> & { ordinal: number }> = []
-          let ordinal = 0
-          let firstBatch = true
-
-          const flushBatch = async (): Promise<void> => {
-            if (variants.length === 0) return
-            // Per-batch shape:
-            //   - file 0, batch 0:  mode: 'multi-file', fileIndex: 0
-            //                       (creates case + writes provenance)
-            //   - file N, batch 0:  mode: 'multi-file', fileIndex: 1
-            //                       (looks up case + writes per-file provenance)
-            //   - any file, batch >0: mode: 'append', caseId
-            //                       (no lookup, no provenance — saves O(N) queries)
-            const isFirstFileFirstBatch = i === 0 && firstBatch
-            const isAppend = !firstBatch && caseId !== 0
-            const request: PostgresVcfImportRequest = isAppend
-              ? {
-                  mode: 'append',
-                  caseId,
-                  caseName: start.caseName,
-                  fileName,
-                  filePath: fileSpec.filePath,
-                  fileSize,
-                  genomeBuild,
-                  caller: fileSpec.caller ?? null,
-                  annotationFormat: fileSpec.annotationFormat ?? null,
-                  variantType: fileSpec.variantType,
-                  variants,
-                  transcripts,
-                  sv,
-                  cnv,
-                  str
-                }
-              : isFirstFileFirstBatch
-                ? {
-                    mode: 'multi-file',
-                    fileIndex: 0,
-                    caseName: start.caseName,
-                    fileName,
-                    filePath: fileSpec.filePath,
-                    fileSize,
-                    genomeBuild,
-                    caller: fileSpec.caller ?? null,
-                    annotationFormat: fileSpec.annotationFormat ?? null,
-                    variantType: fileSpec.variantType,
-                    variants,
-                    transcripts,
-                    sv,
-                    cnv,
-                    str
-                  }
-                : {
-                    mode: 'multi-file',
-                    fileIndex: 1,
-                    caseName: start.caseName,
-                    fileName,
-                    filePath: fileSpec.filePath,
-                    fileSize,
-                    genomeBuild,
-                    caller: fileSpec.caller ?? null,
-                    annotationFormat: fileSpec.annotationFormat ?? null,
-                    variantType: fileSpec.variantType,
-                    variants,
-                    transcripts,
-                    sv,
-                    cnv,
-                    str
-                  }
-            const result = await repo.writeVcfFile(
-              client as unknown as Pick<PoolClient, 'query'>,
-              request
-            )
-            if (caseId === 0) caseId = result.caseId
-            fileVariantCount += result.variantCount
-            firstBatch = false
-            post({
-              type: 'progress',
-              phase: 'inserting',
-              rowsProcessed: totalVariantCount + fileVariantCount,
-              filePath: fileSpec.filePath
-            })
-            variants = []
-            transcripts = []
-            sv = []
-            cnv = []
-            str = []
-            ordinal = 0
-            // Commit per-batch — same rationale as the single-file branch.
-            // The per-file BEGIN/COMMIT around this loop still bounds the
-            // failure semantics ("file N failed" rolls back any in-flight
-            // batch), but each successful batch is now durable immediately.
-            await client.query('COMMIT')
-            await client.query('BEGIN')
-            if (typeof (globalThis as { gc?: () => void }).gc === 'function') {
-              ;(globalThis as { gc?: () => void }).gc?.()
+        // Build ImportFilters once before the per-file loop so that
+        // BedFilter.fromFile (a sync file read) runs in the worker, not main.
+        let importFilters: ImportFilters | undefined
+        if (start.filters !== undefined) {
+          let bedFilter: BedFilter | undefined
+          if (
+            start.filters.bedFilePath !== null &&
+            start.filters.bedFilePath !== undefined &&
+            start.filters.bedFilePath !== ''
+          ) {
+            try {
+              bedFilter = BedFilter.fromFile(
+                start.filters.bedFilePath,
+                start.filters.bedPadding ?? 0
+              )
+            } catch (err) {
+              // Worker can't use mainLogger; console.warn is the documented
+              // worker exception (see AGENTS.md). Continue without BED filtering
+              // rather than fail the whole import.
+              console.warn(
+                '[postgres-import-worker] BedFilter.fromFile failed:',
+                err instanceof Error ? err.message : String(err)
+              )
             }
           }
+          importFilters = {
+            bedFilter,
+            // Match the SQLite-side IPC default (`payload.bedPadding ?? 0`) so the
+            // same UI inputs include the same variants on both backends.
+            bedPadding: start.filters.bedPadding ?? 0,
+            passOnly: start.filters.passOnly ?? false,
+            minQual: start.filters.minQual ?? null,
+            minGq: start.filters.minGq ?? null,
+            minDp: start.filters.minDp ?? null
+          }
+        }
 
-          for await (const row of stream) {
-            if (cancelled) break
-            const { _transcripts, _sv, _cnv, _str, ...base } = row
-            variants.push(base as unknown as Record<string, unknown>)
-            if (Array.isArray(_transcripts)) {
-              for (const t of _transcripts as unknown as Array<Record<string, unknown>>) {
-                transcripts.push({ ordinal, ...t })
+        for (let i = 0; i < start.files.length; i += 1) {
+          if (cancelled) break
+          const fileSpec = start.files[i]
+          let fileVariantCount = 0
+          try {
+            await client.query('BEGIN')
+            beganTransaction = true
+            // Per-file transaction: bound failure semantics ("file N failed"
+            // rolls back any in-flight batch) while the bracket transactions
+            // ABOVE keep the trigger DISABLE durable. SET LOCAL is
+            // transaction-scoped, so re-issue it on every per-file BEGIN.
+            await client.query('SET LOCAL synchronous_commit = OFF')
+            const fileName = basename(fileSpec.filePath)
+            let fileSize = 0
+            try {
+              fileSize = deps.statFile(fileSpec.filePath).size
+            } catch {
+              // ignore — used only for provenance
+            }
+
+            const stream = await deps.createVcfMappedStream(fileSpec.filePath, {
+              selectedSample,
+              genomeBuild,
+              filters: importFilters
+            })
+
+            let variants: Array<Record<string, unknown>> = []
+            let transcripts: Array<Record<string, unknown> & { ordinal: number }> = []
+            let sv: Array<Record<string, unknown> & { ordinal: number }> = []
+            let cnv: Array<Record<string, unknown> & { ordinal: number }> = []
+            let str: Array<Record<string, unknown> & { ordinal: number }> = []
+            let ordinal = 0
+            let firstBatch = true
+
+            const flushBatch = async (): Promise<void> => {
+              if (variants.length === 0) return
+              // Per-batch shape:
+              //   - file 0, batch 0:  mode: 'multi-file', fileIndex: 0
+              //                       (creates case + writes provenance)
+              //   - file N, batch 0:  mode: 'multi-file', fileIndex: 1
+              //                       (looks up case + writes per-file provenance)
+              //   - any file, batch >0: mode: 'append', caseId
+              //                       (no lookup, no provenance — saves O(N) queries)
+              const isFirstFileFirstBatch = i === 0 && firstBatch
+              const isAppend = !firstBatch && caseId !== 0
+              const request: PostgresVcfImportRequest = isAppend
+                ? {
+                    mode: 'append',
+                    caseId,
+                    caseName: start.caseName,
+                    fileName,
+                    filePath: fileSpec.filePath,
+                    fileSize,
+                    genomeBuild,
+                    caller: fileSpec.caller ?? null,
+                    annotationFormat: fileSpec.annotationFormat ?? null,
+                    variantType: fileSpec.variantType,
+                    variants,
+                    transcripts,
+                    sv,
+                    cnv,
+                    str
+                  }
+                : isFirstFileFirstBatch
+                  ? {
+                      mode: 'multi-file',
+                      fileIndex: 0,
+                      caseName: start.caseName,
+                      fileName,
+                      filePath: fileSpec.filePath,
+                      fileSize,
+                      genomeBuild,
+                      caller: fileSpec.caller ?? null,
+                      annotationFormat: fileSpec.annotationFormat ?? null,
+                      variantType: fileSpec.variantType,
+                      variants,
+                      transcripts,
+                      sv,
+                      cnv,
+                      str
+                    }
+                  : {
+                      mode: 'multi-file',
+                      fileIndex: 1,
+                      caseName: start.caseName,
+                      fileName,
+                      filePath: fileSpec.filePath,
+                      fileSize,
+                      genomeBuild,
+                      caller: fileSpec.caller ?? null,
+                      annotationFormat: fileSpec.annotationFormat ?? null,
+                      variantType: fileSpec.variantType,
+                      variants,
+                      transcripts,
+                      sv,
+                      cnv,
+                      str
+                    }
+              const result = await repo.writeVcfFile(
+                client as unknown as Pick<PoolClient, 'query'>,
+                request
+              )
+              if (caseId === 0) caseId = result.caseId
+              fileVariantCount += result.variantCount
+              firstBatch = false
+              post({
+                type: 'progress',
+                phase: 'inserting',
+                rowsProcessed: totalVariantCount + fileVariantCount,
+                filePath: fileSpec.filePath
+              })
+              variants = []
+              transcripts = []
+              sv = []
+              cnv = []
+              str = []
+              ordinal = 0
+              // Commit per-batch — same rationale as the single-file branch.
+              // The per-file BEGIN/COMMIT around this loop still bounds the
+              // failure semantics ("file N failed" rolls back any in-flight
+              // batch), but each successful batch is now durable immediately.
+              await client.query('COMMIT')
+              await client.query('BEGIN')
+              // Re-apply per-batch synchronous_commit lever — SET LOCAL is
+              // transaction-scoped and must be re-issued after every BEGIN.
+              await client.query('SET LOCAL synchronous_commit = OFF')
+              if (typeof (globalThis as { gc?: () => void }).gc === 'function') {
+                ;(globalThis as { gc?: () => void }).gc?.()
               }
             }
-            if (_sv !== undefined && _sv !== null) {
-              sv.push({ ordinal, ...(_sv as unknown as Record<string, unknown>) })
-            }
-            if (_cnv !== undefined && _cnv !== null) {
-              cnv.push({ ordinal, ...(_cnv as unknown as Record<string, unknown>) })
-            }
-            if (_str !== undefined && _str !== null) {
-              str.push({ ordinal, ...(_str as unknown as Record<string, unknown>) })
-            }
-            ordinal += 1
-            if (variants.length >= batchSize) await flushBatch()
-          }
 
-          if (cancelled) {
-            // Flush whatever was buffered before cancellation was detected
-            // then commit and break — partial state is left committed.
+            for await (const row of stream) {
+              if (cancelled) break
+              const { _transcripts, _sv, _cnv, _str, ...base } = row
+              variants.push(base as unknown as Record<string, unknown>)
+              if (Array.isArray(_transcripts)) {
+                for (const t of _transcripts as unknown as Array<Record<string, unknown>>) {
+                  transcripts.push({ ordinal, ...t })
+                }
+              }
+              if (_sv !== undefined && _sv !== null) {
+                sv.push({ ordinal, ...(_sv as unknown as Record<string, unknown>) })
+              }
+              if (_cnv !== undefined && _cnv !== null) {
+                cnv.push({ ordinal, ...(_cnv as unknown as Record<string, unknown>) })
+              }
+              if (_str !== undefined && _str !== null) {
+                str.push({ ordinal, ...(_str as unknown as Record<string, unknown>) })
+              }
+              ordinal += 1
+              if (variants.length >= batchSize) await flushBatch()
+            }
+
+            if (cancelled) {
+              // Flush whatever was buffered before cancellation was detected
+              // then commit and break — partial state is left committed.
+              await flushBatch()
+              await client.query('COMMIT')
+              beganTransaction = false
+              committed = true
+              totalVariantCount += fileVariantCount
+              fileResults.push({
+                filePath: fileSpec.filePath,
+                variantType: fileSpec.variantType,
+                variantCount: fileVariantCount
+              })
+              post({
+                type: 'file-complete',
+                filePath: fileSpec.filePath,
+                caseId,
+                variantCount: fileVariantCount
+              })
+              break
+            }
+
             await flushBatch()
             await client.query('COMMIT')
             beganTransaction = false
@@ -725,92 +820,79 @@ export async function runImport(
               caseId,
               variantCount: fileVariantCount
             })
-            break
-          }
+          } catch (err) {
+            beganTransaction = false
 
-          await flushBatch()
-          await client.query('COMMIT')
-          beganTransaction = false
-          committed = true
-          totalVariantCount += fileVariantCount
-          fileResults.push({
-            filePath: fileSpec.filePath,
-            variantType: fileSpec.variantType,
-            variantCount: fileVariantCount
-          })
-          post({
-            type: 'file-complete',
-            filePath: fileSpec.filePath,
-            caseId,
-            variantCount: fileVariantCount
-          })
-        } catch (err) {
-          beganTransaction = false
-          // eslint-disable-next-line no-console
-          console.warn(
-            `[postgres-import-worker] file ${i} (${fileSpec.filePath}) failed:`,
-            err instanceof Error ? err.message : String(err)
-          )
-          try {
-            await client.query('ROLLBACK')
-          } catch (rollbackErr) {
-            // eslint-disable-next-line no-console
             console.warn(
-              `[postgres-import-worker] file ${i} ROLLBACK after error failed:`,
-              rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)
+              `[postgres-import-worker] file ${i} (${fileSpec.filePath}) failed:`,
+              err instanceof Error ? err.message : String(err)
             )
+            try {
+              await client.query('ROLLBACK')
+            } catch (rollbackErr) {
+              console.warn(
+                `[postgres-import-worker] file ${i} ROLLBACK after error failed:`,
+                rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)
+              )
+            }
+            const message = err instanceof Error ? err.message : String(err)
+            fileResults.push({
+              filePath: fileSpec.filePath,
+              variantType: fileSpec.variantType,
+              variantCount: 0,
+              error: message
+            })
           }
-          const message = err instanceof Error ? err.message : String(err)
-          fileResults.push({
-            filePath: fileSpec.filePath,
-            variantType: fileSpec.variantType,
-            variantCount: 0,
-            error: message
-          })
         }
-      }
 
-      // Post-loop bookkeeping — only if at least one file committed.
-      if (caseId !== 0) {
-        await client.query('BEGIN')
-        beganTransaction = true
-        try {
-          await client.query(
-            `UPDATE ${quoteIdentifier(start.schema)}."cases" SET variant_count = $1 WHERE id = $2`,
-            [totalVariantCount, caseId]
-          )
-          await rebuildVariantFrequencyForCase(
-            client as unknown as Pick<PoolClient, 'query'>,
-            start.schema,
-            caseId
-          )
-          await client.query('COMMIT')
-          beganTransaction = false
-          committed = true
-        } catch (err) {
-          beganTransaction = false
+        // Post-loop bookkeeping — only if at least one file committed.
+        if (caseId !== 0) {
+          await client.query('BEGIN')
+          beganTransaction = true
+          // Force the final commit synchronous so the import only reports
+          // success once the WAL is fsynced. Postgres flushes WAL up to
+          // this commit's LSN, which transitively makes every earlier
+          // async-committed batch (per-file + per-batch) durable on disk.
+          await client.query('SET LOCAL synchronous_commit = ON')
           try {
-            await client.query('ROLLBACK')
-          } catch {
-            // swallow
+            await client.query(
+              `UPDATE ${quoteIdentifier(start.schema)}."cases" SET variant_count = $1 WHERE id = $2`,
+              [totalVariantCount, caseId]
+            )
+            await rebuildVariantFrequencyForCase(
+              client as unknown as Pick<PoolClient, 'query'>,
+              start.schema,
+              caseId
+            )
+            await client.query('COMMIT')
+            beganTransaction = false
+            committed = true
+          } catch (err) {
+            beganTransaction = false
+            try {
+              await client.query('ROLLBACK')
+            } catch {
+              // swallow
+            }
+            throw err
           }
-          throw err
         }
-      }
 
-      post({
-        type: 'complete',
-        mode: 'multi-file',
-        result: {
-          caseId,
-          variantCount: totalVariantCount,
-          files: fileResults,
-          skipped: 0,
-          errors: cancelled ? [POSTGRES_IMPORT_CANCELLATION_MESSAGE] : [],
-          elapsed: Date.now() - startedAt
-        }
-      })
-      return
+        profileFlush()
+        post({
+          type: 'complete',
+          mode: 'multi-file',
+          result: {
+            caseId,
+            variantCount: totalVariantCount,
+            files: fileResults,
+            skipped: 0,
+            errors: cancelled ? [POSTGRES_IMPORT_CANCELLATION_MESSAGE] : [],
+            elapsed: Date.now() - startedAt
+          }
+        })
+        return
+      }
     }
 
     throw new Error(
@@ -828,6 +910,18 @@ export async function runImport(
           '[postgres-import-worker] ROLLBACK failed:',
           rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)
         )
+      }
+    }
+    // Flush profile BEFORE post('error') / post('complete') — the worker
+    // client terminates the worker thread on receipt, which can cut off
+    // the trailing finally block before its file write completes.
+    profileFlush()
+    // Diagnostic: surface the actual worker error so failed perf runs are
+    // analysable. The renderer test only sees an opaque IpcResult.
+    if (message !== POSTGRES_IMPORT_CANCELLATION_MESSAGE) {
+      console.warn('[postgres-import-worker] runImport failed:', message)
+      if (err instanceof Error && err.stack !== undefined && err.stack !== '') {
+        console.warn(err.stack)
       }
     }
     if (message === POSTGRES_IMPORT_CANCELLATION_MESSAGE) {
@@ -851,6 +945,7 @@ export async function runImport(
     } catch {
       // swallow
     }
+    profileFlush()
   }
 }
 

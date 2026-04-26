@@ -1,14 +1,19 @@
 // ---------------------------------------------------------------------------
 // Shared column constants and helpers for Postgres import repositories.
 //
-// Both PostgresJsonImportRepository and PostgresVcfImportRepository must write
-// to the same schema, so the column lists, recordset-type maps, and id helpers
-// live here as the single source of truth.
+// PostgresVcfImportRepository (COPY path, Phase 16+) and
+// PostgresJsonImportRepository (legacy jsonb_to_recordset path) both write
+// to the same schema, so the column lists and id helpers live here as the
+// single source of truth.
 //
-// search_document is intentionally excluded from VARIANT_BASE_COLUMNS: the
-// Phase 7 trigger `variants_search_document_tg` populates it on BEFORE INSERT
-// (see scripts/postgres/init-db/12-phase7-variants.sql).
+// `search_document` is intentionally excluded from VARIANT_BASE_COLUMNS:
+// since Phase 16.1 it is a STORED generated column on variants/variant_sv/
+// variant_str (see scripts/postgres/init-db/16-phase16-search-document-fns.sql).
+// Postgres rejects writes to GENERATED ALWAYS columns, so any COPY/INSERT
+// must omit it.
 // ---------------------------------------------------------------------------
+
+import { encodeText, encodeInteger, encodeFloat, type CopyColumnEncoder } from './copy-text-encoder'
 
 export const VARIANT_BASE_COLUMNS = [
   'case_id',
@@ -44,42 +49,6 @@ export const VARIANT_BASE_COLUMNS = [
   'sv_length',
   'caller'
 ] as const
-
-// jsonb_to_recordset requires a record type definition. We align it with the
-// variants base columns (excluding case_id which we set from the outer scope).
-export const VARIANT_BATCH_RECORDSET_TYPES: Record<string, string> = {
-  chr: 'text',
-  pos: 'bigint',
-  ref: 'text',
-  alt: 'text',
-  gene_symbol: 'text',
-  omim_mim_number: 'text',
-  consequence: 'text',
-  gnomad_af: 'double precision',
-  cadd: 'double precision',
-  clinvar: 'text',
-  gt_num: 'text',
-  func: 'text',
-  qual: 'double precision',
-  hpo_sim_score: 'double precision',
-  transcript: 'text',
-  cdna: 'text',
-  aa_change: 'text',
-  moi: 'text',
-  gq: 'double precision',
-  dp: 'bigint',
-  ad_ref: 'bigint',
-  ad_alt: 'bigint',
-  ab: 'double precision',
-  filter: 'text',
-  info_json: 'text',
-  source_format: 'text',
-  variant_type: 'text',
-  end_pos: 'bigint',
-  sv_type: 'text',
-  sv_length: 'bigint',
-  caller: 'text'
-}
 
 export const VARIANT_TRANSCRIPT_COLUMNS = [
   'variant_id',
@@ -148,73 +117,133 @@ export const VARIANT_STR_COLUMNS = [
 ] as const
 
 // ---------------------------------------------------------------------------
-// Extension-table recordset type maps (used by insertExtensionBatch callers).
+// COPY FROM STDIN column lists (Phase 16).
+//
+// VARIANT_COPY_COLUMNS prepends `id` because the COPY path supplies pre-allocated
+// ids (via nextval on variants_id_seq) instead of relying on BIGSERIAL defaults —
+// this is what lets the extension tables' COPY rows reference the correct
+// variant_id without a per-row RETURNING round-trip. VARIANT_BASE_COLUMNS already
+// starts with `case_id`, so we do NOT include `case_id` again.
+//
+// The four extension-table COPY column lists are intentional aliases of the
+// existing `_COLUMNS` constants — they already begin with `variant_id` and
+// already exclude `search_document`. Phase 16.1 made `search_document` a
+// STORED generated column on variants/variant_sv/variant_str, so it is
+// populated inline at COPY time and must be excluded from any write list
+// (Postgres rejects writes to GENERATED ALWAYS columns).
 // ---------------------------------------------------------------------------
 
-export const TRANSCRIPT_RECORDSET_TYPES: Record<string, string> = {
-  variant_id: 'bigint',
-  transcript_id: 'text',
-  gene_symbol: 'text',
-  consequence: 'text',
-  cdna: 'text',
-  aa_change: 'text',
-  hpo_sim_score: 'double precision',
-  moi: 'text',
-  is_selected: 'integer',
-  is_mane_select: 'integer',
-  is_canonical: 'integer'
-}
+export const VARIANT_COPY_COLUMNS = ['id', ...VARIANT_BASE_COLUMNS] as const
+export const VARIANT_TRANSCRIPT_COPY_COLUMNS = VARIANT_TRANSCRIPT_COLUMNS
+export const VARIANT_SV_COPY_COLUMNS = VARIANT_SV_COLUMNS
+export const VARIANT_CNV_COPY_COLUMNS = VARIANT_CNV_COLUMNS
+export const VARIANT_STR_COPY_COLUMNS = VARIANT_STR_COLUMNS
 
-export const SV_RECORDSET_TYPES: Record<string, string> = {
-  variant_id: 'bigint',
-  sv_is_precise: 'integer',
-  cipos_left: 'bigint',
-  cipos_right: 'bigint',
-  ciend_left: 'bigint',
-  ciend_right: 'bigint',
-  support: 'bigint',
-  coverage: 'text',
-  strand: 'text',
-  stdev_len: 'double precision',
-  stdev_pos: 'double precision',
-  vaf: 'double precision',
-  dr: 'bigint',
-  dv: 'bigint',
-  pe_support: 'bigint',
-  sr_support: 'bigint',
-  event_id: 'text',
-  mate_id: 'text'
-}
+// ---------------------------------------------------------------------------
+// Per-column encoder map (Phase 16).
+//
+// Covers every column appearing in any of the five COPY column lists above.
+// Source of truth for column → Postgres type:
+// scripts/postgres/init-db/12-phase7-variants.sql.
+//
+// Mapping rules:
+//   TEXT                                  → encodeText
+//   BIGINT / BIGSERIAL / INTEGER          → encodeInteger
+//   DOUBLE PRECISION                      → encodeFloat
+//
+// Note: `is_selected`, `is_mane_select`, `is_canonical`, `sv_is_precise` are
+// stored as INTEGER (0/1) in the schema, NOT BOOLEAN. They use encodeInteger;
+// using encodeBoolean would throw because the encoder is strict.
+//
+// Where a column name appears in multiple tables (e.g. `gene_symbol`,
+// `consequence`, `cdna`, `aa_change`, `hpo_sim_score`, `moi`, `variant_id`),
+// the type is identical across tables, so a single shared entry is correct.
+// ---------------------------------------------------------------------------
 
-export const CNV_RECORDSET_TYPES: Record<string, string> = {
-  variant_id: 'bigint',
-  copy_number: 'bigint',
-  copy_number_quality: 'bigint',
-  homozygosity_ref: 'double precision',
-  homozygosity_alt: 'double precision',
-  sm: 'double precision',
-  bin_count: 'bigint'
-}
-
-export const STR_RECORDSET_TYPES: Record<string, string> = {
-  variant_id: 'bigint',
-  repeat_id: 'text',
-  variant_catalog_id: 'text',
-  repeat_unit: 'text',
-  display_repeat_unit: 'text',
-  ref_copies: 'double precision',
-  alt_copies: 'text',
-  repeat_length: 'bigint',
-  str_status: 'text',
-  normal_max: 'bigint',
-  pathologic_min: 'bigint',
-  disease: 'text',
-  inheritance_mode: 'text',
-  source_display: 'text',
-  rank_score: 'text',
-  locus_coverage: 'double precision',
-  support_type: 'text',
-  confidence_interval: 'text'
+export const VARIANT_COLUMN_ENCODERS: Record<string, CopyColumnEncoder> = {
+  // variants
+  id: encodeInteger,
+  case_id: encodeInteger,
+  chr: encodeText,
+  pos: encodeInteger,
+  ref: encodeText,
+  alt: encodeText,
+  gene_symbol: encodeText,
+  omim_mim_number: encodeText,
+  consequence: encodeText,
+  gnomad_af: encodeFloat,
+  cadd: encodeFloat,
+  clinvar: encodeText,
+  gt_num: encodeText,
+  func: encodeText,
+  qual: encodeFloat,
+  hpo_sim_score: encodeFloat,
+  transcript: encodeText,
+  cdna: encodeText,
+  aa_change: encodeText,
+  moi: encodeText,
+  gq: encodeFloat,
+  dp: encodeInteger,
+  ad_ref: encodeInteger,
+  ad_alt: encodeInteger,
+  ab: encodeFloat,
+  filter: encodeText,
+  info_json: encodeText,
+  source_format: encodeText,
+  variant_type: encodeText,
+  end_pos: encodeInteger,
+  sv_type: encodeText,
+  sv_length: encodeInteger,
+  caller: encodeText,
+  // variant_transcripts
+  variant_id: encodeInteger,
+  transcript_id: encodeText,
+  is_selected: encodeInteger,
+  is_mane_select: encodeInteger,
+  is_canonical: encodeInteger,
+  // variant_sv
+  sv_is_precise: encodeInteger,
+  cipos_left: encodeInteger,
+  cipos_right: encodeInteger,
+  ciend_left: encodeInteger,
+  ciend_right: encodeInteger,
+  support: encodeInteger,
+  coverage: encodeText,
+  strand: encodeText,
+  stdev_len: encodeFloat,
+  stdev_pos: encodeFloat,
+  vaf: encodeFloat,
+  dr: encodeInteger,
+  dv: encodeInteger,
+  pe_support: encodeInteger,
+  sr_support: encodeInteger,
+  event_id: encodeText,
+  mate_id: encodeText,
+  // variant_cnv
+  copy_number: encodeInteger,
+  copy_number_quality: encodeInteger,
+  homozygosity_ref: encodeFloat,
+  homozygosity_alt: encodeFloat,
+  sm: encodeFloat,
+  bin_count: encodeInteger,
+  // variant_str
+  repeat_id: encodeText,
+  variant_catalog_id: encodeText,
+  repeat_unit: encodeText,
+  display_repeat_unit: encodeText,
+  ref_copies: encodeFloat,
+  alt_copies: encodeText,
+  repeat_length: encodeInteger,
+  str_status: encodeText,
+  normal_max: encodeInteger,
+  pathologic_min: encodeInteger,
+  disease: encodeText,
+  inheritance_mode: encodeText,
+  source_display: encodeText,
+  rank_score: encodeText,
+  locus_coverage: encodeFloat,
+  support_type: encodeText,
+  confidence_interval: encodeText
 }
 
 // ---------------------------------------------------------------------------

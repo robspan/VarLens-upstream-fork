@@ -10,6 +10,54 @@ services:
     volumes:
       - varlens_postgres_data:/var/lib/postgresql
       - ./scripts/postgres/init-db:/docker-entrypoint-initdb.d:ro
+    # Bulk-load tuning (Phase 16.2). Each `-c key=value` overrides one entry
+    # in the default postgresql.conf. Rationale, in priority order:
+    #
+    #   * max_wal_size=8GB — default 1GB triggers checkpoints mid-WGS-import,
+    #     each forcing dirty pages to disk. WGS writes >1GB of WAL.
+    #   * shared_buffers=2GB — default 128MB underfits the variants table's
+    #     working set; we want the buffer pool to absorb the bulk of inserts
+    #     without spilling. ~6% of a typical 32GB workstation.
+    #   * maintenance_work_mem=1GB — feeds VACUUM/ANALYZE and any per-batch
+    #     hash work; default 64MB.
+    #   * work_mem=64MB — per-query sort/hash; default 4MB. Higher helps the
+    #     post-import variant_frequency rebuild's GROUP BY.
+    #   * wal_buffers=16MB — explicit; default `auto` = 1/32 of shared_buffers
+    #     up to 16MB. With shared_buffers=2GB the auto value would be ~16MB
+    #     anyway, but pin it for clarity.
+    #   * checkpoint_timeout=30min — default 5min. Lets the import run as one
+    #     long write phase before the first scheduled checkpoint.
+    #   * wal_level=minimal + max_wal_senders=0 — VarLens is single-user with
+    #     no replication. Minimal level skips replication metadata and
+    #     reduces WAL volume; max_wal_senders=0 is required for it.
+    #   * effective_cache_size=8GB — planner hint, helps the post-import
+    #     ANALYZE produce sensible plans.
+    #
+    # Sources: PostgreSQL "Populating a Database" docs
+    # (https://www.postgresql.org/docs/current/populate.html), Citus, EDB,
+    # pganalyze bulk-load guides. See .planning/research notes.
+    command:
+      - postgres
+      - -c
+      - max_wal_size=8GB
+      - -c
+      - shared_buffers=2GB
+      - -c
+      - maintenance_work_mem=1GB
+      - -c
+      - work_mem=64MB
+      - -c
+      - wal_buffers=16MB
+      - -c
+      - checkpoint_timeout=30min
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - wal_level=minimal
+      - -c
+      - max_wal_senders=0
+      - -c
+      - effective_cache_size=8GB
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
       interval: 5s

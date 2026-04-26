@@ -104,7 +104,7 @@ describe.skipIf(!SHOULD_RUN)('postgres VCF WGS import perf', () => {
 
         const totalSec = (performance.now() - t0) / 1000
         const artifactPath = writeArtifact(elapsedSec)
-        // eslint-disable-next-line no-console
+
         console.log(
           `[wgs-perf] postgres elapsed=${elapsedSec.toFixed(2)}s total=${totalSec.toFixed(2)}s artifact=${artifactPath}`
         )

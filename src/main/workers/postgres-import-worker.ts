@@ -206,7 +206,7 @@ const defaultDeps: RunImportDeps = {
  * themselves but may inherit a DISABLED state from a prior crashed VCF
  * import.
  */
-async function recoverTriggersOnStartup(
+export async function recoverTriggersOnStartup(
   client: Pick<Client, 'query'>,
   schemaName: string
 ): Promise<void> {

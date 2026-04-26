@@ -3,10 +3,7 @@ import { pipeline } from 'node:stream/promises'
 import type { Writable } from 'node:stream'
 import { from as copyFrom, type CopyStreamQuery } from 'pg-copy-streams'
 import type { PoolClient } from 'pg'
-import {
-  encodeRowsToCopyText,
-  type CopyColumn,
-} from './copy-text-encoder'
+import { encodeRowsToCopyText, type CopyColumn } from './copy-text-encoder'
 
 export async function runBulkCopy(params: {
   client: Pick<PoolClient, 'query'>
@@ -34,8 +31,5 @@ export async function runBulkCopy(params: {
     q: CopyStreamQuery
   ) => Writable
   const copyStream = queryFn(submit)
-  await pipeline(
-    encodeRowsToCopyText(params.columns, params.rows),
-    copyStream,
-  )
+  await pipeline(encodeRowsToCopyText(params.columns, params.rows), copyStream)
 }

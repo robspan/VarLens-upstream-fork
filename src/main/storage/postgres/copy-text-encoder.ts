@@ -4,8 +4,13 @@
 // No pg imports — fully unit-testable in isolation.
 
 export class EncoderInvalidValueError extends Error {
-  constructor(public readonly column: string | undefined, public readonly reason: string) {
-    super(`COPY encoder rejected value: ${reason}${column ? ` (column ${column})` : ''}`)
+  constructor(
+    public readonly column: string | undefined,
+    public readonly reason: string
+  ) {
+    super(
+      `COPY encoder rejected value: ${reason}${column !== undefined && column !== '' ? ` (column ${column})` : ''}`
+    )
     this.name = 'EncoderInvalidValueError'
   }
 }
@@ -33,7 +38,7 @@ export const encodeText: CopyColumnEncoder = (value) => {
     }
     throw new EncoderInvalidValueError(
       undefined,
-      `expected string for text encoder, got ${typeof value}`,
+      `expected string for text encoder, got ${typeof value}`
     )
   }
   if (value.indexOf('\u0000') >= 0) {
@@ -60,11 +65,14 @@ export const encodeInteger: CopyColumnEncoder = (value) => {
     if (!Number.isFinite(value)) {
       throw new EncoderInvalidValueError(
         undefined,
-        `non-finite number ${value} not representable in PostgreSQL integer`,
+        `non-finite number ${value} not representable in PostgreSQL integer`
       )
     }
     if (!Number.isInteger(value)) {
-      throw new EncoderInvalidValueError(undefined, `non-integer ${value} passed to integer encoder`)
+      throw new EncoderInvalidValueError(
+        undefined,
+        `non-integer ${value} passed to integer encoder`
+      )
     }
     return String(value)
   }
@@ -99,15 +107,13 @@ export const encodeJsonb: CopyColumnEncoder = (value) => {
   if (value === null || value === undefined) return NULL_TOKEN
   let s = JSON.stringify(value)
   // Strip U+0000 — JSONB rejects it, and JSON.stringify allows it through.
+  // eslint-disable-next-line no-control-regex
   s = s.replace(/\u0000/g, '')
   // Double-escape every backslash so the COPY decoder un-escapes back to the
   // JSON-legal form before the JSONB caster sees it.
   s = s.replace(/\\/g, '\\\\')
   // Then escape COPY's transport metacharacters.
-  return s
-    .replace(/\n/g, '\\n')
-    .replace(/\r/g, '\\r')
-    .replace(/\t/g, '\\t')
+  return s.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t')
 }
 
 export const encodeBytea: CopyColumnEncoder = (value) => {
@@ -139,7 +145,7 @@ export interface CopyColumn {
  */
 export async function* encodeRowsToCopyText(
   columns: ReadonlyArray<CopyColumn>,
-  rows: AsyncIterable<Record<string, unknown>> | Iterable<Record<string, unknown>>,
+  rows: AsyncIterable<Record<string, unknown>> | Iterable<Record<string, unknown>>
 ): AsyncGenerator<Buffer> {
   for await (const row of rows as AsyncIterable<Record<string, unknown>>) {
     const fields: string[] = new Array(columns.length)

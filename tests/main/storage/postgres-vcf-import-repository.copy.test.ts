@@ -156,20 +156,18 @@ describe.skipIf(!RUN)('PostgresVcfImportRepository — COPY path (integration)',
 
   afterAll(async () => {
     if (createdCaseNames.length > 0) {
-      await control.query(
-        `DELETE FROM "${PG_SCHEMA}"."cases" WHERE name = ANY($1::text[])`,
-        [createdCaseNames]
-      )
+      await control.query(`DELETE FROM "${PG_SCHEMA}"."cases" WHERE name = ANY($1::text[])`, [
+        createdCaseNames
+      ])
     }
     await control.end()
   })
 
   afterEach(async () => {
     if (createdCaseNames.length > 0) {
-      await control.query(
-        `DELETE FROM "${PG_SCHEMA}"."cases" WHERE name = ANY($1::text[])`,
-        [createdCaseNames]
-      )
+      await control.query(`DELETE FROM "${PG_SCHEMA}"."cases" WHERE name = ANY($1::text[])`, [
+        createdCaseNames
+      ])
       createdCaseNames.length = 0
     }
   })
@@ -282,7 +280,10 @@ describe.skipIf(!RUN)('PostgresVcfImportRepository — COPY path (integration)',
 
     const result = await withWorkerLikeClient(async (client) => {
       await client.query('BEGIN')
-      const r = await repo.writeVcfFile(client, baseRequest(caseName, variants, { transcripts, sv, str }))
+      const r = await repo.writeVcfFile(
+        client,
+        baseRequest(caseName, variants, { transcripts, sv, str })
+      )
       await client.query('COMMIT')
       return r
     })
@@ -607,9 +608,7 @@ describe.skipIf(!RUN)('PostgresVcfImportRepository — COPY path (integration)',
   it('variant_str search_document is populated by the STORED generated column', async () => {
     const caseName = uniqueCaseName('golden-str')
 
-    const variants = Array.from({ length: 3 }, (_, i) =>
-      makeVariant({ pos: 800000 + i })
-    )
+    const variants = Array.from({ length: 3 }, (_, i) => makeVariant({ pos: 800000 + i }))
     const str = variants.map((_, i) => ({
       ordinal: i,
       repeat_id: `STR_GLD_${i}`,
@@ -662,9 +661,7 @@ describe.skipIf(!RUN)('PostgresVcfImportRepository — COPY path (integration)',
       // inside the per-batch BEGIN, COMMIT, observe with a fresh connection.
       await client.query('BEGIN')
       await client.query('SET LOCAL synchronous_commit = OFF')
-      const variants = Array.from({ length: 3 }, (_, i) =>
-        makeVariant({ pos: 900000 + i })
-      )
+      const variants = Array.from({ length: 3 }, (_, i) => makeVariant({ pos: 900000 + i }))
       await repo.writeVcfFile(client, baseRequest(caseName, variants))
       await client.query('COMMIT')
     })
@@ -672,9 +669,7 @@ describe.skipIf(!RUN)('PostgresVcfImportRepository — COPY path (integration)',
     const observer = new Client({ connectionString: PG_URL })
     await observer.connect()
     try {
-      const r = await observer.query<{ synchronous_commit: string }>(
-        'SHOW synchronous_commit'
-      )
+      const r = await observer.query<{ synchronous_commit: string }>('SHOW synchronous_commit')
       // Default is 'on' for a stock postgres; tolerate any non-'off' value
       // (e.g. 'remote_apply' on replicated clusters) as long as the LOCAL
       // override didn't leak. The strict assertion is: not 'off'.
@@ -693,10 +688,7 @@ describe.skipIf(!RUN)('PostgresVcfImportRepository — COPY path (integration)',
 
     // Pull the single largest ALT directly from the fixture so we exercise
     // the real upstream test data, not a synthesised payload.
-    const fixturePath = resolve(
-      process.cwd(),
-      'tests/test-data/vcf/synthetic-large-allele.vcf'
-    )
+    const fixturePath = resolve(process.cwd(), 'tests/test-data/vcf/synthetic-large-allele.vcf')
     const fixture = readFileSync(fixturePath, 'utf-8')
     const dataLine = fixture
       .split('\n')
@@ -785,9 +777,7 @@ describe.skipIf(!RUN)('PostgresVcfImportRepository — COPY path (integration)',
 
     // Failing batch — 10 rows, one with chr=null. Must run inside the bracket
     // pattern so we can verify triggers are re-enabled afterward.
-    const badBatch = Array.from({ length: 10 }, (_, i) =>
-      makeVariant({ pos: 1_100_000 + i })
-    )
+    const badBatch = Array.from({ length: 10 }, (_, i) => makeVariant({ pos: 1_100_000 + i }))
     badBatch[5] = makeVariant({ chr: null, pos: 1_100_005 })
 
     await withWorkerLikeClient(async (client) => {

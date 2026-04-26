@@ -10,12 +10,7 @@
 // (see scripts/postgres/init-db/12-phase7-variants.sql).
 // ---------------------------------------------------------------------------
 
-import {
-  encodeText,
-  encodeInteger,
-  encodeFloat,
-  type CopyColumnEncoder
-} from './copy-text-encoder'
+import { encodeText, encodeInteger, encodeFloat, type CopyColumnEncoder } from './copy-text-encoder'
 
 export const VARIANT_BASE_COLUMNS = [
   'case_id',

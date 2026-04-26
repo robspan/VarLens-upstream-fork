@@ -271,9 +271,7 @@ describe('PostgresVcfImportRepository.writeVcfFile', () => {
         { chr: '1', pos: 100, ref: 'A', alt: 'T' },
         { chr: '1', pos: 200, ref: 'G', alt: 'C' }
       ],
-      transcripts: [
-        { ordinal: 0, transcript_id: 'ENST1', gene_symbol: 'BRCA1', is_selected: 1 }
-      ],
+      transcripts: [{ ordinal: 0, transcript_id: 'ENST1', gene_symbol: 'BRCA1', is_selected: 1 }],
       sv: [],
       cnv: [],
       str: []

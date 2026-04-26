@@ -102,7 +102,7 @@ export function profileFlush(): void {
   const body = lines.join('\n') + '\n'
 
   // Stderr (best-effort — under Playwright Electron the parent captures it).
-  // eslint-disable-next-line no-console
+
   for (const line of lines) console.warn(line)
 
   // Reliable channel: write to a timestamped artifact file. The worker thread

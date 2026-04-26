@@ -1,5 +1,23 @@
 import { Readable } from 'node:stream'
 import { describe, expect, it, vi } from 'vitest'
+
+// Phase 16+: VCF imports write via runBulkCopy (pg-copy-streams). The mock
+// here drains the rows iterator so the worker's per-batch contract still
+// runs, but doesn't go through a real pg connection. Repository contract
+// (id reservation + extension-row variant_id resolution) is exercised in
+// tests/main/storage/postgres-vcf-import-repository.test.ts.
+vi.mock('../../../src/main/storage/postgres/postgres-bulk-write', () => ({
+  runBulkCopy: vi.fn(
+    async (params: {
+      rows: AsyncIterable<Record<string, unknown>> | Iterable<Record<string, unknown>>
+    }) => {
+      for await (const row of params.rows as AsyncIterable<Record<string, unknown>>) {
+        void row
+      }
+    }
+  )
+}))
+
 import { runImport } from '../../../src/main/workers/postgres-import-worker'
 import type { PostgresImportWorkerStartMessage } from '../../../src/shared/types/postgres-import-worker'
 
@@ -15,9 +33,15 @@ describe('postgres-import-worker runImport', () => {
         if (text.startsWith('SELECT id FROM') && text.includes('"cases"')) return { rows: [] }
         if (text.startsWith('INSERT INTO') && text.includes('"cases"'))
           return { rows: [{ id: 13 }] }
-        if (text.includes('"variants"') && text.includes('jsonb_to_recordset')) {
-          const payload = JSON.parse(String((params as unknown[])[0])) as unknown[]
-          return { rows: payload.map((_, i) => ({ id: 5000 + i })) }
+        // Phase 16+: ID reservation via pg_get_serial_sequence + generate_series.
+        if (text.includes('pg_get_serial_sequence') && text.includes('generate_series')) {
+          const n = (params?.[1] as number) ?? 0
+          return {
+            rows: Array.from({ length: n }, (_, i) => ({
+              ordinal: String(i),
+              id: String(5000 + i)
+            }))
+          }
         }
         return { rows: [] }
       }),
@@ -82,11 +106,14 @@ describe('postgres-import-worker runImport', () => {
       (m) => messages.push(m)
     )
 
-    expect(queries[0]).toBe('BEGIN')
+    // Phase 16.1: relaxImportSessionLimits issues SET statement_timeout = 0
+    // (and friends) before any BEGIN. The transaction lifecycle is still
+    // present, just no longer the very first query.
+    expect(queries).toContain('BEGIN')
     expect(queries.at(-1)).toBe('COMMIT')
-    expect(
-      queries.find((q) => q.includes('"variants"') && q.includes('jsonb_to_recordset'))
-    ).toBeDefined()
+    // VCF imports now write via COPY FROM STDIN (mocked at the runBulkCopy
+    // boundary in this test's deps), but the post-loop bookkeeping
+    // (variant_frequency rebuild + variant_count update) is unchanged.
     expect(queries.find((q) => q.includes('"variant_frequency"'))).toBeDefined()
     expect(queries.find((q) => q.startsWith('UPDATE') && q.includes('variant_count'))).toBeDefined()
 
@@ -122,11 +149,19 @@ describe('postgres-import-worker runImport', () => {
         if (text.startsWith('INSERT INTO') && text.includes('"cases"')) {
           return { rows: [{ id: 21 }] }
         }
-        if (text.includes('"variants"') && text.includes('jsonb_to_recordset')) {
+        // Phase 16+: per-batch ID reservation. We hijack this call site to
+        // inject the file-2 failure (was previously injected on the
+        // jsonb_to_recordset INSERT, which is no longer used).
+        if (text.includes('pg_get_serial_sequence') && text.includes('generate_series')) {
           variantInsertCount += 1
           if (variantInsertCount === 2) throw new Error('inject failure on file 2 variant insert')
-          const payload = JSON.parse(String((params as unknown[])[0])) as unknown[]
-          return { rows: payload.map((_, i) => ({ id: 5000 + i })) }
+          const n = (params?.[1] as number) ?? 0
+          return {
+            rows: Array.from({ length: n }, (_, i) => ({
+              ordinal: String(i),
+              id: String(5000 + i)
+            }))
+          }
         }
         return { rows: [] }
       }),
@@ -201,11 +236,11 @@ describe('postgres-import-worker runImport', () => {
       (m) => messages.push(m)
     )
 
-    // outer BEGIN + ROLLBACK, file-1 BEGIN + per-batch COMMIT/BEGIN + final COMMIT,
-    // file-2 BEGIN + ROLLBACK, post-loop BEGIN + COMMIT.
-    // Per-batch commits in flushBatch produce one extra BEGIN per successful file.
+    // Phase 16.1: outer BEGIN/ROLLBACK is gone (no bracket transactions).
+    // Expected BEGINs: file-1 BEGIN + per-batch COMMIT/BEGIN cycle inside
+    // flushBatch + file-2 BEGIN + post-loop bookkeeping BEGIN = 4.
     const beginCount = queries.filter((q) => q === 'BEGIN').length
-    expect(beginCount).toBe(5)
+    expect(beginCount).toBe(4)
     expect(queries.includes('ROLLBACK')).toBe(true)
     expect(queries.includes('COMMIT')).toBe(true)
 
@@ -262,7 +297,9 @@ describe('postgres-import-worker runImport', () => {
       post
     )
 
-    expect(queries[0]).toBe('BEGIN')
+    // Phase 16.1: relaxImportSessionLimits issues SET statement_timeout = 0
+    // before any BEGIN.
+    expect(queries).toContain('BEGIN')
     expect(queries.some((q) => q.startsWith('SELECT id FROM'))).toBe(true)
     expect(queries.some((q) => q.includes('"cases"') && q.startsWith('INSERT'))).toBe(true)
     expect(queries.some((q) => q.includes('"variant_frequency"'))).toBe(true)

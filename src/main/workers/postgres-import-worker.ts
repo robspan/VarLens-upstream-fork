@@ -58,7 +58,6 @@ let cancelled = false
 // was escaping the per-file try/catch — root cause was an unhandled error
 // event on the readline-wrapped fs read stream.
 process.on('uncaughtException', (err) => {
-  // eslint-disable-next-line no-console
   console.warn('[postgres-import-worker] uncaughtException:', err.message, err.stack)
   parentPort?.postMessage({
     type: 'error',
@@ -69,7 +68,7 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason) => {
   const message = reason instanceof Error ? reason.message : String(reason)
   const stack = reason instanceof Error ? reason.stack : undefined
-  // eslint-disable-next-line no-console
+
   console.warn(
     '[postgres-import-worker] unhandledRejection:',
     stack !== undefined ? `${message}\n${stack}` : message
@@ -211,9 +210,7 @@ const defaultDeps: RunImportDeps = {
  * of 30 s. Imports run in their own short-lived worker connection, so
  * relaxing the timeouts here doesn't affect read paths.
  */
-export async function relaxImportSessionLimits(
-  client: Pick<Client, 'query'>
-): Promise<void> {
+export async function relaxImportSessionLimits(client: Pick<Client, 'query'>): Promise<void> {
   await client.query('SET statement_timeout = 0')
   await client.query('SET idle_in_transaction_session_timeout = 0')
   await client.query('SET lock_timeout = 0')
@@ -815,7 +812,7 @@ export async function runImport(
             })
           } catch (err) {
             beganTransaction = false
-            // eslint-disable-next-line no-console
+
             console.warn(
               `[postgres-import-worker] file ${i} (${fileSpec.filePath}) failed:`,
               err instanceof Error ? err.message : String(err)
@@ -823,7 +820,6 @@ export async function runImport(
             try {
               await client.query('ROLLBACK')
             } catch (rollbackErr) {
-              // eslint-disable-next-line no-console
               console.warn(
                 `[postgres-import-worker] file ${i} ROLLBACK after error failed:`,
                 rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)
@@ -913,7 +909,7 @@ export async function runImport(
     // analysable. The renderer test only sees an opaque IpcResult.
     if (message !== POSTGRES_IMPORT_CANCELLATION_MESSAGE) {
       console.warn('[postgres-import-worker] runImport failed:', message)
-      if (err instanceof Error && err.stack) {
+      if (err instanceof Error && err.stack !== undefined && err.stack !== '') {
         console.warn(err.stack)
       }
     }

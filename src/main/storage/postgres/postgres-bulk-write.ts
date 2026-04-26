@@ -1,5 +1,5 @@
 // src/main/storage/postgres/postgres-bulk-write.ts
-import * as stream from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 import type { Writable } from 'node:stream'
 import { from as copyFrom, type CopyStreamQuery } from 'pg-copy-streams'
 import type { PoolClient } from 'pg'
@@ -23,12 +23,18 @@ export async function runBulkCopy(params: {
   // pg/lib/client.js as of pg 8), so we MUST preserve `this` — extracting
   // the function onto a bare variable and calling it loses the binding.
   // Use a bound thunk; the cost is one closure allocation per COPY call.
+  //
+  // The `pipeline` helper is imported from 'node:stream/promises' as a named
+  // export. The wildcard `import * as stream from 'node:stream'` was tried
+  // first, but electron-vite's worker bundler emitted a broken namespace
+  // interop — the worker threw at module-load before the recovery shim
+  // could even run. Named import survives bundling.
   const submit = copyFrom(params.sql)
   const queryFn = params.client.query.bind(params.client) as unknown as (
     q: CopyStreamQuery
   ) => Writable
   const copyStream = queryFn(submit)
-  await stream.promises.pipeline(
+  await pipeline(
     encodeRowsToCopyText(params.columns, params.rows),
     copyStream,
   )

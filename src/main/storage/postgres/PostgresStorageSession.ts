@@ -9,17 +9,18 @@ import { PostgresCaseListRepository } from './PostgresCaseListRepository'
 import { PostgresCaseMetadataRepository } from './PostgresCaseMetadataRepository'
 import { PostgresCasesQueryRepository } from './PostgresCasesQueryRepository'
 import { PostgresImportExecutor } from './PostgresImportExecutor'
-import { PostgresJsonImportRepository } from './PostgresJsonImportRepository'
 import { PostgresReadExecutor } from './PostgresReadExecutor'
 import { PostgresVariantReadRepository } from './PostgresVariantReadRepository'
 import type { StorageImportExecutor } from '../import-executor'
 import type { StorageReadExecutor } from '../read-executor'
 import { PostgresWriteExecutor } from './PostgresWriteExecutor'
 import {
+  buildPostgresClientConfig,
   buildPostgresConnectionLabel,
   redactPostgresConnectionUrl,
   type PostgresStorageConfig
 } from '../config'
+import { toPostgresClientConfigMessage } from '../../../shared/types/postgres-import-worker'
 import type { StorageSession } from '../session'
 import type { StorageCapabilities, StorageHealth, WorkspaceRef } from '../types'
 import type { StorageWriteExecutor } from '../write-executor'
@@ -69,7 +70,14 @@ export class PostgresStorageSession implements StorageSession {
     })
     this.writeExecutor = new PostgresWriteExecutor(caseMetadata)
     this.importExecutor = new PostgresImportExecutor({
-      repository: new PostgresJsonImportRepository(options.pool, options.config.schema)
+      schema: options.config.schema,
+      // buildPostgresClientConfig always sets connectionString = config.url (a string),
+      // but pg's ClientConfig types it as `string | undefined`. The assertion is safe.
+      clientConfig: toPostgresClientConfigMessage(
+        buildPostgresClientConfig(options.config) as import('pg').ClientConfig & {
+          connectionString: string
+        }
+      )
     })
     this.createCaseListRepository =
       options.createCaseListRepository ??

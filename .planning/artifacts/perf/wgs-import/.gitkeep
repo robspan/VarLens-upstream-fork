@@ -1,0 +1,6 @@
+WGS perf benchmark artifacts directory.
+
+Per-backend baseline reports (timestamped) and comparison reports land here when
+`VARLENS_RUN_WGS_PERF=1` is set on the perf tests. The directory itself is
+gitignored (see /.gitignore); this .gitkeep just preserves its existence so the
+test runner does not have to mkdir on every invocation.

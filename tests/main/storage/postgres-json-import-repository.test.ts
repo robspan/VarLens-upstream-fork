@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { PostgresJsonImportRepository } from '../../../src/main/storage/postgres/PostgresJsonImportRepository'
+import {
+  PostgresJsonImportRepository,
+  rebuildVariantFrequencyForCase
+} from '../../../src/main/storage/postgres/PostgresJsonImportRepository'
+
+// ---------------------------------------------------------------------------
+// Helpers — client-shape harness (pool.connect never called by the repo)
+// ---------------------------------------------------------------------------
 
 type QueryReturn = { rows: unknown[]; rowCount?: number } | Error
 
@@ -10,14 +17,17 @@ function makeClient(rowsByCall: QueryReturn[] = []) {
     if (next instanceof Error) throw next
     return next ?? { rows: [], rowCount: 0 }
   })
-  return { query, release: vi.fn() }
+  return { query }
 }
 
 type ClientMock = ReturnType<typeof makeClient>
 
-function makePool(client: ClientMock) {
+/** A pool that throws if connect() is called — enforces the no-pool-in-repo contract. */
+function makeForbiddenPool() {
   return {
-    connect: vi.fn(async () => client)
+    connect: vi.fn(async () => {
+      throw new Error('writeJsonImport must not call pool.connect')
+    })
   }
 }
 
@@ -62,7 +72,11 @@ const baseRequest = {
   importFileType: 'simple' as const
 }
 
-describe('PostgresJsonImportRepository', () => {
+// ---------------------------------------------------------------------------
+// writeJsonImport — transaction-scoped API
+// ---------------------------------------------------------------------------
+
+describe('PostgresJsonImportRepository.writeJsonImport', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-04-24T00:00:00.000Z'))
@@ -72,21 +86,43 @@ describe('PostgresJsonImportRepository', () => {
     vi.useRealTimers()
   })
 
-  it('creates case, inserts variants, stores provenance, refreshes frequency, commits', async () => {
+  it('issues no transaction-lifecycle SQL — caller owns BEGIN/COMMIT/ROLLBACK', async () => {
+    const queries: string[] = []
+    const client = {
+      query: async (sql: string | { text: string }) => {
+        const text = typeof sql === 'string' ? sql : sql.text
+        queries.push(text)
+        if (text.startsWith('SELECT id FROM')) return { rows: [] }
+        if (text.startsWith('INSERT INTO') && text.includes('"cases"')) {
+          return { rows: [{ id: 42 }] }
+        }
+        return { rows: [] }
+      }
+    }
+    const repo = new PostgresJsonImportRepository(makeForbiddenPool() as never, 'public')
+
+    await repo.writeJsonImport(client as never, baseRequest, async () => {
+      // empty writer — exercises only schema-level SQL
+    })
+
+    expect(queries).not.toContain('BEGIN')
+    expect(queries).not.toContain('COMMIT')
+    expect(queries).not.toContain('ROLLBACK')
+    // Frequency rebuild has moved to the caller (executor).
+    expect(queries.join('\n')).not.toMatch(/INSERT INTO[\s\S]+variant_frequency/)
+  })
+
+  it('creates case row, stores provenance, returns caseId and variantCount', async () => {
     const client = makeClient([
-      { rows: [] }, // BEGIN
       { rows: [] }, // duplicate check SELECT
       { rows: [{ id: '4' }] }, // INSERT cases RETURNING id
       { rows: [{ id: '10' }, { id: '11' }] }, // variants batch INSERT
       { rows: [] }, // case_data_info upsert
-      { rows: [] }, // UPDATE cases variant_count
-      { rows: [] }, // variant_frequency refresh
-      { rows: [] } // COMMIT
+      { rows: [] } // UPDATE cases variant_count
     ])
-    const pool = makePool(client)
-    const repository = new PostgresJsonImportRepository(pool as never, 'public')
+    const repo = new PostgresJsonImportRepository(makeForbiddenPool() as never, 'public')
 
-    const result = await repository.runJsonImport(baseRequest, async (session) => {
+    const result = await repo.writeJsonImport(client as never, baseRequest, async (session) => {
       await session.insertVariantBatch([
         { chr: '1', pos: 12345, ref: 'A', alt: 'G', gene_symbol: 'BRCA1', consequence: 'HIGH' },
         { chr: '7', pos: 67890, ref: 'C', alt: 'T', gene_symbol: 'CFTR', consequence: 'MODERATE' }
@@ -94,12 +130,6 @@ describe('PostgresJsonImportRepository', () => {
     })
 
     expect(result).toStrictEqual({ caseId: 4, variantCount: 2 })
-
-    // Transaction shape
-    expect(client.query).toHaveBeenCalledWith('BEGIN')
-    expect(client.query).toHaveBeenCalledWith('COMMIT')
-    expect(client.release).toHaveBeenCalledTimes(1)
-    expect(client.release).toHaveBeenCalledWith()
 
     // Duplicate check
     const dupCheck = findCall(
@@ -134,77 +164,49 @@ describe('PostgresJsonImportRepository', () => {
     )
     expect(updateCount).toBeDefined()
     expect(updateCount?.params).toStrictEqual([2, 4])
-
-    // Frequency refresh at the end
-    const freqCall = findCall(
-      client,
-      /INSERT INTO\s+"public"\."variant_frequency"[\s\S]+SELECT chr, pos, ref, alt, 1[\s\S]+FROM\s+"public"\."variants"[\s\S]+WHERE case_id = \$1[\s\S]+GROUP BY chr, pos, ref, alt[\s\S]+ON CONFLICT/i
-    )
-    expect(freqCall).toBeDefined()
-    expect(freqCall?.params).toStrictEqual([4])
   })
 
-  it('throws Duplicate case name when case exists', async () => {
+  it('throws Duplicate case name when case already exists', async () => {
     const client = makeClient([
-      { rows: [] }, // BEGIN
       { rows: [{ id: '99' }] } // duplicate check SELECT returns existing row
     ])
-    const pool = makePool(client)
-    const repository = new PostgresJsonImportRepository(pool as never, 'public')
+    const repo = new PostgresJsonImportRepository(makeForbiddenPool() as never, 'public')
 
     await expect(
-      repository.runJsonImport(baseRequest, async () => {
+      repo.writeJsonImport(client as never, baseRequest, async () => {
         /* not invoked */
       })
     ).rejects.toThrow(/Duplicate case name/)
-
-    expect(client.query).toHaveBeenCalledWith('ROLLBACK')
-    expect(client.query).not.toHaveBeenCalledWith('COMMIT')
-    expect(client.release).toHaveBeenCalledTimes(1)
-    const releaseArg = client.release.mock.calls[0]?.[0]
-    expect(releaseArg).toBeInstanceOf(Error)
   })
 
-  it('rolls back and releases with error on insert failure', async () => {
+  it('propagates insert failure to the caller', async () => {
     const client = makeClient([
-      { rows: [] }, // BEGIN
       { rows: [] }, // duplicate check
       { rows: [{ id: '4' }] }, // case insert
       new Error('boom') // variant batch blows up
     ])
-    const pool = makePool(client)
-    const repository = new PostgresJsonImportRepository(pool as never, 'public')
+    const repo = new PostgresJsonImportRepository(makeForbiddenPool() as never, 'public')
 
     await expect(
-      repository.runJsonImport(baseRequest, async (session) => {
+      repo.writeJsonImport(client as never, baseRequest, async (session) => {
         await session.insertVariantBatch([
           { chr: '1', pos: 1, ref: 'A', alt: 'G', gene_symbol: 'X', consequence: 'LOW' }
         ])
       })
     ).rejects.toThrow(/boom/)
-
-    expect(client.query).toHaveBeenCalledWith('ROLLBACK')
-    expect(client.query).not.toHaveBeenCalledWith('COMMIT')
-    expect(client.release).toHaveBeenCalledTimes(1)
-    const releaseArg = client.release.mock.calls[0]?.[0]
-    expect(releaseArg).toBeInstanceOf(Error)
   })
 
   it('base variant batch uses jsonb_to_recordset with single JSON parameter', async () => {
     const client = makeClient([
-      { rows: [] }, // BEGIN
       { rows: [] }, // duplicate check
       { rows: [{ id: '4' }] }, // case insert
       { rows: [{ id: '10' }, { id: '11' }] }, // variant batch insert
       { rows: [] }, // case_data_info
-      { rows: [] }, // update variant_count
-      { rows: [] }, // frequency refresh
-      { rows: [] } // COMMIT
+      { rows: [] } // update variant_count
     ])
-    const pool = makePool(client)
-    const repository = new PostgresJsonImportRepository(pool as never, 'public')
+    const repo = new PostgresJsonImportRepository(makeForbiddenPool() as never, 'public')
 
-    await repository.runJsonImport(baseRequest, async (session) => {
+    await repo.writeJsonImport(client as never, baseRequest, async (session) => {
       await session.insertVariantBatch([
         { chr: '1', pos: 1, ref: 'A', alt: 'G' },
         { chr: '2', pos: 2, ref: 'C', alt: 'T' }
@@ -226,9 +228,8 @@ describe('PostgresJsonImportRepository', () => {
     expect(parsed).toHaveLength(2)
   })
 
-  it('includes import_ordinal in batch payloads for extension-bearing rows OR inserts them one at a time', async () => {
+  it('extension-bearing rows are inserted one at a time (RETURNING id strategy)', async () => {
     const client = makeClient([
-      { rows: [] }, // BEGIN
       { rows: [] }, // duplicate check
       { rows: [{ id: '4' }] }, // case insert
       // Row 1 has extension -> expected single-row INSERT ... RETURNING id
@@ -236,14 +237,11 @@ describe('PostgresJsonImportRepository', () => {
       // variant_transcripts insert
       { rows: [] },
       { rows: [] }, // case_data_info
-      { rows: [] }, // update variant_count
-      { rows: [] }, // frequency refresh
-      { rows: [] } // COMMIT
+      { rows: [] } // update variant_count
     ])
-    const pool = makePool(client)
-    const repository = new PostgresJsonImportRepository(pool as never, 'public')
+    const repo = new PostgresJsonImportRepository(makeForbiddenPool() as never, 'public')
 
-    await repository.runJsonImport(baseRequest, async (session) => {
+    await repo.writeJsonImport(client as never, baseRequest, async (session) => {
       await session.insertVariantBatch([
         {
           chr: '1',
@@ -279,21 +277,17 @@ describe('PostgresJsonImportRepository', () => {
 
   it('extension table inserts use jsonb_to_recordset with variant_id populated', async () => {
     const client = makeClient([
-      { rows: [] }, // BEGIN
       { rows: [] }, // duplicate check
       { rows: [{ id: '4' }] }, // case insert
       // extension-bearing variant inserted one-at-a-time
       { rows: [{ id: '10' }] },
       { rows: [] }, // variant_transcripts jsonb_to_recordset
       { rows: [] }, // case_data_info
-      { rows: [] }, // update variant_count
-      { rows: [] }, // frequency refresh
-      { rows: [] } // COMMIT
+      { rows: [] } // update variant_count
     ])
-    const pool = makePool(client)
-    const repository = new PostgresJsonImportRepository(pool as never, 'public')
+    const repo = new PostgresJsonImportRepository(makeForbiddenPool() as never, 'public')
 
-    await repository.runJsonImport(baseRequest, async (session) => {
+    await repo.writeJsonImport(client as never, baseRequest, async (session) => {
       await session.insertVariantBatch([
         {
           chr: '1',
@@ -324,19 +318,15 @@ describe('PostgresJsonImportRepository', () => {
 
   it('case_data_info only uses Phase 6 columns', async () => {
     const client = makeClient([
-      { rows: [] }, // BEGIN
       { rows: [] }, // duplicate
       { rows: [{ id: '4' }] }, // case insert
       { rows: [{ id: '10' }] }, // variant batch
       { rows: [] }, // case_data_info
-      { rows: [] }, // update variant_count
-      { rows: [] }, // frequency
-      { rows: [] } // COMMIT
+      { rows: [] } // update variant_count
     ])
-    const pool = makePool(client)
-    const repository = new PostgresJsonImportRepository(pool as never, 'public')
+    const repo = new PostgresJsonImportRepository(makeForbiddenPool() as never, 'public')
 
-    await repository.runJsonImport(baseRequest, async (session) => {
+    await repo.writeJsonImport(client as never, baseRequest, async (session) => {
       await session.insertVariantBatch([{ chr: '1', pos: 1, ref: 'A', alt: 'G' }])
     })
 
@@ -388,95 +378,17 @@ describe('PostgresJsonImportRepository', () => {
     }
   })
 
-  it('variant_frequency refreshed once at the end, driven from variants WHERE case_id', async () => {
-    const client = makeClient([
-      { rows: [] }, // BEGIN
-      { rows: [] }, // dup
-      { rows: [{ id: '4' }] }, // case insert
-      { rows: [{ id: '10' }, { id: '11' }] }, // batch 1
-      { rows: [{ id: '12' }] }, // batch 2
-      { rows: [] }, // case_data_info
-      { rows: [] }, // update count
-      { rows: [] }, // frequency
-      { rows: [] } // COMMIT
-    ])
-    const pool = makePool(client)
-    const repository = new PostgresJsonImportRepository(pool as never, 'public')
-
-    await repository.runJsonImport(baseRequest, async (session) => {
-      await session.insertVariantBatch([
-        { chr: '1', pos: 1, ref: 'A', alt: 'G' },
-        { chr: '1', pos: 1, ref: 'A', alt: 'G' } // duplicate within one case
-      ])
-      await session.insertVariantBatch([{ chr: '2', pos: 2, ref: 'C', alt: 'T' }])
-    })
-
-    const freqCalls = findAllCalls(client, /INSERT INTO\s+"public"\."variant_frequency"/i)
-    expect(freqCalls).toHaveLength(1)
-    const freqCall = freqCalls[0]
-
-    // Must match spec-defined SQL shape
-    expect(freqCall?.sql).toMatch(
-      /INSERT INTO\s+"public"\."variant_frequency"[\s\S]+SELECT chr, pos, ref, alt, 1[\s\S]+FROM\s+"public"\."variants"[\s\S]+WHERE case_id = \$1[\s\S]+GROUP BY chr, pos, ref, alt[\s\S]+ON CONFLICT/i
-    )
-    expect(freqCall?.params).toStrictEqual([4])
-
-    // Frequency refresh must occur AFTER all variant batches
-    const calls = queryCalls(client)
-    const freqIndex = calls.findIndex((call) =>
-      /INSERT INTO\s+"public"\."variant_frequency"/i.test(call.sql)
-    )
-    const variantBatchIndices = calls
-      .map((call, index) => ({ call, index }))
-      .filter(({ call }) => /INSERT INTO\s+"public"\."variants"/i.test(call.sql))
-      .map(({ index }) => index)
-    expect(variantBatchIndices.length).toBeGreaterThan(0)
-    for (const idx of variantBatchIndices) {
-      expect(freqIndex).toBeGreaterThan(idx)
-    }
-  })
-
-  it('duplicate coordinates within one import do not double-count frequency (GROUP BY)', async () => {
-    const client = makeClient([
-      { rows: [] }, // BEGIN
-      { rows: [] }, // dup
-      { rows: [{ id: '4' }] }, // case insert
-      { rows: [{ id: '10' }, { id: '11' }] }, // variant batch
-      { rows: [] }, // case_data_info
-      { rows: [] }, // update count
-      { rows: [] }, // frequency
-      { rows: [] } // COMMIT
-    ])
-    const pool = makePool(client)
-    const repository = new PostgresJsonImportRepository(pool as never, 'public')
-
-    await repository.runJsonImport(baseRequest, async (session) => {
-      await session.insertVariantBatch([
-        { chr: '1', pos: 1, ref: 'A', alt: 'G' },
-        { chr: '1', pos: 1, ref: 'A', alt: 'G' }
-      ])
-    })
-
-    const freqCall = findCall(client, /INSERT INTO\s+"public"\."variant_frequency"/i)
-    expect(freqCall).toBeDefined()
-    expect(freqCall?.sql).toMatch(/GROUP BY\s+chr,\s*pos,\s*ref,\s*alt/i)
-  })
-
   it('search_document is populated by trigger (not in INSERT column list)', async () => {
     const client = makeClient([
-      { rows: [] }, // BEGIN
       { rows: [] }, // dup
       { rows: [{ id: '4' }] }, // case insert
       { rows: [{ id: '10' }] }, // variant batch
       { rows: [] }, // case_data_info
-      { rows: [] }, // update count
-      { rows: [] }, // frequency
-      { rows: [] } // COMMIT
+      { rows: [] } // update count
     ])
-    const pool = makePool(client)
-    const repository = new PostgresJsonImportRepository(pool as never, 'public')
+    const repo = new PostgresJsonImportRepository(makeForbiddenPool() as never, 'public')
 
-    await repository.runJsonImport(baseRequest, async (session) => {
+    await repo.writeJsonImport(client as never, baseRequest, async (session) => {
       await session.insertVariantBatch([
         { chr: '1', pos: 1, ref: 'A', alt: 'G', gene_symbol: 'BRCA1' }
       ])
@@ -493,22 +405,17 @@ describe('PostgresJsonImportRepository', () => {
     expect(columns).not.toContain('search_document')
   })
 
-  it('two batches stream through same transaction without accumulating entire file', async () => {
+  it('two batches stream through same client without accumulating the entire file', async () => {
     const client = makeClient([
-      { rows: [] }, // BEGIN
       { rows: [] }, // dup
       { rows: [{ id: '4' }] }, // case insert
       { rows: [{ id: '10' }, { id: '11' }] }, // batch 1
       { rows: [{ id: '12' }, { id: '13' }] }, // batch 2
       { rows: [] }, // case_data_info
-      { rows: [] }, // update count
-      { rows: [] }, // frequency
-      { rows: [] } // COMMIT
+      { rows: [] } // update count
     ])
-    const pool = makePool(client)
-    const repository = new PostgresJsonImportRepository(pool as never, 'public')
+    const repo = new PostgresJsonImportRepository(makeForbiddenPool() as never, 'public')
 
-    // Large fake batches to demonstrate that the repo does not accumulate the file
     const batchA = Array.from({ length: 2 }, (_, i) => ({
       chr: '1',
       pos: i + 1,
@@ -522,13 +429,10 @@ describe('PostgresJsonImportRepository', () => {
       alt: 'T'
     }))
 
-    await repository.runJsonImport(baseRequest, async (session) => {
+    await repo.writeJsonImport(client as never, baseRequest, async (session) => {
       await session.insertVariantBatch(batchA)
       await session.insertVariantBatch(batchB)
     })
-
-    // Only one client ever checked out
-    expect(pool.connect).toHaveBeenCalledTimes(1)
 
     // Two separate variant batch INSERTs (no coalescing)
     const variantBatches = findAllCalls(
@@ -537,19 +441,52 @@ describe('PostgresJsonImportRepository', () => {
     )
     expect(variantBatches).toHaveLength(2)
 
+    // No BEGIN/COMMIT in the query list — caller owns lifecycle
     const calls = queryCalls(client)
-    const beginIndex = calls.findIndex((c) => c.sql === 'BEGIN')
-    const commitIndex = calls.findIndex((c) => c.sql === 'COMMIT')
-    expect(beginIndex).toBeGreaterThanOrEqual(0)
-    expect(commitIndex).toBeGreaterThan(beginIndex)
-    // Both batches between BEGIN and COMMIT
-    const variantBatchIndices = calls
-      .map((c, i) => ({ c, i }))
-      .filter(({ c }) => /INSERT INTO\s+"public"\."variants"[\s\S]+jsonb_to_recordset/i.test(c.sql))
-      .map(({ i }) => i)
-    for (const idx of variantBatchIndices) {
-      expect(idx).toBeGreaterThan(beginIndex)
-      expect(idx).toBeLessThan(commitIndex)
+    expect(calls.some((c) => c.sql === 'BEGIN')).toBe(false)
+    expect(calls.some((c) => c.sql === 'COMMIT')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// rebuildVariantFrequencyForCase — standalone exported helper
+// ---------------------------------------------------------------------------
+
+describe('rebuildVariantFrequencyForCase', () => {
+  it('runs the case-scoped frequency upsert without opening or closing a transaction', async () => {
+    const queries: { text: string; params?: unknown[] }[] = []
+    const client = {
+      query: async (sql: string, params?: unknown[]) => {
+        queries.push({ text: sql, params })
+        return { rows: [] }
+      }
     }
+
+    await rebuildVariantFrequencyForCase(client as never, 'public', 99)
+
+    expect(queries).toHaveLength(1)
+    expect(queries[0].text).toContain('INSERT INTO "public"."variant_frequency"')
+    expect(queries[0].text).toContain('WHERE case_id = $1')
+    expect(queries[0].text).toContain('GROUP BY chr, pos, ref, alt')
+    expect(queries[0].text).toContain('ON CONFLICT (coord_hash)')
+    expect(queries[0].text).not.toContain('ON CONFLICT (chr, pos, ref, alt)')
+    expect(queries[0].text).toMatch(/DO UPDATE\s+SET case_count/)
+    expect(queries[0].params).toEqual([99])
+  })
+
+  it('uses quoted schema name correctly', async () => {
+    const queries: { text: string }[] = []
+    const client = {
+      query: async (sql: string) => {
+        queries.push({ text: sql })
+        return { rows: [] }
+      }
+    }
+
+    await rebuildVariantFrequencyForCase(client as never, 'myschema', 7)
+
+    expect(queries[0].text).toContain('"myschema"."variant_frequency"')
+    expect(queries[0].text).toContain('"myschema"."variants"')
+    expect(queries[0].text).toContain('"myschema"."variant_frequency".case_count')
   })
 })

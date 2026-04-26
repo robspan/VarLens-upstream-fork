@@ -41,7 +41,13 @@ export class SqliteStorageSession implements StorageSession {
     this.readExecutor = new SqliteReadExecutor(this.databaseService, this.dbPool)
     this.writeExecutor = new SqliteWriteExecutor(this.databaseService)
     this.importExecutor = new SqliteImportExecutor({
-      getDatabaseService: () => this.databaseService
+      getDatabaseService: () => this.databaseService,
+      // `getSession` is a deferred closure: it is only invoked at import time
+      // (after construction completes), so this self-reference is safe.
+      // Required because SqliteImportExecutor.importMultiFile delegates to
+      // startMultiFileImport, which calls back into the session for the
+      // first-file startImport call.
+      getSession: () => this
     })
 
     const dbPath = this.databaseService.getPath()

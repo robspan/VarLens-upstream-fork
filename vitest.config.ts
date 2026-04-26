@@ -109,6 +109,23 @@ export default defineConfig({
           environment: 'happy-dom',
           include: ['tests/renderer/**/*.test.ts']
         }
+      },
+      {
+        // Phase 9 WGS perf benchmarks. Files live under tests/perf/ and use
+        // `describe.skipIf(!SHOULD_RUN)` so they no-op unless
+        // VARLENS_RUN_WGS_PERF=1 is set. Lives in its own project so the
+        // include glob doesn't pollute the main suite.
+        extends: true,
+        test: {
+          name: 'perf',
+          environment: 'node',
+          include: ['tests/perf/**/*.perf.test.ts'],
+          // WGS imports take minutes; raise the per-test timeout ceiling.
+          // Each perf test sets its own explicit timeout via the third
+          // arg of `it(...)`; this is the cap.
+          testTimeout: 30 * 60_000,
+          hookTimeout: 5 * 60_000
+        }
       }
     ],
 

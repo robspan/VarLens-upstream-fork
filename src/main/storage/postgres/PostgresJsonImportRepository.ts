@@ -1,6 +1,19 @@
 import type { Pool, PoolClient } from 'pg'
 
 import { quoteIdentifier } from './identifiers'
+import {
+  CNV_RECORDSET_TYPES,
+  STR_RECORDSET_TYPES,
+  SV_RECORDSET_TYPES,
+  TRANSCRIPT_RECORDSET_TYPES,
+  VARIANT_BASE_COLUMNS,
+  VARIANT_BATCH_RECORDSET_TYPES,
+  VARIANT_CNV_COLUMNS,
+  VARIANT_STR_COLUMNS,
+  VARIANT_SV_COLUMNS,
+  VARIANT_TRANSCRIPT_COLUMNS,
+  toNumericId
+} from './postgres-import-columns'
 
 export type PostgresJsonImportFileType = 'simple' | 'object' | 'columnar'
 
@@ -23,146 +36,6 @@ export interface PostgresJsonImportSession {
   insertVariantBatch(variants: Array<Record<string, unknown>>): Promise<number>
 }
 
-// Columns written into variants base table. search_document is intentionally
-// excluded: the Phase 7 trigger `variants_search_document_tg` populates it on
-// BEFORE INSERT (see scripts/postgres/init-db/12-phase7-variants.sql).
-const VARIANT_BASE_COLUMNS = [
-  'case_id',
-  'chr',
-  'pos',
-  'ref',
-  'alt',
-  'gene_symbol',
-  'omim_mim_number',
-  'consequence',
-  'gnomad_af',
-  'cadd',
-  'clinvar',
-  'gt_num',
-  'func',
-  'qual',
-  'hpo_sim_score',
-  'transcript',
-  'cdna',
-  'aa_change',
-  'moi',
-  'gq',
-  'dp',
-  'ad_ref',
-  'ad_alt',
-  'ab',
-  'filter',
-  'info_json',
-  'source_format',
-  'variant_type',
-  'end_pos',
-  'sv_type',
-  'sv_length',
-  'caller'
-] as const
-
-// jsonb_to_recordset requires a record type definition. We align it with the
-// variants base columns (excluding case_id which we set from the outer scope).
-const VARIANT_BATCH_RECORDSET_TYPES: Record<string, string> = {
-  chr: 'text',
-  pos: 'bigint',
-  ref: 'text',
-  alt: 'text',
-  gene_symbol: 'text',
-  omim_mim_number: 'text',
-  consequence: 'text',
-  gnomad_af: 'double precision',
-  cadd: 'double precision',
-  clinvar: 'text',
-  gt_num: 'text',
-  func: 'text',
-  qual: 'double precision',
-  hpo_sim_score: 'double precision',
-  transcript: 'text',
-  cdna: 'text',
-  aa_change: 'text',
-  moi: 'text',
-  gq: 'double precision',
-  dp: 'bigint',
-  ad_ref: 'bigint',
-  ad_alt: 'bigint',
-  ab: 'double precision',
-  filter: 'text',
-  info_json: 'text',
-  source_format: 'text',
-  variant_type: 'text',
-  end_pos: 'bigint',
-  sv_type: 'text',
-  sv_length: 'bigint',
-  caller: 'text'
-}
-
-const VARIANT_TRANSCRIPT_COLUMNS = [
-  'variant_id',
-  'transcript_id',
-  'gene_symbol',
-  'consequence',
-  'cdna',
-  'aa_change',
-  'hpo_sim_score',
-  'moi',
-  'is_selected',
-  'is_mane_select',
-  'is_canonical'
-] as const
-
-const VARIANT_SV_COLUMNS = [
-  'variant_id',
-  'sv_is_precise',
-  'cipos_left',
-  'cipos_right',
-  'ciend_left',
-  'ciend_right',
-  'support',
-  'coverage',
-  'strand',
-  'stdev_len',
-  'stdev_pos',
-  'vaf',
-  'dr',
-  'dv',
-  'pe_support',
-  'sr_support',
-  'event_id',
-  'mate_id'
-] as const
-
-const VARIANT_CNV_COLUMNS = [
-  'variant_id',
-  'copy_number',
-  'copy_number_quality',
-  'homozygosity_ref',
-  'homozygosity_alt',
-  'sm',
-  'bin_count'
-] as const
-
-const VARIANT_STR_COLUMNS = [
-  'variant_id',
-  'repeat_id',
-  'variant_catalog_id',
-  'repeat_unit',
-  'display_repeat_unit',
-  'ref_copies',
-  'alt_copies',
-  'repeat_length',
-  'str_status',
-  'normal_max',
-  'pathologic_min',
-  'disease',
-  'inheritance_mode',
-  'source_display',
-  'rank_score',
-  'locus_coverage',
-  'support_type',
-  'confidence_interval'
-] as const
-
 function pickColumns<T extends string>(
   row: Record<string, unknown>,
   columns: readonly T[]
@@ -183,121 +56,80 @@ function hasExtensions(row: Record<string, unknown>): boolean {
   )
 }
 
-function toNumericId(value: unknown): number {
-  if (typeof value === 'number') return value
-  if (typeof value === 'string') return Number(value)
-  throw new Error(`Expected numeric id, received: ${String(value)}`)
-}
-
 export class PostgresJsonImportRepository {
   private readonly schemaName: string
 
-  constructor(
-    private readonly pool: Pick<Pool, 'connect'>,
-    schema: string
-  ) {
+  // `_pool` is retained for API compatibility with Task 6's postgres-import-worker,
+  // which constructs the repository with a stubbed pool and passes its own Client
+  // through writeJsonImport(client, ...). The repository itself never opens a
+  // connection; the executor (or worker) owns the transaction lifecycle.
+  constructor(_pool: Pick<Pool, 'connect'>, schema: string) {
     this.schemaName = quoteIdentifier(schema)
   }
 
-  async runJsonImport(
+  async writeJsonImport(
+    client: Pick<PoolClient, 'query'>,
     request: PostgresJsonImportRequest,
     writeVariants: (session: PostgresJsonImportSession) => Promise<void>
   ): Promise<PostgresJsonImportBatchResult> {
-    const client = (await this.pool.connect()) as PoolClient
-    let started = false
-    let commitSucceeded = false
-    try {
-      await client.query('BEGIN')
-      started = true
-
-      // Duplicate case-name check. Fail fast before any writes.
-      const dupResult = await client.query(
-        `SELECT id FROM ${this.schemaName}."cases" WHERE name = $1`,
-        [request.caseName]
-      )
-      if (dupResult.rows.length > 0) {
-        throw new Error(`Duplicate case name: ${request.caseName}`)
-      }
-
-      const createdAt = Date.now()
-      const caseInsert = await client.query(
-        `INSERT INTO ${this.schemaName}."cases"
-         (name, file_path, file_size, variant_count, created_at, genome_build)
-         VALUES ($1, $2, $3, 0, $4, $5)
-         RETURNING id`,
-        [request.caseName, request.filePath, request.fileSize, createdAt, request.genomeBuild]
-      )
-      const caseId = toNumericId((caseInsert.rows[0] as { id: unknown } | undefined)?.id)
-
-      let totalVariantCount = 0
-
-      const session: PostgresJsonImportSession = {
-        caseId,
-        insertVariantBatch: async (variants) => {
-          const inserted = await this.insertVariantBatch(client, caseId, variants)
-          totalVariantCount += inserted
-          return inserted
-        }
-      }
-
-      await writeVariants(session)
-
-      // case_data_info provenance.
-      // IMPORTANT: use only columns from scripts/postgres/init-db/11-phase6-case-metadata.sql.
-      // Do not add ad-hoc provenance columns here (e.g. import_date, imported_at).
-      await client.query(
-        `INSERT INTO ${this.schemaName}."case_data_info"
-           (case_id, import_file_name, import_file_type, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $4)
-         ON CONFLICT (case_id) DO UPDATE SET
-           import_file_name = EXCLUDED.import_file_name,
-           import_file_type = EXCLUDED.import_file_type,
-           updated_at = EXCLUDED.updated_at`,
-        [caseId, request.fileName, request.importFileType, createdAt]
-      )
-
-      await client.query(`UPDATE ${this.schemaName}."cases" SET variant_count = $1 WHERE id = $2`, [
-        totalVariantCount,
-        caseId
-      ])
-
-      // Refresh variant_frequency once, after all variant batches.
-      // GROUP BY de-duplicates coordinates repeated within this case so internal
-      // frequency increments at most once per case.
-      await client.query(
-        `INSERT INTO ${this.schemaName}."variant_frequency" (chr, pos, ref, alt, case_count)
-         SELECT chr, pos, ref, alt, 1
-         FROM ${this.schemaName}."variants"
-         WHERE case_id = $1
-         GROUP BY chr, pos, ref, alt
-         ON CONFLICT (chr, pos, ref, alt)
-         DO UPDATE SET case_count = ${this.schemaName}."variant_frequency".case_count + 1`,
-        [caseId]
-      )
-
-      await client.query('COMMIT')
-      commitSucceeded = true
-      // Success: release with no argument so pg keeps the client in the pool.
-      client.release()
-      return { caseId, variantCount: totalVariantCount }
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error))
-      if (started && !commitSucceeded) {
-        try {
-          await client.query('ROLLBACK')
-        } catch {
-          // swallow rollback errors so the original error reaches the caller
-        }
-      }
-      // Release with the error object so pg discards a dirty connection
-      // rather than returning it to the pool.
-      client.release(err)
-      throw err
+    // Duplicate-name check (single-file mode). Multi-file callers in Phase 9
+    // perform pre-existing-case rejection at file 1; subsequent files look up
+    // the case and append, so they bypass this check.
+    const dupResult = await client.query(
+      `SELECT id FROM ${this.schemaName}."cases" WHERE name = $1`,
+      [request.caseName]
+    )
+    if (dupResult.rows.length > 0) {
+      throw new Error(`Duplicate case name: ${request.caseName}`)
     }
+
+    const createdAt = Date.now()
+    const caseInsert = await client.query(
+      `INSERT INTO ${this.schemaName}."cases"
+       (name, file_path, file_size, variant_count, created_at, genome_build)
+       VALUES ($1, $2, $3, 0, $4, $5)
+       RETURNING id`,
+      [request.caseName, request.filePath, request.fileSize, createdAt, request.genomeBuild]
+    )
+    const caseId = toNumericId((caseInsert.rows[0] as { id: unknown } | undefined)?.id)
+
+    let totalVariantCount = 0
+
+    const session: PostgresJsonImportSession = {
+      caseId,
+      insertVariantBatch: async (variants) => {
+        const inserted = await this.insertVariantBatch(client, caseId, variants)
+        totalVariantCount += inserted
+        return inserted
+      }
+    }
+
+    await writeVariants(session)
+
+    // case_data_info provenance.
+    // IMPORTANT: use only columns from scripts/postgres/init-db/11-phase6-case-metadata.sql.
+    // Do not add ad-hoc provenance columns here (e.g. import_date, imported_at).
+    await client.query(
+      `INSERT INTO ${this.schemaName}."case_data_info"
+         (case_id, import_file_name, import_file_type, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $4)
+       ON CONFLICT (case_id) DO UPDATE SET
+         import_file_name = EXCLUDED.import_file_name,
+         import_file_type = EXCLUDED.import_file_type,
+         updated_at = EXCLUDED.updated_at`,
+      [caseId, request.fileName, request.importFileType, createdAt]
+    )
+
+    await client.query(`UPDATE ${this.schemaName}."cases" SET variant_count = $1 WHERE id = $2`, [
+      totalVariantCount,
+      caseId
+    ])
+
+    return { caseId, variantCount: totalVariantCount }
   }
 
   private async insertVariantBatch(
-    client: PoolClient,
+    client: Pick<PoolClient, 'query'>,
     caseId: number,
     variants: Array<Record<string, unknown>>
   ): Promise<number> {
@@ -351,19 +183,7 @@ export class PostgresJsonImportRepository {
         client,
         'variant_transcripts',
         VARIANT_TRANSCRIPT_COLUMNS as unknown as readonly string[],
-        {
-          variant_id: 'bigint',
-          transcript_id: 'text',
-          gene_symbol: 'text',
-          consequence: 'text',
-          cdna: 'text',
-          aa_change: 'text',
-          hpo_sim_score: 'double precision',
-          moi: 'text',
-          is_selected: 'integer',
-          is_mane_select: 'integer',
-          is_canonical: 'integer'
-        },
+        TRANSCRIPT_RECORDSET_TYPES,
         transcriptPayload.map((row) =>
           pickColumns(row, VARIANT_TRANSCRIPT_COLUMNS as unknown as readonly string[])
         )
@@ -375,26 +195,7 @@ export class PostgresJsonImportRepository {
         client,
         'variant_sv',
         VARIANT_SV_COLUMNS as unknown as readonly string[],
-        {
-          variant_id: 'bigint',
-          sv_is_precise: 'integer',
-          cipos_left: 'bigint',
-          cipos_right: 'bigint',
-          ciend_left: 'bigint',
-          ciend_right: 'bigint',
-          support: 'bigint',
-          coverage: 'text',
-          strand: 'text',
-          stdev_len: 'double precision',
-          stdev_pos: 'double precision',
-          vaf: 'double precision',
-          dr: 'bigint',
-          dv: 'bigint',
-          pe_support: 'bigint',
-          sr_support: 'bigint',
-          event_id: 'text',
-          mate_id: 'text'
-        },
+        SV_RECORDSET_TYPES,
         svPayload.map((row) => pickColumns(row, VARIANT_SV_COLUMNS as unknown as readonly string[]))
       )
     }
@@ -404,15 +205,7 @@ export class PostgresJsonImportRepository {
         client,
         'variant_cnv',
         VARIANT_CNV_COLUMNS as unknown as readonly string[],
-        {
-          variant_id: 'bigint',
-          copy_number: 'bigint',
-          copy_number_quality: 'bigint',
-          homozygosity_ref: 'double precision',
-          homozygosity_alt: 'double precision',
-          sm: 'double precision',
-          bin_count: 'bigint'
-        },
+        CNV_RECORDSET_TYPES,
         cnvPayload.map((row) =>
           pickColumns(row, VARIANT_CNV_COLUMNS as unknown as readonly string[])
         )
@@ -424,26 +217,7 @@ export class PostgresJsonImportRepository {
         client,
         'variant_str',
         VARIANT_STR_COLUMNS as unknown as readonly string[],
-        {
-          variant_id: 'bigint',
-          repeat_id: 'text',
-          variant_catalog_id: 'text',
-          repeat_unit: 'text',
-          display_repeat_unit: 'text',
-          ref_copies: 'double precision',
-          alt_copies: 'text',
-          repeat_length: 'bigint',
-          str_status: 'text',
-          normal_max: 'bigint',
-          pathologic_min: 'bigint',
-          disease: 'text',
-          inheritance_mode: 'text',
-          source_display: 'text',
-          rank_score: 'text',
-          locus_coverage: 'double precision',
-          support_type: 'text',
-          confidence_interval: 'text'
-        },
+        STR_RECORDSET_TYPES,
         strPayload.map((row) =>
           pickColumns(row, VARIANT_STR_COLUMNS as unknown as readonly string[])
         )
@@ -454,7 +228,7 @@ export class PostgresJsonImportRepository {
   }
 
   private async insertBaseOnlyBatch(
-    client: PoolClient,
+    client: Pick<PoolClient, 'query'>,
     caseId: number,
     rows: Array<Record<string, unknown>>
   ): Promise<void> {
@@ -488,7 +262,7 @@ export class PostgresJsonImportRepository {
   }
 
   private async insertBaseRowSingle(
-    client: PoolClient,
+    client: Pick<PoolClient, 'query'>,
     caseId: number,
     row: Record<string, unknown>
   ): Promise<number> {
@@ -515,7 +289,7 @@ export class PostgresJsonImportRepository {
   }
 
   private async insertExtensionBatch(
-    client: PoolClient,
+    client: Pick<PoolClient, 'query'>,
     table: string,
     columns: readonly string[],
     recordsetTypes: Record<string, string>,
@@ -533,4 +307,22 @@ export class PostgresJsonImportRepository {
 
     await client.query(sql, [JSON.stringify(rows)])
   }
+}
+
+export async function rebuildVariantFrequencyForCase(
+  client: Pick<PoolClient, 'query'>,
+  schema: string,
+  caseId: number
+): Promise<void> {
+  const schemaName = quoteIdentifier(schema)
+  await client.query(
+    `INSERT INTO ${schemaName}."variant_frequency" (chr, pos, ref, alt, case_count)
+     SELECT chr, pos, ref, alt, 1
+     FROM ${schemaName}."variants"
+     WHERE case_id = $1
+     GROUP BY chr, pos, ref, alt
+     ON CONFLICT (coord_hash)
+     DO UPDATE SET case_count = ${schemaName}."variant_frequency".case_count + 1`,
+    [caseId]
+  )
 }

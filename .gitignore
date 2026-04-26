@@ -50,7 +50,18 @@ temp/
 *.tmp
 
 # Local performance artifacts
-.planning/artifacts/perf/
+# (Use /* glob rather than /-suffix so we can re-include specific files
+# below — git refuses file-level exceptions inside an ignored directory.)
+.planning/artifacts/perf/*
+!.planning/artifacts/perf/phase1/
+.planning/artifacts/perf/phase1/*
+!.planning/artifacts/perf/phase1/.gitkeep
+!.planning/artifacts/perf/wgs-import/
+.planning/artifacts/perf/wgs-import/*
+!.planning/artifacts/perf/wgs-import/.gitkeep
+# Exception: the postgres-blocker doc is the one perf artifact we commit
+# because it documents a phase-blocking failure + its resolution.
+!.planning/artifacts/perf/wgs-import/2026-04-25-postgres-blocker.md
 
 # Vendor assets copied from node_modules at build time (see npm run copy:molstar)
 src/renderer/public/pdbe-molstar-component.js
@@ -69,6 +80,10 @@ coverage/
 test-data/
 plan/
 *.json.gz
+
+# WGS perf benchmark fixtures (artifact outputs handled in the
+# "Local performance artifacts" block above).
+tests/.cache/wgs/
 
 # VitePress — build artifacts only; `docs/.vitepress/config.mts` is tracked
 docs/.vitepress/dist/

@@ -1,4 +1,4 @@
-import type { PoolConfig } from 'pg'
+import type { ClientConfig, PoolConfig } from 'pg'
 
 export type PostgresSslMode = 'disable' | 'prefer' | 'require'
 
@@ -168,7 +168,7 @@ export function buildPostgresConnectionLabel(redactedUrl: string, schema: string
   return `${parsed.hostname}:${port}/${databaseName} (${schema})`
 }
 
-function buildPostgresSslConfig(sslMode: PostgresSslMode): PoolConfig['ssl'] {
+function buildPostgresSslConfig(sslMode: PostgresSslMode): ClientConfig['ssl'] {
   if (sslMode === 'disable') {
     return undefined
   }
@@ -184,7 +184,7 @@ function buildPostgresSslConfig(sslMode: PostgresSslMode): PoolConfig['ssl'] {
   }
 }
 
-export function buildPostgresPoolConfig(config: PostgresStorageConfig): PoolConfig {
+export function buildPostgresClientConfig(config: PostgresStorageConfig): ClientConfig {
   return {
     connectionString: config.url,
     application_name: config.applicationName,
@@ -193,10 +193,16 @@ export function buildPostgresPoolConfig(config: PostgresStorageConfig): PoolConf
     query_timeout: config.queryTimeoutMs,
     lock_timeout: config.lockTimeoutMs,
     idle_in_transaction_session_timeout: config.idleInTransactionSessionTimeoutMs,
-    max: config.poolMax,
     // TCP keepalive keeps long-running import connections alive across NAT
     // idle timeouts and other network middleboxes.
     keepAlive: true,
     ssl: buildPostgresSslConfig(config.sslMode)
+  }
+}
+
+export function buildPostgresPoolConfig(config: PostgresStorageConfig): PoolConfig {
+  return {
+    ...buildPostgresClientConfig(config),
+    max: config.poolMax
   }
 }

@@ -114,3 +114,11 @@ ALTER TABLE variant_str ADD COLUMN search_document tsvector
       repeat_id, variant_catalog_id, repeat_unit, display_repeat_unit, str_status, disease
     )
   ) STORED;
+
+-- 4. Re-create the GIN indexes that 12-phase7-variants.sql declares on
+--    `search_document`. The `DROP COLUMN` in step 3 cascades into the
+--    indexes, so without recreating them every FTS query would fall
+--    back to a sequential scan post-migration.
+CREATE INDEX IF NOT EXISTS idx_variants_search_document    ON variants    USING GIN(search_document);
+CREATE INDEX IF NOT EXISTS idx_variant_sv_search_document  ON variant_sv  USING GIN(search_document);
+CREATE INDEX IF NOT EXISTS idx_variant_str_search_document ON variant_str USING GIN(search_document);

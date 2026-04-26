@@ -291,8 +291,12 @@ export async function runImport(
 
           // Open the first per-batch transaction (formerly the outer BEGIN at
           // the top of runImport). `SET LOCAL synchronous_commit = OFF` makes
-          // each per-batch COMMIT release the WAL fsync; durability is
-          // bounded by the surrounding bracket commits, which DO fsync.
+          // each per-batch COMMIT skip the WAL fsync; the FINAL commit at
+          // the end of the post-loop bookkeeping re-enables synchronous
+          // commit so the import only reports success once every preceding
+          // WAL record has been fsynced (Postgres flushes WAL up to the
+          // last synchronous commit, which transitively makes every earlier
+          // async commit durable).
           await client.query('BEGIN')
           beganTransaction = true
           await client.query('SET LOCAL synchronous_commit = OFF')
@@ -428,6 +432,11 @@ export async function runImport(
               caseId
             )
           }
+          // Force the final commit synchronous so the import only reports
+          // success once the WAL is fsynced. Postgres flushes WAL up to
+          // this commit's LSN, which transitively makes every earlier
+          // async-committed batch durable on disk.
+          await client.query('SET LOCAL synchronous_commit = ON')
           await client.query('COMMIT')
           committed = true
 
@@ -448,11 +457,12 @@ export async function runImport(
       }
 
       // -------------------------------------------------------------------
-      // Single-file JSON branch — no bracket transactions, no SET LOCAL.
-      // JSON imports rely on the FTS triggers to populate `search_document`
-      // (Phase 16 left the JSON path unchanged), so triggers must remain
-      // ENABLED throughout this branch. The recovery shim above guarantees
-      // they ARE enabled at this point.
+      // Single-file JSON branch — no SET LOCAL synchronous_commit lever.
+      // search_document is populated inline by STORED generated columns
+      // on variants/variant_sv/variant_str (Phase 16.1), so the JSON path
+      // gets correct FTS columns automatically without any extra work.
+      // JSON imports keep the standard transaction shape since the WGS-
+      // class tuning (per-batch async commit) is VCF-specific.
       // -------------------------------------------------------------------
       await client.query('BEGIN')
       beganTransaction = true
@@ -839,10 +849,11 @@ export async function runImport(
         if (caseId !== 0) {
           await client.query('BEGIN')
           beganTransaction = true
-          // Bookkeeping is still under the bracket-disabled triggers, so we
-          // keep the per-batch synchronous_commit lever for parity with the
-          // per-file/per-batch transactions above.
-          await client.query('SET LOCAL synchronous_commit = OFF')
+          // Force the final commit synchronous so the import only reports
+          // success once the WAL is fsynced. Postgres flushes WAL up to
+          // this commit's LSN, which transitively makes every earlier
+          // async-committed batch (per-file + per-batch) durable on disk.
+          await client.query('SET LOCAL synchronous_commit = ON')
           try {
             await client.query(
               `UPDATE ${quoteIdentifier(start.schema)}."cases" SET variant_count = $1 WHERE id = $2`,

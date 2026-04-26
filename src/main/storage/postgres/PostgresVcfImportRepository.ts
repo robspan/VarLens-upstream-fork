@@ -203,15 +203,20 @@ export class PostgresVcfImportRepository {
     // guarantees the returned rows are aligned with the variants array index,
     // which is what the extension-row ordinal lookup later depends on.
     //
-    // pg_get_serial_sequence takes an unquoted bare schema.table identifier
-    // (regclass-style), so we strip the quotes from this.schemaName.
+    // pg_get_serial_sequence takes a regclass-style relation name. The text
+    // is parsed by the SQL identifier rules, so quoted identifiers ("My
+    // Schema"."variants") are accepted — `this.schemaName` is already
+    // quoted via `quoteIdentifier`, so we just append the (always-safe,
+    // always-lowercase) "variants" table name. This survives schemas that
+    // need quoting (hyphens, mixed case, reserved words, etc.).
+    const variantsRelation = `${this.schemaName}."variants"`
     const idResult = await profilePhase('reserve-ids', () =>
       client.query(
         `SELECT g.ord                                              AS ordinal,
                 nextval(pg_get_serial_sequence($1, 'id'))::bigint  AS id
          FROM   generate_series(0, $2 - 1) AS g(ord)
          ORDER BY g.ord`,
-        [`${unquoteSchema(this.schemaName)}.variants`, N]
+        [variantsRelation, N]
       )
     )
     const idRows = idResult.rows as Array<{ ordinal: unknown; id: unknown }>
@@ -230,8 +235,8 @@ export class PostgresVcfImportRepository {
     })
 
     // COPY base variants. VARIANT_COPY_COLUMNS prepends `id` and excludes
-    // both `coord_hash` (generated) and `search_document` (deferred to the
-    // scoped bulk UPDATE below).
+    // both `coord_hash` (generated) and `search_document` (also a STORED
+    // generated column since Phase 16.1; Postgres rejects writes to it).
     await profilePhase('copy-variants', () =>
       runBulkCopy({
         client,
@@ -310,17 +315,4 @@ export class PostgresVcfImportRepository {
     await helper('variant_cnv', VARIANT_CNV_COPY_COLUMNS as unknown as readonly string[], cnvRows)
     await helper('variant_str', VARIANT_STR_COPY_COLUMNS as unknown as readonly string[], strRows)
   }
-}
-
-/**
- * Strip surrounding double-quotes from an already-quoted schema identifier so
- * it can be passed to pg_get_serial_sequence (which requires an unquoted bare
- * schema.table form). quoteIdentifier always wraps in quotes and doubles any
- * embedded quotes, so the inverse here unwraps and undoes the doubling.
- */
-function unquoteSchema(quoted: string): string {
-  if (quoted.startsWith('"') && quoted.endsWith('"')) {
-    return quoted.slice(1, -1).replace(/""/g, '"')
-  }
-  return quoted
 }

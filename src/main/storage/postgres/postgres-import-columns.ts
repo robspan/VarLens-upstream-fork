@@ -1,13 +1,16 @@
 // ---------------------------------------------------------------------------
 // Shared column constants and helpers for Postgres import repositories.
 //
-// Both PostgresJsonImportRepository and PostgresVcfImportRepository must write
-// to the same schema, so the column lists, recordset-type maps, and id helpers
-// live here as the single source of truth.
+// PostgresVcfImportRepository (COPY path, Phase 16+) and
+// PostgresJsonImportRepository (legacy jsonb_to_recordset path) both write
+// to the same schema, so the column lists and id helpers live here as the
+// single source of truth.
 //
-// search_document is intentionally excluded from VARIANT_BASE_COLUMNS: the
-// Phase 7 trigger `variants_search_document_tg` populates it on BEFORE INSERT
-// (see scripts/postgres/init-db/12-phase7-variants.sql).
+// `search_document` is intentionally excluded from VARIANT_BASE_COLUMNS:
+// since Phase 16.1 it is a STORED generated column on variants/variant_sv/
+// variant_str (see scripts/postgres/init-db/16-phase16-search-document-fns.sql).
+// Postgres rejects writes to GENERATED ALWAYS columns, so any COPY/INSERT
+// must omit it.
 // ---------------------------------------------------------------------------
 
 import { encodeText, encodeInteger, encodeFloat, type CopyColumnEncoder } from './copy-text-encoder'
@@ -124,8 +127,10 @@ export const VARIANT_STR_COLUMNS = [
 //
 // The four extension-table COPY column lists are intentional aliases of the
 // existing `_COLUMNS` constants — they already begin with `variant_id` and
-// already exclude `search_document` (which is populated by BEFORE-INSERT
-// triggers; see compute_*_search_document migrations from Task 2).
+// already exclude `search_document`. Phase 16.1 made `search_document` a
+// STORED generated column on variants/variant_sv/variant_str, so it is
+// populated inline at COPY time and must be excluded from any write list
+// (Postgres rejects writes to GENERATED ALWAYS columns).
 // ---------------------------------------------------------------------------
 
 export const VARIANT_COPY_COLUMNS = ['id', ...VARIANT_BASE_COLUMNS] as const

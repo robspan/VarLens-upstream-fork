@@ -1,0 +1,12 @@
+# OpenTofu-State und reale Variablen-Werte aus dem Repo halten.
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+terraform.tfstate.*.backup
+crash.log
+crash.*.log
+
+# Echte Variablen-Werte enthalten Secrets (Token, SSH-Key).
+terraform.tfvars
+*.auto.tfvars

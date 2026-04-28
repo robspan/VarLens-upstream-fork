@@ -13,6 +13,7 @@ on:
 permissions:
   contents: read
   security-events: write
+  pull-requests: read
 
 jobs:
   tofu-format:
@@ -46,7 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Scan Tofu, Compose und cloud-init
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: .
@@ -66,7 +67,7 @@ jobs:
           - amir20/dozzle:latest
     steps:
       - name: Scan ${{ matrix.image }}
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ matrix.image }}
           severity: HIGH,CRITICAL

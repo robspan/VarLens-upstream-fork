@@ -153,6 +153,29 @@ Kosten-Richtwerte für den Konzept-Pilot (Stand April 2026):
 
 Volle Kostenersparnis nur per `make down`. Wieder hochfahren: `make up` plus `make stack-up` (insgesamt circa fünf Minuten bis das Setup wieder vollständig läuft).
 
+### CI-Workflow auf GitHub und PAT-Konfiguration
+
+Der CI-Workflow (`.github/workflows/ci.yml`) läuft auf jedem Push/PR und prüft OpenTofu-Format/Validate, Trivy-Scans, gitleaks, shellcheck, yamllint und Caddyfile-Validate. Zum manuellen Eingreifen (Logs ziehen, Re-Run triggern, Workflow-Datei ändern) braucht man ein GitHub Personal Access Token.
+
+**Token-Anforderungen (Classic-PAT):**
+
+| Scope | Wofür |
+|---|---|
+| `repo` | Read+Push, Run-Logs lesen, Re-Run triggern |
+| `workflow` | Pflicht, sobald ein Push die `ci.yml` ändert (sonst lehnt GitHub ab) |
+
+`read:org` und alle anderen Scopes nicht nötig. Empfohlene Expiration: 30 Tage, danach rotieren.
+
+**Speicherort lokal:** `~/.config/varlens/github_token` (mode `0600`, außerhalb des Repos, nicht in Git). Verwendung:
+
+```bash
+export GH_TOKEN=$(cat ~/.config/varlens/github_token)
+gh run list --limit 5
+gh run view <run-id> --log-failed
+```
+
+Hinweis: `gh auth login --with-token` weigert sich ohne `read:org`. Direkt über `GH_TOKEN`-Env-Var arbeiten ist die schmalere Variante und reicht für unsere Use-Cases vollständig.
+
 ### cloud-init-Änderungen führen zu Server-Replace
 
 Hetzner kann user_data nicht in-place ändern. Wenn `cloud-init/pilot.yaml` editiert wird, zerstört `tofu apply` den alten Server und legt einen neuen an. Das Daten-Volume überlebt (eigene Resource), Compose-Stack muss aber per `make stack-up` neu deployed werden.

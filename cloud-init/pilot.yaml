@@ -1,0 +1,199 @@
+#cloud-config
+# First-Boot-Bootstrap für den Konzept-Pilot.
+# Wird von OpenTofu via templatefile gerendert; Variablen kommen aus dem Tofu-Aufruf:
+#   ${deploy_user}  - Name des Sudo-Users, der angelegt wird.
+#   ${ssh_pubkey}   - SSH-Key, der bei root und beim Deploy-User landet.
+#   ${volume_id}    - Hetzner Volume-ID, wird zu /dev/disk/by-id/scsi-0HC_Volume_<id> aufgelöst.
+
+timezone: Europe/Berlin
+locale: de_DE.UTF-8
+
+# Standard-Pakete einspielen. Docker und Compose-Plugin kommen aus dem offiziellen Docker-Repository.
+package_update: true
+package_upgrade: true
+packages:
+  - ca-certificates
+  - curl
+  - gnupg
+  - ufw
+  - unattended-upgrades
+  - apt-listchanges
+  - htop
+  - vim
+  - tmux
+  - git
+  - age
+  - bzip2  # für restic-Tarball-Entpackung
+
+# Sudo-User mit SSH-Key anlegen, root-Login disablen.
+# Docker-Gruppe wird in runcmd nachträglich gesetzt, weil sie zum Zeitpunkt
+# der user-Anlage noch nicht existiert (Docker wird erst in runcmd installiert).
+users:
+  - name: ${deploy_user}
+    groups: [sudo]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ${ssh_pubkey}
+
+# SSH absichern.
+write_files:
+  - path: /etc/ssh/sshd_config.d/10-konzept.conf
+    permissions: "0644"
+    content: |
+      PermitRootLogin no
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PubkeyAuthentication yes
+      AllowUsers ${deploy_user}
+
+  - path: /etc/apt/apt.conf.d/20auto-upgrades
+    permissions: "0644"
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+      APT::Periodic::AutocleanInterval "7";
+
+  - path: /etc/apt/apt.conf.d/50unattended-upgrades
+    permissions: "0644"
+    content: |
+      Unattended-Upgrade::Allowed-Origins {
+          "$${distro_id}:$${distro_codename}-security";
+          "$${distro_id}:$${distro_codename}-updates";
+      };
+      Unattended-Upgrade::Automatic-Reboot "true";
+      Unattended-Upgrade::Automatic-Reboot-Time "03:30";
+      Unattended-Upgrade::Remove-Unused-Dependencies "true";
+
+  # restic-Backup: Beispiel-Konfiguration. Maintainer kopiert nach env und füllt Werte
+  # mit echten Hetzner-Object-Storage-Credentials und einem starken restic-Passwort.
+  - path: /etc/restic/env.example
+    permissions: "0600"
+    content: |
+      RESTIC_REPOSITORY=s3:s3.eu-central-003.hetznerobjects.com/varlens-pilot-backup
+      RESTIC_PASSWORD=REPLACE_WITH_OPENSSL_RAND_BASE64_32
+      AWS_ACCESS_KEY_ID=REPLACE_WITH_HETZNER_S3_ACCESS_KEY
+      AWS_SECRET_ACCESS_KEY=REPLACE_WITH_HETZNER_S3_SECRET_KEY
+      HEARTBEAT_URL=
+      BACKUP_PATHS=/mnt/data
+      RETENTION_KEEP_DAILY=7
+      RETENTION_KEEP_WEEKLY=4
+      RETENTION_KEEP_MONTHLY=6
+
+  - path: /etc/systemd/system/restic-backup.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=restic-Backup nach Hetzner Object Storage
+      Wants=network-online.target
+      After=network-online.target docker.service
+      ConditionPathExists=/etc/restic/env
+
+      [Service]
+      Type=oneshot
+      EnvironmentFile=/etc/restic/env
+      ExecStart=/usr/local/bin/varlens-backup.sh
+      User=root
+      Nice=10
+      IOSchedulingClass=best-effort
+      IOSchedulingPriority=7
+
+  - path: /etc/systemd/system/restic-backup.timer
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Tägliches restic-Backup um 02:30
+      Requires=restic-backup.service
+
+      [Timer]
+      OnCalendar=*-*-* 02:30:00
+      Persistent=true
+      RandomizedDelaySec=15min
+
+      [Install]
+      WantedBy=timers.target
+
+# Daten-Volume formatieren ist durch hcloud_volume.format = "ext4" erledigt.
+# Hier nur fstab-Eintrag und Mountpoint.
+mounts:
+  - ["/dev/disk/by-id/scsi-0HC_Volume_${volume_id}", "/mnt/data", "ext4", "discard,nofail,defaults", "0", "2"]
+
+runcmd:
+  # Verzeichnisse für später-geschriebene Konfiguration defensiv anlegen.
+  # /etc/restic wird erst durch `setup-backup.py` mit Inhalt befüllt — die
+  # systemd-Unit hat ConditionPathExists=/etc/restic/env und springt bis
+  # dahin still ab. Das Verzeichnis selbst sollte aber existieren.
+  - install -m 0700 -d /etc/restic
+
+  # Docker offizielles Repository einrichten und Engine + Compose-Plugin installieren.
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  - chmod a+r /etc/apt/keyrings/docker.asc
+  - |
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
+  - apt-get update
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+  # Deploy-User in die Docker-Gruppe aufnehmen (Gruppe existiert erst nach Docker-Install).
+  - usermod -aG docker ${deploy_user}
+
+  # SOPS und restic von GitHub-Releases (in Ubuntu-Repo veraltet).
+  - |
+    SOPS_VERSION=v3.9.0
+    curl -fsSL "https://github.com/getsops/sops/releases/download/$${SOPS_VERSION}/sops-$${SOPS_VERSION}.linux.amd64" -o /usr/local/bin/sops
+    chmod +x /usr/local/bin/sops
+  - |
+    RESTIC_VERSION=0.17.1
+    curl -fsSL "https://github.com/restic/restic/releases/download/v$${RESTIC_VERSION}/restic_$${RESTIC_VERSION}_linux_amd64.bz2" | bunzip2 > /usr/local/bin/restic
+    chmod +x /usr/local/bin/restic
+
+  # Verzeichnisse für die Compose-Stack-Komponenten auf dem Daten-Volume.
+  - mkdir -p /mnt/data/postgres /mnt/data/caddy /mnt/data/app /mnt/data/backup
+  - chown -R ${deploy_user}:${deploy_user} /mnt/data
+
+  # Backup-Skript installieren. Wird nach /usr/local/bin gelegt und vom systemd-Service aufgerufen.
+  - |
+    cat > /usr/local/bin/varlens-backup.sh <<'BACKUP_SCRIPT'
+    #!/usr/bin/env bash
+    # Wird von /etc/systemd/system/restic-backup.service aufgerufen.
+    # Implementation siehe scripts/backup.sh im Repository - dieses Skript ist
+    # ein verkleinerter Klon mit den essentiellen Schritten. Für ausgereiftere
+    # Logging und Heartbeat siehe das Repository-Skript.
+    set -euo pipefail
+    : "$${RESTIC_REPOSITORY:?RESTIC_REPOSITORY muss gesetzt sein}"
+    : "$${RESTIC_PASSWORD:?RESTIC_PASSWORD muss gesetzt sein}"
+    : "$${BACKUP_PATHS:=/mnt/data}"
+    : "$${RETENTION_KEEP_DAILY:=7}"
+    : "$${RETENTION_KEEP_WEEKLY:=4}"
+    : "$${RETENTION_KEEP_MONTHLY:=6}"
+    if ! restic snapshots --no-lock --json >/dev/null 2>&1; then
+        restic init
+    fi
+    restic backup $$BACKUP_PATHS --tag auto --tag "$$(date +%Y-%m-%d)"
+    restic forget --keep-daily "$$RETENTION_KEEP_DAILY" --keep-weekly "$$RETENTION_KEEP_WEEKLY" --keep-monthly "$$RETENTION_KEEP_MONTHLY" --prune || true
+    if [ -n "$${HEARTBEAT_URL:-}" ]; then
+        curl -fsS --max-time 10 --retry 3 "$$HEARTBEAT_URL" >/dev/null || true
+    fi
+    BACKUP_SCRIPT
+    chmod 0755 /usr/local/bin/varlens-backup.sh
+
+  # systemd-Timer aktivieren (Service startet nur wenn /etc/restic/env vom Maintainer
+  # angelegt wurde - sonst springt der ConditionPathExists ab).
+  - systemctl daemon-reload
+  - systemctl enable --now restic-backup.timer
+
+  # UFW: SSH, HTTP, HTTPS erlauben. Hetzner Cloud Firewall ist redundant aber zusätzlicher Schutz.
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw --force enable
+
+  # SSHD und unattended-upgrades neu starten.
+  - systemctl restart ssh
+  - systemctl enable --now unattended-upgrades
+
+# Maschinenlesbares Bootstrap-Done-Signal.
+# $$UPTIME (doppeltes Dollar) escapt vor Tofu templatefile, damit cloud-init es zur Laufzeit auflöst.
+final_message: "cloud-init Bootstrap abgeschlossen nach $$UPTIME Sekunden. Login als ${deploy_user}."

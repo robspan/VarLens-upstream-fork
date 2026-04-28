@@ -1,0 +1,8 @@
+# E2E-Test-Environment. Wird von `varlens e2e run` automatisch erstellt
+# (kopiert hcloud_token aus pilot/terraform.tfvars und ssh_pubkey aus
+# ~/.ssh/varlens-e2e.pub). Diese Datei dient als Referenz, falls man
+# E2E manuell aufrufen will.
+
+hcloud_token    = "REPLACE_WITH_HCLOUD_TOKEN"
+ssh_pubkey      = "ssh-ed25519 AAAA... varlens-e2e"
+ssh_pubkey_name = "varlens-e2e-tofu"

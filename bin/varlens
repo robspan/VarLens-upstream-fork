@@ -1,0 +1,537 @@
+#!/usr/bin/env python3
+"""
+VarLens-IaC CLI.
+
+Steuert pilot- und e2e-Environments mit einheitlichen Subkommandos und
+mit Schutz-Schichten gegen versehentliche Zerstörung der pilot-Umgebung:
+
+  - destruktive Aktionen (`down`) verlangen das wörtliche Tippen des
+    Environment-Namens
+  - power-Aktionen (`stop`) verlangen ein y/N-Confirm
+  - mit `--yes` lassen sich beide Schichten in CI-Kontexten umgehen
+
+Die e2e-Environment ist als Wegwerf-Test gebaut: alle destruktiven
+Aktionen laufen dort ohne Confirm, damit `varlens e2e run` automatisch
+sauber aufräumen kann.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import shutil
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+ENVIRONMENTS = ("pilot", "e2e")
+
+
+# ---------- helpers ----------
+
+def env_dir(env: str) -> Path:
+    return REPO / "tofu" / "environments" / env
+
+
+def tfvars_path(env: str) -> Path:
+    return env_dir(env) / "terraform.tfvars"
+
+
+def tfvars_get(env: str, key: str) -> str | None:
+    f = tfvars_path(env)
+    if not f.exists():
+        return None
+    for line in f.read_text().splitlines():
+        line = line.strip()
+        if line.startswith("#") or "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        if k.strip() == key:
+            v = v.strip()
+            if v.startswith('"') and v.endswith('"'):
+                return v[1:-1]
+            return v
+    return None
+
+
+def tofu(env: str, *args: str, capture: bool = False, check: bool = True) -> subprocess.CompletedProcess:
+    cmd = ["tofu", f"-chdir={env_dir(env)}", *args]
+    return subprocess.run(
+        cmd,
+        capture_output=capture,
+        text=True,
+        check=check,
+    )
+
+
+def tofu_output(env: str, key: str) -> str | None:
+    proc = subprocess.run(
+        ["tofu", f"-chdir={env_dir(env)}", "output", "-raw", key],
+        capture_output=True, text=True,
+    )
+    if proc.returncode != 0:
+        return None
+    out = proc.stdout.strip()
+    return out or None
+
+
+def ipv4(env: str) -> str | None:
+    return tofu_output(env, "ipv4")
+
+
+def server_id(env: str) -> str | None:
+    return tofu_output(env, "server_id")
+
+
+def hcloud_token(env: str) -> str | None:
+    return os.environ.get("HCLOUD_TOKEN") or tfvars_get(env, "hcloud_token")
+
+
+def ssh_key_path() -> Path:
+    return Path(os.environ.get("SSH_KEY", str(Path.home() / ".ssh" / "varlens-tofu"))).expanduser()
+
+
+def e2e_ssh_key_path() -> Path:
+    return Path.home() / ".ssh" / "varlens-e2e"
+
+
+def need_init(env: str) -> bool:
+    return not (env_dir(env) / ".terraform").exists()
+
+
+def ensure_init(env: str) -> None:
+    if need_init(env):
+        log(f"[{env}] tofu init (einmalig)")
+        tofu(env, "init")
+
+
+def ssh_run(ip: str, key: Path, command: str, timeout: int = 60, *, ephemeral_host: bool = False) -> subprocess.CompletedProcess:
+    """ephemeral_host=True für e2e: Hetzner recyclet IPs aus einem kleinen Pool,
+    der vorherige Host-Key kann kollidieren — daher kein known_hosts-Lookup."""
+    opts = ["-o", "BatchMode=yes", "-o", f"ConnectTimeout={timeout}"]
+    if ephemeral_host:
+        opts += [
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "UserKnownHostsFile=/dev/null",
+            "-o", "LogLevel=ERROR",
+        ]
+    else:
+        opts += ["-o", "StrictHostKeyChecking=accept-new"]
+    return subprocess.run(
+        ["ssh", "-i", str(key), *opts, f"deploy@{ip}", command],
+        capture_output=True, text=True,
+    )
+
+
+def clear_host_key(ip: str) -> None:
+    """Räume eventuelle alte Host-Keys für eine recyclete IP auf."""
+    subprocess.run(["ssh-keygen", "-R", ip], capture_output=True)
+
+
+# ---------- output ----------
+
+def log(msg: str) -> None:
+    print(f"\033[36m[varlens]\033[0m {msg}", flush=True)
+
+
+def fail(msg: str, code: int = 1) -> None:
+    print(f"\033[31m[varlens]\033[0m {msg}", file=sys.stderr, flush=True)
+    sys.exit(code)
+
+
+# ---------- confirm ----------
+
+def confirm_typed(word: str, yes: bool) -> None:
+    if yes:
+        log(f"--yes gesetzt, überspringe Tipp-Confirm für '{word}'")
+        return
+    print(f"\033[33mDestruktive Aktion. Tippe '{word}' wörtlich um zu bestätigen, sonst Abbruch:\033[0m")
+    try:
+        got = input("> ").strip()
+    except EOFError:
+        got = ""
+    if got != word:
+        fail("Abgebrochen.", code=2)
+
+
+def confirm_yes(prompt: str, yes: bool) -> None:
+    if yes:
+        return
+    try:
+        got = input(f"{prompt} [y/N]: ").strip().lower()
+    except EOFError:
+        got = ""
+    if got not in {"y", "yes", "j", "ja"}:
+        fail("Abgebrochen.", code=2)
+
+
+# ---------- e2e bootstrap ----------
+
+def ensure_e2e_ssh_key() -> str:
+    """Eigener Keypair für e2e, anderer Fingerprint als pilot."""
+    priv = e2e_ssh_key_path()
+    pub = Path(str(priv) + ".pub")
+    if not priv.exists():
+        log(f"Generiere E2E-SSH-Keypair {priv}")
+        subprocess.run(
+            ["ssh-keygen", "-t", "ed25519", "-f", str(priv), "-C", "varlens-e2e", "-N", ""],
+            check=True,
+        )
+    return pub.read_text().strip()
+
+
+def ensure_e2e_tfvars() -> None:
+    f = tfvars_path("e2e")
+    if f.exists():
+        return
+    pilot_token = tfvars_get("pilot", "hcloud_token")
+    if not pilot_token:
+        fail("Kein hcloud_token in pilot/terraform.tfvars gefunden. E2E kann nicht bootstrappen.")
+    pub = ensure_e2e_ssh_key()
+    body = (
+        f'hcloud_token    = "{pilot_token}"\n'
+        f'ssh_pubkey      = "{pub}"\n'
+        f'ssh_pubkey_name = "varlens-e2e-tofu"\n'
+    )
+    # Token enthält pilot-Hetzner-Zugangsdaten — restriktive Perms sofort beim Anlegen.
+    fd = os.open(str(f), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(body)
+    log(f"E2E-tfvars geschrieben nach {f} (mode 0600)")
+
+
+# ---------- actions ----------
+
+def action_plan(env: str, args) -> None:
+    ensure_init(env)
+    if env == "e2e":
+        ensure_e2e_tfvars()
+    tofu(env, "plan")
+
+
+def action_up(env: str, args) -> None:
+    ensure_init(env)
+    if env == "e2e":
+        ensure_e2e_tfvars()
+    tofu(env, "apply", "-auto-approve")
+
+
+def action_down(env: str, args) -> None:
+    if env == "pilot":
+        confirm_typed("pilot", args.yes)
+    tofu(env, "destroy", "-auto-approve")
+
+
+def action_stop(env: str, args) -> None:
+    if env == "pilot":
+        confirm_yes("pilot-Server stoppen?", args.yes)
+    sid = server_id(env)
+    tok = hcloud_token(env)
+    if not sid or not tok:
+        fail("Kein Server-State / Token verfügbar.")
+    _api_post(tok, f"/v1/servers/{sid}/actions/poweroff")
+    log("Server gestoppt.")
+
+
+def action_start(env: str, args) -> None:
+    sid = server_id(env)
+    tok = hcloud_token(env)
+    if not sid or not tok:
+        fail("Kein Server-State / Token verfügbar.")
+    _api_post(tok, f"/v1/servers/{sid}/actions/poweron")
+    log("Server gestartet.")
+
+
+def _api_post(token: str, path: str) -> dict:
+    import json
+    import urllib.request
+    req = urllib.request.Request(
+        f"https://api.hetzner.cloud{path}",
+        method="POST",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read())
+
+
+def action_status(env: str, args) -> None:
+    import json
+    import urllib.request
+    sid = server_id(env)
+    tok = hcloud_token(env)
+    if not sid or not tok:
+        log("Kein Server vorhanden.")
+        return
+    req = urllib.request.Request(
+        f"https://api.hetzner.cloud/v1/servers/{sid}",
+        headers={"Authorization": f"Bearer {tok}"},
+    )
+    with urllib.request.urlopen(req, timeout=30) as r:
+        s = json.loads(r.read())["server"]
+    print(f"Name:     {s['name']}")
+    print(f"Status:   {s['status']}")
+    print(f"Type:     {s['server_type']['name']}")
+    print(f"IPv4:     {s['public_net']['ipv4']['ip']}")
+    print(f"Location: {s['datacenter']['location']['name']}")
+
+
+def action_ssh(env: str, args) -> None:
+    ip = ipv4(env)
+    if not ip:
+        fail("Kein Server vorhanden.")
+    key = e2e_ssh_key_path() if env == "e2e" else ssh_key_path()
+    os.execvp("ssh", ["ssh", "-i", str(key), f"deploy@{ip}"])
+
+
+def action_ip(env: str, args) -> None:
+    ip = ipv4(env)
+    if ip:
+        print(ip)
+
+
+def action_run(env: str, args) -> None:
+    """Full E2E-Cycle: up → stack-up → setup-backup → smoke → restore-drill → down."""
+    if env != "e2e":
+        fail("'run' ist nur für die e2e-Environment vorgesehen.")
+    ensure_init(env)
+    ensure_e2e_tfvars()
+
+    failed_step: str | None = None
+    try:
+        log("Schritt 1/6: tofu apply")
+        tofu(env, "apply", "-auto-approve")
+
+        ip = ipv4(env)
+        if not ip:
+            raise RuntimeError("Kein ipv4-Output nach apply.")
+        log(f"Server-IPv4: {ip}")
+
+        # Hetzner recyclet IPs aus einem Pool; alte Host-Keys räumen wir weg.
+        clear_host_key(ip)
+
+        log("Schritt 2/6: warte auf cloud-init (kann 2-5 min dauern)")
+        _wait_for_cloud_init(ip, e2e_ssh_key_path())
+
+        log("Schritt 3/6: stack-up")
+        _stack_up(ip, e2e_ssh_key_path())
+
+        backup_ran = False
+        log("Schritt 4/6: setup-backup")
+        backup_ran = _run_setup_backup(env, ip)
+
+        log("Schritt 5/6: smoke")
+        _smoke(ip, e2e_ssh_key_path())
+
+        log("Schritt 6/6: restore-drill")
+        _run_restore_drill(ip, expect_repo=backup_ran)
+
+        log("E2E erfolgreich.")
+    except Exception as exc:
+        failed_step = f"{type(exc).__name__}: {exc}"
+        log(f"E2E fehlgeschlagen: {failed_step}")
+    finally:
+        if args.keep:
+            log("--keep gesetzt, Environment bleibt bestehen für Inspektion.")
+        else:
+            log("Räume E2E-Environment auf (tofu destroy)")
+            try:
+                tofu(env, "destroy", "-auto-approve")
+            except subprocess.CalledProcessError as exc:
+                log(f"WARNUNG: tofu destroy fehlgeschlagen: {exc}")
+                log(f"Manuelle Bereinigung nötig: tofu -chdir={env_dir(env)} destroy")
+                if not failed_step:
+                    failed_step = "tofu destroy fehlgeschlagen"
+
+    if failed_step:
+        fail(f"E2E-Run fehlgeschlagen im Schritt: {failed_step}")
+
+
+def _wait_for_cloud_init(ip: str, key: Path, timeout: int = 900) -> None:
+    """`cloud-init status --wait` blockiert bis Bootstrap fertig ist.
+    Wir poll'en in Connect-Versuchen, weil sshd erst nach paar Sekunden lauscht."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        # ConnectTimeout=15 gibt sshd Zeit, hochzukommen; das eigentliche --wait
+        # darf bis zu 5 min auf der Session laufen, deshalb großzügiges Timeout.
+        proc = ssh_run(
+            ip, key,
+            "cloud-init status --wait 2>&1 | tail -1",
+            timeout=15,
+            ephemeral_host=True,
+        )
+        if proc.returncode == 0 and "done" in proc.stdout:
+            log("cloud-init fertig.")
+            return
+        time.sleep(10)
+    raise RuntimeError("cloud-init nicht innerhalb des Timeouts fertig geworden")
+
+
+def _stack_up(ip: str, key: Path) -> None:
+    subprocess.run(
+        [
+            "rsync", "-avz", "--delete",
+            "-e", (
+                f"ssh -i {key} -o StrictHostKeyChecking=no "
+                "-o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+            ),
+            f"{REPO}/compose/",
+            f"deploy@{ip}:/mnt/data/app/",
+        ],
+        check=True,
+    )
+    cmd = (
+        "cd /mnt/data/app && "
+        "if [ ! -f .env ]; then "
+        "cp .env.example .env && "
+        "sed -i \"s|REPLACE_WITH_GENERATED_PASSWORD|$(openssl rand -base64 32 | tr -d /+= | head -c 32)|\" .env; "
+        "fi && "
+        "docker compose pull && docker compose up -d"
+    )
+    proc = ssh_run(ip, key, cmd, timeout=300, ephemeral_host=True)
+    if proc.returncode != 0:
+        raise RuntimeError(f"stack-up fehlgeschlagen: {proc.stderr}")
+
+
+def _smoke(ip: str, key: Path) -> None:
+    checks: list[tuple[str, object, object, bool]] = []
+
+    def check(label: str, expected, got):
+        checks.append((label, expected, got, got == expected))
+
+    proc = ssh_run(ip, key, "echo yes", ephemeral_host=True)
+    check("ssh", "yes", proc.stdout.strip())
+
+    # HTTPS mit Self-Signed-Cert: TLS-Verify deaktivieren (Konzept-Pilot Intranet).
+    import ssl
+    insecure_ctx = ssl.create_default_context()
+    insecure_ctx.check_hostname = False
+    insecure_ctx.verify_mode = ssl.CERT_NONE
+
+    # HTTP soll auf HTTPS umleiten (308). Wir folgen explizit nicht.
+    try:
+        req = urllib.request.Request(f"http://{ip}/")
+        opener = urllib.request.build_opener(urllib.request.HTTPRedirectHandler())
+        # Standard-Opener folgt Redirects; daher die rohe Variante:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            code = r.status
+    except urllib.error.HTTPError as exc:
+        code = exc.code
+    except Exception:
+        code = 0
+    # urlopen folgt 308 standardmäßig — wir akzeptieren 200 (gefolgte Antwort) oder 308.
+    check("http→https redirect", True, code in (200, 308))
+
+    for path, expected in [("/", 200), ("/monitor/", 401), ("/logs/", 401)]:
+        try:
+            req = urllib.request.Request(f"https://{ip}{path}")
+            with urllib.request.urlopen(req, timeout=10, context=insecure_ctx) as r:
+                code = r.status
+        except urllib.error.HTTPError as exc:
+            code = exc.code
+        except Exception:
+            code = 0
+        check(f"https {path}", expected, code)
+
+    proc = ssh_run(
+        ip, key,
+        "cd /mnt/data/app && docker compose ps --status running --services | grep -cE '^(caddy|uptime-kuma|dozzle)$'",
+        ephemeral_host=True,
+    )
+    check("running services", "3", proc.stdout.strip())
+
+    for label, expected, got, ok in checks:
+        marker = "ok  " if ok else "FAIL"
+        print(f"  {marker} {label}: erwartet {expected!r}, bekommen {got!r}")
+    failed = [c for c in checks if not c[3]]
+    if failed:
+        raise RuntimeError(f"{len(failed)} Smoke-Check(s) fehlgeschlagen")
+
+
+def _run_setup_backup(env: str, ip: str) -> bool:
+    """Returns True wenn Backup tatsächlich konfiguriert wurde."""
+    e = os.environ.copy()
+    e["SERVER_IP"] = ip
+    e["SSH_KEY"] = str(e2e_ssh_key_path())
+    e["HCLOUD_TOKEN"] = hcloud_token(env) or ""
+    # Bucket-Name pro E2E-Run unique, damit Tests nicht das pilot-Backup überschreiben.
+    # setup-backup.py liest BUCKET_NAME, nicht BUCKET.
+    e["BUCKET_NAME"] = f"varlens-e2e-{int(time.time())}"
+    if not (e.get("RESTIC_S3_ACCESS_KEY") and e.get("RESTIC_S3_SECRET_KEY")):
+        log("WARNUNG: RESTIC_S3_ACCESS_KEY/SECRET nicht gesetzt — überspringe Backup im E2E.")
+        return False
+    # E2E ist immer Greenfield: frischer Server, frischer Bucket pro Run.
+    # --force unterdrückt den Preflight-Schutz, der sonst bei der Wiederbenutzung
+    # eines bestehenden Bucket-Namens triggern würde.
+    subprocess.run(
+        [str(REPO / "scripts" / "setup-backup.py"), "--force"],
+        env=e, check=True,
+    )
+    return True
+
+
+def _run_restore_drill(ip: str, *, expect_repo: bool) -> None:
+    e = os.environ.copy()
+    e["IP"] = ip
+    e["SSH_KEY"] = str(e2e_ssh_key_path())
+    e["PROTOCOL_FILE"] = str(REPO / "docs" / "restore-protokoll-e2e.md")
+    e["SSH_STRICT"] = "no"
+    proc = subprocess.run([str(REPO / "scripts" / "restore-drill.sh")], env=e)
+    if proc.returncode != 0:
+        if expect_repo:
+            raise RuntimeError("Restore-Drill fehlgeschlagen trotz konfiguriertem Backup")
+        log("Restore-Drill nicht durchgelaufen (kein Backup konfiguriert — akzeptabel im E2E ohne S3-Creds).")
+
+
+# ---------- main ----------
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="varlens",
+        description="VarLens-IaC CLI: einheitliche Steuerung der Environments pilot und e2e.",
+    )
+    sub = p.add_subparsers(dest="env", required=True)
+
+    def add_action(actions, name, func, help_=None):
+        ap = actions.add_parser(name, help=help_)
+        ap.add_argument("--yes", action="store_true", help="Confirm-Prompts überspringen (für CI)")
+        ap.set_defaults(func=func)
+        return ap
+
+    for env in ENVIRONMENTS:
+        ep = sub.add_parser(env, help=f"{env}-Environment steuern")
+        # `--yes` ist nur auf Action-Ebene definiert (siehe add_action). Wenn es
+        # zusätzlich auf der Env-Ebene wäre, würde der Action-Default es beim
+        # Parsen wieder auf False ziehen — also verzichten wir hier bewusst.
+        actions = ep.add_subparsers(dest="action", required=True)
+
+        add_action(actions, "plan", action_plan)
+        add_action(actions, "up", action_up)
+        add_action(actions, "down", action_down)
+        add_action(actions, "stop", action_stop)
+        add_action(actions, "start", action_start)
+        add_action(actions, "status", action_status)
+        add_action(actions, "ssh", action_ssh)
+        add_action(actions, "ip", action_ip)
+
+        if env == "e2e":
+            run = add_action(actions, "run", action_run, "Full-Cycle E2E-Test mit automatischem Cleanup")
+            run.add_argument("--keep", action="store_true", help="Environment nach Lauf nicht zerstören")
+
+    return p
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = build_parser().parse_args(argv)
+    args.func(args.env, args)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        fail("Abgebrochen (Ctrl-C).", code=130)
+    except subprocess.CalledProcessError as exc:
+        fail(f"Subprozess fehlgeschlagen: {exc}", code=exc.returncode or 1)

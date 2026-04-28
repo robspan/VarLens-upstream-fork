@@ -46,7 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Scan Tofu, Compose und cloud-init
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           scan-type: config
           scan-ref: .
@@ -66,7 +66,7 @@ jobs:
           - amir20/dozzle:latest
     steps:
       - name: Scan ${{ matrix.image }}
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           image-ref: ${{ matrix.image }}
           severity: HIGH,CRITICAL
@@ -115,8 +115,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Validate Caddyfile
+        # SERVER_HOST wird im echten Deploy aus compose/.env gelesen.
+        # Für die CI-Validierung reicht ein Platzhalter, damit Caddy nicht
+        # über `default_sni {$SERVER_HOST}` mit leerem Wert stolpert.
         run: |
           docker run --rm \
+            -e SERVER_HOST=ci.example.invalid \
             -v "$PWD/compose/Caddyfile:/etc/caddy/Caddyfile:ro" \
             caddy:2-alpine \
             caddy validate --config /etc/caddy/Caddyfile

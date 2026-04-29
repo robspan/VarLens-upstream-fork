@@ -205,18 +205,26 @@ def main() -> None:
         # Kuma schema 1.x: type='push' triggers the /api/push/<token> endpoint.
         # interval = 60s, retry_interval = 60s, maxretries = 0 (one push per run is enough).
         # accepted_statuscodes_json stays at default '[200-299]' (not relevant for push).
+        # user_id must be set or Kuma's UI won't show the monitor (it filters
+        # the dashboard by ownership). We map to the admin user we just
+        # inserted (or that was already there).
         sql = (
-            "INSERT INTO monitor (name, type, active, interval, retry_interval, "
+            "INSERT INTO monitor (name, type, active, user_id, interval, retry_interval, "
             "maxretries, push_token, weight, accepted_statuscodes_json, method, "
             "ignore_tls, upside_down, maxredirects, expiry_notification, "
             "gamedig_given_port_only, kafka_producer_ssl, kafka_producer_allow_auto_topic_creation, "
             "timeout, packet_size, resend_interval, grpc_enable_tls, invert_keyword) "
-            f"VALUES ('{MONITOR_NAME}', 'push', 1, 60, 60, 0, '{push_token}', 2000, "
+            f"VALUES ('{MONITOR_NAME}', 'push', 1, "
+            "(SELECT id FROM user WHERE username = 'admin' LIMIT 1), "
+            f"60, 60, 0, '{push_token}', 2000, "
             "'[\"200-299\"]', 'GET', 0, 0, 10, 1, 1, 0, 0, 0, 56, 0, 0, 0);"
         )
-        rc, out = ssh(
+        # Use stdin to keep the dollar-safe pattern consistent with the
+        # admin-user insert, even though this SQL has no $-characters today.
+        rc, out = ssh_with_stdin(
             ip, ssh_key,
-            f"docker exec uptime-kuma sqlite3 /app/data/kuma.db \"{sql}\"",
+            "docker exec -i uptime-kuma sqlite3 /app/data/kuma.db",
+            stdin=sql,
             check=False,
         )
         if rc != 0:

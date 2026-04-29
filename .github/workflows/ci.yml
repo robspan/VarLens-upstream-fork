@@ -54,7 +54,7 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: 1
           ignore-unfixed: true
-          trivyignores: ./.trivyignore
+          trivyignores: ${{ github.workspace }}/.trivyignore
 
   trivy-images:
     name: Trivy Image-Scan (${{ matrix.image }})
@@ -77,7 +77,7 @@ jobs:
           # Findings werden in .trivyignore gepflegt (quartalsweises Review).
           exit-code: 1
           ignore-unfixed: true
-          trivyignores: ./.trivyignore
+          trivyignores: ${{ github.workspace }}/.trivyignore
 
   gitleaks:
     name: Gitleaks Secret-Scan

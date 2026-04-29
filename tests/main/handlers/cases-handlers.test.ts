@@ -286,6 +286,56 @@ describe('cases IPC handlers', () => {
     expect(execute).toHaveBeenCalledWith({ type: 'cases:delete', params: [7] })
   })
 
+  it('serializes postgres cases:delete through the shared delete lock', async () => {
+    let finishDelete: (() => void) | undefined
+    const execute = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishDelete = resolve
+        })
+    )
+    const currentSession = {
+      capabilities: {
+        backend: 'postgres',
+        cases: { deleteOne: true, deleteMany: false, deleteAll: false }
+      },
+      getWriteExecutor: () => ({ execute })
+    }
+    const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>()
+    const ipcMain = {
+      handle: vi.fn((channel: string, handler: (...args: unknown[]) => Promise<unknown>) => {
+        handlers.set(channel, handler)
+      })
+    }
+
+    const { registerCaseHandlers } = await import('../../../src/main/ipc/handlers/cases')
+
+    registerCaseHandlers({
+      ipcMain: ipcMain as never,
+      getDb: (() => {
+        throw new Error('getDb should not be called for postgres cases:delete')
+      }) as never,
+      getDbManager: (() => ({
+        getCurrentSession: () => currentSession
+      })) as never,
+      getDbPool: (() => null) as never
+    })
+
+    const handler = handlers.get('cases:delete')
+    expect(handler).toBeTypeOf('function')
+
+    const firstDelete = handler!(undefined, 7)
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce())
+
+    await expect(handler!(undefined, 8)).resolves.toMatchObject({
+      message: 'A delete operation is already in progress. Please wait for it to finish.'
+    })
+    expect(execute).toHaveBeenCalledTimes(1)
+
+    finishDelete?.()
+    await expect(firstDelete).resolves.toBeUndefined()
+  })
+
   it.each([
     {
       channel: 'cases:delete',

@@ -16,7 +16,6 @@ import type { DatabaseManager } from '../../services/DatabaseManager'
 import type { DbPool } from '../../database/DbPool'
 import type { StorageCapabilities } from '../../../shared/types/storage-capabilities'
 import type { PostgresHealthDiagnosticResult } from '../../../shared/types/postgres-profile'
-import { PostgresHealthDiagnostics } from '../../storage/postgres/PostgresHealthDiagnostics'
 
 /** File extensions allowed for database deletion -- prevents accidental non-DB file removal */
 const ALLOWED_DB_EXTENSIONS = new Set(['.db', '.sqlite', '.sqlite3'])
@@ -146,7 +145,11 @@ export async function getPostgresDiagnostics(
     return await collectDiagnostics.call(session)
   }
 
-  return await new PostgresHealthDiagnostics(session as never, session.workspace.schema).collect()
+  return {
+    ok: false,
+    schema: session.workspace.schema,
+    message: 'Current PostgreSQL session does not expose diagnostics'
+  }
 }
 
 export function getRecentDatabases(getDbManager: () => DatabaseManager): unknown {

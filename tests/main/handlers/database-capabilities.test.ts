@@ -52,4 +52,19 @@ describe('database capabilities logic', () => {
     })
     expect(collectDiagnostics).toHaveBeenCalledOnce()
   })
+
+  it('returns a typed diagnostics failure when a postgres session lacks diagnostics support', async () => {
+    const getDbManager = vi.fn(() => ({
+      getCurrentSession: () => ({
+        capabilities: POSTGRES_CAPABILITIES,
+        workspace: { kind: 'postgres', schema: 'workspace_a' }
+      })
+    }))
+
+    await expect(getPostgresDiagnostics(getDbManager as never)).resolves.toMatchObject({
+      ok: false,
+      schema: 'workspace_a',
+      message: 'Current PostgreSQL session does not expose diagnostics'
+    })
+  })
 })

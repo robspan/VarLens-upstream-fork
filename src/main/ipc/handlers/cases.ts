@@ -10,7 +10,9 @@ import {
   deleteSingleCase,
   deleteAllCases,
   deleteBatchCases,
-  getAvailableBuilds
+  getAvailableBuilds,
+  acquireDeleteLock,
+  releaseDeleteLock
 } from './cases-logic'
 import type { DeleteCallbacks } from './cases-logic'
 
@@ -47,8 +49,20 @@ async function deleteSingleCaseForCurrentSession(
 ): Promise<void> {
   const session = getDbManager().getCurrentSession()
   if (session.capabilities.backend === 'postgres') {
-    await session.getWriteExecutor().execute({ type: 'cases:delete', params: [id] })
-    deleteCallbacks.onDeleted?.({ deleted: 1 })
+    if (!acquireDeleteLock()) {
+      mainLogger.warn(
+        `Delete already in progress, rejecting postgres delete for case ${id}`,
+        'cases'
+      )
+      throw new Error('A delete operation is already in progress. Please wait for it to finish.')
+    }
+
+    try {
+      await session.getWriteExecutor().execute({ type: 'cases:delete', params: [id] })
+      deleteCallbacks.onDeleted?.({ deleted: 1 })
+    } finally {
+      releaseDeleteLock()
+    }
     return
   }
 

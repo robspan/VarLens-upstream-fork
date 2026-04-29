@@ -67,6 +67,7 @@ jobs:
           - louislam/uptime-kuma:1
           - amir20/dozzle:latest
     steps:
+      - uses: actions/checkout@v6
       - name: Scan ${{ matrix.image }}
         uses: aquasecurity/trivy-action@v0.36.0
         with:

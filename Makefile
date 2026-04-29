@@ -183,6 +183,22 @@ setup-backup:
 setup-monitoring:
 	@if [ -z "$(call IPV4)" ]; then echo "No server present."; exit 1; fi
 	@IP=$(call IPV4) SSH_KEY=$(SSH_KEY) ./scripts/setup-monitoring.py
+
+# Counterpart to `make down`: empties and deletes the restic backup bucket.
+# Required because the bucket is not Tofu-managed (it lives in Hetzner Object
+# Storage and is created via S3 API by setup-backup.py). Without this target,
+# a "full reset" leaves a half-state where the bucket still holds snapshots
+# encrypted with a password that may no longer exist on disk.
+#
+# Requires RESTIC_S3_ACCESS_KEY/SECRET in the environment.
+destroy-bucket:
+	@if [ -z "$(RESTIC_S3_ACCESS_KEY)" ] || [ -z "$(RESTIC_S3_SECRET_KEY)" ]; then \
+		echo "Set RESTIC_S3_ACCESS_KEY and RESTIC_S3_SECRET_KEY in your shell first."; \
+		exit 1; \
+	fi
+	@RESTIC_S3_ACCESS_KEY=$(RESTIC_S3_ACCESS_KEY) RESTIC_S3_SECRET_KEY=$(RESTIC_S3_SECRET_KEY) \
+		BUCKET_NAME=$${BUCKET_NAME:-varlens-pilot-backup} \
+		./scripts/teardown-bucket.py $(DESTROY_BUCKET_ARGS)
 # Invocation to reuse existing configuration:
 #   make setup-backup SETUP_BACKUP_ARGS=--reuse
 # Invocation for greenfield reset (destroys snapshots in the bucket):

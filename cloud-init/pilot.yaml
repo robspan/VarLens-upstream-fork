@@ -142,13 +142,13 @@ runcmd:
   # SHA256 checksums are hardcoded for supply-chain verification. Update on version bump.
   - |
     SOPS_VERSION=v3.9.0
-    SOPS_SHA256=e497e0d019fc66fb7c93e1ddf7faff394f1f44d4ef909ad913cb00ed30b7a30b
+    SOPS_SHA256=0d65660fbe785647ff4f1764d7f69edf598f79d6d79ebbef4a501909b6ff6b82
     curl -fsSL "https://github.com/getsops/sops/releases/download/$${SOPS_VERSION}/sops-$${SOPS_VERSION}.linux.amd64" -o /usr/local/bin/sops
     echo "$${SOPS_SHA256}  /usr/local/bin/sops" | sha256sum -c - || { echo "FAIL: SOPS sha256 mismatch"; rm -f /usr/local/bin/sops; exit 1; }
     chmod +x /usr/local/bin/sops
   - |
     RESTIC_VERSION=0.17.1
-    RESTIC_SHA256=e2ee4c128a17adfa8b6e64523ace04a86687a610edebb3d2e85e1ac60f55e640
+    RESTIC_SHA256=bdfaf16fe933136e3057e64e28624f2e0451dbd47e23badb2d37dbb60fdb6a70
     curl -fsSL "https://github.com/restic/restic/releases/download/v$${RESTIC_VERSION}/restic_$${RESTIC_VERSION}_linux_amd64.bz2" -o /tmp/restic.bz2
     echo "$${RESTIC_SHA256}  /tmp/restic.bz2" | sha256sum -c - || { echo "FAIL: restic sha256 mismatch"; rm -f /tmp/restic.bz2; exit 1; }
     bunzip2 -c /tmp/restic.bz2 > /usr/local/bin/restic

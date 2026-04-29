@@ -20,8 +20,8 @@ jobs:
     name: OpenTofu Format-Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: opentofu/setup-opentofu@v1
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: 1.7.0
       - run: tofu fmt -check -recursive tofu/
@@ -30,8 +30,8 @@ jobs:
     name: OpenTofu Validate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: opentofu/setup-opentofu@v1
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: 1.7.0
       - name: Initialize ohne Backend
@@ -45,7 +45,7 @@ jobs:
     name: Trivy Config-Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Scan Tofu, Compose und cloud-init
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -78,7 +78,7 @@ jobs:
     name: Gitleaks Secret-Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
@@ -89,7 +89,7 @@ jobs:
     name: Shellcheck (scripts/)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run shellcheck
         run: |
           sudo apt-get install -y shellcheck
@@ -99,7 +99,7 @@ jobs:
     name: YAML-Lint (cloud-init und Compose)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run yamllint
         run: |
           pip install --quiet yamllint
@@ -114,7 +114,7 @@ jobs:
     name: Caddyfile Validate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Validate Caddyfile
         # SERVER_HOST wird im echten Deploy aus compose/.env gelesen.
         # Für die CI-Validierung reicht ein Platzhalter, damit Caddy nicht

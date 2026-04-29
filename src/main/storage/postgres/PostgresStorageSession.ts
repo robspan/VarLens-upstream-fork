@@ -14,6 +14,8 @@ import { PostgresCasesQueryRepository } from './PostgresCasesQueryRepository'
 import { PostgresCommentsMetricsRepository } from './PostgresCommentsMetricsRepository'
 import { PostgresExportRepository } from './PostgresExportRepository'
 import { PostgresFilterPresetsRepository } from './PostgresFilterPresetsRepository'
+import { PostgresHealthDiagnostics } from './PostgresHealthDiagnostics'
+import type { PostgresHealthDiagnosticResult } from './PostgresHealthDiagnostics'
 import { PostgresImportExecutor } from './PostgresImportExecutor'
 import { PostgresOverviewRepository } from './PostgresOverviewRepository'
 import { PostgresPanelsRepository } from './PostgresPanelsRepository'
@@ -260,5 +262,10 @@ export class PostgresStorageSession implements StorageSession {
         roundTripMs: Date.now() - startedAt
       }
     }
+  }
+
+  async collectDiagnostics(): Promise<PostgresHealthDiagnosticResult> {
+    const schema = this.workspace.kind === 'postgres' ? this.workspace.schema : 'public'
+    return await new PostgresHealthDiagnostics(this.pool, schema).collect()
   }
 }

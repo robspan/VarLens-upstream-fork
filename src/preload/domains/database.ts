@@ -11,6 +11,7 @@ export function createDatabaseApi(): DatabaseDomainContract {
     rekey: (newPassword) => ipcRenderer.invoke('database:rekey', newPassword),
     info: () => ipcRenderer.invoke('database:info'),
     capabilities: () => ipcRenderer.invoke('database:capabilities'),
+    postgresDiagnostics: () => ipcRenderer.invoke('database:postgresDiagnostics'),
     recentList: () => ipcRenderer.invoke('database:recentList'),
     getOverview: () => ipcRenderer.invoke('database:overview'),
     removeRecent: (path) => ipcRenderer.invoke('database:removeRecent', path),

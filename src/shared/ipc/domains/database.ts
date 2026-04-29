@@ -1,5 +1,6 @@
 import type { DatabaseOverview } from '../../types/database-overview'
 import type { IpcResult } from '../../types/errors'
+import type { PostgresHealthDiagnosticResult } from '../../types/postgres-profile'
 import type { StorageCapabilities } from '../../types/storage-capabilities'
 
 export interface DatabaseInfo {
@@ -33,6 +34,7 @@ export interface DatabaseDomainContract {
   rekey: (newPassword: string) => Promise<IpcResult<DatabaseActionResult>>
   info: () => Promise<IpcResult<DatabaseInfo | null>>
   capabilities: () => Promise<IpcResult<StorageCapabilities>>
+  postgresDiagnostics: () => Promise<IpcResult<PostgresHealthDiagnosticResult>>
   recentList: () => Promise<IpcResult<RecentDatabase[]>>
   getOverview: () => Promise<IpcResult<DatabaseOverview>>
   removeRecent: (path: string) => Promise<IpcResult<DatabaseActionResult>>

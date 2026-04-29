@@ -312,6 +312,7 @@ export const mockApi: WindowAPI = {
     rekey: async () => ({ success: true }),
     info: async () => ({ path: '/mock/database.db', name: 'Mock Database', encrypted: false }),
     capabilities: async () => MOCK_SQLITE_CAPABILITIES,
+    postgresDiagnostics: async () => ({ ok: false, schema: '' }),
     recentList: async () => [
       { path: '/mock/database.db', name: 'Mock Database', lastOpened: Date.now() }
     ],

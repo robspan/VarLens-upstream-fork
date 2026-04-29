@@ -1,4 +1,8 @@
 import type { ClientConfig, PoolConfig } from 'pg'
+import type {
+  PostgresConnectionProfilePublic,
+  PostgresConnectionProfileSecretInput
+} from '../../shared/types/postgres-profile'
 
 export type PostgresSslMode = 'disable' | 'prefer' | 'require'
 
@@ -7,6 +11,7 @@ export interface PostgresStorageConfig {
   schema: string
   applicationName: string
   sslMode: PostgresSslMode
+  caCertificatePem?: string
   connectionTimeoutMillis: number
   statementTimeoutMs: number
   queryTimeoutMs: number
@@ -168,7 +173,10 @@ export function buildPostgresConnectionLabel(redactedUrl: string, schema: string
   return `${parsed.hostname}:${port}/${databaseName} (${schema})`
 }
 
-function buildPostgresSslConfig(sslMode: PostgresSslMode): ClientConfig['ssl'] {
+function buildPostgresSslConfig(
+  config: Pick<PostgresStorageConfig, 'sslMode' | 'caCertificatePem'>
+): ClientConfig['ssl'] {
+  const { sslMode } = config
   if (sslMode === 'disable') {
     return undefined
   }
@@ -180,7 +188,8 @@ function buildPostgresSslConfig(sslMode: PostgresSslMode): ClientConfig['ssl'] {
   }
 
   return {
-    rejectUnauthorized: true
+    rejectUnauthorized: true,
+    ...(config.caCertificatePem !== undefined ? { ca: config.caCertificatePem } : {})
   }
 }
 
@@ -196,7 +205,7 @@ export function buildPostgresClientConfig(config: PostgresStorageConfig): Client
     // TCP keepalive keeps long-running import connections alive across NAT
     // idle timeouts and other network middleboxes.
     keepAlive: true,
-    ssl: buildPostgresSslConfig(config.sslMode)
+    ssl: buildPostgresSslConfig(config)
   }
 }
 
@@ -204,5 +213,33 @@ export function buildPostgresPoolConfig(config: PostgresStorageConfig): PoolConf
   return {
     ...buildPostgresClientConfig(config),
     max: config.poolMax
+  }
+}
+
+export function buildPostgresStorageConfigFromProfile(
+  profile: PostgresConnectionProfilePublic,
+  secrets: PostgresConnectionProfileSecretInput
+): PostgresStorageConfig {
+  const url = new URL('postgresql://localhost')
+  url.hostname = profile.host
+  url.port = String(profile.port)
+  url.pathname = `/${profile.database}`
+  url.username = profile.username
+  url.password = secrets.password
+
+  return {
+    url: url.toString(),
+    schema: profile.schema,
+    applicationName: DEFAULT_PG_APPLICATION_NAME,
+    sslMode: profile.sslMode === 'require-verify' ? 'require' : 'disable',
+    ...(secrets.caCertificatePem !== undefined
+      ? { caCertificatePem: secrets.caCertificatePem }
+      : {}),
+    connectionTimeoutMillis: profile.connectionTimeoutMillis,
+    statementTimeoutMs: profile.statementTimeoutMs,
+    queryTimeoutMs: profile.statementTimeoutMs,
+    lockTimeoutMs: profile.lockTimeoutMs,
+    idleInTransactionSessionTimeoutMs: profile.idleInTransactionSessionTimeoutMs,
+    poolMax: profile.poolMax
   }
 }

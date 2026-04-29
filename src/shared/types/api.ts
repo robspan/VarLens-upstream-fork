@@ -109,6 +109,7 @@ import type {
   ProteinApiError
 } from './protein'
 import type { PerfSnapshot } from './perf'
+import type { PostgresHealthDiagnosticResult } from './postgres-profile'
 import type { StorageCapabilities } from './storage-capabilities'
 import type { CasesDomainContract } from '../ipc/domains/cases'
 import type { DatabaseInfo, DatabaseOpenResult, RecentDatabase } from '../ipc/domains/database'
@@ -321,6 +322,7 @@ export interface DatabaseAPI {
   rekey: (newPassword: string) => Promise<IpcResult<{ success: boolean; error?: string }>>
   info: () => Promise<IpcResult<DatabaseInfo | null>>
   capabilities: () => Promise<IpcResult<StorageCapabilities>>
+  postgresDiagnostics: () => Promise<IpcResult<PostgresHealthDiagnosticResult>>
   recentList: () => Promise<IpcResult<RecentDatabase[]>>
   getOverview: () => Promise<IpcResult<DatabaseOverview>>
   removeRecent: (path: string) => Promise<IpcResult<{ success: boolean }>>

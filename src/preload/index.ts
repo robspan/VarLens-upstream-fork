@@ -259,6 +259,7 @@ const api: WindowAPI = {
     rekey: (newPassword: string) => databaseDomain.rekey(newPassword),
     info: () => databaseDomain.info(),
     capabilities: () => databaseDomain.capabilities(),
+    postgresDiagnostics: () => databaseDomain.postgresDiagnostics(),
     recentList: () => databaseDomain.recentList(),
     getOverview: () => databaseDomain.getOverview(),
     removeRecent: (path: string) => databaseDomain.removeRecent(path),

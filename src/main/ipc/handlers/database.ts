@@ -23,6 +23,7 @@ import {
   rekeyDatabase,
   getDatabaseInfo,
   getDatabaseCapabilities,
+  getPostgresDiagnostics,
   getRecentDatabases,
   getDatabaseOverview,
   removeRecentDatabase,
@@ -147,6 +148,15 @@ export function registerDatabaseHandlers({
   ipcMain.handle('database:capabilities', async () => {
     return wrapHandler(async () => {
       return getDatabaseCapabilities(getDbManager)
+    })
+  })
+
+  /**
+   * Get PostgreSQL hosted workspace diagnostics for the current session.
+   */
+  ipcMain.handle('database:postgresDiagnostics', async () => {
+    return wrapHandler(async () => {
+      return await getPostgresDiagnostics(getDbManager)
     })
   })
 

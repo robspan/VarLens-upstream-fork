@@ -229,23 +229,104 @@ def main() -> None:
         )
         if rc != 0:
             fail(f"Monitor insert failed: {out}")
-        log("  Monitor inserted into DB, restarting Kuma so it loads it")
-        rc, out = ssh(
+        log("  Push monitor inserted")
+
+    # ----- 3b. Stack monitors (HTTPS welcome, Dozzle, SSH) -----
+    # Adds three additional monitors so the Kuma dashboard reflects the
+    # full Compose stack health, not just the backup heartbeat. Each is
+    # idempotent: skipped if a monitor with the same name already exists.
+    log("Setting up stack monitors (HTTPS welcome, Dozzle, SSH)")
+    stack_monitors = [
+        {
+            "name": "HTTPS welcome page",
+            "type": "http",
+            "url": f"https://{ip}/welcome",
+            "method": "GET",
+            "ignore_tls": 1,
+            "hostname": None,
+            "port": None,
+            "basic_auth_user": None,
+            "basic_auth_pass": None,
+        },
+        {
+            "name": "Dozzle (logs)",
+            "type": "http",
+            "url": f"https://{ip}/logs/",
+            "method": "GET",
+            "ignore_tls": 1,
+            "hostname": None,
+            "port": None,
+            "basic_auth_user": "admin",
+            "basic_auth_pass": DEFAULT_ADMIN_PW,
+        },
+        {
+            "name": "SSH (port 22)",
+            "type": "port",
+            "url": None,
+            "method": "GET",
+            "ignore_tls": 0,
+            "hostname": ip,
+            "port": 22,
+            "basic_auth_user": None,
+            "basic_auth_pass": None,
+        },
+    ]
+    for m in stack_monitors:
+        rc, exists = ssh(
             ip, ssh_key,
-            "cd /mnt/data/app && docker compose restart uptime-kuma",
+            f"docker exec uptime-kuma sqlite3 /app/data/kuma.db "
+            f"\"SELECT COUNT(*) FROM monitor WHERE name = '{m['name']}';\"",
         )
-        # Wait for Kuma to be back.
-        for _ in range(30):
-            rc, _ = ssh(
-                ip, ssh_key,
-                "curl -fsS --max-time 3 -o /dev/null http://127.0.0.1:3001/",
-                check=False,
-            )
-            if rc == 0:
-                break
-            time.sleep(2)
+        if int(exists.strip() or "0") > 0:
+            log(f"  {m['name']}: already exists, skipping")
+            continue
+        # Build column list and value list dynamically; skip None fields.
+        cols = ["name", "type", "active", "user_id", "interval", "retry_interval",
+                "maxretries", "weight", "accepted_statuscodes_json", "method",
+                "ignore_tls", "upside_down", "maxredirects", "expiry_notification",
+                "gamedig_given_port_only", "kafka_producer_ssl",
+                "kafka_producer_allow_auto_topic_creation", "timeout", "packet_size",
+                "resend_interval", "grpc_enable_tls", "invert_keyword"]
+        vals = [
+            f"'{m['name']}'", f"'{m['type']}'", "1",
+            "(SELECT id FROM user WHERE username = 'admin' LIMIT 1)",
+            "60", "60", "3", "2000", "'[\"200-299\"]'", f"'{m['method']}'",
+            str(m['ignore_tls']), "0", "10", "1", "1", "0", "0", "30", "56", "0", "0", "0",
+        ]
+        if m['url']:
+            cols.append("url"); vals.append(f"'{m['url']}'")
+        if m['hostname']:
+            cols.append("hostname"); vals.append(f"'{m['hostname']}'")
+        if m['port']:
+            cols.append("port"); vals.append(str(m['port']))
+        if m['basic_auth_user']:
+            cols.append("basic_auth_user"); vals.append(f"'{m['basic_auth_user']}'")
+        if m['basic_auth_pass']:
+            cols.append("basic_auth_pass"); vals.append(f"'{m['basic_auth_pass']}'")
+        sql = f"INSERT INTO monitor ({', '.join(cols)}) VALUES ({', '.join(vals)});"
+        rc, out = ssh_with_stdin(
+            ip, ssh_key,
+            "docker exec -i uptime-kuma sqlite3 /app/data/kuma.db",
+            stdin=sql, check=False,
+        )
+        if rc != 0:
+            log(f"  {m['name']}: insert failed: {out}")
         else:
-            fail("Kuma did not come back after restart")
+            log(f"  {m['name']}: inserted")
+
+    log("Restarting Kuma so it loads new/updated monitors")
+    ssh(ip, ssh_key, "cd /mnt/data/app && docker compose restart uptime-kuma")
+    for _ in range(30):
+        rc, _ = ssh(
+            ip, ssh_key,
+            "curl -fsS --max-time 3 -o /dev/null http://127.0.0.1:3001/",
+            check=False,
+        )
+        if rc == 0:
+            break
+        time.sleep(2)
+    else:
+        fail("Kuma did not come back after restart")
 
     heartbeat_url = f"http://127.0.0.1:3001/api/push/{push_token}?status=up&msg=OK&ping="
     log(f"Heartbeat URL: http://127.0.0.1:3001/api/push/{push_token[:6]}...")

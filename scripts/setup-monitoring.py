@@ -161,9 +161,14 @@ def main() -> None:
             f"INSERT INTO user (username, password, active) "
             f"VALUES ('{admin_user_sql}', '{DEFAULT_ADMIN_PW_BCRYPT}', 1);"
         )
-        rc, out = ssh(
+        # Pipe SQL via stdin (NOT argv) so the bcrypt hash's $-characters
+        # are not interpreted by the remote shell. Bash on the SSH side
+        # would otherwise expand `$2a$14$` etc. to empty, corrupting the
+        # password hash and silently breaking the Kuma admin login.
+        rc, out = ssh_with_stdin(
             ip, ssh_key,
-            f"docker exec uptime-kuma sqlite3 /app/data/kuma.db \"{sql}\"",
+            "docker exec -i uptime-kuma sqlite3 /app/data/kuma.db",
+            stdin=sql,
         )
         log(f"  Admin user '{admin_user}' created (default password: see DEFAULT_ADMIN_PW in the script)")
         log("  Restarting Kuma so the user state is recognized")

@@ -218,9 +218,11 @@ smoke:
 	FAILED=0; \
 	check "SSH reachable"            "yes" "$$(ssh -i $(SSH_KEY) -o BatchMode=yes -o ConnectTimeout=5 deploy@$$IP echo yes 2>/dev/null)"; \
 	check "HTTP redirect to HTTPS"   "308" "$$(curl -s -o /dev/null -w '%{http_code}' http://$$IP/)"; \
-	check "HTTPS Welcome 200"        "200" "$$(curl -ks -o /dev/null -w '%{http_code}' https://$$IP/)"; \
-	check "Monitor without auth 401" "401" "$$(curl -ks -o /dev/null -w '%{http_code}' https://$$IP/monitor/)"; \
-	check "Monitor with auth ok"     "302" "$$(curl -ks -o /dev/null -w '%{http_code}' -u admin https://$$IP/monitor/)"; \
+	check "Welcome page 200"         "200" "$$(curl -ks -o /dev/null -w '%{http_code}' https://$$IP/welcome)"; \
+	check "Kuma without auth 401"    "401" "$$(curl -ks -o /dev/null -w '%{http_code}' https://$$IP/)"; \
+	check "Kuma with auth 302"       "302" "$$(curl -ks -o /dev/null -w '%{http_code}' -u admin https://$$IP/)"; \
+	check "Kuma /dashboard with auth" "200" "$$(curl -ks -o /dev/null -w '%{http_code}' -u admin https://$$IP/dashboard)"; \
+	check "Old /monitor redirects"   "301" "$$(curl -ks -o /dev/null -w '%{http_code}' https://$$IP/monitor/)"; \
 	check "Logs without auth 401"    "401" "$$(curl -ks -o /dev/null -w '%{http_code}' https://$$IP/logs/)"; \
 	check "Logs with auth ok"        "200" "$$(curl -ks -o /dev/null -w '%{http_code}' -u admin https://$$IP/logs/)"; \
 	check "Direct port 3001 closed"  "000" "$$(curl --max-time 3 -s -o /dev/null -w '%{http_code}' http://$$IP:3001/ 2>/dev/null)"; \

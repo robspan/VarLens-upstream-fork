@@ -28,13 +28,14 @@
 {$SERVER_HOST}:443 {
 	tls internal
 
-	# Welcome page on the root path.
-	@root path /
-	handle @root {
+	# Welcome page on /welcome (open, no auth). Acts as a directory for
+	# adopters / new users who land here without knowing the URLs.
+	@welcome path /welcome
+	handle @welcome {
 		respond "VarLens Concept Pilot - running.
 
 Monitoring (basic auth, login admin / varlens-konzept):
-- Uptime Kuma:   /monitor/
+- Uptime Kuma:   /         (root - this is the dashboard after login)
 - Dozzle Logs:   /logs/
 
 Note: self-signed certificate from Caddy's internal CA (Concept Pilot intranet).
@@ -42,16 +43,10 @@ As of April 2026: application container and database are still to come.
 " 200
 	}
 
-	# Uptime Kuma at /monitor/
-	handle_path /monitor/* {
-		basic_auth {
-			# Generate a hash with:
-			#   docker exec caddy caddy hash-password
-			# Default login: admin / varlens-konzept
-			admin $2a$14$6QBIGJyJFZMJIomvheSxvOUokBVZsvz03snLpmL7auY8aBmxVfNKy
-		}
-		reverse_proxy uptime-kuma:3001
-	}
+	# Backward-compat: anyone hitting the old /monitor/* URL gets bounced
+	# to the root, where Kuma now lives natively.
+	redir /monitor / permanent
+	redir /monitor/* / permanent
 
 	# Dozzle at /logs/. Dozzle is base-aware (DOZZLE_BASE=/logs in compose)
 	# and emits asset URLs under /logs/... - therefore `handle` (no strip).
@@ -63,9 +58,18 @@ As of April 2026: application container and database are still to come.
 		reverse_proxy dozzle:8080
 	}
 
-	# Everything else: 404
+	# Everything else (including /, /dashboard, /assets, /socket.io, /api,
+	# /upload, ...) goes to Uptime Kuma. Kuma 1.x has no base-path support
+	# and emits absolute paths, so it must own the root. This solves the
+	# previous /monitor/* sub-path bug where /dashboard etc. fell into 404.
 	handle {
-		respond "Not Found" 404
+		basic_auth {
+			# Generate a hash with:
+			#   docker exec caddy caddy hash-password
+			# Default login: admin / varlens-konzept
+			admin $2a$14$6QBIGJyJFZMJIomvheSxvOUokBVZsvz03snLpmL7auY8aBmxVfNKy
+		}
+		reverse_proxy uptime-kuma:3001
 	}
 }
 

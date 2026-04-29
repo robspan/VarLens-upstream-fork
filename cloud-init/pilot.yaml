@@ -181,10 +181,10 @@ runcmd:
     if ! restic snapshots --no-lock --json >/dev/null 2>&1; then
         restic init
     fi
-    restic backup $$BACKUP_PATHS --tag auto --tag "$$(date +%Y-%m-%d)"
-    restic forget --keep-daily "$$RETENTION_KEEP_DAILY" --keep-weekly "$$RETENTION_KEEP_WEEKLY" --keep-monthly "$$RETENTION_KEEP_MONTHLY" --prune || true
+    restic backup "$${BACKUP_PATHS}" --tag auto --tag "$(date +%Y-%m-%d)"
+    restic forget --keep-daily "$${RETENTION_KEEP_DAILY}" --keep-weekly "$${RETENTION_KEEP_WEEKLY}" --keep-monthly "$${RETENTION_KEEP_MONTHLY}" --prune || true
     if [ -n "$${HEARTBEAT_URL:-}" ]; then
-        curl -fsS --max-time 10 --retry 3 "$$HEARTBEAT_URL" >/dev/null || true
+        curl -fsS --max-time 10 --retry 3 "$${HEARTBEAT_URL}" >/dev/null || true
     fi
     BACKUP_SCRIPT
     chmod 0755 /usr/local/bin/varlens-backup.sh

@@ -1,3 +1,70 @@
-# Konzept-Pilot accepts these CVE-IDs because the affected images are
-# upstream-maintained and updates land via image-tag bump. Review quarterly.
-# (none currently — entries added as concrete findings emerge.)
+# Trivy-Ignore-Liste für VarLens-IaC.
+#
+# Konzept-Pilot akzeptiert die hier gelisteten CVEs, weil sie upstream
+# Go-stdlib-Issues in den Compose-Stack-Images (louislam/uptime-kuma,
+# amir20/dozzle) sind — fixbar nur durch Image-Rebuild durch die
+# Upstream-Maintainer.
+#
+# Mitigation in dieser Konfiguration:
+#   - Caddy basic_auth ist die einzige Eintrittspforte zu Kuma/Dozzle
+#   - Konzept-Pilot ist intranet-only, Self-Signed-TLS
+#   - §vertrag5 Echt-Daten-Sperre: nur Test-Daten zulässig
+#   - Stufe-2 wird Kuma/Dozzle entweder bumpen oder ersetzen
+#
+# Review-Pflicht: alle drei Monate (siehe Ablaufdatum in der exp:-Annotation).
+# Beim Image-Tag-Bump in compose/docker-compose.yml prüfen welche CVEs der
+# neue Tag noch hat, und nur die übrig gebliebenen stehenlassen.
+#
+# Stand: 2026-04-29 — nächstes Review: 2026-07-29.
+
+# === Go stdlib + Bibliotheken in Kuma + Dozzle ===
+CVE-2023-45283 exp:2026-07-29
+CVE-2023-45288 exp:2026-07-29
+CVE-2024-21538 exp:2026-07-29
+CVE-2024-24790 exp:2026-07-29
+CVE-2024-33599 exp:2026-07-29
+CVE-2024-34156 exp:2026-07-29
+CVE-2025-14874 exp:2026-07-29
+CVE-2025-27152 exp:2026-07-29
+CVE-2025-47907 exp:2026-07-29
+CVE-2025-58063 exp:2026-07-29
+CVE-2025-58183 exp:2026-07-29
+CVE-2025-61726 exp:2026-07-29
+CVE-2025-61728 exp:2026-07-29
+CVE-2025-61729 exp:2026-07-29
+CVE-2025-64756 exp:2026-07-29
+CVE-2025-65945 exp:2026-07-29
+CVE-2025-68121 exp:2026-07-29
+CVE-2026-23745 exp:2026-07-29
+CVE-2026-23950 exp:2026-07-29
+CVE-2026-24051 exp:2026-07-29
+CVE-2026-24842 exp:2026-07-29
+CVE-2026-25128 exp:2026-07-29
+CVE-2026-25639 exp:2026-07-29
+CVE-2026-25679 exp:2026-07-29
+CVE-2026-25896 exp:2026-07-29
+CVE-2026-26017 exp:2026-07-29
+CVE-2026-26018 exp:2026-07-29
+CVE-2026-26278 exp:2026-07-29
+CVE-2026-26960 exp:2026-07-29
+CVE-2026-26996 exp:2026-07-29
+CVE-2026-27601 exp:2026-07-29
+CVE-2026-27903 exp:2026-07-29
+CVE-2026-27904 exp:2026-07-29
+CVE-2026-29786 exp:2026-07-29
+CVE-2026-30952 exp:2026-07-29
+CVE-2026-31802 exp:2026-07-29
+CVE-2026-32280 exp:2026-07-29
+CVE-2026-32281 exp:2026-07-29
+CVE-2026-32283 exp:2026-07-29
+CVE-2026-33036 exp:2026-07-29
+CVE-2026-33151 exp:2026-07-29
+CVE-2026-33186 exp:2026-07-29
+CVE-2026-34040 exp:2026-07-29
+CVE-2026-34986 exp:2026-07-29
+CVE-2026-35525 exp:2026-07-29
+CVE-2026-39883 exp:2026-07-29
+CVE-2026-41242 exp:2026-07-29
+CVE-2026-41311 exp:2026-07-29
+CVE-2026-4800 exp:2026-07-29
+CVE-2026-4867 exp:2026-07-29

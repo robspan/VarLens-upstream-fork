@@ -33,8 +33,9 @@ describe('SqliteStorageSession', () => {
     expect(session.getReadExecutor()).toBeDefined()
     expect(session.getWriteExecutor()).toBeDefined()
     expect(session.capabilities.backend).toBe('sqlite')
-    expect(session.capabilities.supportsLocalFileLifecycle).toBe(true)
-    expect(session.capabilities.supportsFileBackedWorkerWrites).toBe(true)
+    expect(session.capabilities.workspace.localFileLifecycle).toBe(true)
+    expect(session.capabilities.cases.deleteOne).toBe(true)
+    expect(session.capabilities.cases.deleteMany).toBe(true)
 
     await session.close()
   })

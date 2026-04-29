@@ -28,7 +28,14 @@ function assertFileBackedWorkerWritesSupported(
   getDbManager: HandlerDependencies['getDbManager']
 ): void {
   const session = getDbManager().getCurrentSession()
-  if (!session.capabilities.supportsFileBackedWorkerWrites) {
+  const supported =
+    operation === 'cases:delete'
+      ? session.capabilities.cases.deleteOne
+      : operation === 'cases:deleteBatch'
+        ? session.capabilities.cases.deleteMany
+        : session.capabilities.cases.deleteAll
+
+  if (!supported) {
     throw new Error(`${operation} is SQLite-only in Phase 4`)
   }
 }

@@ -245,40 +245,59 @@ describe('cases IPC handlers', () => {
     })
   })
 
-  it('rejects worker-backed case deletes for postgres sessions before sqlite access', async () => {
-    const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>()
-    const ipcMain = {
-      handle: vi.fn((channel: string, handler: (...args: unknown[]) => Promise<unknown>) => {
-        handlers.set(channel, handler)
+  it.each([
+    {
+      channel: 'cases:delete',
+      args: [undefined, 1],
+      capabilities: { deleteOne: false, deleteMany: true, deleteAll: true }
+    },
+    {
+      channel: 'cases:deleteBatch',
+      args: [undefined, [1]],
+      capabilities: { deleteOne: true, deleteMany: false, deleteAll: true }
+    },
+    {
+      channel: 'cases:deleteAll',
+      args: [],
+      capabilities: { deleteOne: true, deleteMany: true, deleteAll: false }
+    }
+  ])(
+    'rejects worker-backed $channel for unsupported sessions before sqlite access',
+    async ({ channel, args, capabilities }) => {
+      const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>()
+      const ipcMain = {
+        handle: vi.fn((channel: string, handler: (...args: unknown[]) => Promise<unknown>) => {
+          handlers.set(channel, handler)
+        })
+      }
+
+      const { registerCaseHandlers } = await import('../../../src/main/ipc/handlers/cases')
+
+      registerCaseHandlers({
+        ipcMain: ipcMain as never,
+        getDb: (() => {
+          throw new Error('getDb should not be called for unsupported deletes')
+        }) as never,
+        getDbManager: (() => ({
+          getCurrentSession: () => ({
+            capabilities: {
+              cases: capabilities
+            }
+          })
+        })) as never,
+        getDbPool: (() => null) as never
+      })
+
+      const handler = handlers.get(channel)
+      expect(handler).toBeTypeOf('function')
+
+      const result = await handler!(...args)
+
+      expect(result).toMatchObject({
+        message: `${channel} is SQLite-only in Phase 4`
       })
     }
-
-    const { registerCaseHandlers } = await import('../../../src/main/ipc/handlers/cases')
-
-    registerCaseHandlers({
-      ipcMain: ipcMain as never,
-      getDb: (() => {
-        throw new Error('getDb should not be called for postgres deletes')
-      }) as never,
-      getDbManager: (() => ({
-        getCurrentSession: () => ({
-          capabilities: {
-            supportsFileBackedWorkerWrites: false
-          }
-        })
-      })) as never,
-      getDbPool: (() => null) as never
-    })
-
-    const handler = handlers.get('cases:delete')
-    expect(handler).toBeTypeOf('function')
-
-    const result = await handler!(undefined, 1)
-
-    expect(result).toMatchObject({
-      message: 'cases:delete is SQLite-only in Phase 4'
-    })
-  })
+  )
 })
 
 describe('database:overview handler', () => {

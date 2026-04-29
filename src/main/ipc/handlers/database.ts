@@ -22,6 +22,7 @@ import {
   createDatabase,
   rekeyDatabase,
   getDatabaseInfo,
+  getDatabaseCapabilities,
   getRecentDatabases,
   getDatabaseOverview,
   removeRecentDatabase,
@@ -137,6 +138,15 @@ export function registerDatabaseHandlers({
   ipcMain.handle('database:info', async () => {
     return wrapHandler(async () => {
       return getDatabaseInfo(getDbManager)
+    })
+  })
+
+  /**
+   * Get capability flags for the current storage backend/session
+   */
+  ipcMain.handle('database:capabilities', async () => {
+    return wrapHandler(async () => {
+      return getDatabaseCapabilities(getDbManager)
     })
   })
 

@@ -31,14 +31,73 @@ interface PostgresStorageSessionOptions {
   createCaseListRepository?: (pool: Pool, schema: string) => PostgresCaseListRepository
 }
 
-const POSTGRES_CAPABILITIES: StorageCapabilities = {
+export const POSTGRES_CAPABILITIES: StorageCapabilities = {
   backend: 'postgres',
-  supportsEncryptionAtRest: false,
-  supportsLocalFileLifecycle: false,
-  supportsHostedConnectionLifecycle: true,
-  supportsWorkerReadPool: false,
-  supportsFileBackedWorkerWrites: false,
-  supportsFullTextSearch: false
+  workspace: {
+    localFileLifecycle: false,
+    hostedConnectionLifecycle: true,
+    encryptionAtRest: false,
+    migrations: false,
+    healthDiagnostics: true
+  },
+  cases: {
+    list: true,
+    query: true,
+    deleteOne: false,
+    deleteMany: false,
+    deleteAll: false,
+    overview: false
+  },
+  imports: {
+    json: true,
+    vcf: true,
+    multiFileVcf: true,
+    bedFilters: true,
+    cancellation: true
+  },
+  variants: {
+    query: true,
+    searchQuery: true,
+    legacySearch: false,
+    filterOptions: false,
+    columnMeta: false,
+    typeCounts: true,
+    typesPresent: true,
+    geneSymbols: true,
+    panelFilters: false,
+    tagFilters: false,
+    commentFilters: false,
+    acmgFilters: false,
+    annotationFilters: false,
+    inheritanceFilters: false,
+    analysisGroupFilters: false,
+    phasingFilters: false
+  },
+  workflow: {
+    tags: false,
+    annotations: false,
+    caseComments: false,
+    caseMetrics: false,
+    filterPresets: false,
+    panels: false,
+    geneLists: false,
+    regionFiles: false,
+    analysisGroups: false,
+    auditLog: false
+  },
+  cohort: {
+    query: false,
+    summary: false,
+    rebuild: false,
+    carriers: false,
+    geneBurden: false,
+    columnMeta: false
+  },
+  export: {
+    variants: false,
+    cohort: false,
+    streaming: false
+  }
 }
 
 function unsupported(message: string): never {

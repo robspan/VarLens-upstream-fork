@@ -20,6 +20,8 @@ import { ref, type Ref } from 'vue'
 import { useApiService } from './useApiService'
 import { unwrapIpcResult } from '../../../shared/types/errors'
 import type { ColumnFilterMeta } from '../../../shared/types/column-filters'
+import { getCurrentUnsupportedReasonSync } from '../utils/backend-capabilities'
+import { logService } from '../services/LogService'
 
 /** Scope for a column-meta lookup — either single-case or cohort. */
 export interface VariantColumnMetaScope {
@@ -101,20 +103,27 @@ export function useVariantColumnMeta(): {
       throw new Error('window.api not available (running outside Electron?)')
     }
 
-    const promise = api.variants
-      .columnMeta({ caseId: scope.caseId, caseIds: scope.caseIds, columnKey })
-      .then((result) => {
-        const meta = unwrapIpcResult(result)
-        const bucket = extensionColumnMetaCache.value[key] ?? {}
-        bucket[columnKey] = meta
-        extensionColumnMetaCache.value[key] = bucket
-        inflightColumnMeta.delete(inflightKey)
-        return meta
+    const reason = getCurrentUnsupportedReasonSync('variants.columnMeta')
+    if (reason !== null) {
+      logService.warn(reason, 'backend-capabilities')
+      throw new Error(reason)
+    }
+
+    const promise = (async () => {
+      const result = await api.variants.columnMeta({
+        caseId: scope.caseId,
+        caseIds: scope.caseIds,
+        columnKey
       })
-      .catch((err: unknown) => {
-        inflightColumnMeta.delete(inflightKey)
-        throw err
-      })
+
+      const meta = unwrapIpcResult(result)
+      const bucket = extensionColumnMetaCache.value[key] ?? {}
+      bucket[columnKey] = meta
+      extensionColumnMetaCache.value[key] = bucket
+      return meta
+    })().finally(() => {
+      inflightColumnMeta.delete(inflightKey)
+    })
 
     inflightColumnMeta.set(inflightKey, promise)
     return promise

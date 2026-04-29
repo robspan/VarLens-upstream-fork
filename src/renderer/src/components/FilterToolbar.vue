@@ -76,7 +76,7 @@
 
       <!-- ACMG classification chips (hidden at narrow widths, available in drawer) -->
       <v-chip-group
-        v-if="showToolbarAcmg"
+        v-if="showToolbarAcmg && canUseAcmgFilters"
         v-model="filters.acmgClassifications"
         multiple
         class="ml-2 flex-nowrap"
@@ -181,6 +181,11 @@ import { cloneForIpc } from '../utils/cloneForIpc'
 import { useResponsiveLayout } from '../composables/useResponsiveLayout'
 import { useApiService } from '../composables/useApiService'
 import {
+  currentCanUseFeature,
+  getCurrentUnsupportedReason,
+  type CapabilityPath
+} from '../utils/backend-capabilities'
+import {
   mdiCommentText,
   mdiCommentTextOutline,
   mdiInformationOutline,
@@ -222,6 +227,58 @@ interface Emits {
 const emit = defineEmits<Emits>()
 
 const { api } = useApiService()
+
+function warnUnsupported(reason: string): void {
+  logService.warn(reason, 'backend-capabilities')
+}
+
+async function canUseOrWarn(path: CapabilityPath): Promise<boolean> {
+  const reason = await getCurrentUnsupportedReason(path)
+  if (reason !== null) {
+    warnUnsupported(reason)
+    return false
+  }
+  return true
+}
+
+function sanitizeUnsupportedVariantFilters(
+  filter: Omit<VariantFilter, 'case_id'>
+): Omit<VariantFilter, 'case_id'> {
+  const next: Omit<VariantFilter, 'case_id'> = { ...filter }
+
+  if (!currentCanUseFeature('variants.tagFilters')) {
+    delete next.tag_ids
+  }
+  if (!currentCanUseFeature('variants.commentFilters')) {
+    delete next.has_comment
+  }
+  if (!currentCanUseFeature('variants.acmgFilters')) {
+    delete next.acmg_classifications
+  }
+  if (!currentCanUseFeature('variants.annotationFilters')) {
+    delete next.annotation_scope
+    delete next.starred_only
+  }
+  if (!currentCanUseFeature('variants.panelFilters')) {
+    delete next.active_panel_ids
+    delete next.panel_padding_bp
+    delete next.panel_intervals
+  }
+  if (!currentCanUseFeature('variants.columnMeta')) {
+    delete next.column_filters
+  }
+  if (!currentCanUseFeature('variants.inheritanceFilters')) {
+    delete next.inheritance_modes
+  }
+  if (!currentCanUseFeature('variants.analysisGroupFilters')) {
+    delete next.analysis_group_id
+  }
+  if (!currentCanUseFeature('variants.phasingFilters')) {
+    delete next.consider_phasing
+  }
+
+  return next
+}
 
 // Forward ref for DSL column filters — populated by useDslFilterIntegration below.
 // Used in onFiltersUpdate closure to merge DSL column filters into the emitted payload.
@@ -270,16 +327,19 @@ const {
       const hasStateFilters =
         stateColumnFilters !== undefined && Object.keys(stateColumnFilters).length > 0
       if (hasDslFilters || hasStateFilters) {
-        emit('update:filters', {
-          ...f,
-          column_filters: {
-            ...(f.column_filters ?? {}),
-            ...(stateColumnFilters ?? {}),
-            ...dslColumnFiltersRef.value
-          }
-        })
+        emit(
+          'update:filters',
+          sanitizeUnsupportedVariantFilters({
+            ...f,
+            column_filters: {
+              ...(f.column_filters ?? {}),
+              ...(stateColumnFilters ?? {}),
+              ...dslColumnFiltersRef.value
+            }
+          })
+        )
       } else {
-        emit('update:filters', f)
+        emit('update:filters', sanitizeUnsupportedVariantFilters(f))
       }
     },
     onResetSort: () => emit('reset-sort'),
@@ -349,7 +409,8 @@ const savingPreset = ref(false)
 let applyingPresets = false // guard to skip divergence check during applyActivePresets
 
 // Preset toggle handler — applies merged preset filters
-function handlePresetToggle(presetId: number): void {
+async function handlePresetToggle(presetId: number): Promise<void> {
+  if (!(await canUseOrWarn('workflow.filterPresets'))) return
   togglePreset(presetId)
   applyActivePresets()
 }
@@ -393,6 +454,7 @@ watch(presetDivergenceKey, () => {
 })
 
 async function handleSavePreset(data: { name: string; description: string | null }): Promise<void> {
+  if (!(await canUseOrWarn('workflow.filterPresets'))) return
   savingPreset.value = true
   try {
     const plainFilters = cloneForIpc(filters.value)
@@ -413,18 +475,22 @@ async function handleSavePreset(data: { name: string; description: string | null
 }
 
 async function handleToggleVisibility(id: number, visible: boolean): Promise<void> {
+  if (!(await canUseOrWarn('workflow.filterPresets'))) return
   await updatePresetStore(id, { isVisible: visible })
 }
 
 async function handleDeletePreset(id: number): Promise<void> {
+  if (!(await canUseOrWarn('workflow.filterPresets'))) return
   await deletePresetStore(id)
 }
 
 // Toggle methods for star/comment
-const toggleStarred = () => {
+const toggleStarred = async () => {
+  if (!(await canUseOrWarn('variants.annotationFilters'))) return
   filters.value.starredOnly = !filters.value.starredOnly
 }
-const toggleCommented = () => {
+const toggleCommented = async () => {
+  if (!(await canUseOrWarn('variants.commentFilters'))) return
   filters.value.hasCommentOnly = !filters.value.hasCommentOnly
 }
 
@@ -434,6 +500,7 @@ const acmgFilterOptions = ACMG_FILTER_OPTIONS
 // Responsive layout — hide ACMG chips at compact/narrow widths (available in drawer)
 const { tier } = useResponsiveLayout()
 const showToolbarAcmg = computed(() => tier.value === 'full')
+const canUseAcmgFilters = computed(() => currentCanUseFeature('variants.acmgFilters'))
 
 // Drawer states with mutual exclusion
 const filterDrawerOpen = ref(false)
@@ -639,6 +706,13 @@ defineExpose({
 
 // Load filter options and presets on mount
 onMounted(async () => {
+  const presetReason = await getCurrentUnsupportedReason('workflow.filterPresets')
+  if (presetReason !== null) {
+    warnUnsupported(presetReason)
+    await loadFilterOptions(props.caseId)
+    return
+  }
+
   await Promise.all([loadFilterOptions(props.caseId), loadPresets()])
 })
 </script>

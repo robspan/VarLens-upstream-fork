@@ -14,6 +14,7 @@ import { convertBigInts } from '../../utils/convertBigInts'
 import type { DatabaseService } from '../../database/DatabaseService'
 import type { DatabaseManager } from '../../services/DatabaseManager'
 import type { DbPool } from '../../database/DbPool'
+import type { StorageCapabilities } from '../../../shared/types/storage-capabilities'
 
 /** File extensions allowed for database deletion -- prevents accidental non-DB file removal */
 const ALLOWED_DB_EXTENSIONS = new Set(['.db', '.sqlite', '.sqlite3'])
@@ -116,6 +117,10 @@ export function getDatabaseInfo(
 ): { path: string; name: string; encrypted: boolean } | null {
   const manager = getDbManager()
   return manager.getCurrentInfo()
+}
+
+export function getDatabaseCapabilities(getDbManager: () => DatabaseManager): StorageCapabilities {
+  return getDbManager().getCurrentSession().capabilities
 }
 
 export function getRecentDatabases(getDbManager: () => DatabaseManager): unknown {

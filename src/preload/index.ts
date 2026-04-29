@@ -258,6 +258,7 @@ const api: WindowAPI = {
     create: (path: string, password?: string) => databaseDomain.create(path, password),
     rekey: (newPassword: string) => databaseDomain.rekey(newPassword),
     info: () => databaseDomain.info(),
+    capabilities: () => databaseDomain.capabilities(),
     recentList: () => databaseDomain.recentList(),
     getOverview: () => databaseDomain.getOverview(),
     removeRecent: (path: string) => databaseDomain.removeRecent(path),

@@ -101,6 +101,7 @@ import {
 import { resetRendererPerfSnapshot } from './services/PerfSnapshot'
 import { getTraceSnapshot } from './services/PerfTrace'
 import { unwrapIpcResult } from '../../shared/types/errors'
+import { getCurrentUnsupportedReason } from './utils/backend-capabilities'
 
 const ImportStatusBar = defineAsyncComponent(() => import('./components/ImportStatusBar.vue'))
 const VariantDetailsPanel = defineAsyncComponent(
@@ -195,9 +196,15 @@ const handleResetFilters = () => {
 
 const handleDeleteAllCases = async () => {
   if (!api) return
+  const reason = await getCurrentUnsupportedReason('cases.deleteAll')
+  if (reason !== null) {
+    logService.warn(reason, 'backend-capabilities')
+    dialogHostRef.value?.showSnackbar(reason, 'error')
+    return
+  }
   const confirmed = await dialogHostRef.value?.showDeleteAllCases(caseCount.value)
   if (confirmed === true) {
-    const deleted = await api.cases.deleteAll()
+    const deleted = unwrapIpcResult(await api.cases.deleteAll())
     resetCaseContext()
     incrementDataGeneration()
     await caseListRef.value?.refreshCases()

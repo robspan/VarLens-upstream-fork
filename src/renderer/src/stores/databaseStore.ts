@@ -7,6 +7,7 @@ import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { DatabaseOpenResult, RecentDatabase, WindowAPI } from '../../../shared/types/api'
 import { unwrapIpcResult } from '../../../shared/types/errors'
+import type { StorageCapabilities } from '../../../shared/types/storage-capabilities'
 
 /** Lazy accessor for window.api -- avoids import-time evaluation */
 function getApi(): WindowAPI {
@@ -26,6 +27,7 @@ export const useDatabaseStore = defineStore('database', () => {
   const isEncrypted = ref<boolean>(false)
   const isLoading = ref<boolean>(false)
   const recentDatabases = ref<RecentDatabase[]>([])
+  const capabilities = ref<StorageCapabilities | null>(null)
 
   // Actions
   async function fetchInfo(): Promise<void> {
@@ -34,16 +36,22 @@ export const useDatabaseStore = defineStore('database', () => {
       currentPath.value = info.path
       currentName.value = info.name
       isEncrypted.value = info.encrypted
+      await loadCapabilities()
     } else {
       currentPath.value = null
       currentName.value = ''
       isEncrypted.value = false
+      capabilities.value = null
     }
     await fetchRecent()
   }
 
   async function fetchRecent(): Promise<void> {
     recentDatabases.value = unwrapIpcResult(await getApi().database.recentList())
+  }
+
+  async function loadCapabilities(): Promise<void> {
+    capabilities.value = unwrapIpcResult(await getApi().database.capabilities())
   }
 
   async function openDatabase(path: string, password?: string): Promise<DatabaseOpenResult> {
@@ -54,6 +62,7 @@ export const useDatabaseStore = defineStore('database', () => {
         currentPath.value = result.info.path
         currentName.value = result.info.name
         isEncrypted.value = result.info.encrypted
+        await loadCapabilities()
         await fetchRecent()
       }
       return result
@@ -70,6 +79,7 @@ export const useDatabaseStore = defineStore('database', () => {
         currentPath.value = result.info.path
         currentName.value = result.info.name
         isEncrypted.value = result.info.encrypted
+        await loadCapabilities()
         await fetchRecent()
       }
       return result
@@ -102,8 +112,10 @@ export const useDatabaseStore = defineStore('database', () => {
     isEncrypted,
     isLoading,
     recentDatabases,
+    capabilities,
     fetchInfo,
     fetchRecent,
+    loadCapabilities,
     openDatabase,
     createDatabase,
     selectAndOpenFile,

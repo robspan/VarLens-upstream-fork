@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { StorageSession } from '../../../src/main/storage/session'
 import type { PostgresStorageConfig } from '../../../src/main/storage/config'
+import { POSTGRES_CAPABILITIES } from '../../../src/main/storage/postgres/PostgresStorageSession'
 
 describe('openConfiguredDatabase', () => {
   it('opens the default sqlite database when no experimental backend is requested', async () => {
@@ -46,15 +47,7 @@ describe('openConfiguredDatabase', () => {
         connectionUrlRedacted: 'postgres://127.0.0.1:55432/varlens_dev',
         schema: 'public'
       },
-      capabilities: {
-        backend: 'postgres',
-        supportsEncryptionAtRest: false,
-        supportsLocalFileLifecycle: false,
-        supportsHostedConnectionLifecycle: true,
-        supportsWorkerReadPool: false,
-        supportsFileBackedWorkerWrites: false,
-        supportsFullTextSearch: false
-      },
+      capabilities: POSTGRES_CAPABILITIES,
       listCases: async () => [],
       getReadExecutor: () => ({
         execute: async () => {
@@ -136,15 +129,7 @@ describe('openConfiguredDatabase', () => {
         connectionUrlRedacted: 'postgres://127.0.0.1:55432/varlens_dev',
         schema: 'public'
       },
-      capabilities: {
-        backend: 'postgres',
-        supportsEncryptionAtRest: false,
-        supportsLocalFileLifecycle: false,
-        supportsHostedConnectionLifecycle: true,
-        supportsWorkerReadPool: false,
-        supportsFileBackedWorkerWrites: false,
-        supportsFullTextSearch: false
-      },
+      capabilities: POSTGRES_CAPABILITIES,
       listCases: async () => [],
       getReadExecutor: () => ({
         execute: async () => {

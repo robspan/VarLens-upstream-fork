@@ -7,7 +7,11 @@ import type {
   Variant,
   VariantFilter
 } from '../../../shared/types/database'
+import type { FilterOptions } from '../../../shared/types/api'
+import type { ColumnFilterMeta } from '../../../shared/types/column-filters'
 import { quoteIdentifier } from './identifiers'
+import { POSTGRES_VARIANT_COLUMN_DEFINITIONS } from './postgres-variant-columns'
+import type { PostgresVariantColumnDefinition } from './postgres-variant-columns'
 
 const POSTGRES_BASE_SORT_COLUMNS = Object.fromEntries(
   Object.entries(BASE_SORTABLE_COLUMNS).map(([key, column]) => [key, `v.${column}`])
@@ -43,6 +47,12 @@ function toNumber(value: unknown): number {
   if (typeof value === 'number') return value
   if (typeof value === 'string') return Number(value)
   return 0
+}
+
+function toOptionalNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined) return undefined
+  const numberValue = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(numberValue) ? numberValue : undefined
 }
 
 function toPrefixTsQuery(query: string): string {
@@ -225,15 +235,25 @@ export class PostgresVariantReadRepository {
       addWhere(`v.alt = ${addParam(filter.alt)}`)
     }
 
-    this.addColumnFilters(filter, addParam, addWhere)
+    if (isNonEmptyArray(filter.panel_intervals)) {
+      const intervalClauses = filter.panel_intervals.map((interval) => {
+        const chr = addParam(interval.chr)
+        const start = addParam(interval.start)
+        const end = addParam(interval.end)
+        return `(v.chr = ${chr} AND v.pos <= ${end} AND COALESCE(v.end_pos, v.pos) >= ${start})`
+      })
+      addWhere(`(${intervalClauses.join(' OR ')})`)
+    }
 
     const joins = [
       `LEFT JOIN ${this.schemaName}."variant_frequency" vf ON vf.coord_hash = v.coord_hash`
     ]
     const projections = [`v.*`, `${internalAfExpression} AS internal_af`]
 
-    if (filter.variant_type === 'sv') {
+    if (filter.variant_type === 'sv' || this.hasColumnFilterPrefix(filter, 'sv.')) {
       joins.push(`LEFT JOIN ${this.schemaName}."variant_sv" sv ON sv.variant_id = v.id`)
+    }
+    if (filter.variant_type === 'sv') {
       projections.push(
         'sv.support AS _sv_support',
         'sv.dr AS _sv_dr',
@@ -245,16 +265,22 @@ export class PostgresVariantReadRepository {
         'sv.stdev_len AS _sv_stdev_len',
         'sv.stdev_pos AS _sv_stdev_pos'
       )
-    } else if (filter.variant_type === 'cnv') {
+    }
+    if (filter.variant_type === 'cnv' || this.hasColumnFilterPrefix(filter, 'cnv.')) {
       joins.push(`LEFT JOIN ${this.schemaName}."variant_cnv" cnv ON cnv.variant_id = v.id`)
+    }
+    if (filter.variant_type === 'cnv') {
       projections.push(
         'cnv.copy_number AS _cnv_copy_number',
         'cnv.copy_number_quality AS _cnv_gq',
         'cnv.homozygosity_ref AS _cnv_ho_ref',
         'cnv.homozygosity_alt AS _cnv_ho_alt'
       )
-    } else if (filter.variant_type === 'str') {
+    }
+    if (filter.variant_type === 'str' || this.hasColumnFilterPrefix(filter, 'str.')) {
       joins.push(`LEFT JOIN ${this.schemaName}."variant_str" str_ext ON str_ext.variant_id = v.id`)
+    }
+    if (filter.variant_type === 'str') {
       projections.push(
         'str_ext.repeat_id AS _str_repeat_id',
         'str_ext.repeat_unit AS _str_repeat_unit',
@@ -269,6 +295,8 @@ export class PostgresVariantReadRepository {
         'str_ext.rank_score AS _str_rank_score'
       )
     }
+
+    this.addColumnFilters(filter, addParam, addWhere)
 
     const fromAndWhereSql = `FROM ${this.schemaName}."variants" v
       ${joins.join('\n')}
@@ -312,15 +340,129 @@ export class PostgresVariantReadRepository {
     }
   }
 
-  async getFilterOptions(_caseId: number): Promise<never> {
-    throw new Error('PostgreSQL variants:filterOptions is deferred from Phase 7')
+  async getFilterOptions(caseId: number): Promise<FilterOptions> {
+    const columnMeta = await Promise.all(
+      Object.keys(POSTGRES_VARIANT_COLUMN_DEFINITIONS).map((columnKey) =>
+        this.getColumnMeta({ caseId }, columnKey)
+      )
+    )
+    const metaByKey = new Map(columnMeta.map((meta) => [meta.key, meta]))
+    const caddMeta = metaByKey.get('cadd')
+    const gnomadAfMeta = metaByKey.get('gnomad_af')
+
+    return {
+      consequences: metaByKey.get('consequence')?.distinctValues ?? [],
+      funcs: metaByKey.get('func')?.distinctValues ?? [],
+      clinvars: metaByKey.get('clinvar')?.distinctValues ?? [],
+      minCadd: caddMeta?.min ?? null,
+      maxCadd: caddMeta?.max ?? null,
+      minGnomadAf: gnomadAfMeta?.min ?? null,
+      maxGnomadAf: gnomadAfMeta?.max ?? null,
+      columnMeta
+    }
   }
 
   async getColumnMeta(
-    _scope: { caseId: number } | { caseIds: number[] },
-    _columnKey: string
-  ): Promise<never> {
-    throw new Error('PostgreSQL variants:columnMeta is deferred from Phase 7')
+    scope: { caseId: number } | { caseIds: number[] },
+    columnKey: string
+  ): Promise<ColumnFilterMeta> {
+    const definition = POSTGRES_VARIANT_COLUMN_DEFINITIONS[columnKey]
+    if (definition === undefined) {
+      return { key: columnKey, dataType: 'text', distinctCount: 0 }
+    }
+
+    const caseIds = 'caseId' in scope ? [scope.caseId] : scope.caseIds
+    if (caseIds.length === 0) {
+      return {
+        key: columnKey,
+        dataType: definition.kind === 'numeric' ? 'numeric' : 'text',
+        distinctCount: 0
+      }
+    }
+
+    return definition.kind === 'numeric'
+      ? this.getNumericColumnMeta(caseIds, definition)
+      : this.getCategoricalColumnMeta(caseIds, definition)
+  }
+
+  private async getNumericColumnMeta(
+    caseIds: number[],
+    definition: PostgresVariantColumnDefinition
+  ): Promise<ColumnFilterMeta> {
+    const result = await this.pool.query(
+      `SELECT COUNT(DISTINCT ${definition.sql})::int AS distinct_count,
+              MIN(${definition.sql}) AS min,
+              MAX(${definition.sql}) AS max
+       FROM ${this.schemaName}."variants" v
+       ${this.buildColumnMetaJoins(definition.key)}
+       WHERE v.case_id = ANY($1::bigint[])`,
+      [caseIds]
+    )
+    const row = result.rows[0] as
+      | { distinct_count?: unknown; min?: unknown; max?: unknown }
+      | undefined
+    const meta: ColumnFilterMeta = {
+      key: definition.key,
+      dataType: 'numeric',
+      distinctCount: toNumber(row?.distinct_count)
+    }
+    const min = toOptionalNumber(row?.min)
+    const max = toOptionalNumber(row?.max)
+    if (min !== undefined) meta.min = min
+    if (max !== undefined) meta.max = max
+    return meta
+  }
+
+  private async getCategoricalColumnMeta(
+    caseIds: number[],
+    definition: PostgresVariantColumnDefinition
+  ): Promise<ColumnFilterMeta> {
+    const joins = this.buildColumnMetaJoins(definition.key)
+    const countResult = await this.pool.query(
+      `SELECT COUNT(DISTINCT ${definition.sql})::int AS distinct_count
+       FROM ${this.schemaName}."variants" v
+       ${joins}
+       WHERE v.case_id = ANY($1::bigint[])`,
+      [caseIds]
+    )
+    const distinctCount = toNumber(
+      (countResult.rows[0] as { distinct_count?: unknown } | undefined)?.distinct_count
+    )
+    const meta: ColumnFilterMeta = {
+      key: definition.key,
+      dataType: 'text',
+      distinctCount
+    }
+
+    if (distinctCount > 0 && distinctCount <= 50) {
+      const valuesResult = await this.pool.query(
+        `SELECT DISTINCT ${definition.sql} AS value
+         FROM ${this.schemaName}."variants" v
+         ${joins}
+         WHERE v.case_id = ANY($1::bigint[])
+           AND ${definition.sql} IS NOT NULL
+         ORDER BY ${definition.sql}`,
+        [caseIds]
+      )
+      meta.distinctValues = (valuesResult.rows as Array<{ value: unknown }>).map((row) =>
+        String(row.value)
+      )
+    }
+
+    return meta
+  }
+
+  private buildColumnMetaJoins(columnKey: string): string {
+    if (columnKey.startsWith('sv.')) {
+      return `LEFT JOIN ${this.schemaName}."variant_sv" sv ON sv.variant_id = v.id`
+    }
+    if (columnKey.startsWith('cnv.')) {
+      return `LEFT JOIN ${this.schemaName}."variant_cnv" cnv ON cnv.variant_id = v.id`
+    }
+    if (columnKey.startsWith('str.')) {
+      return `LEFT JOIN ${this.schemaName}."variant_str" str_ext ON str_ext.variant_id = v.id`
+    }
+    return ''
   }
 
   private assertSupportedQueryFilter(filter: VariantFilter): void {
@@ -331,7 +473,6 @@ export class PostgresVariantReadRepository {
     if ((filter.acmg_classifications?.length ?? 0) > 0) unsupported.push('acmg_classifications')
     if (filter.annotation_scope !== undefined) unsupported.push('annotation_scope')
     if ((filter.active_panel_ids?.length ?? 0) > 0) unsupported.push('active_panel_ids')
-    if ((filter.panel_intervals?.length ?? 0) > 0) unsupported.push('panel_intervals')
     if ((filter.inheritance_modes?.length ?? 0) > 0) unsupported.push('inheritance_modes')
     if (filter.analysis_group_id !== undefined) unsupported.push('analysis_group_id')
     if (filter.consider_phasing !== undefined) unsupported.push('consider_phasing')
@@ -349,14 +490,15 @@ export class PostgresVariantReadRepository {
     if (filter.column_filters === undefined) return
 
     const unsupportedColumns = Object.keys(filter.column_filters).filter(
-      (column) => POSTGRES_BASE_SORT_COLUMNS[column] === undefined
+      (column) => POSTGRES_VARIANT_COLUMN_DEFINITIONS[column] === undefined
     )
     if (unsupportedColumns.length > 0) {
       throw new Error(`Unsupported PostgreSQL column filter(s): ${unsupportedColumns.join(', ')}`)
     }
 
     for (const [column, filterDef] of Object.entries(filter.column_filters)) {
-      const sqlColumn = POSTGRES_BASE_SORT_COLUMNS[column]
+      const definition = POSTGRES_VARIANT_COLUMN_DEFINITIONS[column]
+      const sqlColumn = definition.sql
       const { operator, value } = filterDef
 
       if (operator === 'in' && Array.isArray(value)) {
@@ -375,11 +517,14 @@ export class PostgresVariantReadRepository {
         (typeof value === 'string' || typeof value === 'number')
       ) {
         const comparison = `${sqlColumn} ${operator} ${addParam(this.normalizeColumnFilterValue(value))}`
-        addWhere(
-          filterDef.includeEmpty === false ? comparison : `(${sqlColumn} IS NULL OR ${comparison})`
-        )
+        const includeEmpty = filterDef.includeEmpty ?? !column.includes('.')
+        addWhere(includeEmpty ? `(${sqlColumn} IS NULL OR ${comparison})` : comparison)
       }
     }
+  }
+
+  private hasColumnFilterPrefix(filter: VariantFilter, prefix: string): boolean {
+    return Object.keys(filter.column_filters ?? {}).some((column) => column.startsWith(prefix))
   }
 
   private normalizeColumnFilterValue(value: string | number): string | number {

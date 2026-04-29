@@ -9,8 +9,8 @@
 | Imports | JSON | yes | yes | no | done |
 | Imports | VCF | yes | yes | no | done |
 | Variants | query | yes | yes | no | done |
-| Variants | filter options | yes | no | yes | high |
-| Variants | column metadata | yes | no | yes | high |
+| Variants | filter options | yes | yes | no | done |
+| Variants | column metadata | yes | yes | no | done |
 | Variants | panel filters | yes | no | yes | high |
 | Variants | tag/comment/ACMG filters | yes | no | yes | high |
 | Export | variants | yes | no | yes | high |

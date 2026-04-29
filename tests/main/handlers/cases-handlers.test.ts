@@ -17,6 +17,10 @@ import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { DatabaseService } from '../../../src/main/database/DatabaseService'
 
+vi.mock('../../../src/main/ipc/utils/safeEmit', () => ({
+  safeEmit: vi.fn()
+}))
+
 const ROOT = resolve(__dirname, '..', '..', '..')
 
 vitestAfterEach(() => {
@@ -243,6 +247,43 @@ describe('cases IPC handlers', () => {
       type: 'cases:availableBuilds',
       params: []
     })
+  })
+
+  it('routes postgres cases:delete through the active storage write executor', async () => {
+    const execute = vi.fn().mockResolvedValue(undefined)
+    const currentSession = {
+      capabilities: {
+        backend: 'postgres',
+        cases: { deleteOne: true, deleteMany: false, deleteAll: false }
+      },
+      getWriteExecutor: () => ({ execute })
+    }
+    const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>()
+    const ipcMain = {
+      handle: vi.fn((channel: string, handler: (...args: unknown[]) => Promise<unknown>) => {
+        handlers.set(channel, handler)
+      })
+    }
+
+    const { registerCaseHandlers } = await import('../../../src/main/ipc/handlers/cases')
+
+    registerCaseHandlers({
+      ipcMain: ipcMain as never,
+      getDb: (() => {
+        throw new Error('getDb should not be called for postgres cases:delete')
+      }) as never,
+      getDbManager: (() => ({
+        getCurrentSession: () => currentSession
+      })) as never,
+      getDbPool: (() => null) as never
+    })
+
+    const handler = handlers.get('cases:delete')
+    expect(handler).toBeTypeOf('function')
+
+    await expect(handler!(undefined, 7)).resolves.toBeUndefined()
+
+    expect(execute).toHaveBeenCalledWith({ type: 'cases:delete', params: [7] })
   })
 
   it.each([

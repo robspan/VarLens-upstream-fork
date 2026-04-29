@@ -45,6 +45,8 @@ export type StorageReadTask =
       type: 'variants:columnMeta'
       params: [scope: { caseId: number } | { caseIds: number[] }, columnKey: string]
     }
+  | { type: 'database:overview'; params: [] }
+  | { type: 'export:variants'; params: [filter: VariantFilter] }
 
 export interface StorageReadExecutor {
   execute(task: StorageReadTask): Promise<unknown>

@@ -164,6 +164,10 @@ export function registerDatabaseHandlers({
    */
   ipcMain.handle('database:overview', async () => {
     return wrapHandler(async () => {
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session.getReadExecutor().execute({ type: 'database:overview', params: [] })
+      }
       return getDatabaseOverview(getDb, getDbPool)
     })
   })

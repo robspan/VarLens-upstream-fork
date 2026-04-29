@@ -6,6 +6,10 @@ export class SqliteWriteExecutor implements StorageWriteExecutor {
 
   async execute(task: StorageWriteTask): Promise<unknown> {
     switch (task.type) {
+      case 'cases:delete':
+        this.databaseService.cases.deleteCase(task.params[0])
+        return undefined
+
       case 'case-metadata:upsert':
         return this.databaseService.metadata.upsertCaseMetadata(task.params[0], task.params[1])
 

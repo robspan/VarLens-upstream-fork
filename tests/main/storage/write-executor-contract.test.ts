@@ -6,6 +6,15 @@ import type {
 } from '../../../src/main/storage/write-executor'
 
 describe('StorageWriteExecutor contract', () => {
+  it('supports case lifecycle write tasks', () => {
+    const task = {
+      type: 'cases:delete',
+      params: [1]
+    } satisfies StorageWriteTask
+
+    expect(task.params).toEqual([1])
+  })
+
   it('supports case metadata write tasks', () => {
     const tasks = [
       {

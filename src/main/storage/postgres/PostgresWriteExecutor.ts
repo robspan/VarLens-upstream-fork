@@ -1,4 +1,5 @@
 import type { StorageWriteExecutor, StorageWriteTask } from '../write-executor'
+import type { PostgresCaseLifecycleRepository } from './PostgresCaseLifecycleRepository'
 import type { PostgresCaseMetadataRepository } from './PostgresCaseMetadataRepository'
 
 type PostgresCaseMetadataWriter = Pick<
@@ -18,10 +19,16 @@ type PostgresCaseMetadataWriter = Pick<
 >
 
 export class PostgresWriteExecutor implements StorageWriteExecutor {
-  constructor(private readonly caseMetadata: PostgresCaseMetadataWriter) {}
+  constructor(
+    private readonly caseMetadata: PostgresCaseMetadataWriter,
+    private readonly caseLifecycle: Pick<PostgresCaseLifecycleRepository, 'deleteCase'>
+  ) {}
 
   async execute(task: StorageWriteTask): Promise<unknown> {
     switch (task.type) {
+      case 'cases:delete':
+        return await this.caseLifecycle.deleteCase(task.params[0])
+
       case 'case-metadata:upsert':
         return await this.caseMetadata.upsertCaseMetadata(task.params[0], task.params[1])
 

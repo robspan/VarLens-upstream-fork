@@ -5,10 +5,13 @@ import type { DatabaseService } from '../../database/DatabaseService'
 import type { DbPool } from '../../database/DbPool'
 import type { Case } from '../../../shared/types/database'
 import { PostgresAvailableBuildsRepository } from './PostgresAvailableBuildsRepository'
+import { PostgresCaseLifecycleRepository } from './PostgresCaseLifecycleRepository'
 import { PostgresCaseListRepository } from './PostgresCaseListRepository'
 import { PostgresCaseMetadataRepository } from './PostgresCaseMetadataRepository'
 import { PostgresCasesQueryRepository } from './PostgresCasesQueryRepository'
+import { PostgresExportRepository } from './PostgresExportRepository'
 import { PostgresImportExecutor } from './PostgresImportExecutor'
+import { PostgresOverviewRepository } from './PostgresOverviewRepository'
 import { PostgresReadExecutor } from './PostgresReadExecutor'
 import { PostgresVariantReadRepository } from './PostgresVariantReadRepository'
 import type { StorageImportExecutor } from '../import-executor'
@@ -43,10 +46,10 @@ export const POSTGRES_CAPABILITIES: StorageCapabilities = {
   cases: {
     list: true,
     query: true,
-    deleteOne: false,
+    deleteOne: true,
     deleteMany: false,
     deleteAll: false,
-    overview: false
+    overview: true
   },
   imports: {
     json: true,
@@ -94,9 +97,9 @@ export const POSTGRES_CAPABILITIES: StorageCapabilities = {
     columnMeta: false
   },
   export: {
-    variants: false,
+    variants: true,
     cohort: false,
-    streaming: false
+    streaming: true
   }
 }
 
@@ -124,10 +127,15 @@ export class PostgresStorageSession implements StorageSession {
     this.readExecutor = new PostgresReadExecutor({
       casesQuery: new PostgresCasesQueryRepository(options.pool, options.config.schema),
       availableBuilds: new PostgresAvailableBuildsRepository(options.pool, options.config.schema),
+      overview: new PostgresOverviewRepository(options.pool, options.config.schema),
+      export: new PostgresExportRepository(options.pool, options.config.schema),
       caseMetadata,
       variants: new PostgresVariantReadRepository(options.pool, options.config.schema)
     })
-    this.writeExecutor = new PostgresWriteExecutor(caseMetadata)
+    this.writeExecutor = new PostgresWriteExecutor(
+      caseMetadata,
+      new PostgresCaseLifecycleRepository(options.pool, options.config.schema)
+    )
     this.importExecutor = new PostgresImportExecutor({
       schema: options.config.schema,
       // buildPostgresClientConfig always sets connectionString = config.url (a string),

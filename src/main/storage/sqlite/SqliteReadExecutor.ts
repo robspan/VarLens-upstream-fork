@@ -161,6 +161,14 @@ export class SqliteReadExecutor implements StorageReadExecutor {
         if (this.dbPool !== null)
           return await this.dbPool.run({ type: task.type, params: task.params })
         return this.databaseService.variants.getColumnMeta(task.params[0], task.params[1])
+
+      case 'database:overview':
+        if (this.dbPool !== null)
+          return await this.dbPool.run({ type: task.type, params: task.params })
+        return this.databaseService.overview.getDatabaseOverview()
+
+      case 'export:variants':
+        throw new Error('SQLite export uses the dedicated export worker path')
     }
 
     const _exhaustive: never = task

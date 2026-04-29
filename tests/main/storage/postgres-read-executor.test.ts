@@ -20,6 +20,8 @@ describe('PostgresReadExecutor', () => {
     const executor = new PostgresReadExecutor({
       casesQuery,
       availableBuilds,
+      overview: {} as never,
+      export: {} as never,
       caseMetadata: {} as never
     })
 
@@ -39,6 +41,8 @@ describe('PostgresReadExecutor', () => {
     const executor = new PostgresReadExecutor({
       casesQuery,
       availableBuilds,
+      overview: {} as never,
+      export: {} as never,
       caseMetadata: {} as never
     })
 
@@ -66,6 +70,8 @@ describe('PostgresReadExecutor', () => {
     const executor = new PostgresReadExecutor({
       casesQuery: {} as never,
       availableBuilds: {} as never,
+      overview: {} as never,
+      export: {} as never,
       caseMetadata: caseMetadata as never
     })
 
@@ -102,6 +108,8 @@ describe('PostgresReadExecutor', () => {
     const executor = new PostgresReadExecutor({
       casesQuery,
       availableBuilds,
+      overview: {} as never,
+      export: {} as never,
       caseMetadata,
       variants
     } as never)
@@ -127,6 +135,8 @@ describe('PostgresReadExecutor', () => {
     const executor = new PostgresReadExecutor({
       casesQuery: {} as never,
       availableBuilds: {} as never,
+      overview: {} as never,
+      export: {} as never,
       caseMetadata: {} as never,
       variants
     } as never)
@@ -163,6 +173,8 @@ describe('PostgresReadExecutor', () => {
     const executor = new PostgresReadExecutor({
       casesQuery: {} as never,
       availableBuilds: {} as never,
+      overview: {} as never,
+      export: {} as never,
       caseMetadata: {} as never,
       variants
     } as never)
@@ -175,5 +187,36 @@ describe('PostgresReadExecutor', () => {
     ).rejects.toThrow('PostgreSQL variants:columnMeta is deferred from Phase 7')
     expect(variants.getFilterOptions).toHaveBeenCalledWith(1)
     expect(variants.getColumnMeta).toHaveBeenCalledWith({ caseId: 1 }, 'cadd')
+  })
+
+  it('dispatches database overview and export reads to postgres repositories', async () => {
+    const overview = {
+      getOverview: vi.fn().mockResolvedValue({ summary: { total_cases: 0 }, cases: [] })
+    }
+    const exportedRows = (async function* () {
+      yield { id: 1 }
+    })()
+    const exportRepository = {
+      streamVariantRows: vi.fn().mockReturnValue(exportedRows)
+    }
+    const executor = new PostgresReadExecutor({
+      casesQuery: {} as never,
+      availableBuilds: {} as never,
+      overview,
+      export: exportRepository,
+      caseMetadata: {} as never,
+      variants: {} as never
+    })
+
+    await expect(executor.execute({ type: 'database:overview', params: [] })).resolves.toEqual({
+      summary: { total_cases: 0 },
+      cases: []
+    })
+    await expect(
+      executor.execute({ type: 'export:variants', params: [{ case_id: 5 }] })
+    ).resolves.toBe(exportedRows)
+
+    expect(overview.getOverview).toHaveBeenCalledWith()
+    expect(exportRepository.streamVariantRows).toHaveBeenCalledWith({ case_id: 5 })
   })
 })

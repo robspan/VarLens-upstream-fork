@@ -9,7 +9,12 @@ import {
   CohortSearchParamsSchema
 } from '../../../shared/types/ipc-schemas'
 import { safeEmit } from '../utils/safeEmit'
-import { prepareVariantExport, exportVariants, exportCohort } from './export-logic'
+import {
+  prepareVariantExport,
+  exportVariants,
+  exportCohort,
+  exportPostgresVariants
+} from './export-logic'
 import type { ExportCallbacks } from './export-logic'
 
 /** Schema for variant export parameters */
@@ -23,7 +28,11 @@ const VariantExportParamsSchema = z.object({
  * Export IPC handlers
  * Channels: export:variants, export:cohort
  */
-export function registerExportHandlers({ ipcMain, getDb }: HandlerDependencies): void {
+export function registerExportHandlers({
+  ipcMain,
+  getDb,
+  getDbManager
+}: HandlerDependencies): void {
   ipcMain.handle(
     'export:variants',
     async (
@@ -45,14 +54,15 @@ export function registerExportHandlers({ ipcMain, getDb }: HandlerDependencies):
           'export'
         )
 
+        const session = getDbManager().getCurrentSession()
+        const isPostgres = session.capabilities.backend === 'postgres'
+
         // Pre-check count/limit BEFORE showing save dialog to avoid
         // the user picking a file path only to be told the export is too large.
-        const preparation = prepareVariantExport(
-          getDb,
-          validated.data.caseId,
-          validated.data.filters
-        )
-        if ('success' in preparation) {
+        const preparation = isPostgres
+          ? null
+          : prepareVariantExport(getDb, validated.data.caseId, validated.data.filters)
+        if (preparation !== null && 'success' in preparation) {
           return preparation
         }
 
@@ -63,14 +73,19 @@ export function registerExportHandlers({ ipcMain, getDb }: HandlerDependencies):
         }
 
         // Show save dialog
-        const defaultFileName = `${validated.data.caseName.replace(/[^a-z0-9]/gi, '_')}_variants.xlsx`
+        const defaultFileName = `${validated.data.caseName.replace(/[^a-z0-9]/gi, '_')}_variants.${isPostgres ? 'csv' : 'xlsx'}`
         const result = await dialog.showSaveDialog(mainWindow, {
-          title: 'Export Variants to Excel',
+          title: isPostgres ? 'Export Variants to CSV' : 'Export Variants to Excel',
           defaultPath: defaultFileName,
-          filters: [
-            { name: 'Excel Files', extensions: ['xlsx'] },
-            { name: 'All Files', extensions: ['*'] }
-          ]
+          filters: isPostgres
+            ? [
+                { name: 'CSV Files', extensions: ['csv'] },
+                { name: 'All Files', extensions: ['*'] }
+              ]
+            : [
+                { name: 'Excel Files', extensions: ['xlsx'] },
+                { name: 'All Files', extensions: ['*'] }
+              ]
         })
 
         if (result.canceled === true || result.filePath === undefined || result.filePath === '') {
@@ -84,6 +99,23 @@ export function registerExportHandlers({ ipcMain, getDb }: HandlerDependencies):
               safeEmit('export:progress', data)
             }
           }
+        }
+
+        if (isPostgres) {
+          const rows = (await session.getReadExecutor().execute({
+            type: 'export:variants',
+            params: [
+              {
+                ...validated.data.filters,
+                case_id: validated.data.caseId
+              }
+            ]
+          })) as AsyncIterable<Record<string, unknown>>
+          return await exportPostgresVariants(rows, result.filePath, exportCallbacks)
+        }
+
+        if (preparation === null) {
+          throw new Error('SQLite export preparation was not created')
         }
 
         return exportVariants(

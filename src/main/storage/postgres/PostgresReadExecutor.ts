@@ -2,11 +2,15 @@ import type { StorageReadExecutor, StorageReadTask } from '../read-executor'
 import type { PostgresAvailableBuildsRepository } from './PostgresAvailableBuildsRepository'
 import type { PostgresCaseMetadataRepository } from './PostgresCaseMetadataRepository'
 import type { PostgresCasesQueryRepository } from './PostgresCasesQueryRepository'
+import type { PostgresExportRepository } from './PostgresExportRepository'
+import type { PostgresOverviewRepository } from './PostgresOverviewRepository'
 import type { PostgresVariantReadRepository } from './PostgresVariantReadRepository'
 
 interface PostgresReadExecutorRepositories {
   casesQuery: Pick<PostgresCasesQueryRepository, 'queryCases'>
   availableBuilds: Pick<PostgresAvailableBuildsRepository, 'getAvailableGenomeBuilds'>
+  overview: Pick<PostgresOverviewRepository, 'getOverview'>
+  export: Pick<PostgresExportRepository, 'streamVariantRows'>
   caseMetadata: Pick<
     PostgresCaseMetadataRepository,
     | 'getCaseMetadata'
@@ -97,6 +101,12 @@ export class PostgresReadExecutor implements StorageReadExecutor {
 
       case 'variants:columnMeta':
         return await this.repositories.variants.getColumnMeta(task.params[0], task.params[1])
+
+      case 'database:overview':
+        return await this.repositories.overview.getOverview()
+
+      case 'export:variants':
+        return this.repositories.export.streamVariantRows(task.params[0])
     }
 
     const _exhaustive: never = task

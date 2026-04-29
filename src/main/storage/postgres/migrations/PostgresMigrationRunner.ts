@@ -53,6 +53,9 @@ export class PostgresMigrationRunner {
 
         const startedAt = Date.now()
         await client.query(this.interpolateSchema(migration.sql))
+        if (migration.afterApply !== undefined) {
+          await migration.afterApply(client, this.schema)
+        }
         await client.query(
           `INSERT INTO ${this.schemaName}."schema_migrations" (version, name, checksum, execution_ms)
            VALUES ($1, $2, $3, $4)`,

@@ -59,6 +59,36 @@ describe('PostgresMigrationRunner', () => {
     expect(pool.client.release).toHaveBeenCalledTimes(1)
   })
 
+  it('runs migration afterApply hooks inside the migration transaction', async () => {
+    const pool = poolWithAppliedRows()
+    const afterApply = vi.fn(async () => undefined)
+    const runner = new PostgresMigrationRunner(pool as never, 'app_schema', [
+      {
+        version: '0001',
+        name: 'with_hook',
+        sql: 'CREATE TABLE "__schema__"."hooked" (id bigint)',
+        checksum: 'hook',
+        afterApply
+      }
+    ])
+
+    await runner.migrate()
+
+    expect(afterApply).toHaveBeenCalledWith(pool.client, 'app_schema')
+    const hookOrder = afterApply.mock.invocationCallOrder[0]
+    const migrationRowOrder = pool.client.query.mock.invocationCallOrder.find((_, index) => {
+      const [sql] = pool.client.query.mock.calls[index] ?? []
+      return typeof sql === 'string' && sql.includes('INSERT INTO "app_schema"."schema_migrations"')
+    })
+    const commitOrder = pool.client.query.mock.invocationCallOrder.find((_, index) => {
+      const [sql] = pool.client.query.mock.calls[index] ?? []
+      return sql === 'COMMIT'
+    })
+
+    expect(hookOrder).toBeLessThan(migrationRowOrder)
+    expect(migrationRowOrder).toBeLessThan(commitOrder)
+  })
+
   it('throws when an applied migration checksum differs', async () => {
     const pool = poolWithAppliedRows([{ version: '0001', checksum: 'old' }])
     const runner = new PostgresMigrationRunner(pool as never, 'public', migrations)

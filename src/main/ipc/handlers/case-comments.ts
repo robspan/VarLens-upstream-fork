@@ -36,7 +36,11 @@ const CommentUpdateSchema = z.object({
  * Channels: case-comments:list, case-comments:create,
  *           case-comments:update, case-comments:delete
  */
-export function registerCaseCommentHandlers({ ipcMain, getDb }: HandlerDependencies): void {
+export function registerCaseCommentHandlers({
+  ipcMain,
+  getDb,
+  getDbManager
+}: HandlerDependencies): void {
   ipcMain.handle('case-comments:list', async (_event, caseId: unknown) => {
     return wrapHandler(async () => {
       // ANTI-07: Runtime validation at IPC boundary
@@ -49,8 +53,13 @@ export function registerCaseCommentHandlers({ ipcMain, getDb }: HandlerDependenc
         throw new Error('Invalid parameters')
       }
 
-      const db = getDb()
-      return db.metadata.listCaseComments(validated.data)
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session
+          .getReadExecutor()
+          .execute({ type: 'case-comments:list', params: [validated.data] })
+      }
+      return getDb().metadata.listCaseComments(validated.data)
     })
   })
 
@@ -68,8 +77,14 @@ export function registerCaseCommentHandlers({ ipcMain, getDb }: HandlerDependenc
           throw new Error('Invalid parameters')
         }
 
-        const db = getDb()
-        return db.metadata.createCaseComment(
+        const session = getDbManager().getCurrentSession()
+        if (session.capabilities.backend === 'postgres') {
+          return await session.getWriteExecutor().execute({
+            type: 'case-comments:create',
+            params: [validated.data.caseId, validated.data.category, validated.data.content]
+          })
+        }
+        return getDb().metadata.createCaseComment(
           validated.data.caseId,
           validated.data.category,
           validated.data.content
@@ -90,8 +105,14 @@ export function registerCaseCommentHandlers({ ipcMain, getDb }: HandlerDependenc
         throw new Error('Invalid parameters')
       }
 
-      const db = getDb()
-      return db.metadata.updateCaseComment(validated.data.commentId, validated.data.content)
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session.getWriteExecutor().execute({
+          type: 'case-comments:update',
+          params: [validated.data.commentId, validated.data.content]
+        })
+      }
+      return getDb().metadata.updateCaseComment(validated.data.commentId, validated.data.content)
     })
   })
 
@@ -107,8 +128,14 @@ export function registerCaseCommentHandlers({ ipcMain, getDb }: HandlerDependenc
         throw new Error('Invalid parameters')
       }
 
-      const db = getDb()
-      db.metadata.deleteCaseComment(validated.data)
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        await session
+          .getWriteExecutor()
+          .execute({ type: 'case-comments:delete', params: [validated.data] })
+        return undefined
+      }
+      getDb().metadata.deleteCaseComment(validated.data)
       return undefined
     })
   })

@@ -169,6 +169,98 @@ export class SqliteReadExecutor implements StorageReadExecutor {
 
       case 'export:variants':
         throw new Error('SQLite export uses the dedicated export worker path')
+
+      case 'tags:list':
+        if (this.dbPool !== null) return await this.dbPool.run({ type: 'tags:list', params: [] })
+        return this.databaseService.tags.listTags()
+
+      case 'tags:getUsageCount':
+        if (this.dbPool !== null)
+          return await this.dbPool.run({ type: 'tags:getUsageCount', params: task.params })
+        return this.databaseService.tags.getTagUsageCount(task.params[0])
+
+      case 'tags:getVariantTags':
+        if (this.dbPool !== null)
+          return await this.dbPool.run({ type: 'tags:getVariantTags', params: task.params })
+        return this.databaseService.tags.getVariantTags(task.params[0], task.params[1])
+
+      case 'annotations:getGlobal':
+        if (this.dbPool !== null)
+          return await this.dbPool.run({
+            type: 'annotations:getGlobal',
+            params: [task.params[0].chr, task.params[0].pos, task.params[0].ref, task.params[0].alt]
+          })
+        return this.databaseService.annotations.getGlobalAnnotation(
+          task.params[0].chr,
+          task.params[0].pos,
+          task.params[0].ref,
+          task.params[0].alt
+        )
+
+      case 'annotations:getPerCase':
+        if (this.dbPool !== null)
+          return await this.dbPool.run({ type: 'annotations:getPerCase', params: task.params })
+        return this.databaseService.annotations.getPerCaseAnnotation(task.params[0], task.params[1])
+
+      case 'annotations:getForVariant':
+        return this.databaseService.annotations.getAnnotationsForVariant(
+          task.params[0],
+          task.params[1].chr,
+          task.params[1].pos,
+          task.params[1].ref,
+          task.params[1].alt
+        )
+
+      case 'annotations:batchGet':
+        return this.databaseService.annotations.getBatch(task.params[0], task.params[1])
+
+      case 'case-comments:list':
+        return this.databaseService.metadata.listCaseComments(task.params[0])
+
+      case 'case-metrics:listDefinitions':
+        return this.databaseService.metadata.listMetricDefinitions()
+
+      case 'case-metrics:listForCase':
+        return this.databaseService.metadata.listCaseMetrics(task.params[0])
+
+      case 'panels:list':
+        return this.databaseService.panels.listPanels()
+
+      case 'panels:get':
+        return this.databaseService.panels.getPanel(task.params[0])
+
+      case 'panels:getGenes':
+        return this.databaseService.panels.getGenes(task.params[0])
+
+      case 'panels:activeForCase':
+        return this.databaseService.panels.getActivePanelsForCase(task.params[0])
+
+      case 'gene-lists:list':
+        if (this.dbPool !== null)
+          return await this.dbPool.run({ type: 'gene-lists:list', params: [] })
+        return this.databaseService.geneLists.listGeneLists()
+
+      case 'gene-lists:getGenes':
+        if (this.dbPool !== null)
+          return await this.dbPool.run({ type: 'gene-lists:getGenes', params: task.params })
+        return this.databaseService.geneLists.getGeneListGenes(task.params[0])
+
+      case 'region-files:list':
+        if (this.dbPool !== null)
+          return await this.dbPool.run({ type: 'region-files:list', params: [] })
+        return this.databaseService.geneLists.listRegionFiles()
+
+      case 'presets:list':
+        return this.databaseService.filterPresets.listPresets()
+
+      case 'analysis-groups:list':
+        return this.databaseService.analysisGroups.listGroups()
+
+      case 'analysis-groups:get':
+        return this.databaseService.analysisGroups.getGroupWithMembers(task.params[0])
+
+      case 'analysis-groups:getForCase':
+        return this.databaseService.analysisGroups.getGroupForCase(task.params[0])
     }
 
     const _exhaustive: never = task

@@ -5,14 +5,20 @@ import type { DatabaseService } from '../../database/DatabaseService'
 import type { DbPool } from '../../database/DbPool'
 import type { Case } from '../../../shared/types/database'
 import { PostgresAvailableBuildsRepository } from './PostgresAvailableBuildsRepository'
+import { PostgresAnalysisGroupsRepository } from './PostgresAnalysisGroupsRepository'
+import { PostgresAnnotationsRepository } from './PostgresAnnotationsRepository'
 import { PostgresCaseLifecycleRepository } from './PostgresCaseLifecycleRepository'
 import { PostgresCaseListRepository } from './PostgresCaseListRepository'
 import { PostgresCaseMetadataRepository } from './PostgresCaseMetadataRepository'
 import { PostgresCasesQueryRepository } from './PostgresCasesQueryRepository'
+import { PostgresCommentsMetricsRepository } from './PostgresCommentsMetricsRepository'
 import { PostgresExportRepository } from './PostgresExportRepository'
+import { PostgresFilterPresetsRepository } from './PostgresFilterPresetsRepository'
 import { PostgresImportExecutor } from './PostgresImportExecutor'
 import { PostgresOverviewRepository } from './PostgresOverviewRepository'
+import { PostgresPanelsRepository } from './PostgresPanelsRepository'
 import { PostgresReadExecutor } from './PostgresReadExecutor'
+import { PostgresTagsRepository } from './PostgresTagsRepository'
 import { PostgresVariantReadRepository } from './PostgresVariantReadRepository'
 import type { StorageImportExecutor } from '../import-executor'
 import type { StorageReadExecutor } from '../read-executor'
@@ -77,15 +83,15 @@ export const POSTGRES_CAPABILITIES: StorageCapabilities = {
     phasingFilters: false
   },
   workflow: {
-    tags: false,
-    annotations: false,
-    caseComments: false,
-    caseMetrics: false,
-    filterPresets: false,
-    panels: false,
-    geneLists: false,
-    regionFiles: false,
-    analysisGroups: false,
+    tags: true,
+    annotations: true,
+    caseComments: true,
+    caseMetrics: true,
+    filterPresets: true,
+    panels: true,
+    geneLists: true,
+    regionFiles: true,
+    analysisGroups: true,
     auditLog: false
   },
   cohort: {
@@ -124,17 +130,40 @@ export class PostgresStorageSession implements StorageSession {
   constructor(options: PostgresStorageSessionOptions) {
     this.pool = options.pool
     const caseMetadata = new PostgresCaseMetadataRepository(options.pool, options.config.schema)
+    const tags = new PostgresTagsRepository(options.pool, options.config.schema)
+    const annotations = new PostgresAnnotationsRepository(options.pool, options.config.schema)
+    const commentsMetrics = new PostgresCommentsMetricsRepository(
+      options.pool,
+      options.config.schema
+    )
+    const panels = new PostgresPanelsRepository(options.pool, options.config.schema)
+    const filterPresets = new PostgresFilterPresetsRepository(options.pool, options.config.schema)
+    const analysisGroups = new PostgresAnalysisGroupsRepository(options.pool, options.config.schema)
     this.readExecutor = new PostgresReadExecutor({
       casesQuery: new PostgresCasesQueryRepository(options.pool, options.config.schema),
       availableBuilds: new PostgresAvailableBuildsRepository(options.pool, options.config.schema),
       overview: new PostgresOverviewRepository(options.pool, options.config.schema),
       export: new PostgresExportRepository(options.pool, options.config.schema),
+      tags,
+      annotations,
+      commentsMetrics,
+      panels,
+      filterPresets,
+      analysisGroups,
       caseMetadata,
       variants: new PostgresVariantReadRepository(options.pool, options.config.schema)
     })
     this.writeExecutor = new PostgresWriteExecutor(
       caseMetadata,
-      new PostgresCaseLifecycleRepository(options.pool, options.config.schema)
+      new PostgresCaseLifecycleRepository(options.pool, options.config.schema),
+      {
+        tags,
+        annotations,
+        commentsMetrics,
+        panels,
+        filterPresets,
+        analysisGroups
+      }
     )
     this.importExecutor = new PostgresImportExecutor({
       schema: options.config.schema,

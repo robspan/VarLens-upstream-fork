@@ -27,13 +27,24 @@ import {
  * Channels: tags:list, tags:create, tags:update, tags:delete, tags:getUsageCount,
  *           tags:getVariantTags, tags:assignVariantTag, tags:removeVariantTag, tags:setVariantTags
  */
-export function registerTagHandlers({ ipcMain, getDb, getDbPool }: HandlerDependencies): void {
+export function registerTagHandlers({
+  ipcMain,
+  getDb,
+  getDbPool,
+  getDbManager
+}: HandlerDependencies): void {
   // ============================================================
   // Tag CRUD Handlers
   // ============================================================
 
   ipcMain.handle('tags:list', async () => {
-    return wrapHandler(() => listTags(getDb, getDbPool))
+    return wrapHandler(async () => {
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session.getReadExecutor().execute({ type: 'tags:list', params: [] })
+      }
+      return listTags(getDb, getDbPool)
+    })
   })
 
   ipcMain.handle('tags:create', async (_event, name: unknown, color: unknown) => {
@@ -42,6 +53,13 @@ export function registerTagHandlers({ ipcMain, getDb, getDbPool }: HandlerDepend
       if (!validated.success) {
         mainLogger.error(`Invalid tags:create params: ${validated.error.message}`, 'tags')
         throw new Error('Invalid tag parameters')
+      }
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session.getWriteExecutor().execute({
+          type: 'tags:create',
+          params: [validated.data.name, validated.data.color]
+        })
       }
       return createTag(validated.data.name, validated.data.color, getDb)
     })
@@ -59,6 +77,13 @@ export function registerTagHandlers({ ipcMain, getDb, getDbPool }: HandlerDepend
         mainLogger.error(`Invalid tags:update updates: ${validatedUpdates.error.message}`, 'tags')
         throw new Error('Invalid tag update parameters')
       }
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session.getWriteExecutor().execute({
+          type: 'tags:update',
+          params: [validatedId.data, validatedUpdates.data]
+        })
+      }
       return updateTag(validatedId.data, validatedUpdates.data, getDb)
     })
   })
@@ -69,6 +94,13 @@ export function registerTagHandlers({ ipcMain, getDb, getDbPool }: HandlerDepend
       if (!validatedId.success) {
         mainLogger.error(`Invalid tags:delete id: ${validatedId.error.message}`, 'tags')
         throw new Error('Invalid tag ID')
+      }
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        await session
+          .getWriteExecutor()
+          .execute({ type: 'tags:delete', params: [validatedId.data] })
+        return undefined
       }
       deleteTag(validatedId.data, getDb)
       return undefined
@@ -81,6 +113,12 @@ export function registerTagHandlers({ ipcMain, getDb, getDbPool }: HandlerDepend
       if (!validatedId.success) {
         mainLogger.error(`Invalid tags:getUsageCount id: ${validatedId.error.message}`, 'tags')
         throw new Error('Invalid tag ID')
+      }
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session
+          .getReadExecutor()
+          .execute({ type: 'tags:getUsageCount', params: [validatedId.data] })
       }
       return getUsageCount(validatedId.data, getDb, getDbPool)
     })
@@ -97,6 +135,13 @@ export function registerTagHandlers({ ipcMain, getDb, getDbPool }: HandlerDepend
         mainLogger.error(`Invalid tags:getVariantTags params: ${validated.error.message}`, 'tags')
         throw new Error('Invalid case/variant ID')
       }
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session.getReadExecutor().execute({
+          type: 'tags:getVariantTags',
+          params: [validated.data.caseId, validated.data.variantId]
+        })
+      }
       return getVariantTags(validated.data.caseId, validated.data.variantId, getDb, getDbPool)
     })
   })
@@ -112,6 +157,14 @@ export function registerTagHandlers({ ipcMain, getDb, getDbPool }: HandlerDepend
             'tags'
           )
           throw new Error('Invalid tag assignment parameters')
+        }
+        const session = getDbManager().getCurrentSession()
+        if (session.capabilities.backend === 'postgres') {
+          await session.getWriteExecutor().execute({
+            type: 'tags:assignVariantTag',
+            params: [validated.data.caseId, validated.data.variantId, validated.data.tagId]
+          })
+          return undefined
         }
         assignVariantTag(
           validated.data.caseId,
@@ -136,6 +189,14 @@ export function registerTagHandlers({ ipcMain, getDb, getDbPool }: HandlerDepend
           )
           throw new Error('Invalid tag removal parameters')
         }
+        const session = getDbManager().getCurrentSession()
+        if (session.capabilities.backend === 'postgres') {
+          await session.getWriteExecutor().execute({
+            type: 'tags:removeVariantTag',
+            params: [validated.data.caseId, validated.data.variantId, validated.data.tagId]
+          })
+          return undefined
+        }
         removeVariantTag(
           validated.data.caseId,
           validated.data.variantId,
@@ -155,6 +216,14 @@ export function registerTagHandlers({ ipcMain, getDb, getDbPool }: HandlerDepend
         if (!validated.success) {
           mainLogger.error(`Invalid tags:setVariantTags params: ${validated.error.message}`, 'tags')
           throw new Error('Invalid tag set parameters')
+        }
+        const session = getDbManager().getCurrentSession()
+        if (session.capabilities.backend === 'postgres') {
+          await session.getWriteExecutor().execute({
+            type: 'tags:setVariantTags',
+            params: [validated.data.caseId, validated.data.variantId, validated.data.tagIds]
+          })
+          return undefined
         }
         setVariantTags(
           validated.data.caseId,

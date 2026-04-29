@@ -4,12 +4,13 @@ import { POSTGRES_MIGRATIONS } from '../../../src/main/storage/postgres/migratio
 
 describe('Postgres migration definitions', () => {
   it('loads the initial PostgreSQL migrations with SQL and sha256 checksums', () => {
-    expect(POSTGRES_MIGRATIONS).toHaveLength(4)
+    expect(POSTGRES_MIGRATIONS).toHaveLength(5)
     expect(POSTGRES_MIGRATIONS.map((migration) => migration.version)).toEqual([
       '0001',
       '0002',
       '0003',
-      '0004'
+      '0004',
+      '0005'
     ])
 
     for (const migration of POSTGRES_MIGRATIONS) {

@@ -2,6 +2,17 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { PostgresWriteExecutor } from '../../../src/main/storage/postgres/PostgresWriteExecutor'
 
+function workflowRepositories(): ConstructorParameters<typeof PostgresWriteExecutor>[2] {
+  return {
+    tags: {} as never,
+    annotations: {} as never,
+    commentsMetrics: {} as never,
+    panels: {} as never,
+    filterPresets: {} as never,
+    analysisGroups: {} as never
+  }
+}
+
 describe('PostgresWriteExecutor', () => {
   it('routes case metadata write tasks to the postgres repository', async () => {
     const repository = {
@@ -21,7 +32,7 @@ describe('PostgresWriteExecutor', () => {
     const caseLifecycle = {
       deleteCase: vi.fn()
     }
-    const executor = new PostgresWriteExecutor(repository, caseLifecycle)
+    const executor = new PostgresWriteExecutor(repository, caseLifecycle, workflowRepositories())
 
     await executor.execute({ type: 'case-metadata:upsert', params: [1, { sex: 'female' }] })
     await executor.execute({ type: 'case-metadata:setCohorts', params: [1, [2, 3]] })
@@ -50,10 +61,40 @@ describe('PostgresWriteExecutor', () => {
     const caseLifecycle = {
       deleteCase: vi.fn().mockResolvedValue(undefined)
     }
-    const executor = new PostgresWriteExecutor(caseMetadata, caseLifecycle)
+    const executor = new PostgresWriteExecutor(caseMetadata, caseLifecycle, workflowRepositories())
 
     await executor.execute({ type: 'cases:delete', params: [7] })
 
     expect(caseLifecycle.deleteCase).toHaveBeenCalledWith(7)
+  })
+
+  it('routes workflow write tasks to postgres workflow repositories', async () => {
+    const workflow = workflowRepositories()
+    workflow.tags = { createTag: vi.fn().mockResolvedValue({ id: 1 }) } as never
+    workflow.annotations = {
+      upsertPerCaseAnnotation: vi.fn().mockResolvedValue({ case_id: 1, variant_id: 2 })
+    } as never
+    workflow.panels = { createPanel: vi.fn().mockResolvedValue({ id: 3 }) } as never
+    const executor = new PostgresWriteExecutor({} as never, {} as never, workflow)
+
+    await expect(
+      executor.execute({ type: 'tags:create', params: ['Review', '#fff'] })
+    ).resolves.toEqual({
+      id: 1
+    })
+    await executor.execute({
+      type: 'annotations:upsertPerCase',
+      params: [1, 2, { acmg_classification: 'VUS' }]
+    })
+    await executor.execute({
+      type: 'panels:create',
+      params: [{ name: 'Panel', source: 'manual' }]
+    })
+
+    expect(workflow.tags.createTag).toHaveBeenCalledWith('Review', '#fff')
+    expect(workflow.annotations.upsertPerCaseAnnotation).toHaveBeenCalledWith(1, 2, {
+      acmg_classification: 'VUS'
+    })
+    expect(workflow.panels.createPanel).toHaveBeenCalledWith({ name: 'Panel', source: 'manual' })
   })
 })

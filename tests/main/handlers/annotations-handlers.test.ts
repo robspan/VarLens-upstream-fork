@@ -333,8 +333,9 @@ describe('annotations:upsertPerCase — variants:annotationChanged broadcast', (
     registerAnnotationHandlers({
       ipcMain: fakeIpcMain,
       getDb: () => db,
-      getDbManager:
-        (() => ({})) as unknown as () => import('../../../src/main/services/DatabaseManager').DatabaseManager
+      getDbManager: (() => ({
+        getCurrentSession: () => ({ capabilities: { backend: 'sqlite' } })
+      })) as unknown as () => import('../../../src/main/services/DatabaseManager').DatabaseManager
     })
   })
 
@@ -415,8 +416,9 @@ describe('annotations:upsertPerCase — variants:annotationChanged broadcast', (
     registerAnnotationHandlers({
       ipcMain: fakeIpcMain,
       getDb: () => db,
-      getDbManager:
-        (() => ({})) as unknown as () => import('../../../src/main/services/DatabaseManager').DatabaseManager
+      getDbManager: (() => ({
+        getCurrentSession: () => ({ capabilities: { backend: 'sqlite' } })
+      })) as unknown as () => import('../../../src/main/services/DatabaseManager').DatabaseManager
     })
 
     const result = await invoke('annotations:upsertPerCase', caseId, variantId, {

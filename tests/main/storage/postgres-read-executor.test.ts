@@ -2,6 +2,17 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { PostgresReadExecutor } from '../../../src/main/storage/postgres/PostgresReadExecutor'
 
+function workflowRepositories() {
+  return {
+    tags: {} as never,
+    annotations: {} as never,
+    commentsMetrics: {} as never,
+    panels: {} as never,
+    filterPresets: {} as never,
+    analysisGroups: {} as never
+  }
+}
+
 describe('PostgresReadExecutor', () => {
   it('dispatches cases:query to the postgres cases query repository', async () => {
     const expected = { data: [], total_count: 0 }
@@ -22,6 +33,7 @@ describe('PostgresReadExecutor', () => {
       availableBuilds,
       overview: {} as never,
       export: {} as never,
+      ...workflowRepositories(),
       caseMetadata: {} as never
     })
 
@@ -43,6 +55,7 @@ describe('PostgresReadExecutor', () => {
       availableBuilds,
       overview: {} as never,
       export: {} as never,
+      ...workflowRepositories(),
       caseMetadata: {} as never
     })
 
@@ -72,6 +85,7 @@ describe('PostgresReadExecutor', () => {
       availableBuilds: {} as never,
       overview: {} as never,
       export: {} as never,
+      ...workflowRepositories(),
       caseMetadata: caseMetadata as never
     })
 
@@ -110,6 +124,7 @@ describe('PostgresReadExecutor', () => {
       availableBuilds,
       overview: {} as never,
       export: {} as never,
+      ...workflowRepositories(),
       caseMetadata,
       variants
     } as never)
@@ -137,6 +152,7 @@ describe('PostgresReadExecutor', () => {
       availableBuilds: {} as never,
       overview: {} as never,
       export: {} as never,
+      ...workflowRepositories(),
       caseMetadata: {} as never,
       variants
     } as never)
@@ -175,6 +191,7 @@ describe('PostgresReadExecutor', () => {
       availableBuilds: {} as never,
       overview: {} as never,
       export: {} as never,
+      ...workflowRepositories(),
       caseMetadata: {} as never,
       variants
     } as never)
@@ -204,6 +221,7 @@ describe('PostgresReadExecutor', () => {
       availableBuilds: {} as never,
       overview,
       export: exportRepository,
+      ...workflowRepositories(),
       caseMetadata: {} as never,
       variants: {} as never
     })
@@ -218,5 +236,31 @@ describe('PostgresReadExecutor', () => {
 
     expect(overview.getOverview).toHaveBeenCalledWith()
     expect(exportRepository.streamVariantRows).toHaveBeenCalledWith({ case_id: 5 })
+  })
+
+  it('dispatches workflow reads to postgres workflow repositories', async () => {
+    const tags = { listTags: vi.fn().mockResolvedValue([{ id: 1 }]) }
+    const panels = { listGeneLists: vi.fn().mockResolvedValue([{ id: 2 }]) }
+    const filterPresets = { listPresets: vi.fn().mockResolvedValue([{ id: 3 }]) }
+    const executor = new PostgresReadExecutor({
+      casesQuery: {} as never,
+      availableBuilds: {} as never,
+      overview: {} as never,
+      export: {} as never,
+      ...workflowRepositories(),
+      tags,
+      panels: panels as never,
+      filterPresets,
+      caseMetadata: {} as never,
+      variants: {} as never
+    })
+
+    await expect(executor.execute({ type: 'tags:list', params: [] })).resolves.toEqual([{ id: 1 }])
+    await expect(executor.execute({ type: 'gene-lists:list', params: [] })).resolves.toEqual([
+      { id: 2 }
+    ])
+    await expect(executor.execute({ type: 'presets:list', params: [] })).resolves.toEqual([
+      { id: 3 }
+    ])
   })
 })

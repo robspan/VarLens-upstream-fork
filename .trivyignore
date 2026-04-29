@@ -1,7 +1,7 @@
 # Trivy-Ignore-Liste für VarLens-IaC.
 #
 # Konzept-Pilot akzeptiert die hier gelisteten CVEs, weil sie upstream
-# Go-stdlib-Issues in den Compose-Stack-Images (louislam/uptime-kuma,
+# Go-stdlib-Issues in den Compose-Stack-Images (caddy, louislam/uptime-kuma,
 # amir20/dozzle) sind — fixbar nur durch Image-Rebuild durch die
 # Upstream-Maintainer.
 #
@@ -17,7 +17,8 @@
 #
 # Stand: 2026-04-29 — nächstes Review: 2026-07-29.
 
-# === Go stdlib + Bibliotheken in Kuma + Dozzle ===
+# === Go stdlib + Bibliotheken in Caddy + Kuma + Dozzle ===
+CVE-2023-39325 exp:2026-07-29
 CVE-2023-45283 exp:2026-07-29
 CVE-2023-45288 exp:2026-07-29
 CVE-2024-21538 exp:2026-07-29
@@ -48,10 +49,12 @@ CVE-2026-26018 exp:2026-07-29
 CVE-2026-26278 exp:2026-07-29
 CVE-2026-26960 exp:2026-07-29
 CVE-2026-26996 exp:2026-07-29
+CVE-2026-27137 exp:2026-07-29
 CVE-2026-27601 exp:2026-07-29
 CVE-2026-27903 exp:2026-07-29
 CVE-2026-27904 exp:2026-07-29
 CVE-2026-29786 exp:2026-07-29
+CVE-2026-30836 exp:2026-07-29
 CVE-2026-30952 exp:2026-07-29
 CVE-2026-31802 exp:2026-07-29
 CVE-2026-32280 exp:2026-07-29
@@ -60,6 +63,7 @@ CVE-2026-32283 exp:2026-07-29
 CVE-2026-33036 exp:2026-07-29
 CVE-2026-33151 exp:2026-07-29
 CVE-2026-33186 exp:2026-07-29
+CVE-2026-33810 exp:2026-07-29
 CVE-2026-34040 exp:2026-07-29
 CVE-2026-34986 exp:2026-07-29
 CVE-2026-35525 exp:2026-07-29

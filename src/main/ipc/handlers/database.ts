@@ -22,6 +22,8 @@ import {
   createDatabase,
   rekeyDatabase,
   getDatabaseInfo,
+  getDatabaseCapabilities,
+  getPostgresDiagnostics,
   getRecentDatabases,
   getDatabaseOverview,
   removeRecentDatabase,
@@ -141,6 +143,24 @@ export function registerDatabaseHandlers({
   })
 
   /**
+   * Get capability flags for the current storage backend/session
+   */
+  ipcMain.handle('database:capabilities', async () => {
+    return wrapHandler(async () => {
+      return getDatabaseCapabilities(getDbManager)
+    })
+  })
+
+  /**
+   * Get PostgreSQL hosted workspace diagnostics for the current session.
+   */
+  ipcMain.handle('database:postgresDiagnostics', async () => {
+    return wrapHandler(async () => {
+      return await getPostgresDiagnostics(getDbManager)
+    })
+  })
+
+  /**
    * Get the list of recent databases
    */
   ipcMain.handle('database:recentList', async () => {
@@ -154,6 +174,10 @@ export function registerDatabaseHandlers({
    */
   ipcMain.handle('database:overview', async () => {
     return wrapHandler(async () => {
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session.getReadExecutor().execute({ type: 'database:overview', params: [] })
+      }
       return getDatabaseOverview(getDb, getDbPool)
     })
   })

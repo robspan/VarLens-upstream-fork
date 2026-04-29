@@ -13,11 +13,18 @@ import { mainLogger } from '../../services/MainLogger'
  *
  * Channels: presets:list, presets:create, presets:update, presets:delete, presets:reorder
  */
-export function registerFilterPresetHandlers({ ipcMain, getDb }: HandlerDependencies): void {
+export function registerFilterPresetHandlers({
+  ipcMain,
+  getDb,
+  getDbManager
+}: HandlerDependencies): void {
   ipcMain.handle('presets:list', async () => {
     return wrapHandler(async () => {
-      const db = getDb()
-      return db.filterPresets.listPresets()
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session.getReadExecutor().execute({ type: 'presets:list', params: [] })
+      }
+      return getDb().filterPresets.listPresets()
     })
   })
 
@@ -28,8 +35,13 @@ export function registerFilterPresetHandlers({ ipcMain, getDb }: HandlerDependen
         mainLogger.error(`Invalid presets:create params: ${validated.error.message}`, 'presets')
         throw new Error('Invalid preset parameters')
       }
-      const db = getDb()
-      return db.filterPresets.createPreset(validated.data)
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session
+          .getWriteExecutor()
+          .execute({ type: 'presets:create', params: [validated.data] })
+      }
+      return getDb().filterPresets.createPreset(validated.data)
     })
   })
 
@@ -48,8 +60,14 @@ export function registerFilterPresetHandlers({ ipcMain, getDb }: HandlerDependen
         )
         throw new Error('Invalid preset update parameters')
       }
-      const db = getDb()
-      return db.filterPresets.updatePreset(validatedId.data, validatedUpdates.data)
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session.getWriteExecutor().execute({
+          type: 'presets:update',
+          params: [validatedId.data, validatedUpdates.data]
+        })
+      }
+      return getDb().filterPresets.updatePreset(validatedId.data, validatedUpdates.data)
     })
   })
 
@@ -60,8 +78,14 @@ export function registerFilterPresetHandlers({ ipcMain, getDb }: HandlerDependen
         mainLogger.error(`Invalid presets:delete id: ${validatedId.error.message}`, 'presets')
         throw new Error('Invalid preset ID')
       }
-      const db = getDb()
-      db.filterPresets.deletePreset(validatedId.data)
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        await session
+          .getWriteExecutor()
+          .execute({ type: 'presets:delete', params: [validatedId.data] })
+        return undefined
+      }
+      getDb().filterPresets.deletePreset(validatedId.data)
       return undefined
     })
   })
@@ -73,8 +97,14 @@ export function registerFilterPresetHandlers({ ipcMain, getDb }: HandlerDependen
         mainLogger.error(`Invalid presets:reorder params: ${validated.error.message}`, 'presets')
         throw new Error('Invalid reorder parameters')
       }
-      const db = getDb()
-      db.filterPresets.reorderPresets(validated.data)
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        await session
+          .getWriteExecutor()
+          .execute({ type: 'presets:reorder', params: [validated.data] })
+        return undefined
+      }
+      getDb().filterPresets.reorderPresets(validated.data)
       return undefined
     })
   })

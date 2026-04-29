@@ -194,6 +194,7 @@ function toCaseSex(value: string | null | undefined): CaseSex {
 import { useCaseMetadata, getCohortColor } from '../composables/useCaseMetadata'
 import { useDebounce } from '../composables/useDebounce'
 import { useApiService } from '../composables/useApiService'
+import { getCurrentUnsupportedReason } from '../utils/backend-capabilities'
 import CaseStatusIcons from './CaseStatusIcons.vue'
 import DeleteCaseDialog from './DeleteCaseDialog.vue'
 import AppSnackbar from './AppSnackbar.vue'
@@ -445,6 +446,13 @@ const handleDelete = async (): Promise<void> => {
 
   if (contextMenuCase.value === null || contextMenuCase.value === undefined) return
 
+  const reason = await getCurrentUnsupportedReason('cases.deleteOne')
+  if (reason !== null) {
+    logService.warn(reason, 'backend-capabilities')
+    snackbarRef.value?.show(reason)
+    return
+  }
+
   const caseToDelete = contextMenuCase.value
   const confirmed = await dialogRef.value?.show(caseToDelete.name, caseToDelete.variant_count)
   if (confirmed !== true) return
@@ -497,7 +505,8 @@ const handleDelete = async (): Promise<void> => {
   // `await` so the UI stays responsive during large deletes.
   api!.cases
     .delete(deletedId)
-    .then(() => {
+    .then((result) => {
+      unwrapIpcResult(result)
       snackbarRef.value?.show(`Deleted "${deletedName}"`)
     })
     .catch((error) => {
@@ -524,6 +533,13 @@ const handleDeleteSelected = async (): Promise<void> => {
 
   const ids = Array.from(multiSelected.value)
   if (ids.length === 0) return
+
+  const reason = await getCurrentUnsupportedReason('cases.deleteMany')
+  if (reason !== null) {
+    logService.warn(reason, 'backend-capabilities')
+    snackbarRef.value?.show(reason)
+    return
+  }
 
   // Calculate total variant count for confirmation
   const totalVariants = ids.reduce((sum, id) => {
@@ -563,7 +579,8 @@ const handleDeleteSelected = async (): Promise<void> => {
 
   api!.cases
     .deleteBatch(ids)
-    .then((deleted) => {
+    .then((result) => {
+      const deleted = unwrapIpcResult(result)
       snackbarRef.value?.show(`Deleted ${deleted} ${deleted === 1 ? 'case' : 'cases'}`)
     })
     .catch((error) => {

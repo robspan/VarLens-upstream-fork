@@ -15,14 +15,73 @@ interface SqliteStorageSessionOptions {
   dbPool: DbPool | null
 }
 
-const SQLITE_CAPABILITIES: StorageCapabilities = {
+export const SQLITE_CAPABILITIES: StorageCapabilities = {
   backend: 'sqlite',
-  supportsEncryptionAtRest: true,
-  supportsLocalFileLifecycle: true,
-  supportsHostedConnectionLifecycle: false,
-  supportsWorkerReadPool: true,
-  supportsFileBackedWorkerWrites: true,
-  supportsFullTextSearch: true
+  workspace: {
+    localFileLifecycle: true,
+    hostedConnectionLifecycle: false,
+    encryptionAtRest: true,
+    migrations: true,
+    healthDiagnostics: true
+  },
+  cases: {
+    list: true,
+    query: true,
+    deleteOne: true,
+    deleteMany: true,
+    deleteAll: true,
+    overview: true
+  },
+  imports: {
+    json: true,
+    vcf: true,
+    multiFileVcf: true,
+    bedFilters: true,
+    cancellation: true
+  },
+  variants: {
+    query: true,
+    searchQuery: true,
+    legacySearch: true,
+    filterOptions: true,
+    columnMeta: true,
+    typeCounts: true,
+    typesPresent: true,
+    geneSymbols: true,
+    panelFilters: true,
+    tagFilters: true,
+    commentFilters: true,
+    acmgFilters: true,
+    annotationFilters: true,
+    inheritanceFilters: true,
+    analysisGroupFilters: true,
+    phasingFilters: true
+  },
+  workflow: {
+    tags: true,
+    annotations: true,
+    caseComments: true,
+    caseMetrics: true,
+    filterPresets: true,
+    panels: true,
+    geneLists: true,
+    regionFiles: true,
+    analysisGroups: true,
+    auditLog: true
+  },
+  cohort: {
+    query: true,
+    summary: true,
+    rebuild: true,
+    carriers: true,
+    geneBurden: true,
+    columnMeta: true
+  },
+  export: {
+    variants: true,
+    cohort: true,
+    streaming: true
+  }
 }
 
 export class SqliteStorageSession implements StorageSession {

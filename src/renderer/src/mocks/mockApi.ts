@@ -7,12 +7,82 @@
  */
 
 import type { WindowAPI, CommentCategory } from '../../../shared/types/api'
+import type { StorageCapabilities } from '../../../shared/types/storage-capabilities'
 import { mockCases } from './fixtures/cases'
 import { mockVariants, mockFilterOptions } from './fixtures/variants'
 
 // Mutable state for interactive development
 let cases = [...mockCases]
 const variants = [...mockVariants]
+
+const MOCK_SQLITE_CAPABILITIES: StorageCapabilities = {
+  backend: 'sqlite',
+  workspace: {
+    localFileLifecycle: true,
+    hostedConnectionLifecycle: false,
+    encryptionAtRest: true,
+    migrations: true,
+    healthDiagnostics: true
+  },
+  cases: {
+    list: true,
+    query: true,
+    deleteOne: true,
+    deleteMany: true,
+    deleteAll: true,
+    overview: true
+  },
+  imports: {
+    json: true,
+    vcf: true,
+    multiFileVcf: true,
+    bedFilters: true,
+    cancellation: true
+  },
+  variants: {
+    query: true,
+    searchQuery: true,
+    legacySearch: true,
+    filterOptions: true,
+    columnMeta: true,
+    typeCounts: true,
+    typesPresent: true,
+    geneSymbols: true,
+    panelFilters: true,
+    tagFilters: true,
+    commentFilters: true,
+    acmgFilters: true,
+    annotationFilters: true,
+    inheritanceFilters: true,
+    analysisGroupFilters: true,
+    phasingFilters: true
+  },
+  workflow: {
+    tags: true,
+    annotations: true,
+    caseComments: true,
+    caseMetrics: true,
+    filterPresets: true,
+    panels: true,
+    geneLists: true,
+    regionFiles: true,
+    analysisGroups: true,
+    auditLog: true
+  },
+  cohort: {
+    query: true,
+    summary: true,
+    rebuild: true,
+    carriers: true,
+    geneBurden: true,
+    columnMeta: true
+  },
+  export: {
+    variants: true,
+    cohort: true,
+    streaming: true
+  }
+}
 
 export const mockApi: WindowAPI = {
   cases: {
@@ -241,6 +311,8 @@ export const mockApi: WindowAPI = {
     }),
     rekey: async () => ({ success: true }),
     info: async () => ({ path: '/mock/database.db', name: 'Mock Database', encrypted: false }),
+    capabilities: async () => MOCK_SQLITE_CAPABILITIES,
+    postgresDiagnostics: async () => ({ ok: false, schema: '' }),
     recentList: async () => [
       { path: '/mock/database.db', name: 'Mock Database', lastOpened: Date.now() }
     ],

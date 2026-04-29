@@ -13,9 +13,14 @@ import type { FilterOptions } from '../../../shared/types/api'
 import { LruMap } from '../../../shared/utils/lru-map'
 import { logService } from '../services/LogService'
 import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
+import { getCurrentUnsupportedReason, type CapabilityPath } from '../utils/backend-capabilities'
 
 /** Maximum number of cached filter options entries */
 const FILTER_OPTIONS_CACHE_MAX = 20
+
+async function getCapabilityBlockReason(path: CapabilityPath): Promise<string | null> {
+  return getCurrentUnsupportedReason(path)
+}
 
 /**
  * Return type for useFilterOptionsCache composable
@@ -75,6 +80,12 @@ export function useFilterOptionsCache(api: WindowAPI | undefined): UseFilterOpti
       return
     }
 
+    const reason = await getCapabilityBlockReason('variants.filterOptions')
+    if (reason !== null) {
+      logService.warn(reason, 'backend-capabilities')
+      return
+    }
+
     try {
       const options = unwrapIpcResult(await api.variants.getFilterOptions(caseId))
       filterOptions.value = options
@@ -108,19 +119,40 @@ export function useFilterOptionsCache(api: WindowAPI | undefined): UseFilterOpti
 
     // Check cache first for filter options
     const cached = filterOptionsCache.get(caseId)
+    const tagsReason = await getCapabilityBlockReason('workflow.tags')
     if (cached) {
       // Options are cached — only need to load tags
       filterOptions.value = cached
+      if (tagsReason !== null) {
+        logService.warn(tagsReason, 'backend-capabilities')
+        return
+      }
       await loadTags()
+      return
+    }
+
+    const filterOptionsReason = await getCapabilityBlockReason('variants.filterOptions')
+    if (filterOptionsReason !== null) {
+      logService.warn(filterOptionsReason, 'backend-capabilities')
+    }
+    if (tagsReason !== null) {
+      logService.warn(tagsReason, 'backend-capabilities')
+    }
+    if (filterOptionsReason !== null && tagsReason !== null) {
       return
     }
 
     try {
       // Load filter options and tags in parallel
-      const [optionsResult] = await Promise.all([api.variants.getFilterOptions(caseId), loadTags()])
-      const options = unwrapIpcResult(optionsResult)
-      filterOptions.value = options
-      cacheFilterOptions(caseId, options)
+      const [optionsResult] = await Promise.all([
+        filterOptionsReason === null ? api.variants.getFilterOptions(caseId) : undefined,
+        tagsReason === null ? loadTags() : undefined
+      ])
+      if (optionsResult !== undefined) {
+        const options = unwrapIpcResult(optionsResult)
+        filterOptions.value = options
+        cacheFilterOptions(caseId, options)
+      }
     } catch (error) {
       logService.error(
         'Failed to load filter options: ' +

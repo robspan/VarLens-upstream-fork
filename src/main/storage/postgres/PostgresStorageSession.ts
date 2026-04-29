@@ -5,11 +5,22 @@ import type { DatabaseService } from '../../database/DatabaseService'
 import type { DbPool } from '../../database/DbPool'
 import type { Case } from '../../../shared/types/database'
 import { PostgresAvailableBuildsRepository } from './PostgresAvailableBuildsRepository'
+import { PostgresAnalysisGroupsRepository } from './PostgresAnalysisGroupsRepository'
+import { PostgresAnnotationsRepository } from './PostgresAnnotationsRepository'
+import { PostgresCaseLifecycleRepository } from './PostgresCaseLifecycleRepository'
 import { PostgresCaseListRepository } from './PostgresCaseListRepository'
 import { PostgresCaseMetadataRepository } from './PostgresCaseMetadataRepository'
 import { PostgresCasesQueryRepository } from './PostgresCasesQueryRepository'
+import { PostgresCommentsMetricsRepository } from './PostgresCommentsMetricsRepository'
+import { PostgresExportRepository } from './PostgresExportRepository'
+import { PostgresFilterPresetsRepository } from './PostgresFilterPresetsRepository'
+import { PostgresHealthDiagnostics } from './PostgresHealthDiagnostics'
+import type { PostgresHealthDiagnosticResult } from './PostgresHealthDiagnostics'
 import { PostgresImportExecutor } from './PostgresImportExecutor'
+import { PostgresOverviewRepository } from './PostgresOverviewRepository'
+import { PostgresPanelsRepository } from './PostgresPanelsRepository'
 import { PostgresReadExecutor } from './PostgresReadExecutor'
+import { PostgresTagsRepository } from './PostgresTagsRepository'
 import { PostgresVariantReadRepository } from './PostgresVariantReadRepository'
 import type { StorageImportExecutor } from '../import-executor'
 import type { StorageReadExecutor } from '../read-executor'
@@ -31,14 +42,73 @@ interface PostgresStorageSessionOptions {
   createCaseListRepository?: (pool: Pool, schema: string) => PostgresCaseListRepository
 }
 
-const POSTGRES_CAPABILITIES: StorageCapabilities = {
+export const POSTGRES_CAPABILITIES: StorageCapabilities = {
   backend: 'postgres',
-  supportsEncryptionAtRest: false,
-  supportsLocalFileLifecycle: false,
-  supportsHostedConnectionLifecycle: true,
-  supportsWorkerReadPool: false,
-  supportsFileBackedWorkerWrites: false,
-  supportsFullTextSearch: false
+  workspace: {
+    localFileLifecycle: false,
+    hostedConnectionLifecycle: true,
+    encryptionAtRest: false,
+    migrations: true,
+    healthDiagnostics: true
+  },
+  cases: {
+    list: true,
+    query: true,
+    deleteOne: true,
+    deleteMany: false,
+    deleteAll: false,
+    overview: true
+  },
+  imports: {
+    json: true,
+    vcf: true,
+    multiFileVcf: true,
+    bedFilters: true,
+    cancellation: true
+  },
+  variants: {
+    query: true,
+    searchQuery: true,
+    legacySearch: false,
+    filterOptions: true,
+    columnMeta: true,
+    typeCounts: true,
+    typesPresent: true,
+    geneSymbols: true,
+    panelFilters: false,
+    tagFilters: false,
+    commentFilters: false,
+    acmgFilters: false,
+    annotationFilters: false,
+    inheritanceFilters: false,
+    analysisGroupFilters: false,
+    phasingFilters: false
+  },
+  workflow: {
+    tags: true,
+    annotations: true,
+    caseComments: true,
+    caseMetrics: true,
+    filterPresets: true,
+    panels: true,
+    geneLists: true,
+    regionFiles: true,
+    analysisGroups: true,
+    auditLog: false
+  },
+  cohort: {
+    query: false,
+    summary: false,
+    rebuild: false,
+    carriers: false,
+    geneBurden: false,
+    columnMeta: false
+  },
+  export: {
+    variants: true,
+    cohort: false,
+    streaming: true
+  }
 }
 
 function unsupported(message: string): never {
@@ -62,13 +132,41 @@ export class PostgresStorageSession implements StorageSession {
   constructor(options: PostgresStorageSessionOptions) {
     this.pool = options.pool
     const caseMetadata = new PostgresCaseMetadataRepository(options.pool, options.config.schema)
+    const tags = new PostgresTagsRepository(options.pool, options.config.schema)
+    const annotations = new PostgresAnnotationsRepository(options.pool, options.config.schema)
+    const commentsMetrics = new PostgresCommentsMetricsRepository(
+      options.pool,
+      options.config.schema
+    )
+    const panels = new PostgresPanelsRepository(options.pool, options.config.schema)
+    const filterPresets = new PostgresFilterPresetsRepository(options.pool, options.config.schema)
+    const analysisGroups = new PostgresAnalysisGroupsRepository(options.pool, options.config.schema)
     this.readExecutor = new PostgresReadExecutor({
       casesQuery: new PostgresCasesQueryRepository(options.pool, options.config.schema),
       availableBuilds: new PostgresAvailableBuildsRepository(options.pool, options.config.schema),
+      overview: new PostgresOverviewRepository(options.pool, options.config.schema),
+      export: new PostgresExportRepository(options.pool, options.config.schema),
+      tags,
+      annotations,
+      commentsMetrics,
+      panels,
+      filterPresets,
+      analysisGroups,
       caseMetadata,
       variants: new PostgresVariantReadRepository(options.pool, options.config.schema)
     })
-    this.writeExecutor = new PostgresWriteExecutor(caseMetadata)
+    this.writeExecutor = new PostgresWriteExecutor(
+      caseMetadata,
+      new PostgresCaseLifecycleRepository(options.pool, options.config.schema),
+      {
+        tags,
+        annotations,
+        commentsMetrics,
+        panels,
+        filterPresets,
+        analysisGroups
+      }
+    )
     this.importExecutor = new PostgresImportExecutor({
       schema: options.config.schema,
       // buildPostgresClientConfig always sets connectionString = config.url (a string),
@@ -164,5 +262,10 @@ export class PostgresStorageSession implements StorageSession {
         roundTripMs: Date.now() - startedAt
       }
     }
+  }
+
+  async collectDiagnostics(): Promise<PostgresHealthDiagnosticResult> {
+    const schema = this.workspace.kind === 'postgres' ? this.workspace.schema : 'public'
+    return await new PostgresHealthDiagnostics(this.pool, schema).collect()
   }
 }

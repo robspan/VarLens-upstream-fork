@@ -42,6 +42,7 @@ import OverviewPhenotypesSection from './database-overview/OverviewPhenotypesSec
 import { mdiAlertCircle, mdiChartBoxOutline, mdiClose } from '@mdi/js'
 import { logService } from '../services/LogService'
 import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
+import { getCurrentUnsupportedReason } from '../utils/backend-capabilities'
 
 const { api } = useApiService()
 
@@ -50,6 +51,10 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const overview = ref<DatabaseOverview | null>(null)
 
+async function getOverviewBlockReason(): Promise<string | null> {
+  return getCurrentUnsupportedReason('cases.overview')
+}
+
 /** Load overview data from the database IPC endpoint */
 async function loadOverview(): Promise<void> {
   // Guard for browser dev mode (no preload)
@@ -57,8 +62,16 @@ async function loadOverview(): Promise<void> {
     return
   }
 
-  loading.value = true
   error.value = null
+  const reason = await getOverviewBlockReason()
+  if (reason !== null) {
+    logService.warn(reason, 'backend-capabilities')
+    overview.value = null
+    error.value = reason
+    return
+  }
+
+  loading.value = true
   try {
     const data = unwrapIpcResult(await api.database.getOverview())
     // Normalize: ensure new annotation fields have safe defaults

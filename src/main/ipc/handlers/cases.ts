@@ -10,7 +10,9 @@ import {
   deleteSingleCase,
   deleteAllCases,
   deleteBatchCases,
-  getAvailableBuilds
+  getAvailableBuilds,
+  acquireDeleteLock,
+  releaseDeleteLock
 } from './cases-logic'
 import type { DeleteCallbacks } from './cases-logic'
 
@@ -23,14 +25,48 @@ const deleteCallbacks: DeleteCallbacks = {
   onCohortStale: (data) => safeEmit('cohort:summaryRebuilt', data)
 }
 
-function assertFileBackedWorkerWritesSupported(
+function assertCaseDeleteSupported(
   operation: 'cases:delete' | 'cases:deleteAll' | 'cases:deleteBatch',
   getDbManager: HandlerDependencies['getDbManager']
 ): void {
   const session = getDbManager().getCurrentSession()
-  if (!session.capabilities.supportsFileBackedWorkerWrites) {
+  const supported =
+    operation === 'cases:delete'
+      ? session.capabilities.cases.deleteOne
+      : operation === 'cases:deleteBatch'
+        ? session.capabilities.cases.deleteMany
+        : session.capabilities.cases.deleteAll
+
+  if (!supported) {
     throw new Error(`${operation} is SQLite-only in Phase 4`)
   }
+}
+
+async function deleteSingleCaseForCurrentSession(
+  id: number,
+  getDb: HandlerDependencies['getDb'],
+  getDbManager: HandlerDependencies['getDbManager']
+): Promise<void> {
+  const session = getDbManager().getCurrentSession()
+  if (session.capabilities.backend === 'postgres') {
+    if (!acquireDeleteLock()) {
+      mainLogger.warn(
+        `Delete already in progress, rejecting postgres delete for case ${id}`,
+        'cases'
+      )
+      throw new Error('A delete operation is already in progress. Please wait for it to finish.')
+    }
+
+    try {
+      await session.getWriteExecutor().execute({ type: 'cases:delete', params: [id] })
+      deleteCallbacks.onDeleted?.({ deleted: 1 })
+    } finally {
+      releaseDeleteLock()
+    }
+    return
+  }
+
+  await deleteSingleCase(id, getDb, deleteCallbacks)
 }
 
 /**
@@ -64,15 +100,15 @@ export function registerCaseHandlers({ ipcMain, getDb, getDbManager }: HandlerDe
         mainLogger.error(`Invalid cases:delete params: ${validated.error.message}`, 'cases')
         throw new Error('Invalid parameters')
       }
-      assertFileBackedWorkerWritesSupported('cases:delete', getDbManager)
-      await deleteSingleCase(validated.data, getDb, deleteCallbacks)
+      assertCaseDeleteSupported('cases:delete', getDbManager)
+      await deleteSingleCaseForCurrentSession(validated.data, getDb, getDbManager)
       return undefined
     })
   })
 
   ipcMain.handle('cases:deleteAll', async () => {
     return wrapHandler(() => {
-      assertFileBackedWorkerWritesSupported('cases:deleteAll', getDbManager)
+      assertCaseDeleteSupported('cases:deleteAll', getDbManager)
       return deleteAllCases(getDb, deleteCallbacks)
     })
   })
@@ -84,7 +120,7 @@ export function registerCaseHandlers({ ipcMain, getDb, getDbManager }: HandlerDe
         mainLogger.error(`Invalid cases:deleteBatch params: ${validated.error.message}`, 'cases')
         throw new Error('Invalid parameters')
       }
-      assertFileBackedWorkerWritesSupported('cases:deleteBatch', getDbManager)
+      assertCaseDeleteSupported('cases:deleteBatch', getDbManager)
       return deleteBatchCases(validated.data, getDb, deleteCallbacks)
     })
   })

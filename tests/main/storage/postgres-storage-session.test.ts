@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { Case } from '../../../src/shared/types/database'
 import type { PostgresStorageConfig } from '../../../src/main/storage/config'
-import { PostgresStorageSession } from '../../../src/main/storage/postgres/PostgresStorageSession'
+import {
+  POSTGRES_CAPABILITIES,
+  PostgresStorageSession
+} from '../../../src/main/storage/postgres/PostgresStorageSession'
 
 function makeConfig(overrides: Partial<PostgresStorageConfig> = {}): PostgresStorageConfig {
   return {
@@ -39,15 +42,7 @@ describe('PostgresStorageSession', () => {
     expect(session.workspace.connectionLabel).toBe('127.0.0.1:55432/varlens_dev (public)')
     expect(session.getReadExecutor()).toBeDefined()
     expect(session.getWriteExecutor()).toBeDefined()
-    expect(session.capabilities).toEqual({
-      backend: 'postgres',
-      supportsEncryptionAtRest: false,
-      supportsLocalFileLifecycle: false,
-      supportsHostedConnectionLifecycle: true,
-      supportsWorkerReadPool: false,
-      supportsFileBackedWorkerWrites: false,
-      supportsFullTextSearch: false
-    })
+    expect(session.capabilities).toEqual(POSTGRES_CAPABILITIES)
   })
 
   it('returns a healthy result when the round-trip query succeeds', async () => {

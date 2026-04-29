@@ -163,6 +163,7 @@ import { cloneForIpc } from '../../utils/cloneForIpc'
 import { logService } from '../../services/LogService'
 import { isIpcError, unwrapIpcResult } from '../../../../shared/types/errors'
 import { useApiService } from '../../composables/useApiService'
+import { getCurrentUnsupportedReason, type CapabilityPath } from '../../utils/backend-capabilities'
 
 interface Props {
   totalCount: number | null
@@ -178,6 +179,19 @@ interface Props {
 const props = defineProps<Props>()
 
 const { api } = useApiService()
+
+function warnUnsupported(reason: string): void {
+  logService.warn(reason, 'backend-capabilities')
+}
+
+async function canUseOrWarn(path: CapabilityPath): Promise<boolean> {
+  const reason = await getCurrentUnsupportedReason(path)
+  if (reason !== null) {
+    warnUnsupported(reason)
+    return false
+  }
+  return true
+}
 
 const emit = defineEmits<{
   'filter-change': []
@@ -228,7 +242,8 @@ const savingPreset = ref(false)
 let applyingPresets = false
 
 // Preset toggle handler — applies merged preset filters
-function handlePresetToggle(presetId: number): void {
+async function handlePresetToggle(presetId: number): Promise<void> {
+  if (!(await canUseOrWarn('workflow.filterPresets'))) return
   togglePreset(presetId)
   applyActivePresets()
 }
@@ -277,6 +292,7 @@ watch(presetDivergenceKey, () => {
 })
 
 async function handleSavePreset(data: { name: string; description: string | null }): Promise<void> {
+  if (!(await canUseOrWarn('workflow.filterPresets'))) return
   savingPreset.value = true
   try {
     const plainFilters = cloneForIpc(filters.value)
@@ -297,10 +313,12 @@ async function handleSavePreset(data: { name: string; description: string | null
 }
 
 async function handleToggleVisibility(id: number, visible: boolean): Promise<void> {
+  if (!(await canUseOrWarn('workflow.filterPresets'))) return
   await updatePresetStore(id, { isVisible: visible })
 }
 
 async function handleDeletePreset(id: number): Promise<void> {
+  if (!(await canUseOrWarn('workflow.filterPresets'))) return
   await deletePresetStore(id)
 }
 
@@ -413,6 +431,11 @@ const searchGeneSymbols = async (query: string) => {
   }
 
   if (api == null) return
+
+  if (!(await canUseOrWarn('cohort.query'))) {
+    geneSymbolSuggestions.value = []
+    return
+  }
 
   loadingGeneSuggestions.value = true
   try {
@@ -595,6 +618,13 @@ const handleExport = () => {
 
 // Load presets + cohort case IDs on mount
 onMounted(async () => {
+  const presetReason = await getCurrentUnsupportedReason('workflow.filterPresets')
+  if (presetReason !== null) {
+    warnUnsupported(presetReason)
+    await loadCohortCaseIds()
+    return
+  }
+
   await Promise.all([loadPresets(), loadCohortCaseIds()])
 })
 

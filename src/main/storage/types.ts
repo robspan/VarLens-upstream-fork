@@ -1,14 +1,9 @@
-export type StorageBackendKind = 'sqlite' | 'postgres'
+import type { StorageBackendKind } from '../../shared/types/storage-capabilities'
 
-export interface StorageCapabilities {
-  readonly backend: StorageBackendKind
-  readonly supportsEncryptionAtRest: boolean
-  readonly supportsLocalFileLifecycle: boolean
-  readonly supportsHostedConnectionLifecycle: boolean
-  readonly supportsWorkerReadPool: boolean
-  readonly supportsFileBackedWorkerWrites: boolean
-  readonly supportsFullTextSearch: boolean
-}
+export type {
+  StorageBackendKind,
+  StorageCapabilities
+} from '../../shared/types/storage-capabilities'
 
 export type WorkspaceRef =
   | {

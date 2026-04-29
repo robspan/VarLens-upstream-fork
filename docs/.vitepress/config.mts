@@ -1,5 +1,12 @@
 import { defineConfig } from 'vitepress'
 
+const referenceItems = [
+  { text: 'Supported Formats', link: '/reference/supported-formats' },
+  { text: 'PostgreSQL Hosted Workspaces', link: '/postgresql-hosted-workspaces' },
+  { text: 'Keyboard Shortcuts', link: '/reference/keyboard-shortcuts' },
+  { text: 'FAQ', link: '/reference/faq' }
+]
+
 export default defineConfig({
   title: 'VarLens',
   description: 'Offline genetic variant analysis for research collaborators',
@@ -67,11 +74,13 @@ export default defineConfig({
       '/reference/': [
         {
           text: 'Reference',
-          items: [
-            { text: 'Supported Formats', link: '/reference/supported-formats' },
-            { text: 'Keyboard Shortcuts', link: '/reference/keyboard-shortcuts' },
-            { text: 'FAQ', link: '/reference/faq' }
-          ]
+          items: referenceItems
+        }
+      ],
+      '/postgresql-hosted-workspaces': [
+        {
+          text: 'Reference',
+          items: referenceItems
         }
       ],
       '/about/': [

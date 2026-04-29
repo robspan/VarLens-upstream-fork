@@ -16,7 +16,7 @@ describe('backend capabilities', () => {
   it('declares current PostgreSQL support and known deferrals explicitly', () => {
     expect(POSTGRES_CAPABILITIES.backend).toBe('postgres')
     expect(POSTGRES_CAPABILITIES.workspace.hostedConnectionLifecycle).toBe(true)
-    expect(POSTGRES_CAPABILITIES.workspace.migrations).toBe(false)
+    expect(POSTGRES_CAPABILITIES.workspace.migrations).toBe(true)
     expect(POSTGRES_CAPABILITIES.imports.vcf).toBe(true)
     expect(POSTGRES_CAPABILITIES.imports.multiFileVcf).toBe(true)
     expect(POSTGRES_CAPABILITIES.variants.query).toBe(true)

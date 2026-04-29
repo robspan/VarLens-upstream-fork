@@ -8,6 +8,7 @@ import {
   type PostgresStorageConfig
 } from '../storage/config'
 import { PostgresStorageSession } from '../storage/postgres/PostgresStorageSession'
+import { PostgresMigrationRunner } from '../storage/postgres/migrations/PostgresMigrationRunner'
 import type { StorageSession } from '../storage/session'
 
 interface OpenConfiguredDatabaseOptions {
@@ -51,18 +52,48 @@ export async function openConfiguredDatabase(
     let session: StorageSession | undefined
 
     try {
+      const { POSTGRES_MIGRATIONS } = await import('../storage/postgres/migrations/definitions')
+      const runner = new PostgresMigrationRunner(pool, config.schema, POSTGRES_MIGRATIONS)
+      await runner.migrate()
       session = sessionFactory(config, pool)
       await manager.openPostgresSession(session)
       return
     } catch (error) {
-      if (session !== undefined) {
-        await session.close()
-      } else {
-        await pool.end()
-      }
+      await closePostgresStartupResources({ error, pool, session })
       throw error
     }
   }
 
   await manager.open(join(options.userDataPath, 'varlens.db'))
+}
+
+async function closePostgresStartupResources({
+  error,
+  pool,
+  session
+}: {
+  error: unknown
+  pool: Pool
+  session: StorageSession | undefined
+}): Promise<void> {
+  try {
+    if (session !== undefined) {
+      await session.close()
+      return
+    }
+
+    await pool.end()
+  } catch (cleanupError) {
+    if (error instanceof Error) {
+      const errorWithCleanup = error as Error & { cleanupError?: unknown }
+      errorWithCleanup.cleanupError = cleanupError
+      return
+    }
+
+    const combinedError = new Error('Database startup failed and cleanup failed') as Error & {
+      errors: unknown[]
+    }
+    combinedError.errors = [error, cleanupError]
+    throw combinedError
+  }
 }

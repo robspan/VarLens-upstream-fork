@@ -94,6 +94,10 @@
       {
         "from": "resources/gene_reference.db",
         "to": "gene_reference.db"
+      },
+      {
+        "from": "src/main/storage/postgres/migrations/sql",
+        "to": "postgres-migrations"
       }
     ],
     "asarUnpack": [

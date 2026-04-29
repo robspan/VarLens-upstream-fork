@@ -37,7 +37,7 @@ export const POSTGRES_CAPABILITIES: StorageCapabilities = {
     localFileLifecycle: false,
     hostedConnectionLifecycle: true,
     encryptionAtRest: false,
-    migrations: false,
+    migrations: true,
     healthDiagnostics: true
   },
   cases: {

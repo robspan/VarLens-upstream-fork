@@ -1,4 +1,4 @@
-.PHONY: help rebuild dev build preview lint lint-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-reset
+.PHONY: help rebuild dev build preview lint lint-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-query-perf pg-reset
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -229,6 +229,9 @@ pg-logs: ## Tail local PostgreSQL dev container logs
 
 pg-psql: ## Open psql in the local PostgreSQL dev container
 	docker compose -f docker-compose.postgres.yml --env-file .env.postgres.local exec postgres sh -lc 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'
+
+pg-query-perf: ## Run opt-in PostgreSQL WGS query perf benchmark
+	VARLENS_RUN_WGS_QUERY_PERF=1 VARLENS_PG_QUERY_EXPLAIN=1 npx vitest run tests/perf/postgres-wgs-query.perf.test.ts
 
 pg-reset: ## Destroy local PostgreSQL dev container and volume
 	docker compose -f docker-compose.postgres.yml --env-file .env.postgres.local down -v

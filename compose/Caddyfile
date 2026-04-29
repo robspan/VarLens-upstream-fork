@@ -1,77 +1,78 @@
-# Caddy-Konfiguration Konzept-Pilot (Intranet, Self-Signed).
+# Caddy configuration for the Concept Pilot (intranet, self-signed).
 #
-# Konzept-Stand: Single-Server, kein DNS-Eintrag, kein Public-CA-Zertifikat.
-# Caddy stellt mit `tls internal` ein selbst-signiertes Zertifikat aus seiner
-# internen CA aus. Browser zeigen beim Erstaufruf eine Warnung — im Intranet
-# akzeptabel und durch §vertrag5 (Echt-Daten-Sperre, Konzept = Test-Daten)
-# gedeckt. Stufe 2 ersetzt `tls internal` durch eine Domain → Caddy holt dann
-# automatisch ein Let's-Encrypt-Zertifikat (siehe Beispiel am Dateiende).
+# Concept Pilot state: single server, no DNS record, no public CA certificate.
+# With `tls internal`, Caddy issues a self-signed certificate from its
+# internal CA. Browsers show a warning on first access - acceptable on the
+# intranet and covered by §vertrag5 (no real data, Concept = test data).
+# Stage 2 replaces `tls internal` with a domain so Caddy automatically
+# obtains a Let's Encrypt certificate (see example at the end of the file).
 
 {
-	# Caddy würde sonst versuchen, automatisch HTTPS für jeden Site-Block zu
-	# aktivieren, inklusive ACME-Versuchen. Wir machen das hier explizit.
+	# Without this, Caddy would try to enable HTTPS automatically for every
+	# site block, including ACME attempts. We do this explicitly here.
 	auto_https disable_redirects
-	# Wenn ein Client ohne SNI auf :443 verbindet (curl gegen IP, älterer
-	# Browser), liefern wir das für SERVER_HOST ausgestellte Zertifikat.
+	# If a client connects to :443 without SNI (curl against an IP, an older
+	# browser), serve the certificate issued for SERVER_HOST.
 	default_sni {$SERVER_HOST}
 }
 
-# Port 80: HTTP-Anfragen auf HTTPS umleiten, damit niemand versehentlich
-# unverschlüsselt landet. 308 statt 301, weil POST-Bodies erhalten bleiben.
+# Port 80: redirect HTTP requests to HTTPS so nobody accidentally lands on
+# an unencrypted connection. 308 instead of 301 to preserve POST bodies.
 :80 {
 	redir https://{host}{uri} 308
 }
 
-# Port 443: TLS mit Caddy-internem Self-Signed-Zertifikat. SERVER_HOST kommt
-# aus compose/.env (= Server-IPv4 oder Hostname). Caddy stellt einen Cert für
-# diesen Namen aus seiner internen CA aus.
+# Port 443: TLS with Caddy's internal self-signed certificate. SERVER_HOST
+# comes from compose/.env (= server IPv4 or hostname). Caddy issues a cert
+# for this name from its internal CA.
 {$SERVER_HOST}:443 {
 	tls internal
 
-	# Welcome-Page auf Wurzel-Pfad.
+	# Welcome page on the root path.
 	@root path /
 	handle @root {
-		respond "VarLens Konzept-Pilot - läuft.
+		respond "VarLens Concept Pilot - running.
 
-Monitoring (Basic-Auth, Login admin / varlens-konzept):
+Monitoring (basic auth, login admin / varlens-konzept):
 - Uptime Kuma:   /monitor/
 - Dozzle Logs:   /logs/
 
-Hinweis: Self-Signed-Zertifikat aus Caddy-interner CA (Konzept-Pilot Intranet).
-Stand April 2026: Anwendungs-Container und Datenbank kommen noch.
+Note: self-signed certificate from Caddy's internal CA (Concept Pilot intranet).
+As of April 2026: application container and database are still to come.
 " 200
 	}
 
-	# Uptime Kuma unter /monitor/
+	# Uptime Kuma at /monitor/
 	handle_path /monitor/* {
 		basic_auth {
-			# Hash erzeugen mit:
+			# Generate a hash with:
 			#   docker exec caddy caddy hash-password
-			# Default-Login: admin / varlens-konzept
+			# Default login: admin / varlens-konzept
 			admin $2a$14$6QBIGJyJFZMJIomvheSxvOUokBVZsvz03snLpmL7auY8aBmxVfNKy
 		}
 		reverse_proxy uptime-kuma:3001
 	}
 
-	# Dozzle unter /logs/
-	handle_path /logs/* {
+	# Dozzle at /logs/. Dozzle is base-aware (DOZZLE_BASE=/logs in compose)
+	# and emits asset URLs under /logs/... - therefore `handle` (no strip).
+	handle /logs* {
 		basic_auth {
-			# Default-Login: admin / varlens-konzept
+			# Default login: admin / varlens-konzept
 			admin $2a$14$6QBIGJyJFZMJIomvheSxvOUokBVZsvz03snLpmL7auY8aBmxVfNKy
 		}
 		reverse_proxy dozzle:8080
 	}
 
-	# Alles andere: 404
+	# Everything else: 404
 	handle {
 		respond "Not Found" 404
 	}
 }
 
-# --- Stufe 2: Public-Domain mit Let's-Encrypt --------------------------------
-# Sobald eine Domain auf den Server zeigt, den :443-Block oben durch folgende
-# Site-Blöcke ersetzen. Caddy holt automatisch ein gültiges Zertifikat per
-# ACME (HTTP-01 oder TLS-ALPN-01) und erneuert es selbständig.
+# --- Stage 2: public domain with Let's Encrypt -------------------------------
+# As soon as a domain points to the server, replace the :443 block above with
+# the following site blocks. Caddy will automatically obtain a valid
+# certificate via ACME (HTTP-01 or TLS-ALPN-01) and renew it on its own.
 #
 # varlens.example.de {
 # 	reverse_proxy app:3000

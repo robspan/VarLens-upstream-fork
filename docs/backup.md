@@ -1,50 +1,50 @@
-# Backup und Restore mit restic
+# Backup and Restore with restic
 
-Konzept-Pilot sichert das Daten-Volume täglich nach Hetzner Object Storage. Der Pfad ist:
-`/mnt/data` (alle Container-Daten) → restic-Repository auf S3-API → Snapshots mit Retention.
+The Concept Pilot backs up the data volume daily to Hetzner Object Storage. The path is:
+`/mnt/data` (all container data) → restic repository on S3 API → snapshots with retention.
 
-Plan-Bezug: `konzept/infrastruktur.html` §infrastruktur2 fordert restic-Backup mit Heartbeat
-und Restore-Übung als Gate-Kriterium.
+Plan reference: Stage 1 infrastructure plan §infrastruktur2 requires a restic backup with heartbeat
+and a restore drill as a gate criterion.
 
-## Erst-Setup nach Server-Provisionierung
+## Initial setup after server provisioning
 
-Cloud-init installiert auf dem Server bereits:
+cloud-init already installs the following on the server:
 
-- restic-Binary in `/usr/local/bin/restic`
-- Backup-Skript `/usr/local/bin/varlens-backup.sh`
-- systemd-Service `restic-backup.service`
-- systemd-Timer `restic-backup.timer` (täglich 02:30)
-- Vorlage `/etc/restic/env.example`
+- restic binary at `/usr/local/bin/restic`
+- backup script `/usr/local/bin/varlens-backup.sh`
+- systemd service `restic-backup.service`
+- systemd timer `restic-backup.timer` (daily at 02:30)
+- template `/etc/restic/env.example`
 
-Was der Maintainer einmalig nachträglich machen muss:
+What the maintainer must do once afterwards:
 
-### 1. Hetzner Object Storage Bucket erstellen
+### 1. Create a Hetzner Object Storage bucket
 
-In der Hetzner Console:
+In the Hetzner Console:
 
-1. Object Storage > Buckets > „Bucket erstellen"
-2. Name: `varlens-pilot-backup` (oder Namen merken für Step 4)
-3. Standort: zum Beispiel `Falkenstein` (gleicher Standort wie der Server reduziert Latenz)
-4. ACL: Privat
-5. Object Lock: für Konzept-Stand nicht nötig (siehe ADR-8 - kommt in Stufe 2)
+1. Object Storage > Buckets > "Create bucket"
+2. Name: `varlens-pilot-backup` (or remember the name for step 4)
+3. Location: for example `Falkenstein` (same location as the server reduces latency)
+4. ACL: Private
+5. Object Lock: not required for the Concept stage (see ADR-8 - planned for Stage 2)
 
-### 2. Object Storage Credentials erzeugen
+### 2. Generate Object Storage credentials
 
-In der Hetzner Console:
+In the Hetzner Console:
 
-1. Sicherheit > Object Storage Credentials > Neue Credentials
-2. Access-Key und Secret-Key notieren - werden nur einmal angezeigt
-3. Berechtigung: Read+Write auf den oben erstellten Bucket beschränken (sofern Hetzner diese Granularität bietet, sonst Account-weit)
+1. Security > Object Storage Credentials > New credentials
+2. Note the access key and secret key - they are only shown once
+3. Permissions: restrict to read+write on the bucket created above (if Hetzner offers that granularity, otherwise account-wide)
 
-### 3. restic-Passwort generieren
+### 3. Generate a restic password
 
 ```sh
 openssl rand -base64 32
 ```
 
-Wert merken - ohne dieses Passwort sind die Backups nicht wiederherstellbar.
+Remember the value - without this password the backups cannot be restored.
 
-### 4. /etc/restic/env auf dem Server befüllen
+### 4. Populate /etc/restic/env on the server
 
 ```sh
 make ssh
@@ -53,44 +53,44 @@ sudo chmod 0600 /etc/restic/env
 sudo vim /etc/restic/env
 ```
 
-Werte ersetzen:
+Replace the values:
 
 ```
 RESTIC_REPOSITORY=s3:s3.eu-central-003.hetznerobjects.com/varlens-pilot-backup
-RESTIC_PASSWORD=<base64-Wert aus Schritt 3>
-AWS_ACCESS_KEY_ID=<Access-Key aus Schritt 2>
-AWS_SECRET_ACCESS_KEY=<Secret-Key aus Schritt 2>
-HEARTBEAT_URL=  # Optional: Uptime-Kuma-Push-URL, siehe Heartbeat-Sektion
+RESTIC_PASSWORD=<base64 value from step 3>
+AWS_ACCESS_KEY_ID=<access key from step 2>
+AWS_SECRET_ACCESS_KEY=<secret key from step 2>
+HEARTBEAT_URL=  # Optional: Uptime Kuma push URL, see Heartbeat section
 BACKUP_PATHS=/mnt/data
 RETENTION_KEEP_DAILY=7
 RETENTION_KEEP_WEEKLY=4
 RETENTION_KEEP_MONTHLY=6
 ```
 
-### 5. Erst-Lauf manuell anstoßen
+### 5. Trigger the first run manually
 
 ```sh
 sudo systemctl start restic-backup.service
 sudo journalctl -u restic-backup.service -f
 ```
 
-Beim ersten Lauf initialisiert restic das Repository (legt einen verschlüsselten Container im Bucket an), dann läuft das eigentliche Backup. Ab jetzt läuft der Timer täglich um 02:30.
+On the first run, restic initializes the repository (creates an encrypted container in the bucket), then the actual backup runs. From then on the timer fires daily at 02:30.
 
-### 6. Heartbeat einrichten (optional aber empfohlen)
+### 6. Set up a heartbeat (optional but recommended)
 
-Uptime Kuma kann per Push-Monitor den Erfolg überwachen:
+Uptime Kuma can monitor success via a push monitor:
 
-1. http://<ip>/monitor/ öffnen
+1. Open http://<ip>/monitor/
 2. Add New Monitor > Type: Push
-3. Push URL kopieren
-4. In `/etc/restic/env` die Variable `HEARTBEAT_URL` auf diese URL setzen
-5. Heartbeat-Interval auf 25 Stunden setzen (Backup läuft 24-stündlich, mit Toleranz)
+3. Copy the push URL
+4. In `/etc/restic/env`, set the variable `HEARTBEAT_URL` to this URL
+5. Set the heartbeat interval to 25 hours (the backup runs every 24 hours, with tolerance)
 
-Wenn Backup einen Tag aussetzt, schlägt der Push-Monitor an.
+If the backup is skipped for a day, the push monitor fires.
 
-## Verifikation
+## Verification
 
-Manueller Lauf zum Testen:
+Manual run for testing:
 
 ```sh
 make ssh
@@ -98,13 +98,13 @@ sudo systemctl start restic-backup.service
 sudo journalctl -u restic-backup.service --since "1 minute ago"
 ```
 
-Snapshots auflisten:
+List snapshots:
 
 ```sh
 sudo bash -c 'set -a; source /etc/restic/env; restic snapshots'
 ```
 
-Timer-Status:
+Timer status:
 
 ```sh
 systemctl status restic-backup.timer
@@ -113,42 +113,40 @@ systemctl list-timers --all | grep restic
 
 ## Restore
 
-Für Konzept-Pilot existiert ein einfaches Restore-Skript: `scripts/restore.sh`
-(im Repository). Es liest dieselbe `/etc/restic/env` und stellt nach `/tmp/restore-...`
-wieder her. Use cases:
+For the Concept Pilot a simple restore script exists: `scripts/restore.sh`
+(in the repository). It reads the same `/etc/restic/env` and restores to `/tmp/restore-...`.
+Use cases:
 
 ```sh
-# Snapshots auflisten:
+# List snapshots:
 sudo bash -c 'set -a; source /etc/restic/env; restic snapshots'
 
-# Letzten Snapshot wiederherstellen nach /tmp/restore-konzept:
+# Restore the latest snapshot to /tmp/restore-konzept:
 sudo bash -c 'set -a; source /etc/restic/env; restic restore latest --target /tmp/restore-konzept'
 
-# Spezifische Datei wiederherstellen:
+# Restore a specific file:
 sudo bash -c 'set -a; source /etc/restic/env; restic restore latest --target /tmp/restore --include /mnt/data/uptime-kuma'
 ```
 
-## Restore-Übung (Gate-Kriterium)
+## Restore drill (gate criterion)
 
-Plan §infrastruktur2 fordert „mindestens eine Restore-Übung mit Test-Daten ist protokolliert".
-Protokoll der ersten Übung: `docs/restore-protokoll.md` (kommt nach erstem Drill).
+Plan §infrastruktur2 requires "at least one restore drill with test data is logged".
+Log of the first drill: `docs/restore-log.md` (added after the first drill).
 
-Pflicht-Wiederholung: nach jeder größeren Plan- oder Schema-Änderung, mindestens einmal vor dem Migrations-Block.
+Mandatory repetition: after every major plan or schema change, at minimum once before the migration block.
 
-## Schutz gegen Datenverlust
+## Protection against data loss
 
-Was ist kein Backup-Replacement?
+What is not a backup replacement?
 
-- `make stop`: Server pausiert, Volume bleibt - kein Backup nötig.
-- `make down`: zerstört Volume! Vorher unbedingt frischer Snapshot, dann Bucket-Inhalt sichern.
-- Server-Replace durch cloud-init-Änderung: Volume bleibt, kein Backup nötig.
+- `make stop`: the server pauses, the volume remains - no backup needed.
+- `make down`: destroys the volume! Take a fresh snapshot first, then secure the bucket contents.
+- Replacing the server via a cloud-init change: the volume remains, no backup needed.
 
-Bewusst _nicht_ in Konzept-Stand:
+Deliberately _not_ in the Concept stage:
 
-- Object Lock auf Bucket: Stufe 2 (§adr8).
-- Append-Only-Identitäten (separate Schreib-/Prune-Rollen): Stufe 2.
-- Off-Host-Heartbeat-Persistierung: Stufe 2.
+- Object Lock on the bucket: Stage 2 (§adr8).
+- Append-only identities (separate write/prune roles): Stage 2.
+- Off-host heartbeat persistence: Stage 2.
 
-Brücken-Klausel: Object Lock kann nur bei Bucket-Erstellung aktiviert werden. Wenn dieser
-Pilot-Bucket in Stufe 2 weitergenutzt werden soll, muss er bei Bucket-Erstellung mit Object
-Lock vorbereitet werden. Konzept-Pilot bewusst ohne, weil hier nur Test-Daten liegen.
+Bridge clause: Object Lock can only be enabled at bucket creation. If this pilot bucket is to be reused in Stage 2, it must be prepared with Object Lock at bucket creation. The Concept Pilot deliberately runs without it because only test data lives here.

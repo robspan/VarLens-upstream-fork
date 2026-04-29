@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Tägliches restic-Backup nach Hetzner Object Storage.
-# Wird per systemd-Timer auf dem Server ausgeführt (siehe cloud-init/pilot.yaml).
+# Daily restic backup to Hetzner Object Storage.
+# Run via systemd timer on the server (see cloud-init/pilot.yaml).
 #
-# Konfiguration: Umgebungs-Variablen in /etc/restic/env (vom Maintainer einmalig
-# beim ersten Setup angelegt). Erwartete Variablen:
-#   RESTIC_REPOSITORY        zum Beispiel s3:s3.eu-central-003.hetznerobjects.com/varlens-pilot-backup
-#   RESTIC_PASSWORD          generiert per `openssl rand -base64 32`
-#   AWS_ACCESS_KEY_ID        Hetzner Object Storage Access-Key
-#   AWS_SECRET_ACCESS_KEY    Hetzner Object Storage Secret-Key
-#   HEARTBEAT_URL            optional: Uptime-Kuma-Push-URL für Erfolgs-Ping
-#   BACKUP_PATHS             space-separated, Default: /mnt/data
-#   RETENTION_KEEP_DAILY     Default: 7
-#   RETENTION_KEEP_WEEKLY    Default: 4
-#   RETENTION_KEEP_MONTHLY   Default: 6
+# Configuration: environment variables in /etc/restic/env (created once by the
+# maintainer during initial setup). Expected variables:
+#   RESTIC_REPOSITORY        e.g. s3:s3.eu-central-003.hetznerobjects.com/varlens-pilot-backup
+#   RESTIC_PASSWORD          generated via `openssl rand -base64 32`
+#   AWS_ACCESS_KEY_ID        Hetzner Object Storage access key
+#   AWS_SECRET_ACCESS_KEY    Hetzner Object Storage secret key
+#   HEARTBEAT_URL            optional: Uptime Kuma push URL for success ping
+#   BACKUP_PATHS             space-separated, default: /mnt/data
+#   RETENTION_KEEP_DAILY     default: 7
+#   RETENTION_KEEP_WEEKLY    default: 4
+#   RETENTION_KEEP_MONTHLY   default: 6
 
 set -euo pipefail
 
@@ -20,7 +20,7 @@ ENV_FILE="${ENV_FILE:-/etc/restic/env}"
 LOG_FILE="/var/log/restic-backup.log"
 
 if [ ! -f "$ENV_FILE" ]; then
-    echo "$(date -Iseconds) FEHLER: $ENV_FILE existiert nicht. Maintainer muss die Datei anlegen (siehe docs/backup.md)." | tee -a "$LOG_FILE" >&2
+    echo "$(date -Iseconds) ERROR: $ENV_FILE does not exist. Maintainer must create the file (see docs/backup.md)." | tee -a "$LOG_FILE" >&2
     exit 1
 fi
 
@@ -40,48 +40,48 @@ log() {
 
 heartbeat() {
     if [ -n "${HEARTBEAT_URL:-}" ]; then
-        curl -fsS --max-time 10 --retry 3 "$HEARTBEAT_URL$1" >/dev/null || log "Heartbeat-Push fehlgeschlagen"
+        curl -fsS --max-time 10 --retry 3 "$HEARTBEAT_URL$1" >/dev/null || log "Heartbeat push failed"
     fi
 }
 
-log "=== Backup-Lauf gestartet ==="
+log "=== Backup run started ==="
 
-# Repo bei erstem Lauf initialisieren.
+# Initialize repo on first run.
 if ! restic snapshots --no-lock --json >/dev/null 2>&1; then
-    log "Repository nicht initialisiert, führe restic init aus"
+    log "Repository not initialized, running restic init"
     if ! restic init; then
-        log "FEHLER: restic init fehlgeschlagen"
+        log "ERROR: restic init failed"
         heartbeat "?status=down&msg=init-failed"
         exit 2
     fi
 fi
 
-# Backup ausführen.
+# Run backup.
 # shellcheck disable=SC2086
 if restic backup $BACKUP_PATHS \
     --tag "auto" \
     --tag "$(date +%Y-%m-%d)" \
     2>&1 | tee -a "$LOG_FILE"; then
-    log "Backup erfolgreich"
+    log "Backup successful"
 else
-    log "FEHLER: Backup fehlgeschlagen"
+    log "ERROR: backup failed"
     heartbeat "?status=down&msg=backup-failed"
     exit 3
 fi
 
-# Aufräumen alter Snapshots gemäß Retention-Policy.
+# Clean up old snapshots according to retention policy.
 if restic forget \
     --keep-daily "$RETENTION_KEEP_DAILY" \
     --keep-weekly "$RETENTION_KEEP_WEEKLY" \
     --keep-monthly "$RETENTION_KEEP_MONTHLY" \
     --prune \
     2>&1 | tee -a "$LOG_FILE"; then
-    log "Retention angewendet"
+    log "Retention applied"
 else
-    log "WARNUNG: forget/prune fehlgeschlagen (Backup an sich war erfolgreich)"
+    log "WARNING: forget/prune failed (backup itself was successful)"
 fi
 
-# Erfolgs-Heartbeat.
+# Success heartbeat.
 heartbeat "?status=up&msg=ok"
 
-log "=== Backup-Lauf beendet ==="
+log "=== Backup run finished ==="

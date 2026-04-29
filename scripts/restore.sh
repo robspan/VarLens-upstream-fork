@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Restore-Skript für restic-Snapshots aus dem Hetzner Object Storage.
-# Verwendung:
-#   restore.sh latest /tmp/restore-target          - letzten Snapshot wiederherstellen
-#   restore.sh <snapshot-id> /tmp/restore-target   - bestimmten Snapshot wiederherstellen
-#   restore.sh list                                - verfügbare Snapshots auflisten
+# Restore script for restic snapshots from Hetzner Object Storage.
+# Usage:
+#   restore.sh latest /tmp/restore-target          - restore the latest snapshot
+#   restore.sh <snapshot-id> /tmp/restore-target   - restore a specific snapshot
+#   restore.sh list                                - list available snapshots
 
 set -euo pipefail
 
 ENV_FILE="${ENV_FILE:-/etc/restic/env}"
 
 if [ ! -f "$ENV_FILE" ]; then
-    echo "FEHLER: $ENV_FILE existiert nicht." >&2
+    echo "ERROR: $ENV_FILE does not exist." >&2
     exit 1
 fi
 
@@ -24,24 +24,24 @@ case "${1:-}" in
         ;;
     latest)
         TARGET="${2:-/tmp/restore-$(date +%s)}"
-        echo "Stelle letzten Snapshot wieder her nach $TARGET"
+        echo "Restoring latest snapshot to $TARGET"
         mkdir -p "$TARGET"
         restic restore latest --target "$TARGET"
-        echo "Wiederherstellung abgeschlossen: $TARGET"
+        echo "Restore complete: $TARGET"
         ;;
     "")
-        echo "Verwendung:"
+        echo "Usage:"
         echo "  $0 list"
-        echo "  $0 latest [target-pfad]"
-        echo "  $0 <snapshot-id> [target-pfad]"
+        echo "  $0 latest [target-path]"
+        echo "  $0 <snapshot-id> [target-path]"
         exit 1
         ;;
     *)
         SNAPSHOT="$1"
         TARGET="${2:-/tmp/restore-$(date +%s)}"
-        echo "Stelle Snapshot $SNAPSHOT wieder her nach $TARGET"
+        echo "Restoring snapshot $SNAPSHOT to $TARGET"
         mkdir -p "$TARGET"
         restic restore "$SNAPSHOT" --target "$TARGET"
-        echo "Wiederherstellung abgeschlossen: $TARGET"
+        echo "Restore complete: $TARGET"
         ;;
 esac

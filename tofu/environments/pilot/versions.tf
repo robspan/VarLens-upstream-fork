@@ -10,6 +10,6 @@ terraform {
     }
   }
 
-  # Lokales State-Backend für Konzept-Pilot.
-  # Stufe 2: S3-natives Locking gegen einen S3-API-Bucket (siehe ADR-9).
+  # Local state backend for the Concept Pilot.
+  # Stage 2: S3-native locking against an S3 API bucket (see ADR-9).
 }

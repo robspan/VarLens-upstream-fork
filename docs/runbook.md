@@ -457,6 +457,225 @@ Wenn Rate-Limit greift: kurzzeitig auf `tls internal` (selbst-signiert) wechseln
 
 ---
 
+## Szenario 11: Server verloren - Recovery aus Backup
+
+**Trigger:** Server-Resource gelöscht (versehentliches `make down`, Hetzner-Account-Vorfall, Region-Ausfall). Daten-Volume ebenfalls weg, einzig die restic-Snapshots im Object-Storage existieren noch.
+
+### Schritte
+
+1. Neuen Server provisionieren:
+
+   ```sh
+   make up
+   ```
+
+   Erwartet: 5 Resources (SSH-Key, Volume, Firewall, Server, Volume-Attachment) angelegt, `/mnt/data` leer gemountet.
+
+2. Compose-Stack ausrollen:
+
+   ```sh
+   make stack-up
+   ```
+
+3. restic-Passwort und S3-Credentials aus dem SOPS-File holen:
+
+   ```sh
+   make sops-decrypt FILE=secrets/restic.yaml
+   ```
+
+   Erwartet: `RESTIC_PASSWORD`, `RESTIC_S3_ACCESS_KEY`, `RESTIC_S3_SECRET_KEY`, `RESTIC_REPOSITORY` im Klartext.
+
+4. `/etc/restic/env` auf dem neuen Server schreiben:
+
+   ```sh
+   make ssh
+   sudo tee /etc/restic/env >/dev/null <<'EOF'
+   RESTIC_REPOSITORY=s3:https://fsn1.your-objectstorage.com/varlens-pilot-backups
+   RESTIC_PASSWORD=<aus SOPS>
+   AWS_ACCESS_KEY_ID=<aus SOPS>
+   AWS_SECRET_ACCESS_KEY=<aus SOPS>
+   BACKUP_PATHS=/mnt/data
+   HEARTBEAT_URL=<aus setup-monitoring, optional - kann später nachgezogen werden>
+   EOF
+   sudo chmod 600 /etc/restic/env
+   ```
+
+5. Snapshot-Liste prüfen, dann den letzten Snapshot wiederherstellen:
+
+   ```sh
+   sudo bash -c 'set -a; source /etc/restic/env; restic snapshots'
+   sudo bash -c 'set -a; source /etc/restic/env; restic restore latest --target /mnt/data --include /mnt/data'
+   ```
+
+   restic schreibt die Daten unter `/mnt/data/mnt/data/...` falls `--include` nicht greift - dann mit `sudo rsync -av --delete /mnt/data/mnt/data/ /mnt/data/` glattziehen und das Hilfsverzeichnis löschen.
+
+6. Stack-Restart und Verifikation per Restore-Drill:
+
+   ```sh
+   exit
+   make stack-down && make stack-up
+   make restore-drill
+   make smoke
+   ```
+
+### Eskalation
+
+- Snapshots fehlen oder Repo nicht entschlüsselbar: SOPS-File-Stand prüfen, eventuell älteren Stand aus Git holen. **restic-Passwort lässt sich nicht „neu setzen" - ohne Passwort sind die Snapshots verloren.**
+- S3-Credentials abgelaufen: Hetzner Console > Object-Storage > Credentials neu erzeugen, in SOPS-File und auf dem Server in `/etc/restic/env` aktualisieren.
+
+---
+
+## Szenario 12: SSH-Key verloren - Hetzner Rescue-Mode
+
+**Trigger:** Privater SSH-Key (`~/.ssh/varlens-tofu`) ist weg oder kompromittiert. `make ssh` schlägt mit „Permission denied (publickey)" fehl, ein Reset des Servers würde aber Daten kosten.
+
+### Schritte
+
+1. Neuen lokalen SSH-Key erzeugen:
+
+   ```sh
+   ssh-keygen -t ed25519 -f ~/.ssh/varlens-tofu-new -C "varlens-tofu" -N ""
+   ```
+
+2. Hetzner Console öffnen: **Cloud Console > Project varlens-pilot > Servers > `varlens-pilot` > Tab „Rescue"**.
+
+3. Rescue-Image auswählen:
+   - **Operating System:** `linux64`
+   - **SSH Keys:** den neuen Pubkey via „Add SSH Key" hinzufügen und auswählen
+   - **Enable rescue & power cycle** klicken (Server bootet ins Rescue-Image)
+
+4. Warten bis der Server im Rescue-Mode antwortet (~60 Sekunden), dann per neuem Key einloggen:
+
+   ```sh
+   ssh -i ~/.ssh/varlens-tofu-new root@$(make ip)
+   ```
+
+   Falls SSH nicht klappt: in der Console **Tab „Console"** (Web-VNC) öffnen, Login als `root` mit dem von Hetzner per E-Mail/Console gezeigten Rescue-Passwort.
+
+5. System-Disk identifizieren und mounten:
+
+   ```sh
+   lsblk                                  # typisch: /dev/sda1 ist root
+   mount /dev/sda1 /mnt
+   ```
+
+6. `authorized_keys` ersetzen:
+
+   ```sh
+   cat ~/.ssh/varlens-tofu-new.pub        # auf dem Mac vorher per pbcopy kopieren und in Rescue-Shell pasten
+   echo "ssh-ed25519 AAAA... varlens-tofu" > /mnt/home/deploy/.ssh/authorized_keys
+   chown 1000:1000 /mnt/home/deploy/.ssh/authorized_keys
+   chmod 600 /mnt/home/deploy/.ssh/authorized_keys
+   ```
+
+7. Sauber unmounten und Rescue-Mode beenden:
+
+   ```sh
+   umount /mnt
+   exit
+   ```
+
+   In Hetzner Console: **Tab „Rescue" > „Disable rescue"**, dann **Tab „Power" > „Power cycle"**.
+
+8. Lokal alten Key ersetzen, Hostkey neu lernen, testen:
+
+   ```sh
+   mv ~/.ssh/varlens-tofu-new ~/.ssh/varlens-tofu
+   mv ~/.ssh/varlens-tofu-new.pub ~/.ssh/varlens-tofu.pub
+   ssh-keygen -R $(make ip)
+   make ssh
+   ```
+
+9. `terraform.tfvars` und Hetzner-Project-SSH-Key auf den neuen Pubkey aktualisieren, sonst zerstört der nächste `make up` die Konfiguration.
+
+### Eskalation
+
+Wenn Rescue-Mode nicht bootet: Hetzner-Support-Ticket. Wenn der alte Pubkey kompromittiert war (nicht nur verloren): zusätzlich Hetzner-API-Token rotieren (siehe Szenario 13).
+
+---
+
+## Szenario 13: Token-Rotation
+
+**Trigger:** Routine-Rotation (alle 30/90 Tage), Verdacht auf Kompromittierung, Personalwechsel, oder Hinweis aus gitleaks/Trivy-Scan.
+
+### (a) Hetzner API Token
+
+1. Hetzner Console > **Sicherheit > API Tokens** > altes Token „Revoke".
+2. „Generate API Token" mit Scope „Read & Write", Namen vergeben (z.B. `varlens-tofu-2026-04`).
+3. Token in `tofu/environments/pilot/terraform.tfvars` bei `hcloud_token` einsetzen.
+4. Datei-Mode prüfen:
+
+   ```sh
+   chmod 600 tofu/environments/pilot/terraform.tfvars
+   ls -la tofu/environments/pilot/terraform.tfvars
+   ```
+
+5. Validieren mit `tofu -chdir=tofu/environments/pilot plan` (sollte „No changes" sagen).
+
+### (b) GitHub Personal Access Token
+
+1. github.com > **Settings > Developer settings > Personal access tokens (classic)** > altes Token „Delete".
+2. „Generate new token (classic)" mit Scopes `repo` und `workflow`, Expiration 30 Tage.
+3. Lokal überschreiben:
+
+   ```sh
+   echo "<neuer-token>" > ~/.config/varlens/github_token
+   chmod 600 ~/.config/varlens/github_token
+   ```
+
+4. Test:
+
+   ```sh
+   export GH_TOKEN=$(cat ~/.config/varlens/github_token)
+   gh run list --limit 1
+   ```
+
+### (c) Caddy Basic-Auth
+
+1. Neuen bcrypt-Hash erzeugen (Caddy macht das selbst):
+
+   ```sh
+   make ssh
+   docker exec caddy caddy hash-password
+   # Passwort eintippen, Hash kopieren
+   exit
+   ```
+
+2. In `compose/Caddyfile` den `basic_auth`-Block: alten Hash durch neuen ersetzen (für `/monitor/*` und `/logs/*`).
+3. Deployen:
+
+   ```sh
+   make stack-up
+   ```
+
+4. Verifikation per Browser-Login auf `https://<ipv4>/monitor/` mit neuem Passwort.
+
+### (d) Uptime-Kuma Admin
+
+1. Browser auf `https://<ipv4>/monitor/` (Basic-Auth durch).
+2. **Settings > Security > Change Password** > altes Passwort, neues Passwort, „Save".
+3. Kein Service-Restart nötig, Kuma persistiert sofort in seine SQLite unter `/mnt/data/uptime-kuma`.
+
+### (e) restic-Passwort
+
+**WARNUNG: restic-Passwort NIE rotieren ohne komplett neuen Bucket - alte Snapshots werden mit dem neuen Passwort unentschlüsselbar und damit dauerhaft verloren.**
+
+Wenn Rotation wirklich nötig ist (z.B. bei Verdacht auf Kompromittierung):
+
+1. Neuen Bucket in Hetzner Object-Storage anlegen, neue S3-Credentials erzeugen.
+2. Neues restic-Passwort generieren (z.B. `openssl rand -base64 32`).
+3. SOPS-Secret-File aktualisieren, auf dem Server `/etc/restic/env` neu schreiben.
+4. `restic init` gegen den neuen Bucket laufen lassen.
+5. Ersten Backup-Lauf manuell triggern: `sudo systemctl start restic-backup.service`.
+6. Restore-Drill verifiziert die neue Kette: `make restore-drill`.
+7. Alten Bucket frühestens nach Ablauf des bisherigen Retention-Fensters löschen, damit ein historischer Restore noch möglich bleibt, solange das alte Passwort separat archiviert ist.
+
+### Eskalation
+
+Wenn nach (a) `tofu plan` plötzlich Drift zeigt: Token hat falschen Scope (Read-only statt Read+Write). Token mit korrektem Scope neu erzeugen.
+
+---
+
 ## Anhang A: Logbuch
 
 Wann immer ein Runbook-Schritt durchgeführt wurde: kurzer Eintrag in `docs/operations-log.md` mit Datum, Szenario, Dauer, Ergebnis. Hilft beim nächsten Mal.

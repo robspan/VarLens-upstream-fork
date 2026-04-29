@@ -54,6 +54,7 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: 1
           ignore-unfixed: true
+          trivyignores: ./.trivyignore
 
   trivy-images:
     name: Trivy Image-Scan (${{ matrix.image }})
@@ -71,8 +72,12 @@ jobs:
         with:
           image-ref: ${{ matrix.image }}
           severity: HIGH,CRITICAL
-          exit-code: 0  # nur reporten, nicht failen, weil Image-Updates external getrieben sind
+          vuln-type: 'os,library'
+          # Gate-6: kritische CVEs blockieren den Push. Bekannte, akzeptierte
+          # Findings werden in .trivyignore gepflegt (quartalsweises Review).
+          exit-code: 1
           ignore-unfixed: true
+          trivyignores: ./.trivyignore
 
   gitleaks:
     name: Gitleaks Secret-Scan

@@ -121,9 +121,10 @@ Im Browser:
 
 | URL | Zweck | Login |
 |---|---|---|
-| `http://<ipv4>/` | Welcome-Page | offen |
-| `http://<ipv4>/monitor/` | Uptime Kuma Dashboard | Basic-Auth: admin / varlens-konzept |
-| `http://<ipv4>/logs/` | Dozzle Live-Logs | Basic-Auth: admin / varlens-konzept |
+| `https://<ipv4>/` | Welcome-Page | offen |
+| `https://<ipv4>/monitor/` | Uptime Kuma Dashboard | Basic-Auth: admin / varlens-konzept |
+| `https://<ipv4>/logs/` | Dozzle Live-Logs | Basic-Auth: admin / varlens-konzept |
+| Hinweis | `:80` 308-redirected auf HTTPS mit Self-Signed-Cert. Browser zeigt einmalige Warnung („Trotzdem fortfahren / Erweitert") - im Konzept-Pilot-Intranet erwartet. In Stufe 2 (Public-Domain) wird Caddy automatisch ein Let's-Encrypt-Zertifikat ziehen. | - |
 
 Beim ersten `/monitor/`-Aufruf legt Uptime Kuma einen eigenen Admin-Account an (zusätzlich zur Caddy-Basic-Auth-Schicht). Danach werden Monitore eingetragen für die Services, die du beobachten willst.
 
@@ -142,6 +143,12 @@ Der `Makefile` im Repo-Root bündelt alle gängigen Operationen:
 | `make status` | Aktueller Server-Zustand | - |
 | `make ssh` | SSH-Login als deploy | - |
 | `make logs` | cloud-init-Bootstrap-Log | - |
+| `make ip` | IPv4 des Servers ausgeben (für Skript-Verkettung) | - |
+| `make smoke` | End-to-End-Smoke-Test (10 Asserts inkl. HTTPS) gegen Live-System | - |
+| `make lint` | Lokaler Linter (tofu fmt/validate, shellcheck, yamllint, Caddyfile-Validate) | - |
+| `make setup-backup` | restic-Bucket, Credentials, Passwort und `/etc/restic/env` einrichten | - |
+| `make setup-monitoring` | Uptime-Kuma-Admin und Heartbeat-Push-Monitor einrichten | - |
+| `make restore-drill` | Backup-Restore-Drill mit Marker-Datei und Protokoll | - |
 | `make down` | Komplette Zerstörung (Server **und** Volume **und** Firewall **und** SSH-Key). Verlangt zur Bestätigung das wörtliche Tippen von `pilot`. | Volle Kostenersparnis. **Achtung: Daten auf dem Volume sind weg.** |
 | `make e2e` | Full-Cycle-E2E-Test in der separaten `e2e`-Environment (eigene Hetzner-Ressourcen, eigener SSH-Key `~/.ssh/varlens-e2e`). Provisioniert, testet, räumt auf. | ~0,01 €/Stunde während des Laufs (cpx11), keine Wirkung auf pilot. |
 | `make e2e-keep` | Wie `make e2e`, lässt die e2e-Environment am Ende stehen für Inspektion (`./bin/varlens e2e ssh`). | Kostet weiter bis manuelles `./bin/varlens e2e down --yes`. |
@@ -192,6 +199,10 @@ Adopter, die ihren Server vor diesem Verhalten schützen möchten, können in `t
 | SSH-Warnung „Host key verification failed" | Server wurde durch cloud-init-Änderung neu provisioniert. Alte Host-Key-Zeile bereinigen mit `ssh-keygen -R <ipv4>`. |
 | `make stack-up` mit „Permission denied (publickey)" für rsync | SSH-Key lädt nicht automatisch. Über `ssh-add ~/.ssh/varlens-tofu` der ssh-agent-Auth nachhelfen. |
 | Uptime Kuma zeigt „Setup", obwohl ich schon eingerichtet hatte | Volume-Mount unterbrochen. `make ssh` und `df -h /mnt/data` prüfen. |
+| `make setup-backup` mit „Preflight-Detect: bestehende Backup-Artefakte gefunden" | Default-Modus schützt vor Datenverlust. `make setup-backup SETUP_BACKUP_ARGS=--reuse` wenn das bestehende Passwort übernommen werden soll, `--force` nur für bewussten Greenfield-Reset. |
+| Self-Signed-Cert-Warnung im Browser bei `https://<ipv4>/` | Erwartet im Konzept-Pilot-Intranet. „Trotzdem fortfahren / Erweitert" klicken. Wird in Stufe 2 (Public-Domain) durch Public-CA via Let's Encrypt ersetzt. |
+| `make ssh` mit „REMOTE HOST IDENTIFICATION HAS CHANGED" nach `make e2e` oder Server-Replace | Hostkey im `known_hosts` veraltet. Bereinigen mit `ssh-keygen -R <ipv4>`. |
+| Heartbeat-Monitor in Kuma rot trotz erfolgreicher Backups | Push-Interval prüfen (Kuma-UI > Monitor > Edit). Auf dem Server: `journalctl -u restic-backup.service --no-pager -n 30` zeigt, ob der `curl`-Push am Ende des Backups durchgegangen ist. |
 
 ## Plan-Dokumentation
 

@@ -53,8 +53,9 @@ Stand April 2026: Anwendungs-Container und Datenbank kommen noch.
 		reverse_proxy uptime-kuma:3001
 	}
 
-	# Dozzle unter /logs/
-	handle_path /logs/* {
+	# Dozzle unter /logs/. Dozzle ist base-aware (DOZZLE_BASE=/logs in compose),
+	# emittiert Asset-URLs unter /logs/... — daher `handle` (kein strip).
+	handle /logs* {
 		basic_auth {
 			# Default-Login: admin / varlens-konzept
 			admin $2a$14$6QBIGJyJFZMJIomvheSxvOUokBVZsvz03snLpmL7auY8aBmxVfNKy

@@ -88,6 +88,7 @@ write_files:
       Wants=network-online.target
       After=network-online.target docker.service
       ConditionPathExists=/etc/restic/env
+      ConditionPathIsMountPoint=/mnt/data
 
       [Service]
       Type=oneshot
@@ -138,13 +139,20 @@ runcmd:
   - usermod -aG docker ${deploy_user}
 
   # SOPS und restic von GitHub-Releases (in Ubuntu-Repo veraltet).
+  # SHA256-Checksummen hardcoded fuer Supply-Chain-Verifikation. Bei Versions-Bump aktualisieren.
   - |
     SOPS_VERSION=v3.9.0
+    SOPS_SHA256=e497e0d019fc66fb7c93e1ddf7faff394f1f44d4ef909ad913cb00ed30b7a30b
     curl -fsSL "https://github.com/getsops/sops/releases/download/$${SOPS_VERSION}/sops-$${SOPS_VERSION}.linux.amd64" -o /usr/local/bin/sops
+    echo "$${SOPS_SHA256}  /usr/local/bin/sops" | sha256sum -c - || { echo "FAIL: SOPS sha256 mismatch"; rm -f /usr/local/bin/sops; exit 1; }
     chmod +x /usr/local/bin/sops
   - |
     RESTIC_VERSION=0.17.1
-    curl -fsSL "https://github.com/restic/restic/releases/download/v$${RESTIC_VERSION}/restic_$${RESTIC_VERSION}_linux_amd64.bz2" | bunzip2 > /usr/local/bin/restic
+    RESTIC_SHA256=e2ee4c128a17adfa8b6e64523ace04a86687a610edebb3d2e85e1ac60f55e640
+    curl -fsSL "https://github.com/restic/restic/releases/download/v$${RESTIC_VERSION}/restic_$${RESTIC_VERSION}_linux_amd64.bz2" -o /tmp/restic.bz2
+    echo "$${RESTIC_SHA256}  /tmp/restic.bz2" | sha256sum -c - || { echo "FAIL: restic sha256 mismatch"; rm -f /tmp/restic.bz2; exit 1; }
+    bunzip2 -c /tmp/restic.bz2 > /usr/local/bin/restic
+    rm -f /tmp/restic.bz2
     chmod +x /usr/local/bin/restic
 
   # Verzeichnisse für die Compose-Stack-Komponenten auf dem Daten-Volume.
@@ -160,6 +168,10 @@ runcmd:
     # ein verkleinerter Klon mit den essentiellen Schritten. Für ausgereiftere
     # Logging und Heartbeat siehe das Repository-Skript.
     set -euo pipefail
+    # Schutz gegen stillen Datenverlust: wenn /mnt/data nicht gemountet ist (z.B. Volume-Attach
+    # fehlgeschlagen, mount nutzt nofail), wuerde restic ein leeres Verzeichnis sichern und
+    # `restic forget --prune` rotiert valide Snapshots weg. Hart abbrechen.
+    mountpoint -q /mnt/data || { echo "FAIL: /mnt/data nicht gemountet"; exit 1; }
     : "$${RESTIC_REPOSITORY:?RESTIC_REPOSITORY muss gesetzt sein}"
     : "$${RESTIC_PASSWORD:?RESTIC_PASSWORD muss gesetzt sein}"
     : "$${BACKUP_PATHS:=/mnt/data}"

@@ -70,6 +70,47 @@ def ssh(ip: str, key: Path, command: str, timeout: int = 60, *, check: bool = Tr
     return proc.returncode, out
 
 
+def ssh_stdout_only(ip: str, key: Path, command: str, timeout: int = 60, *, check: bool = True) -> tuple[int, str, str]:
+    """Wie ssh(), aber stdout und stderr getrennt. Wichtig wenn der Output
+    weiterverarbeitet wird (z.B. /etc/restic/env Body) — sonst landen
+    Fehler-Meldungen im Body."""
+    proc = subprocess.run(
+        [
+            "ssh", "-i", str(key),
+            "-o", "BatchMode=yes",
+            "-o", "StrictHostKeyChecking=accept-new",
+            "-o", f"ConnectTimeout={timeout}",
+            f"deploy@{ip}",
+            command,
+        ],
+        capture_output=True, text=True,
+    )
+    if check and proc.returncode != 0:
+        fail(f"SSH-Befehl fehlgeschlagen ({proc.returncode}): {proc.stderr or proc.stdout}")
+    return proc.returncode, proc.stdout or "", proc.stderr or ""
+
+
+def ssh_with_stdin(ip: str, key: Path, command: str, stdin: str, timeout: int = 60, *, check: bool = True) -> tuple[int, str]:
+    """Sendet stdin via Pipe an den SSH-Remote-Befehl. Wird benutzt um
+    Geheimnisse (env-File-Body) sicher zu übertragen — niemals via argv,
+    sonst leakt das via `ps auxww`."""
+    proc = subprocess.run(
+        [
+            "ssh", "-i", str(key),
+            "-o", "BatchMode=yes",
+            "-o", "StrictHostKeyChecking=accept-new",
+            "-o", f"ConnectTimeout={timeout}",
+            f"deploy@{ip}",
+            command,
+        ],
+        input=stdin, capture_output=True, text=True,
+    )
+    out = (proc.stdout or "") + (proc.stderr or "")
+    if check and proc.returncode != 0:
+        fail(f"SSH-Befehl fehlgeschlagen ({proc.returncode}): {out}")
+    return proc.returncode, out
+
+
 def random_push_token(length: int = 16) -> str:
     """Kuma-kompatible Token: alphanumerisch, Spalte ist VARCHAR(20)."""
     alphabet = string.ascii_letters + string.digits
@@ -87,6 +128,7 @@ def main() -> None:
     admin_pw = os.environ.get("KUMA_ADMIN_PASSWORD", DEFAULT_ADMIN_PW)
 
     log(f"Ziel: {ip}, Admin-User: {admin_user}")
+    log("WICHTIG: Default-Passwort 'varlens-konzept' nach erstem Login in Kuma-UI > Settings > Security > Change Password ändern.")
 
     # ----- 1. Kuma erreichbar? -----
     log("Prüfe Erreichbarkeit von Uptime Kuma auf 127.0.0.1:3001 (im Server-Kontext)")
@@ -112,15 +154,18 @@ def main() -> None:
         # Validierung akzeptiert $2a$-Hashes (Standard bcrypt). Nach Restart
         # nimmt Kuma den User auf und der UI-Login funktioniert.
         log("Lege Admin-Account direkt in der Kuma-DB an")
+        # SQL-Quote-Escape: einfache Quotes verdoppeln, damit Usernamen mit
+        # ' nicht zur SQL-Injection führen.
+        admin_user_sql = admin_user.replace("'", "''")
         sql = (
             f"INSERT INTO user (username, password, active) "
-            f"VALUES ('{admin_user}', '{DEFAULT_ADMIN_PW_BCRYPT}', 1);"
+            f"VALUES ('{admin_user_sql}', '{DEFAULT_ADMIN_PW_BCRYPT}', 1);"
         )
         rc, out = ssh(
             ip, ssh_key,
             f"docker exec uptime-kuma sqlite3 /app/data/kuma.db \"{sql}\"",
         )
-        log(f"  Admin-User '{admin_user}' angelegt (Passwort: varlens-konzept)")
+        log(f"  Admin-User '{admin_user}' angelegt (Default-Passwort siehe DEFAULT_ADMIN_PW im Skript)")
         log("  Restarte Kuma damit der User-Status erkannt wird")
         ssh(ip, ssh_key, "cd /mnt/data/app && docker compose restart uptime-kuma")
         for _ in range(30):
@@ -132,6 +177,8 @@ def main() -> None:
             if rc == 0:
                 break
             time.sleep(2)
+        else:
+            fail("Kuma kam nach Admin-Insert-Restart nicht zurück")
     else:
         log("  Admin existiert bereits, überspringe Setup")
 
@@ -195,7 +242,14 @@ def main() -> None:
     # sed wäre fragil weil & in der Replacement von sed als Match-Backreference
     # interpretiert wird. Wir lesen die Datei, ersetzen den Eintrag in Python,
     # und schreiben sie atomar zurück über `sudo tee`.
-    rc, current = ssh(ip, ssh_key, "sudo cat /etc/restic/env")
+    #
+    # Wichtig: stdout/stderr getrennt einlesen — sonst landet eine eventuelle
+    # `cat: ... No such file or directory`-Meldung im Body. ENOENT (frische
+    # Maschine ohne /etc/restic/env) ist tolerierbar: wir behandeln das als
+    # leere Datei und legen sie via tee neu an.
+    rc, current, _ = ssh_stdout_only(ip, ssh_key, "sudo cat /etc/restic/env", check=False)
+    if rc != 0:
+        current = ""
     new_lines = []
     replaced = False
     for line in current.splitlines():
@@ -207,22 +261,53 @@ def main() -> None:
     if not replaced:
         new_lines.append(f"HEARTBEAT_URL={heartbeat_url}")
     new_body = "\n".join(new_lines) + "\n"
-    rc, out = ssh(
+    # SECURITY: Body enthält Secrets (S3-Keys, Restic-Passwort). NIEMALS via
+    # argv (Heredoc in command-string) übertragen — `ps auxww` zeigt das
+    # komplette ssh-argv inkl. Heredoc-Body. Stattdessen via STDIN-Pipe.
+    ssh_with_stdin(
         ip, ssh_key,
-        (
-            "sudo tee /etc/restic/env >/dev/null <<'ENVEOF'\n"
-            f"{new_body}"
-            "ENVEOF\n"
-            "sudo chmod 0600 /etc/restic/env"
-        ),
+        "sudo tee /etc/restic/env >/dev/null && sudo chmod 0600 /etc/restic/env",
+        stdin=new_body,
     )
     log("  /etc/restic/env aktualisiert")
 
     # ----- 5. Verifikation: einen Heartbeat schicken und in Kuma prüfen -----
-    log("Sende Test-Heartbeat")
+    log("Erfasse aktuelle höchste heartbeat-id (Baseline)")
+    # Vor dem Test-Push speichern wir die höchste vorhandene heartbeat-id,
+    # damit wir nach dem Push verifizieren können dass tatsächlich ein
+    # *neuer* Datensatz angelegt wurde — und nicht ein alter aus einem
+    # früheren Lauf "alt aussieht aber ist da".
+    rc, baseline_raw = ssh(
+        ip, ssh_key,
+        (
+            "docker exec uptime-kuma sqlite3 /app/data/kuma.db "
+            f"\"SELECT COALESCE(MAX(id), 0) FROM heartbeat WHERE monitor_id=(SELECT id FROM monitor WHERE name='{MONITOR_NAME}');\""
+        ),
+        check=False,
+    )
+    try:
+        baseline_id = int((baseline_raw or "0").strip() or "0")
+    except ValueError:
+        baseline_id = 0
+    log(f"  Baseline heartbeat-id: {baseline_id}")
+
+    log("Sende Test-Heartbeat (mit Retry, Kuma braucht evtl. Moment nach Restart)")
     # Test-URL hat eigene Query (status=up&msg=test), nicht die persistente.
     test_url = f"http://127.0.0.1:3001/api/push/{push_token}?status=up&msg=test&ping=1"
-    ssh(ip, ssh_key, f'curl -fsS --max-time 10 -o /dev/null "{test_url}"')
+    push_ok = False
+    for attempt in range(5):
+        rc, _ = ssh(
+            ip, ssh_key,
+            f'curl -fsS --max-time 10 -o /dev/null "{test_url}"',
+            check=False,
+        )
+        if rc == 0:
+            push_ok = True
+            break
+        if attempt < 4:
+            time.sleep(2)
+    if not push_ok:
+        fail("Test-Heartbeat-Push fehlgeschlagen nach 5 Versuchen — Kuma hat den Monitor evtl. nicht geladen.")
     time.sleep(2)
     log("Verifiziere dass Kuma den Heartbeat sieht")
     rc, status = ssh(
@@ -233,10 +318,16 @@ def main() -> None:
         ),
         check=False,
     )
+    latest_id = 0
     if rc == 0 and status.strip():
-        log(f"  Kuma hat Heartbeat empfangen (heartbeat-id {status.strip()})")
+        try:
+            latest_id = int(status.strip())
+        except ValueError:
+            latest_id = 0
+    if latest_id > baseline_id:
+        log(f"  Kuma hat Heartbeat empfangen (heartbeat-id {latest_id} > baseline {baseline_id})")
     else:
-        log("  WARNUNG: kein Heartbeat-Datensatz in Kuma gefunden — Kuma braucht evtl. einen Moment.")
+        log(f"  WARNUNG: kein neuer Heartbeat-Datensatz in Kuma (latest={latest_id}, baseline={baseline_id}) — Kuma braucht evtl. einen Moment.")
 
     # ----- 6. Summary -----
     print()
@@ -246,7 +337,8 @@ def main() -> None:
     print(f"  Monitor-Name:    {MONITOR_NAME}")
     print(f"  Push-Token:      {push_token[:6]}… (in Kuma-DB)")
     print(f"  Heartbeat-URL:   in /etc/restic/env (HEARTBEAT_URL)")
-    print(f"  Kuma-UI:         https://<server>/monitor/  (Login admin / varlens-konzept)")
+    print(f"  Kuma-UI:         https://<server>/monitor/")
+    print(f"  Kuma-UI-Login:   admin / <Default-Passwort siehe DEFAULT_ADMIN_PW im Skript>")
     print()
     print("Nächster Backup-Lauf pingt automatisch. Manueller Test:")
     print(f"  ssh -i {ssh_key} deploy@{ip} 'sudo systemctl start restic-backup.service'")

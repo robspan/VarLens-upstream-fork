@@ -24,7 +24,10 @@ services:
     networks:
       - varlens
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost/"]
+      # :80 antwortet seit dem HTTPS-Redirect mit 308. BusyBox-wget würde dem
+      # Redirect folgen und an der SNI/Cert-Prüfung scheitern. --max-redirect=0
+      # plus grep auf den Status-Code akzeptiert die 308-Antwort als "healthy".
+      test: ["CMD-SHELL", "wget -O - --spider --max-redirect=0 -S http://localhost/ 2>&1 | grep -q '308'"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -52,6 +55,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       DOZZLE_LEVEL: info
+      # Sub-Path-Mount hinter Caddy unter /logs. Dozzle emittiert UI-Assets
+      # damit korrekt unter /logs/... statt absolut unter /.
+      DOZZLE_BASE: /logs
       # Auth-Schicht über Caddy (Basic-Auth in Caddyfile). Dozzle-eigene Auth
       # bleibt aus, weil es entweder eine users.yml verlangt oder bei Default
       # 502 zurückliefert.

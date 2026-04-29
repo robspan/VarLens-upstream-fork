@@ -36,8 +36,10 @@ import json
 import os
 import re
 import secrets
+import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -180,6 +182,65 @@ def s3_put_bucket(endpoint: str, region: str, access: str, secret: str, bucket: 
         return e.code, e.read().decode("utf-8", errors="replace")
 
 
+def s3_put_bucket_versioning(endpoint: str, region: str, access: str, secret: str, bucket: str) -> tuple[int, str]:
+    """PUT /<bucket>?versioning to enable bucket versioning. Signed with AWS V4."""
+    host = endpoint
+    method = "PUT"
+    canonical_uri = f"/{bucket}"
+    canonical_query = "versioning="
+    body = (
+        '<VersioningConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">'
+        '<Status>Enabled</Status>'
+        '</VersioningConfiguration>'
+    ).encode("utf-8")
+    payload_hash = hashlib.sha256(body).hexdigest()
+
+    now = datetime.datetime.utcnow()
+    amz_date = now.strftime("%Y%m%dT%H%M%SZ")
+    date_stamp = now.strftime("%Y%m%d")
+
+    canonical_headers = (
+        f"host:{host}\nx-amz-content-sha256:{payload_hash}\nx-amz-date:{amz_date}\n"
+    )
+    signed_headers = "host;x-amz-content-sha256;x-amz-date"
+
+    canonical_request = "\n".join([
+        method, canonical_uri, canonical_query, canonical_headers, signed_headers, payload_hash,
+    ])
+
+    credential_scope = f"{date_stamp}/{region}/s3/aws4_request"
+    string_to_sign = "\n".join([
+        "AWS4-HMAC-SHA256", amz_date, credential_scope,
+        hashlib.sha256(canonical_request.encode("utf-8")).hexdigest(),
+    ])
+
+    key = _signing_key(secret, date_stamp, region, "s3")
+    signature = hmac.new(key, string_to_sign.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    authorization = (
+        f"AWS4-HMAC-SHA256 Credential={access}/{credential_scope}, "
+        f"SignedHeaders={signed_headers}, Signature={signature}"
+    )
+
+    req = urllib.request.Request(
+        f"https://{host}{canonical_uri}?versioning",
+        method=method,
+        data=body,
+        headers={
+            "Host": host,
+            "Content-Length": str(len(body)),
+            "x-amz-content-sha256": payload_hash,
+            "x-amz-date": amz_date,
+            "Authorization": authorization,
+        },
+    )
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return resp.status, resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode("utf-8", errors="replace")
+
+
 def s3_head_bucket(endpoint: str, region: str, access: str, secret: str, bucket: str) -> int:
     """HEAD /<bucket> to check if bucket exists. Same V4 signing."""
     host = endpoint
@@ -284,15 +345,133 @@ def ssh_exec(ssh_key: Path, ip: str, cmd: str) -> tuple[int, str]:
     return proc.returncode, (proc.stdout + proc.stderr)
 
 
+def _validate_envvalue(key: str, value: str) -> None:
+    """Assert that an env value is a single line of reasonable length.
+
+    Newlines/CR would corrupt the KEY=VALUE env file format. We also clamp
+    pathological lengths to surface misconfiguration early.
+    """
+    if not isinstance(value, str):
+        fail(f"Env-Wert für {key} ist kein String: {type(value).__name__}")
+    if "\n" in value or "\r" in value:
+        fail(f"Env-Wert für {key} enthält Zeilenumbruch — würde /etc/restic/env korrumpieren.")
+    if len(value) > 4096:
+        fail(f"Env-Wert für {key} ist unplausibel lang ({len(value)} Zeichen).")
+
+
 def write_env_file(ssh_key: Path, ip: str, env: dict[str, str]) -> None:
+    for k, v in env.items():
+        _validate_envvalue(k, v)
     body = "\n".join(f"{k}={v}" for k, v in env.items()) + "\n"
     log("Schreibe /etc/restic/env auf den Server")
-    code, output = ssh_exec(
-        ssh_key, ip,
-        f"sudo install -d -m 0700 /etc/restic && sudo tee /etc/restic/env >/dev/null <<'ENVEOF'\n{body}ENVEOF\nsudo chmod 0600 /etc/restic/env"
-    )
+    # Schritt 1: Verzeichnis anlegen (separater SSH-Aufruf, keine Secrets in argv).
+    code, output = ssh_exec(ssh_key, ip, "sudo install -d -m 0700 /etc/restic")
     if code != 0:
-        fail(f"SSH-Schreiben fehlgeschlagen: {output}")
+        fail(f"SSH mkdir /etc/restic fehlgeschlagen: {output}")
+    # Schritt 2: Body über STDIN streamen, damit ps auxww keine Secrets sieht.
+    proc = subprocess.run(
+        ["ssh", "-i", str(ssh_key), "-o", "BatchMode=yes",
+         "-o", "StrictHostKeyChecking=accept-new", f"deploy@{ip}",
+         "sudo tee /etc/restic/env >/dev/null && sudo chmod 0600 /etc/restic/env"],
+        input=body, capture_output=True, text=True,
+    )
+    if proc.returncode != 0:
+        fail(f"SSH-Schreiben fehlgeschlagen: {proc.stdout}{proc.stderr}")
+
+
+def persist_restic_secret_to_sops(restic_password: str, bucket: str, endpoint: str, access: str) -> None:
+    """Write the freshly generated restic secret bundle to secrets/restic.yaml via SOPS.
+
+    Survival of this password is the difference between recoverable and
+    unrecoverable backups in case of total server loss. We therefore persist
+    it to a SOPS-encrypted file in the repo (committed by the user).
+    """
+    sops_path = shutil.which("sops")
+    if sops_path is None:
+        log("WARNUNG: `sops` nicht im PATH gefunden — restic-Passwort wird NICHT lokal persistiert.")
+        log("WARNUNG: Bei Server-Verlust sind alle S3-Snapshots unentschlüsselbar. sops installieren und erneut laufen lassen.")
+        return
+
+    age_keys = Path.home() / ".config" / "sops" / "age" / "keys.txt"
+    if not age_keys.exists():
+        log(f"WARNUNG: SOPS age-Key {age_keys} fehlt — restic-Passwort wird NICHT lokal persistiert.")
+        log("WARNUNG: Bei Server-Verlust sind alle S3-Snapshots unentschlüsselbar.")
+        return
+
+    # Public-Key extrahieren ("# public key: age1...").
+    pubkey = ""
+    for line in age_keys.read_text().splitlines():
+        if line.startswith("# public key:"):
+            pubkey = line.split(":", 1)[1].strip()
+            break
+    if not pubkey:
+        log(f"WARNUNG: Kein '# public key:' Header in {age_keys} — überspringe SOPS-Persistenz.")
+        return
+
+    target = REPO_ROOT / "secrets" / "restic.yaml"
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    def _yaml_escape(s: str) -> str:
+        return s.replace("\\", "\\\\").replace('"', '\\"')
+
+    plaintext = (
+        f'restic_password: "{_yaml_escape(restic_password)}"\n'
+        f'bucket: "{_yaml_escape(bucket)}"\n'
+        f'endpoint: "{_yaml_escape(endpoint)}"\n'
+        f'access_key: "{_yaml_escape(access)}"\n'
+    )
+
+    # tempfile in derselben Partition wie target, damit os.replace atomar bleibt.
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", suffix=".yaml", delete=False,
+        dir=str(target.parent),
+    ) as tf:
+        tf.write(plaintext)
+        tmp_plain = Path(tf.name)
+    try:
+        os.chmod(tmp_plain, 0o600)
+        # SOPS verschlüsselt -> stdout, dann atomar nach target verschieben.
+        with tempfile.NamedTemporaryFile(
+            mode="wb", suffix=".yaml.enc", delete=False, dir=str(target.parent),
+        ) as enc_tf:
+            tmp_enc = Path(enc_tf.name)
+        try:
+            proc = subprocess.run(
+                [sops_path, "-e", "--age", pubkey, "--input-type", "yaml",
+                 "--output-type", "yaml", str(tmp_plain)],
+                capture_output=True,
+            )
+            if proc.returncode != 0:
+                log(f"WARNUNG: sops-Verschlüsselung fehlgeschlagen ({proc.returncode}): "
+                    f"{proc.stderr.decode('utf-8', errors='replace')}")
+                return
+            tmp_enc.write_bytes(proc.stdout)
+            os.chmod(tmp_enc, 0o644)
+            os.replace(tmp_enc, target)
+            tmp_enc = None  # nicht mehr aufzuräumen
+        finally:
+            if tmp_enc is not None and tmp_enc.exists():
+                try:
+                    tmp_enc.unlink()
+                except OSError:
+                    pass
+    finally:
+        try:
+            tmp_plain.unlink()
+        except OSError:
+            pass
+
+    print()
+    print("!" * 70)
+    print("WICHTIG: secrets/restic.yaml wurde NEU geschrieben (SOPS-verschlüsselt).")
+    print("Bitte JETZT committen und pushen:")
+    print()
+    print(f"    git add {target.relative_to(REPO_ROOT)}")
+    print('    git commit -m "chore(secrets): rotate restic password"')
+    print()
+    print("Ohne Commit ist der einzige Speicherort des restic-Passworts der Server.")
+    print("Bei Server-Verlust waeren ALLE S3-Snapshots unentschluesselbar.")
+    print("!" * 70)
 
 
 # ----- main -----
@@ -447,15 +626,47 @@ def main() -> None:
     elif head not in (200, 404):
         fail(f"Unerwartete Antwort bei Bucket-HEAD ({head})")
 
+    # --- Bucket-Versioning aktivieren (Schutz gegen versehentliches Löschen) ---
+    vcode, vbody = s3_put_bucket_versioning(endpoint, region, access, secret, bucket)
+    if vcode in (200, 204):
+        log("Bucket-Versioning aktiviert (Schutz gegen versehentliches Löschen)")
+    elif vcode in (400, 501):
+        log(f"WARNUNG: Bucket-Versioning vom Endpoint nicht unterstützt (HTTP {vcode}): {vbody[:200]}")
+    else:
+        log(f"WARNUNG: Bucket-Versioning konnte nicht aktiviert werden (HTTP {vcode}): {vbody[:200]}")
+
     # --- restic password: existing reusen, sonst neu generieren ---
+    newly_generated = False
     if existing_password and mode in ("default", "reuse"):
         restic_password = existing_password
         log("Bestehendes restic-Passwort wiederverwendet")
     else:
         restic_password = base64.b64encode(secrets.token_bytes(24)).decode("ascii")
+        newly_generated = True
         log("Generierte starkes restic-Passwort (24 zufällige Bytes, base64)")
 
+    # --- Bei Neuanlage: restic-Passwort SOPS-verschlüsselt im Repo persistieren ---
+    # Sonst überlebt das Passwort einen Server-Verlust nicht und alle Snapshots
+    # wären unentschlüsselbar.
+    if newly_generated and mode != "reuse":
+        persist_restic_secret_to_sops(restic_password, bucket, endpoint, access)
+
     # --- write env on server ---
+    # HEARTBEAT_URL wird von setup-monitoring.py gesetzt. Wenn diese Datei
+    # schon existiert, übernehmen wir den vorhandenen Wert, damit ein
+    # `setup-backup --reuse` den Heartbeat nicht stillschweigend abschaltet.
+    existing_heartbeat_url = ""
+    code, hb_raw = ssh_exec(
+        ssh_key, ip,
+        "sudo cat /etc/restic/env 2>/dev/null | grep '^HEARTBEAT_URL=' || true",
+    )
+    if code == 0:
+        line = hb_raw.strip()
+        if line.startswith("HEARTBEAT_URL="):
+            existing_heartbeat_url = line.split("=", 1)[1]
+    if existing_heartbeat_url:
+        log("Übernehme bestehende HEARTBEAT_URL aus /etc/restic/env")
+
     env = {
         "RESTIC_REPOSITORY": f"s3:{endpoint}/{bucket}",
         "RESTIC_PASSWORD": restic_password,
@@ -465,7 +676,7 @@ def main() -> None:
         "RETENTION_KEEP_DAILY": "7",
         "RETENTION_KEEP_WEEKLY": "4",
         "RETENTION_KEEP_MONTHLY": "6",
-        "HEARTBEAT_URL": "",
+        "HEARTBEAT_URL": existing_heartbeat_url,
     }
     write_env_file(ssh_key, ip, env)
 

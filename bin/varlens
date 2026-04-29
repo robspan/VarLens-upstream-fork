@@ -17,7 +17,10 @@ sauber aufräumen kann.
 from __future__ import annotations
 
 import argparse
+import http.client
 import os
+import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -40,20 +43,29 @@ def tfvars_path(env: str) -> Path:
     return env_dir(env) / "terraform.tfvars"
 
 
+_TFVAR_LINE = re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*"([^"]*)"\s*(?:#.*)?$')
+
+
 def tfvars_get(env: str, key: str) -> str | None:
     f = tfvars_path(env)
     if not f.exists():
         return None
-    for line in f.read_text().splitlines():
-        line = line.strip()
-        if line.startswith("#") or "=" not in line:
+    for raw in f.read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
             continue
-        k, _, v = line.partition("=")
-        if k.strip() == key:
-            v = v.strip()
-            if v.startswith('"') and v.endswith('"'):
-                return v[1:-1]
-            return v
+        m = _TFVAR_LINE.match(line)
+        if m and m.group(1) == key:
+            return m.group(2)
+        # Fallback für unquoted Werte: trailing comment abtrennen, dann parsen.
+        if "=" in line and not m:
+            head, _, _comment = line.partition("#")
+            k, _, v = head.partition("=")
+            if k.strip() == key:
+                v = v.strip()
+                if v.startswith('"') and v.endswith('"') and len(v) >= 2:
+                    return v[1:-1]
+                return v
     return None
 
 
@@ -108,10 +120,22 @@ def ensure_init(env: str) -> None:
         tofu(env, "init")
 
 
-def ssh_run(ip: str, key: Path, command: str, timeout: int = 60, *, ephemeral_host: bool = False) -> subprocess.CompletedProcess:
+def ssh_run(
+    ip: str,
+    key: Path,
+    command: str,
+    *,
+    connect_timeout: int = 15,
+    total_timeout: int = 60,
+    ephemeral_host: bool = False,
+) -> subprocess.CompletedProcess:
     """ephemeral_host=True für e2e: Hetzner recyclet IPs aus einem kleinen Pool,
-    der vorherige Host-Key kann kollidieren — daher kein known_hosts-Lookup."""
-    opts = ["-o", "BatchMode=yes", "-o", f"ConnectTimeout={timeout}"]
+    der vorherige Host-Key kann kollidieren — daher kein known_hosts-Lookup.
+
+    connect_timeout begrenzt den initialen TCP/SSH-Handshake; total_timeout
+    deckelt die gesamte Befehlsausführung (inkl. Remote-Laufzeit), damit
+    aufrufende Schritte nicht unbegrenzt hängen können."""
+    opts = ["-o", "BatchMode=yes", "-o", f"ConnectTimeout={connect_timeout}"]
     if ephemeral_host:
         opts += [
             "-o", "StrictHostKeyChecking=no",
@@ -120,10 +144,19 @@ def ssh_run(ip: str, key: Path, command: str, timeout: int = 60, *, ephemeral_ho
         ]
     else:
         opts += ["-o", "StrictHostKeyChecking=accept-new"]
-    return subprocess.run(
-        ["ssh", "-i", str(key), *opts, f"deploy@{ip}", command],
-        capture_output=True, text=True,
-    )
+    try:
+        return subprocess.run(
+            ["ssh", "-i", str(key), *opts, f"deploy@{ip}", command],
+            capture_output=True, text=True, timeout=total_timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        # Einheitliche Behandlung: returncode=124 wie bei `timeout(1)`.
+        return subprocess.CompletedProcess(
+            args=exc.cmd,
+            returncode=124,
+            stdout=exc.stdout.decode() if isinstance(exc.stdout, bytes) else (exc.stdout or ""),
+            stderr=(exc.stderr.decode() if isinstance(exc.stderr, bytes) else (exc.stderr or "")) + f"\n[varlens] ssh_run timeout nach {total_timeout}s",
+        )
 
 
 def clear_host_key(ip: str) -> None:
@@ -359,7 +392,8 @@ def _wait_for_cloud_init(ip: str, key: Path, timeout: int = 900) -> None:
         proc = ssh_run(
             ip, key,
             "cloud-init status --wait 2>&1 | tail -1",
-            timeout=15,
+            connect_timeout=15,
+            total_timeout=30,
             ephemeral_host=True,
         )
         if proc.returncode == 0 and "done" in proc.stdout:
@@ -370,13 +404,16 @@ def _wait_for_cloud_init(ip: str, key: Path, timeout: int = 900) -> None:
 
 
 def _stack_up(ip: str, key: Path) -> None:
+    # rsync interpretiert -e als Shell-String — Leerzeichen im Pfad würden den
+    # Parser zerlegen, daher shlex.quote.
+    ssh_cmd = (
+        f"ssh -i {shlex.quote(str(key))} -o StrictHostKeyChecking=no "
+        "-o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+    )
     subprocess.run(
         [
             "rsync", "-avz", "--delete",
-            "-e", (
-                f"ssh -i {key} -o StrictHostKeyChecking=no "
-                "-o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
-            ),
+            "-e", ssh_cmd,
             f"{REPO}/compose/",
             f"deploy@{ip}:/mnt/data/app/",
         ],
@@ -390,7 +427,9 @@ def _stack_up(ip: str, key: Path) -> None:
         "fi && "
         "docker compose pull && docker compose up -d"
     )
-    proc = ssh_run(ip, key, cmd, timeout=300, ephemeral_host=True)
+    proc = ssh_run(ip, key, cmd, connect_timeout=15, total_timeout=600, ephemeral_host=True)
+    if proc.returncode == 124:
+        raise RuntimeError("stack-up timeout (docker compose pull/up hängt)")
     if proc.returncode != 0:
         raise RuntimeError(f"stack-up fehlgeschlagen: {proc.stderr}")
 
@@ -401,7 +440,7 @@ def _smoke(ip: str, key: Path) -> None:
     def check(label: str, expected, got):
         checks.append((label, expected, got, got == expected))
 
-    proc = ssh_run(ip, key, "echo yes", ephemeral_host=True)
+    proc = ssh_run(ip, key, "echo yes", total_timeout=30, ephemeral_host=True)
     check("ssh", "yes", proc.stdout.strip())
 
     # HTTPS mit Self-Signed-Cert: TLS-Verify deaktivieren (Konzept-Pilot Intranet).
@@ -410,19 +449,20 @@ def _smoke(ip: str, key: Path) -> None:
     insecure_ctx.check_hostname = False
     insecure_ctx.verify_mode = ssl.CERT_NONE
 
-    # HTTP soll auf HTTPS umleiten (308). Wir folgen explizit nicht.
+    # HTTP→HTTPS-Redirect prüfen, ohne dem Redirect zu folgen (sonst würde die
+    # Self-Signed-TLS-Validierung den eigentlichen Statuscode verschleiern).
+    code = 0
     try:
-        req = urllib.request.Request(f"http://{ip}/")
-        opener = urllib.request.build_opener(urllib.request.HTTPRedirectHandler())
-        # Standard-Opener folgt Redirects; daher die rohe Variante:
-        with urllib.request.urlopen(req, timeout=10) as r:
-            code = r.status
-    except urllib.error.HTTPError as exc:
-        code = exc.code
+        conn = http.client.HTTPConnection(ip, 80, timeout=10)
+        try:
+            conn.request("GET", "/")
+            resp = conn.getresponse()
+            code = resp.status
+        finally:
+            conn.close()
     except Exception:
         code = 0
-    # urlopen folgt 308 standardmäßig — wir akzeptieren 200 (gefolgte Antwort) oder 308.
-    check("http→https redirect", True, code in (200, 308))
+    check("http→https redirect", 308, code)
 
     for path, expected in [("/", 200), ("/monitor/", 401), ("/logs/", 401)]:
         try:
@@ -438,6 +478,7 @@ def _smoke(ip: str, key: Path) -> None:
     proc = ssh_run(
         ip, key,
         "cd /mnt/data/app && docker compose ps --status running --services | grep -cE '^(caddy|uptime-kuma|dozzle)$'",
+        total_timeout=30,
         ephemeral_host=True,
     )
     check("running services", "3", proc.stdout.strip())

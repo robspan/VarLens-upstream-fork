@@ -1,33 +1,33 @@
 #!/usr/bin/env bash
-# Automatischer Restore-Drill für den Konzept-Pilot.
+# Automated restore drill for the Concept Pilot.
 #
-# Was es tut:
-#   1. Legt eine Marker-Datei auf /mnt/data mit zufälligem Inhalt an.
-#   2. Triggert den restic-Backup-Service auf dem Server (synchroner Wait).
-#   3. Liest die neueste Snapshot-ID aus.
-#   4. Löscht die Marker-Datei.
-#   5. Restored den Snapshot in einen temporären Pfad.
-#   6. Verifiziert, dass der Marker im Restore wieder erscheint und identisch ist.
-#   7. Räumt das Restore-Verzeichnis und die Marker-Datei auf.
-#   8. Schreibt einen Protokoll-Eintrag nach docs/restore-protokoll.md.
+# What it does:
+#   1. Creates a marker file on /mnt/data with random content.
+#   2. Triggers the restic backup service on the server (synchronous wait).
+#   3. Reads the latest snapshot ID.
+#   4. Deletes the marker file.
+#   5. Restores the snapshot to a temporary path.
+#   6. Verifies that the marker reappears in the restore and is identical.
+#   7. Cleans up the restore directory and the marker file.
+#   8. Writes a protocol entry to docs/restore-log.md.
 #
-# Vorbedingung: /etc/restic/env auf dem Server ist befüllt
-# (Bucket + Credentials + Passwort - siehe docs/backup.md).
+# Precondition: /etc/restic/env on the server is populated
+# (bucket + credentials + password - see docs/backup.md).
 #
-# Aufruf vom Repo-Root:
+# Usage from repo root:
 #   IP=<server-ipv4> SSH_KEY=~/.ssh/varlens-tofu ./scripts/restore-drill.sh
 #
-# Oder über Makefile:
+# Or via Makefile:
 #   make restore-drill
 
 set -uo pipefail
-# Bewusst kein `-e`: ein einzelner SSH-Timeout darf nicht den Protokoll-Eintrag
-# verschlucken. Stattdessen prüfen wir Returncodes explizit und setzen RESULT=FAIL.
+# Intentionally no `-e`: a single SSH timeout must not swallow the protocol
+# entry. Instead we check return codes explicitly and set RESULT=FAIL.
 
-IP="${IP:?IP-Variable muss gesetzt sein, zum Beispiel IP=178.104.176.148}"
+IP="${IP:?IP variable must be set, for example IP=178.104.176.148}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/varlens-tofu}"
-PROTOCOL_FILE="${PROTOCOL_FILE:-docs/restore-protokoll.md}"
-# SSH_STRICT=no für e2e (recyclete IPs, Host-Key-Kollision möglich).
+PROTOCOL_FILE="${PROTOCOL_FILE:-docs/restore-log.md}"
+# SSH_STRICT=no for e2e (recycled IPs, host-key collision possible).
 SSH_STRICT="${SSH_STRICT:-accept-new}"
 if [ "$SSH_STRICT" = "no" ]; then
     SSH_OPTS="-i $SSH_KEY -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
@@ -45,68 +45,68 @@ RESTORE_TARGET="/tmp/restore-drill-$(date -u +%Y%m%dT%H%M%SZ)"
 
 START_EPOCH=$(date +%s)
 RESULT=PASS
-SNAPSHOT_ID="(nicht erreicht)"
-BACKUP_RESULT="(nicht erreicht)"
+SNAPSHOT_ID="(not reached)"
+BACKUP_RESULT="(not reached)"
 
 step() { echo "[$(date -Iseconds)] $1"; }
 fail() { echo "[$(date -Iseconds)] FAIL: $1" >&2; RESULT=FAIL; }
 
 write_protocol() {
-    # Wird über trap EXIT immer ausgeführt, auch bei vorzeitigem Abbruch.
+    # Always executed via trap EXIT, even on early abort.
     local duration=$(( $(date +%s) - START_EPOCH ))
     local marker_state
-    marker_state=$([ "$RESULT" = PASS ] && echo "ja" || echo "nein")
+    marker_state=$([ "$RESULT" = PASS ] && echo "yes" || echo "no")
     if [ ! -f "$PROTOCOL_FILE" ]; then
         cat > "$PROTOCOL_FILE" <<HEADER
-# Restore-Protokoll
+# Restore protocol
 
-Aufzeichnung der Restore-Übungen für den Konzept-Pilot. Plan-Bezug:
-\`konzept/infrastruktur.html\` §infrastruktur2 Phase 1 Gate fordert mindestens
-eine protokollierte Restore-Übung. Das Skript \`scripts/restore-drill.sh\`
-schreibt jeden automatisierten Drill als eigenen Eintrag hier herein.
+Record of restore drills for the Concept Pilot. Plan reference:
+Stage 1 infrastructure plan §infrastruktur2 Phase 1 Gate requires at least
+one logged restore drill. The script \`scripts/restore-drill.sh\` writes
+every automated drill as its own entry here.
 
 HEADER
     fi
     cat >> "$PROTOCOL_FILE" <<ENTRY
 
-## $TIMESTAMP - automatisierter Restore-Drill
+## $TIMESTAMP - automated restore drill
 
-| Feld | Wert |
+| Field | Value |
 |---|---|
-| Server-IP | $IP |
-| Snapshot-ID | $SNAPSHOT_ID |
-| Marker-Datei | $MARKER_NAME |
-| Restore-Pfad | $RESTORE_TARGET |
-| Backup-Service-Result | $BACKUP_RESULT |
-| Marker-Inhalt-identisch | $marker_state |
-| Dauer in Sekunden | $duration |
-| Ergebnis | **$RESULT** |
+| Server IP | $IP |
+| Snapshot ID | $SNAPSHOT_ID |
+| Marker file | $MARKER_NAME |
+| Restore path | $RESTORE_TARGET |
+| Backup service result | $BACKUP_RESULT |
+| Marker content identical | $marker_state |
+| Duration in seconds | $duration |
+| Result | **$RESULT** |
 
 ENTRY
-    step "Drill abgeschlossen mit Ergebnis $RESULT (Dauer ${duration}s)"
+    step "Drill complete with result $RESULT (duration ${duration}s)"
 }
 trap write_protocol EXIT
 
-# 0. Vorbedingungen prüfen.
-step "Prüfe /etc/restic/env auf dem Server"
+# 0. Check preconditions.
+step "Checking /etc/restic/env on the server"
 if ! ssh_exec 'sudo test -f /etc/restic/env' 2>/dev/null; then
-    fail "/etc/restic/env existiert nicht auf $IP. Erst Setup gemäß docs/backup.md durchführen."
+    fail "/etc/restic/env does not exist on $IP. Run setup per docs/backup.md first."
     exit 2
 fi
 if ! ssh_exec 'sudo grep -q "^RESTIC_PASSWORD=." /etc/restic/env && sudo grep -q "^AWS_ACCESS_KEY_ID=." /etc/restic/env' 2>/dev/null; then
-    fail "/etc/restic/env unvollständig (RESTIC_PASSWORD oder AWS_ACCESS_KEY_ID leer)."
+    fail "/etc/restic/env incomplete (RESTIC_PASSWORD or AWS_ACCESS_KEY_ID empty)."
     exit 2
 fi
 
-# 1. Marker anlegen.
-step "Lege Marker-Datei an: /mnt/data/$MARKER_NAME"
+# 1. Create marker.
+step "Creating marker file: /mnt/data/$MARKER_NAME"
 ssh_exec "echo '$MARKER_CONTENT' | sudo tee /mnt/data/$MARKER_NAME >/dev/null && sudo chmod 0644 /mnt/data/$MARKER_NAME"
 
-# 2. Backup triggern und auf Abschluss warten.
-step "Triggere restic-Backup-Service"
+# 2. Trigger backup and wait for completion.
+step "Triggering restic backup service"
 ssh_exec 'sudo systemctl start restic-backup.service'
 
-step "Warte auf Backup-Abschluss"
+step "Waiting for backup to finish"
 for _ in $(seq 1 60); do
     STATE=$(ssh_exec 'systemctl show restic-backup.service --property=ActiveState --value' 2>/dev/null)
     if [ "$STATE" = "inactive" ] || [ "$STATE" = "failed" ]; then
@@ -117,45 +117,45 @@ done
 
 BACKUP_RESULT=$(ssh_exec 'systemctl show restic-backup.service --property=Result --value' 2>/dev/null)
 if [ "$BACKUP_RESULT" != "success" ]; then
-    fail "Backup-Service-Result war $BACKUP_RESULT"
+    fail "Backup service result was $BACKUP_RESULT"
     ssh_exec 'sudo journalctl -u restic-backup.service --no-pager -n 30' || true
 fi
 
-# 3. Snapshot-ID holen.
-step "Lese neueste Snapshot-ID"
+# 3. Get snapshot ID.
+step "Reading latest snapshot ID"
 SNAPSHOT_ID=$(ssh_exec 'sudo bash -c "set -a; source /etc/restic/env; restic snapshots --json --latest 1 2>/dev/null"' \
     | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data[0]["short_id"] if data else "NONE")' \
     2>/dev/null || echo "NONE")
 if [ "$SNAPSHOT_ID" = "NONE" ]; then
-    fail "Keine Snapshots im Repository gefunden"
+    fail "No snapshots found in repository"
 fi
-step "  → Snapshot $SNAPSHOT_ID"
+step "  -> Snapshot $SNAPSHOT_ID"
 
-# 4. Marker löschen.
-step "Lösche Marker auf /mnt/data"
+# 4. Delete marker.
+step "Deleting marker on /mnt/data"
 ssh_exec "sudo rm -f /mnt/data/$MARKER_NAME"
 
 # 5. Restore.
 if [ "$RESULT" = PASS ]; then
-    step "Restore Snapshot $SNAPSHOT_ID nach $RESTORE_TARGET"
+    step "Restoring snapshot $SNAPSHOT_ID to $RESTORE_TARGET"
     if ! ssh_exec "sudo bash -c 'set -a; source /etc/restic/env; restic restore $SNAPSHOT_ID --target $RESTORE_TARGET'" >/dev/null 2>&1; then
-        fail "restic restore fehlgeschlagen"
+        fail "restic restore failed"
     fi
 fi
 
-# 6. Verifikation.
+# 6. Verification.
 if [ "$RESULT" = PASS ]; then
-    step "Verifiziere Marker-Inhalt"
+    step "Verifying marker content"
     RESTORED_CONTENT=$(ssh_exec "sudo cat $RESTORE_TARGET/mnt/data/$MARKER_NAME 2>/dev/null" || echo "MISSING")
     if [ "$RESTORED_CONTENT" = "$MARKER_CONTENT" ]; then
-        step "  → Marker-Inhalt identisch"
+        step "  -> Marker content identical"
     else
-        fail "Marker-Inhalt nicht identisch (erwartet $MARKER_CONTENT, bekommen $RESTORED_CONTENT)"
+        fail "Marker content not identical (expected $MARKER_CONTENT, got $RESTORED_CONTENT)"
     fi
 fi
 
-# 7. Aufräumen (Protokoll-Write erfolgt automatisch via trap EXIT).
-step "Aufräumen $RESTORE_TARGET"
+# 7. Cleanup (protocol write happens automatically via trap EXIT).
+step "Cleaning up $RESTORE_TARGET"
 ssh_exec "sudo rm -rf $RESTORE_TARGET" || true
 
 [ "$RESULT" = PASS ] && exit 0 || exit 1

@@ -1,17 +1,17 @@
-# SOPS-Konfiguration (siehe ADR-7).
+# SOPS configuration (see ADR-7).
 #
-# Alle Dateien unter secrets/ werden mit den hier gelisteten age-Recipients
-# verschlüsselt, sobald sie per `sops` editiert werden.
+# All files under secrets/ are encrypted with the age recipients listed
+# here as soon as they are edited via `sops`.
 #
-# Schlüssel-Wechsel (Recipient hinzufügen oder austauschen):
-#   1. Neuen Public-Key in den Recipients ergänzen
-#   2. Alle Secret-Dateien mit `sops updatekeys <datei>` neu verschlüsseln
+# Key rotation (add or replace recipient):
+#   1. Add the new public key to the recipients
+#   2. Re-encrypt all secret files via `sops updatekeys <file>`
 #
-# Maintainer-Workflow:
-#   sops secrets/<datei>.yaml     - editiert verschlüsselte Datei
-#   sops -d secrets/<datei>.yaml  - entschlüsselt zur Anzeige
+# Maintainer workflow:
+#   sops secrets/<file>.yaml     - edit encrypted file
+#   sops -d secrets/<file>.yaml  - decrypt for display
 #
-# Adopter: eigenen age-Key per `age-keygen` erzeugen und Public-Key hier ergänzen.
+# Adopters: generate your own age key via `age-keygen` and add the public key here.
 
 creation_rules:
   - path_regex: secrets/.*\.ya?ml$

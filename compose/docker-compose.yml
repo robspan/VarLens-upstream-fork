@@ -1,10 +1,10 @@
-# Konzept-Pilot Compose-Stack.
-# Aktuell: Reverse-Proxy + Monitoring-Werkzeuge.
-# Kommt noch: Anwendungs-Container und Datenbank-Container.
+# Concept Pilot Compose stack.
+# Currently: reverse proxy + monitoring tools.
+# Still to come: application container and database container.
 
 services:
   caddy:
-    # Image per Digest gepinnt (Vertrag §vertrag2.3 Reproduzierbarkeit). Update via:
+    # Image pinned by digest (contract §vertrag2.3 reproducibility). Update via:
     #   docker pull caddy:2-alpine && docker inspect --format='{{index .RepoDigests 0}}' caddy:2-alpine
     image: caddy:2-alpine@sha256:834468128c7696cec0ceea6172f7d692daf645ae51983ca76e39da54a97c570d
     container_name: caddy
@@ -17,16 +17,17 @@ services:
       - /mnt/data/caddy/data:/data
       - /mnt/data/caddy/config:/config
     environment:
-      # Hostname/IP für TLS-Zertifikat. Wird beim Deploy in .env injected
-      # (siehe make stack-up). Caddy stellt für diesen Namen einen Self-Signed-
-      # Cert aus seiner internen CA aus.
+      # Hostname/IP for the TLS certificate. Injected into .env at deploy time
+      # (see make stack-up). Caddy issues a self-signed cert for this name
+      # from its internal CA.
       SERVER_HOST: ${SERVER_HOST:-localhost}
     networks:
       - varlens
     healthcheck:
-      # :80 antwortet seit dem HTTPS-Redirect mit 308. BusyBox-wget würde dem
-      # Redirect folgen und an der SNI/Cert-Prüfung scheitern. --max-redirect=0
-      # plus grep auf den Status-Code akzeptiert die 308-Antwort als "healthy".
+      # :80 responds with 308 since the HTTPS redirect was added. BusyBox wget
+      # would follow the redirect and fail at SNI/cert verification.
+      # --max-redirect=0 plus a grep on the status code accepts the 308
+      # response as "healthy".
       test: ["CMD-SHELL", "wget -O - --spider --max-redirect=0 -S http://localhost/ 2>&1 | grep -q '308'"]
       interval: 30s
       timeout: 5s
@@ -36,7 +37,7 @@ services:
     image: louislam/uptime-kuma:1@sha256:3d632903e6af34139a37f18055c4f1bfd9b7205ae1138f1e5e8940ddc1d176f9
     container_name: uptime-kuma
     restart: unless-stopped
-    # Bindet nur an localhost. Externer Zugriff ausschließlich über Caddy-Reverse-Proxy.
+    # Bound to localhost only. External access exclusively via the Caddy reverse proxy.
     ports:
       - "127.0.0.1:3001:3001"
     volumes:
@@ -48,34 +49,34 @@ services:
     image: amir20/dozzle:latest@sha256:bb7df69b177814466e01397f5d44baabb56dc2fe9c6f7f18b61ce137428452d2
     container_name: dozzle
     restart: unless-stopped
-    # Bindet nur an localhost. Externer Zugriff ausschließlich über Caddy-Reverse-Proxy mit Auth.
+    # Bound to localhost only. External access exclusively via the Caddy reverse proxy with auth.
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       DOZZLE_LEVEL: info
-      # Sub-Path-Mount hinter Caddy unter /logs. Dozzle emittiert UI-Assets
-      # damit korrekt unter /logs/... statt absolut unter /.
+      # Sub-path mount behind Caddy at /logs. Ensures Dozzle emits UI assets
+      # correctly under /logs/... rather than absolutely under /.
       DOZZLE_BASE: /logs
-      # Auth-Schicht über Caddy (Basic-Auth in Caddyfile). Dozzle-eigene Auth
-      # bleibt aus, weil es entweder eine users.yml verlangt oder bei Default
-      # 502 zurückliefert.
+      # Auth layer is handled by Caddy (basic auth in Caddyfile). Dozzle's own
+      # auth stays disabled because it either requires a users.yml or returns
+      # 502 on default settings.
     networks:
       - varlens
 
-  # PostgreSQL als optionaler Service hinter dem Profile "postgres".
-  # Aktivieren mit `COMPOSE_PROFILES=postgres docker compose up -d` oder per Makefile:
+  # PostgreSQL as an optional service behind the "postgres" profile.
+  # Enable with `COMPOSE_PROFILES=postgres docker compose up -d` or via Makefile:
   #   make stack-up DB=postgres
-  # Default-DB ist SQLite - dann wird kein DB-Container gestartet, die Anwendung
-  # öffnet stattdessen eine SQLite-Datei unter /mnt/data/app/.
+  # The default DB is SQLite - in that case no DB container is started and the
+  # application opens a SQLite file under /mnt/data/app/ instead.
   postgres:
     image: postgres:16-alpine@sha256:4e6e670bb069649261c9c18031f0aded7bb249a5b6664ddec29c013a89310d50
     container_name: postgres
     restart: unless-stopped
     profiles: [postgres]
-    # Bindet nur an localhost - Anwendungs-Container greift über das interne
-    # varlens-Netzwerk zu, kein externer Zugriff.
+    # Bound to localhost only - the application container connects via the
+    # internal varlens network, no external access.
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -83,7 +84,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-varlens}
       POSTGRES_USER: ${POSTGRES_USER:-varlens}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD muss in compose/.env gesetzt sein - siehe docs/database.md}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in compose/.env - see docs/database.md}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 30s

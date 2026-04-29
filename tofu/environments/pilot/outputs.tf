@@ -1,31 +1,31 @@
-# Ausgabe nach erfolgreichem tofu apply. Per `tofu output` einsehbar.
+# Output after a successful tofu apply. View via `tofu output`.
 
 output "server_name" {
-  description = "Name des Servers in der Hetzner Console."
+  description = "Name of the server in the Hetzner Console."
   value       = hcloud_server.pilot.name
 }
 
 output "server_id" {
-  description = "Hetzner Server-ID."
+  description = "Hetzner server ID."
   value       = hcloud_server.pilot.id
 }
 
 output "ipv4" {
-  description = "Öffentliche IPv4-Adresse."
+  description = "Public IPv4 address."
   value       = hcloud_server.pilot.ipv4_address
 }
 
 output "ipv6" {
-  description = "Öffentliche IPv6-Adresse."
+  description = "Public IPv6 address."
   value       = hcloud_server.pilot.ipv6_address
 }
 
 output "volume_id" {
-  description = "Hetzner Volume-ID für das Daten-Volume."
+  description = "Hetzner volume ID for the data volume."
   value       = hcloud_volume.data.id
 }
 
 output "ssh_command" {
-  description = "Erste Verbindung per SSH als Deploy-User nach Bootstrap."
+  description = "First SSH connection as the deploy user after bootstrap."
   value       = "ssh ${var.deploy_user}@${hcloud_server.pilot.ipv4_address}"
 }

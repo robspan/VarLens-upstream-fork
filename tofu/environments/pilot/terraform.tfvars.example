@@ -1,14 +1,14 @@
-# Beispiel-Konfiguration für den Konzept-Pilot.
-# Kopiere diese Datei nach terraform.tfvars und ersetze die Werte.
-# terraform.tfvars wird per .gitignore vom Commit ausgeschlossen.
+# Example configuration for the Concept Pilot.
+# Copy this file to terraform.tfvars and replace the values.
+# terraform.tfvars is excluded from commits via .gitignore.
 
-# Hetzner Cloud API-Token. In der Hetzner Console unter Sicherheit > API-Tokens erstellen.
+# Hetzner Cloud API token. Create it in the Hetzner Console under Security > API Tokens.
 hcloud_token = "REPLACE_WITH_HCLOUD_TOKEN"
 
-# SSH-Public-Key des Maintainers. Inhalt von ~/.ssh/id_ed25519.pub einfügen.
+# SSH public key of the maintainer. Paste the contents of ~/.ssh/id_ed25519.pub.
 ssh_pubkey = "ssh-ed25519 AAAA... maintainer@host"
 
-# Optionales Override (Defaults stehen in variables.tf):
+# Optional overrides (defaults live in variables.tf):
 # server_name         = "varlens-pilot-fsn1"
 # server_type         = "cpx32"
 # server_location     = "fsn1"
@@ -16,13 +16,13 @@ ssh_pubkey = "ssh-ed25519 AAAA... maintainer@host"
 # deploy_user         = "deploy"
 # ssh_allowlist       = ["0.0.0.0/0", "::/0"]
 
-# Backup-Setup wird per `make setup-backup` automatisiert. Das Skript versucht
-# zuerst, S3-Zugangsdaten via Hetzner Cloud API zu erstellen. Falls die API
-# diesen Endpoint noch nicht anbietet, fällt es auf Umgebungs-Variablen zurück:
+# Backup setup is automated via `make setup-backup`. The script first tries
+# to create S3 credentials via the Hetzner Cloud API. If the API does not
+# yet provide this endpoint, it falls back to environment variables:
 #
 #   RESTIC_S3_ACCESS_KEY=... RESTIC_S3_SECRET_KEY=... make setup-backup
 #
-# In dem Fall: einmalig in der Hetzner Console > Sicherheit > S3-Zugangsdaten
-# generieren, und die beiden Werte als Umgebungs-Variablen mitgeben. terraform.tfvars
-# selbst enthält absichtlich keine S3-Zugangsdaten - die laufen über das
-# Backup-Setup-Skript, nicht über Tofu.
+# In that case: generate the credentials once in the Hetzner Console >
+# Security > S3 Credentials, and pass the two values as environment
+# variables. terraform.tfvars itself intentionally contains no S3
+# credentials - they go through the backup setup script, not through Tofu.

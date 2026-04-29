@@ -23,3 +23,7 @@
 .idea/
 .vscode/
 *.swp
+
+# Internal planning documents (German source-of-truth for Confluence mirror).
+# Kept locally for stakeholder reference and AI context, never committed.
+.internalplanning/

@@ -1,36 +1,36 @@
-# Secrets mit SOPS und age
+# Secrets with SOPS and age
 
-Per ADR-7 verwenden wir SOPS für Per-Wert-Verschlüsselung, age als Schlüssel-Lieferant. Damit liegen Secrets verschlüsselt im Repository. Nur wer einen passenden age-Private-Key hat, kann sie entschlüsseln.
+Per ADR-7 we use SOPS for per-value encryption, with age as the key provider. Secrets therefore live encrypted in the repository. Only someone with a matching age private key can decrypt them.
 
-## Voraussetzungen
+## Prerequisites
 
 ```sh
 brew install age sops
 ```
 
-## Erstes Setup für einen Maintainer
+## First-time setup for a maintainer
 
-1. Eigenen age-Key erzeugen:
+1. Generate your own age key:
 
    ```sh
    mkdir -p ~/.config/sops/age
    age-keygen -o ~/.config/sops/age/keys.txt
    ```
 
-   Der Befehl gibt einen Public-Key auf der Konsole aus, etwa:
+   The command prints a public key to the console, for example:
    `age1pvqt8hdwslmkrkax5tl7cpdepszaj3z8smm4psgz6cn75qy77d0spfk7ht`.
 
-2. Public-Key in `.sops.yaml` ergänzen, falls noch nicht aufgeführt:
+2. Add the public key to `.sops.yaml` if it is not already listed:
 
    ```yaml
    creation_rules:
      - path_regex: secrets/.*\.ya?ml$
        age: >-
          age1pvqt8hdwslmkrkax5tl7cpdepszaj3z8smm4psgz6cn75qy77d0spfk7ht,
-         age1<NEUER_KEY>
+         age1<NEW_KEY>
    ```
 
-3. Bestehende Secret-Dateien um den neuen Recipient erweitern:
+3. Add the new recipient to existing secret files:
 
    ```sh
    sops updatekeys secrets/example.yaml
@@ -38,67 +38,67 @@ brew install age sops
 
 ## Workflows
 
-### Editieren einer verschlüsselten Datei
+### Editing an encrypted file
 
 ```sh
 sops secrets/example.yaml
 ```
 
-Öffnet die Datei im Klartext im Editor (Default-Editor aus `$EDITOR`). Beim Speichern verschlüsselt SOPS automatisch.
+Opens the file in plaintext in the editor (default editor from `$EDITOR`). On save, SOPS encrypts automatically.
 
-### Anzeigen einer verschlüsselten Datei
+### Viewing an encrypted file
 
 ```sh
 sops -d secrets/example.yaml
 ```
 
-### Neue Secret-Datei erstellen
+### Creating a new secret file
 
 ```sh
 echo "my_secret: REPLACE" > secrets/neue-datei.yaml
 sops --encrypt --in-place secrets/neue-datei.yaml
 ```
 
-Oder direkt SOPS öffnen lassen und Inhalt eingeben:
+Or open SOPS directly and enter the content:
 
 ```sh
 sops secrets/neue-datei.yaml
 ```
 
-### Inhalt im Skript verwenden
+### Using the contents in a script
 
-Beispiel für ein Backup-Skript:
+Example for a backup script:
 
 ```sh
 export RESTIC_PASSWORD=$(sops -d --extract '["restic_password"]' secrets/example.yaml)
 ```
 
-## Was wir verschlüsseln
+## What we encrypt
 
-| Datei | Inhalt |
+| File | Contents |
 |---|---|
-| `secrets/example.yaml` | Vorlage mit restic-Passwort, Object-Storage-Credentials, Heartbeat-URL |
+| `secrets/example.yaml` | Template with restic password, Object Storage credentials, heartbeat URL |
 
-`secrets/example.yaml` ist absichtlich mit Platzhalter-Werten verschlüsselt - die Struktur dient als Referenz für eigene Secret-Dateien.
+`secrets/example.yaml` is intentionally encrypted with placeholder values - the structure serves as a reference for your own secret files.
 
-## Schlüssel-Wechsel
+## Key rotation
 
-Wenn ein Maintainer das Repository verlässt:
+When a maintainer leaves the repository:
 
-1. Den entsprechenden Public-Key aus `.sops.yaml` entfernen.
-2. Alle verschlüsselten Dateien neu verschlüsseln:
+1. Remove the corresponding public key from `.sops.yaml`.
+2. Re-encrypt all encrypted files:
 
    ```sh
    for f in secrets/*.yaml; do sops updatekeys "$f"; done
    ```
 
-3. Alle Secret-Werte rotieren - der ehemalige Maintainer hatte sie schließlich im Klartext.
+3. Rotate all secret values - the former maintainer had them in plaintext after all.
 
-## Hetzner Object Storage als restic-Ziel
+## Hetzner Object Storage as a restic target
 
-Für den Backup-Pfad (siehe `docs/runbook.md`):
+For the backup path (see `docs/runbook.md`):
 
-1. In der Hetzner Console unter Object Storage einen Bucket erstellen, zum Beispiel `varlens-pilot-backup`.
-2. Access-Credentials (Access-Key + Secret-Key) generieren.
-3. Werte in `secrets/example.yaml` (oder einer eigenen Datei) eintragen via `sops`.
-4. Backup-Skript liest die Werte zur Laufzeit, exportiert sie als Umgebungsvariablen für restic.
+1. In the Hetzner Console, create a bucket under Object Storage, for example `varlens-pilot-backup`.
+2. Generate access credentials (access key + secret key).
+3. Enter the values into `secrets/example.yaml` (or your own file) via `sops`.
+4. The backup script reads the values at runtime and exports them as environment variables for restic.

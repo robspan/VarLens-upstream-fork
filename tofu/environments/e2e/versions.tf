@@ -1,4 +1,4 @@
-# E2E-Test-Environment. Wegwerfbar, läuft parallel zu pilot, eigener State.
+# E2E test environment. Disposable, runs in parallel to pilot, with its own state.
 
 terraform {
   required_version = ">= 1.7.0"

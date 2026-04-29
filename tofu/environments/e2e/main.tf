@@ -1,6 +1,6 @@
-# E2E-Test-Environment. Identische Struktur wie pilot, eigener State,
-# eigene Ressourcen-Namen. Wird von `varlens e2e run` end-to-end
-# durchprovisioniert (up → stack-up → backup → smoke → restore-drill → down).
+# E2E test environment. Identical structure to pilot, with its own state
+# and its own resource names. Provisioned end-to-end by `varlens e2e run`
+# (up -> stack-up -> backup -> smoke -> restore-drill -> down).
 
 provider "hcloud" {
   token = var.hcloud_token
@@ -62,8 +62,8 @@ resource "hcloud_server" "e2e" {
   ssh_keys     = [hcloud_ssh_key.maintainer.id]
   firewall_ids = [hcloud_firewall.e2e.id]
 
-  # Gleiche cloud-init wie pilot: das Setup soll bit-identisch sein,
-  # sonst testet die E2E-Suite den falschen Pfad.
+  # Same cloud-init as pilot: the setup must be bit-identical, otherwise
+  # the E2E suite would test the wrong path.
   user_data = templatefile("${path.module}/../../../cloud-init/pilot.yaml", {
     deploy_user = var.deploy_user
     ssh_pubkey  = var.ssh_pubkey

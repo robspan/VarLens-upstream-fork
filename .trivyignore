@@ -1,23 +1,23 @@
-# Trivy-Ignore-Liste für VarLens-IaC.
+# Trivy ignore list for VarLens-IaC.
 #
-# Konzept-Pilot akzeptiert die hier gelisteten CVEs, weil sie upstream
-# Go-stdlib-Issues in den Compose-Stack-Images (caddy, louislam/uptime-kuma,
-# amir20/dozzle) sind — fixbar nur durch Image-Rebuild durch die
-# Upstream-Maintainer.
+# The Concept Pilot accepts the CVEs listed here because they are upstream
+# Go stdlib issues in the Compose stack images (caddy, louislam/uptime-kuma,
+# amir20/dozzle) — fixable only via image rebuild by the upstream
+# maintainers.
 #
-# Mitigation in dieser Konfiguration:
-#   - Caddy basic_auth ist die einzige Eintrittspforte zu Kuma/Dozzle
-#   - Konzept-Pilot ist intranet-only, Self-Signed-TLS
-#   - §vertrag5 Echt-Daten-Sperre: nur Test-Daten zulässig
-#   - Stufe-2 wird Kuma/Dozzle entweder bumpen oder ersetzen
+# Mitigation in this configuration:
+#   - Caddy basic_auth is the only entry point to Kuma/Dozzle
+#   - Concept Pilot is intranet-only, self-signed TLS
+#   - §vertrag5 real-data lock: only test data permitted
+#   - Stage 2 will either bump or replace Kuma/Dozzle
 #
-# Review-Pflicht: alle drei Monate (siehe Ablaufdatum in der exp:-Annotation).
-# Beim Image-Tag-Bump in compose/docker-compose.yml prüfen welche CVEs der
-# neue Tag noch hat, und nur die übrig gebliebenen stehenlassen.
+# Review obligation: every three months (see expiration date in the exp:
+# annotation). On image tag bump in compose/docker-compose.yml, Check
+# which CVEs the new tag still has and only keep the remaining ones.
 #
-# Stand: 2026-04-29 — nächstes Review: 2026-07-29.
+# As of: 2026-04-29 — next review: 2026-07-29.
 
-# === Go stdlib + Bibliotheken in Caddy + Kuma + Dozzle ===
+# === Go stdlib + libraries in Caddy + Kuma + Dozzle ===
 CVE-2023-39325
 CVE-2023-45283
 CVE-2023-45288

@@ -59,16 +59,15 @@ As of April 2026: application container and database are still to come.
 	}
 
 	# Everything else (including /, /dashboard, /assets, /socket.io, /api,
-	# /upload, ...) goes to Uptime Kuma. Kuma 1.x has no base-path support
-	# and emits absolute paths, so it must own the root. This solves the
-	# previous /monitor/* sub-path bug where /dashboard etc. fell into 404.
+	# /upload, /manifest.json, ...) goes to Uptime Kuma. Kuma 1.x has no
+	# base-path support and emits absolute paths, so it must own the root.
+	#
+	# No Caddy basic_auth here on purpose: Kuma has its own login form, and
+	# the browser PWA / manifest / favicon fetches happen without credentials
+	# by default (no `crossorigin="use-credentials"` on the link tags) - a
+	# basic_auth gate would 401 those and break the UI. Defense-in-depth via
+	# a second auth layer is overkill for the Concept Pilot intranet anyway.
 	handle {
-		basic_auth {
-			# Generate a hash with:
-			#   docker exec caddy caddy hash-password
-			# Default login: admin / varlens-konzept
-			admin $2a$14$6QBIGJyJFZMJIomvheSxvOUokBVZsvz03snLpmL7auY8aBmxVfNKy
-		}
 		reverse_proxy uptime-kuma:3001
 	}
 }

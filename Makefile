@@ -127,22 +127,26 @@ deploy-stack:
 		compose/ \
 		deploy@$(call IPV4):/mnt/data/app/
 
-# Optional: when DOMAIN=foo.example.de is passed, the stack switches Caddy
-# to Let's Encrypt automatic ACME for that domain (requires DNS pointing to
-# the server's IPv4 and port 80 reachable). Without DOMAIN, Caddy stays on
-# the self-signed internal CA matching the IP.
+# TLS strategy resolution. Three modes (see compose/Caddyfile snippets):
+#   default                            -> raw IP + Let's Encrypt shortlived (public CA, 7-day cert)
+#   make stack-up DOMAIN=foo.de        -> domain + Let's Encrypt classic (90-day cert)
+#   make stack-up TLS=internal         -> self-signed (no public CA, browser warning)
+# All three renew automatically via Caddy; no host cron, no certbot.
 ifneq ($(DOMAIN),)
   CADDY_HOST = $(DOMAIN)
-  CADDY_TLS_LINE =
+  CADDY_TLS = tls-le-classic
+else ifeq ($(TLS),internal)
+  CADDY_HOST = $(call IPV4)
+  CADDY_TLS = tls-internal
 else
   CADDY_HOST = $(call IPV4)
-  CADDY_TLS_LINE = tls internal
+  CADDY_TLS = tls-le-ip
 endif
 
 stack-up: deploy-stack
 	@if [ -z "$(call IPV4)" ]; then echo "No server present."; exit 1; fi
 	@echo "Database profile: $(DB)"
-	@if [ -n "$(DOMAIN)" ]; then echo "TLS mode: Let's Encrypt for $(DOMAIN)"; else echo "TLS mode: self-signed (internal CA, IP-based)"; fi
+	@echo "TLS mode:         $(CADDY_TLS)  (host: $(CADDY_HOST))"
 	@ssh -i $(SSH_KEY) deploy@$(call IPV4) 'cd /mnt/data/app && \
 		if [ ! -f .env ]; then \
 			echo "Generating random PostgreSQL password for compose/.env"; \
@@ -150,7 +154,7 @@ stack-up: deploy-stack
 			sed -i "s|REPLACE_WITH_GENERATED_PASSWORD|$$(openssl rand -base64 32 | tr -d /+= | head -c 32)|" .env; \
 		fi && \
 		sed -i "s|^SERVER_HOST=.*|SERVER_HOST=$(CADDY_HOST)|" .env && \
-		sed -i "s|^CADDY_TLS_DIRECTIVE=.*|CADDY_TLS_DIRECTIVE=$(CADDY_TLS_LINE)|" .env && \
+		sed -i "s|^CADDY_TLS_PROFILE=.*|CADDY_TLS_PROFILE=$(CADDY_TLS)|" .env && \
 		$(COMPOSE_PROFILES_FLAG) docker compose pull && \
 		$(COMPOSE_PROFILES_FLAG) docker compose up -d --force-recreate caddy && \
 		$(COMPOSE_PROFILES_FLAG) docker compose up -d'

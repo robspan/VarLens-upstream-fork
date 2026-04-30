@@ -1,26 +1,62 @@
-# Caddy configuration for the Concept Pilot (intranet, self-signed).
+# Caddy configuration for the Concept Pilot.
 #
-# Concept Pilot state: single server, no DNS record, no public CA certificate.
-# With `tls internal`, Caddy issues a self-signed certificate from its
-# internal CA. Browsers show a warning on first access - acceptable on the
-# intranet and covered by §vertrag5 (no real data, Concept = test data).
-# Stage 2 replaces `tls internal` with a domain so Caddy automatically
-# obtains a Let's Encrypt certificate (see example at the end of the file).
+# TLS strategy is selected via the CADDY_TLS_PROFILE env var. Three modes
+# are supported, all with automatic renewal handled inside the container:
+#
+#   tls-internal    Self-signed certificate from Caddy's internal CA.
+#                   Browser shows a one-time warning unless the Caddy root
+#                   is imported. No external dependencies. Fallback for
+#                   offline / dev / pre-internet environments.
+#
+#   tls-le-classic  Let's Encrypt 90-day cert via ACME HTTP-01. Default
+#                   profile, requires SERVER_HOST to be a real domain
+#                   whose DNS A-record points here. Standard production.
+#
+#   tls-le-ip       Let's Encrypt 7-day cert via ACME TLS-ALPN-01 with
+#                   the `shortlived` profile. Lets you use the raw public
+#                   IP (Hetzner IPv4) as SERVER_HOST and still get a
+#                   browser-trusted certificate. Renewal every ~5 days,
+#                   handled automatically by Caddy. LE rate limit: 50
+#                   certs per IP per week, so don't spin destroy/up cycles
+#                   too often.
+#
+# Switch via the Makefile:
+#   make stack-up                                   # tls-le-ip (default if SERVER_HOST is an IP)
+#   make stack-up DOMAIN=varlens.example.de         # tls-le-classic
+#   make stack-up TLS=internal                      # tls-internal (no internet cert)
 
 {
 	# Without this, Caddy would try to enable HTTPS automatically for every
 	# site block, including ACME attempts. We do this explicitly here.
 	auto_https disable_redirects
-	# If a client connects to :443 without SNI (curl against an IP, an older
-	# browser), serve the certificate issued for SERVER_HOST.
+	# Default certificate served when a client connects without SNI.
 	default_sni {$SERVER_HOST}
 }
 
-# Port 80: redirect HTTP requests to HTTPS so nobody accidentally lands on
-# an unencrypted connection. 308 instead of 301 to preserve POST bodies.
-# /healthz is exempt from the redirect (the catch-all `handle` runs only
-# after the @healthz matcher misses) so the Docker healthcheck inside the
-# container can probe it without TLS / SNI gymnastics.
+# --- TLS profile snippets -----------------------------------------------------
+# Imported into the :443 site block via `import {$CADDY_TLS_PROFILE}`.
+# Each snippet either configures a `tls` directive or leaves it implicit so
+# Caddy's default ACME path takes over.
+
+(tls-internal) {
+	tls internal
+}
+
+(tls-le-classic) {
+	# Empty body: Caddy auto-detects SERVER_HOST as a domain and ACMEs from
+	# Let's Encrypt's default (90-day) profile via HTTP-01 challenge.
+}
+
+(tls-le-ip) {
+	tls {
+		issuer acme {
+			profile shortlived
+		}
+	}
+}
+
+# Port 80: redirect HTTP to HTTPS, except /healthz which stays plain so the
+# Docker healthcheck inside the container can probe without TLS gymnastics.
 :80 {
 	@healthz path /healthz
 	handle @healthz {
@@ -31,26 +67,12 @@
 	}
 }
 
-# Port 443: TLS.
-#
-# CADDY_TLS_DIRECTIVE (in compose/.env) controls the certificate source:
-#   - "tls internal"        -> self-signed cert from Caddy's internal CA
-#                              (used when SERVER_HOST is an IP, since public
-#                              CAs do not issue certs for raw IPs)
-#   - ""                    -> Caddy automatically requests + renews from
-#                              Let's Encrypt via ACME HTTP-01. Requires
-#                              SERVER_HOST to be a real domain whose DNS
-#                              A-record points to this server. Renewal
-#                              every ~60 days, fully automatic, persisted
-#                              in the /mnt/data/caddy volume.
-#
-# Switch to public CA: set SERVER_DOMAIN env var, set CADDY_TLS_DIRECTIVE
-# to empty (no quotes). See docs/operations.md "TLS modes" section.
+# Port 443: TLS profile via snippet import.
 {$SERVER_HOST}:443 {
-	{$CADDY_TLS_DIRECTIVE}
+	import {$CADDY_TLS_PROFILE}
 
 	# Welcome page on /welcome (open, no auth). Acts as a directory for
-	# adopters / new users who land here without knowing the URLs.
+	# new users who land here without knowing the URLs.
 	@welcome path /welcome
 	handle @welcome {
 		respond "VarLens Concept Pilot - running.
@@ -92,20 +114,3 @@ As of April 2026: application container and database are still to come.
 		reverse_proxy uptime-kuma:3001
 	}
 }
-
-# --- Stage 2: public domain with Let's Encrypt -------------------------------
-# As soon as a domain points to the server, replace the :443 block above with
-# the following site blocks. Caddy will automatically obtain a valid
-# certificate via ACME (HTTP-01 or TLS-ALPN-01) and renew it on its own.
-#
-# varlens.example.de {
-# 	reverse_proxy app:3000
-# }
-# monitor.varlens.example.de {
-# 	basic_auth { admin $2a$14$... }
-# 	reverse_proxy uptime-kuma:3001
-# }
-# logs.varlens.example.de {
-# 	basic_auth { admin $2a$14$... }
-# 	reverse_proxy dozzle:8080
-# }

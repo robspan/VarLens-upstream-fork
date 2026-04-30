@@ -20,13 +20,11 @@ services:
       # Hostname or IP used as the Caddy site address. Injected into .env
       # at deploy time (see make stack-up).
       SERVER_HOST: ${SERVER_HOST:-localhost}
-      # TLS source. "tls internal" = self-signed (default, IP deploys).
-      # Empty string = Caddy ACMEs from Let's Encrypt automatically; this
-      # requires SERVER_HOST to be a real domain with DNS pointing here.
-      # Note: ${VAR-default} (no colon) so an empty value is preserved as
-      # empty. ${VAR:-default} would treat empty as 'use default' and
-      # silently break Let's Encrypt mode.
-      CADDY_TLS_DIRECTIVE: ${CADDY_TLS_DIRECTIVE-tls internal}
+      # TLS profile snippet name (defined in the Caddyfile):
+      #   tls-internal    self-signed via Caddy's internal CA
+      #   tls-le-classic  Let's Encrypt 90-day cert (requires real domain)
+      #   tls-le-ip       Let's Encrypt 7-day shortlived cert for raw IPs
+      CADDY_TLS_PROFILE: ${CADDY_TLS_PROFILE-tls-le-ip}
     networks:
       - varlens
     healthcheck:

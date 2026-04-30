@@ -54,33 +54,49 @@ action: plan | up | down | stop | start | status | ssh | ip
 
 `pilot down` requires literally typing `pilot` as a safety measure. `pilot stop` requires a y/N confirm. Both can be bypassed with `--yes`, e.g. in CI pipelines.
 
-## TLS Modes (self-signed vs Let's Encrypt)
+## TLS Modes
 
-The Caddy site block reads two env-vars from `compose/.env`:
+Three certificate strategies are supported, switched via `make stack-up`. All three renew automatically inside the Caddy container; no host-level cron, no certbot, no manual steps.
 
-| Var | IP-only deploy (default) | Domain deploy (production) |
-|---|---|---|
-| `SERVER_HOST` | server IPv4 | the public domain, e.g. `varlens-pilot.example.de` |
-| `CADDY_TLS_DIRECTIVE` | `tls internal` (self-signed via Caddy's internal CA) | empty string (Caddy auto-ACMEs from Let's Encrypt) |
+| Mode | Invocation | Cert source | Validity | Browser trust |
+|---|---|---|---|---|
+| **`tls-le-ip`** (default) | `make stack-up` | Let's Encrypt `shortlived` profile via TLS-ALPN-01 against the raw public IP | 7 days, renewed every ~5 days | ✅ green padlock for raw IP, no DNS needed |
+| **`tls-le-classic`** | `make stack-up DOMAIN=foo.example.de` | Let's Encrypt default profile via HTTP-01 against the domain | 90 days, renewed every ~60 days | ✅ green padlock |
+| **`tls-internal`** | `make stack-up TLS=internal` | Caddy's internal CA (self-signed) | 12h ECC + auto-rotated | ⚠️ browser warning unless Caddy root cert is imported |
 
-Switch the active mode at deploy time via the `DOMAIN` make variable:
+### `tls-le-ip` (the default)
+
+Let's Encrypt rolled out IP-address-cert support in 2025 via a separate `shortlived` profile. Caddy's site block uses `tls { issuer acme { profile shortlived } }`, ACME runs the TLS-ALPN-01 challenge directly against port 443, no DNS involvement. The IP must be:
+
+- Public IPv4 (or IPv6). Hetzner Cloud IPs qualify.
+- Reachable from Let's Encrypt's validation servers on port 443.
+
+Cert validity is **7 days** to keep the issuance trail short. Caddy renews every ~5 days transparently. **Rate-limit caveat**: Let's Encrypt allows 50 certs per IP per week — destroying and re-creating the server many times in quick succession can hit this. For development cycles use `TLS=internal` to avoid burning rate-limit budget.
+
+### `tls-le-classic` (with a domain)
+
+Set when SERVER_HOST should be a real DNS name. Caddy auto-detects the domain identifier and falls into the standard 90-day Let's Encrypt path via HTTP-01. Prerequisites:
+
+- A domain (or sub-domain) registered, with an A-record pointing to the server's public IP. Free options for adopters: DuckDNS, FreeDNS, or sub-domain of an existing domain.
+- DNS propagation complete — verify with `dig +short A foo.example.de` before issuing.
+
+### `tls-internal` (no internet / dev)
+
+Caddy's internal CA, no external dependencies. The browser warns unless you import Caddy's root certificate into your trust store once:
 
 ```bash
-# IP-based, self-signed (default — works without DNS)
-make stack-up
-
-# Domain-based, Let's Encrypt with auto-renewal
-make stack-up DOMAIN=varlens-pilot.example.de
+ssh -i ~/.ssh/varlens-tofu deploy@$(make ip) \
+  'docker exec caddy cat /data/caddy/pki/authorities/local/root.crt' \
+  > /tmp/caddy-root.crt
+sudo security add-trusted-cert -d -r trustRoot \
+  -k /Library/Keychains/System.keychain /tmp/caddy-root.crt
 ```
 
-Prerequisites for Let's Encrypt:
-- A domain registered and an A-record (and ideally AAAA-record) pointing to the server's public IP.
-- Port 80 reachable from the public internet so Caddy can answer the HTTP-01 challenge (already the case via the Hetzner firewall + UFW rules).
-- SOA propagation finished — verify with `dig +short A varlens-pilot.example.de` returning the correct IP before issuing.
+After that the browser shows a green padlock for the raw IP under `tls-internal` too, but only on the machine where the root was imported.
 
-Caddy then handles everything: cert provisioning, renewal every ~60 days, OCSP stapling, automatic redirect of HTTP→HTTPS for the actual domain. Cert files persist in the `/mnt/data/caddy/data` volume (Tofu-managed), so survive container restarts and Compose redeploys. No cron jobs, no certbot, no manual renewals on the server itself — everything is in IaC.
+### Switching back
 
-To roll back to self-signed (e.g. when DNS is removed): just `make stack-up` without `DOMAIN`.
+To roll back from one mode to another: rerun `make stack-up` with the new flag. Caddy stores certificates per issuer in `/mnt/data/caddy/data` (Tofu-managed volume), so existing certs survive a profile switch and aren't re-issued unnecessarily.
 
 ## CI Workflow on GitHub and PAT Configuration
 

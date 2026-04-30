@@ -4,7 +4,7 @@
 **Updated:** 2026-04-30  
 **Branch:** `feat/postgres-final-parity`  
 **Head at original review:** `67fda0f` (`chore(release): bump version to 0.57.0`)  
-**Current release candidate head:** `1a580ce3` (`chore(release): v0.58.3`)  
+**Current release candidate head:** `4558878a` (`fix(storage): route sqlite shortlist read task`)  
 **Scope:** Current repository status after PR #180 / Phase 16, with emphasis on making VarLens a unified variant analysis client for both local encrypted SQLite databases and hosted/cloud PostgreSQL.
 
 ## 2026-04-30 Status Update
@@ -40,6 +40,12 @@ Verification completed on this branch:
 - `make ci` passed after the PostgreSQL Shortlist parity fix:
   - 315 test files passed, 4 skipped;
   - 3468 tests passed, 29 skipped.
+- After the SQLite read-executor exhaustiveness fix at `4558878a`, focused release-candidate verification passed:
+  - `npx tsc --noEmit -p tsconfig.node.json --incremental false`;
+  - `make typecheck`;
+  - `npx vitest run tests/main/storage/sqlite-read-executor.test.ts tests/main/ipc/handlers/shortlist.test.ts tests/main/storage/postgres-shortlist-service.test.ts tests/main/storage/postgres-read-executor.test.ts`;
+  - `npx prettier --check src/main/storage/sqlite/SqliteReadExecutor.ts`;
+  - `npx eslint src/main/storage/sqlite/SqliteReadExecutor.ts`.
 - Dockerized PostgreSQL 18 verification:
   - `.env.postgres.local` uses local port `55433` because `55432` was already occupied;
   - `make pg-reset`;

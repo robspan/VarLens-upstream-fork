@@ -85,7 +85,6 @@ import type { ShortlistResult } from './shortlist'
 import type { ValidatedGetShortlistParams } from './ipc-schemas'
 import type { LogMessage } from './log'
 import type { TranscriptAnnotation, TranscriptInsertRow } from './transcript'
-import type { DatabaseOverview } from './database-overview'
 import type {
   GeneValidationResult,
   GeneAutocompleteResult,
@@ -109,10 +108,8 @@ import type {
   ProteinApiError
 } from './protein'
 import type { PerfSnapshot } from './perf'
-import type { PostgresHealthDiagnosticResult } from './postgres-profile'
-import type { StorageCapabilities } from './storage-capabilities'
 import type { CasesDomainContract } from '../ipc/domains/cases'
-import type { DatabaseInfo, DatabaseOpenResult, RecentDatabase } from '../ipc/domains/database'
+import type { DatabaseDomainContract } from '../ipc/domains/database'
 export type { DatabaseInfo, DatabaseOpenResult, RecentDatabase } from '../ipc/domains/database'
 
 // Re-export for convenience
@@ -314,21 +311,7 @@ export interface ExportAPI {
   cohort: (params: CohortSearchParams) => Promise<IpcResult<ExportResult>>
 }
 
-export interface DatabaseAPI {
-  selectFile: () => Promise<string | null>
-  selectSaveLocation: (defaultName: string) => Promise<string | null>
-  open: (path: string, password?: string) => Promise<IpcResult<DatabaseOpenResult>>
-  create: (path: string, password?: string) => Promise<IpcResult<DatabaseOpenResult>>
-  rekey: (newPassword: string) => Promise<IpcResult<{ success: boolean; error?: string }>>
-  info: () => Promise<IpcResult<DatabaseInfo | null>>
-  capabilities: () => Promise<IpcResult<StorageCapabilities>>
-  postgresDiagnostics: () => Promise<IpcResult<PostgresHealthDiagnosticResult>>
-  recentList: () => Promise<IpcResult<RecentDatabase[]>>
-  getOverview: () => Promise<IpcResult<DatabaseOverview>>
-  removeRecent: (path: string) => Promise<IpcResult<{ success: boolean }>>
-  deleteFile: (path: string) => Promise<IpcResult<{ success: boolean }>>
-  showInFolder: (path: string) => Promise<IpcResult<{ success: boolean }>>
-}
+export type DatabaseAPI = DatabaseDomainContract
 
 // Batch import types
 export type BatchFileStatus = 'pending' | 'importing' | 'success' | 'failed' | 'skipped'

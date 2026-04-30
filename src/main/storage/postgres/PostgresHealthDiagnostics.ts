@@ -17,11 +17,11 @@ export class PostgresHealthDiagnostics {
 
   async collect(): Promise<PostgresHealthDiagnosticResult> {
     try {
-      const [version, user, migration, readProbe, writeProbe] = await Promise.all([
+      const [version, user, migrationRelation, readProbe, writeProbe] = await Promise.all([
         this.pool.query('SELECT version() AS version'),
         this.pool.query('SELECT current_user'),
         this.pool.query(
-          `SELECT version FROM ${this.schemaName}."schema_migrations" ORDER BY version DESC LIMIT 1`
+          `SELECT to_regclass(${literalString(`${this.schemaName}."schema_migrations"`)}) AS relation`
         ),
         this.pool.query(
           `SELECT has_schema_privilege(current_user, $1, 'USAGE') AS can_read_schema`,
@@ -32,6 +32,12 @@ export class PostgresHealthDiagnostics {
           [this.schema]
         )
       ])
+      const migration =
+        migrationRelation.rows[0]?.relation === null
+          ? { rows: [] }
+          : await this.pool.query(
+              `SELECT version FROM ${this.schemaName}."schema_migrations" ORDER BY version DESC LIMIT 1`
+            )
 
       return {
         ok: true,
@@ -50,4 +56,8 @@ export class PostgresHealthDiagnostics {
       }
     }
   }
+}
+
+function literalString(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`
 }

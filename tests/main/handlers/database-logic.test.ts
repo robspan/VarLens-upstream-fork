@@ -6,8 +6,51 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import * as logic from '../../../src/main/ipc/handlers/database-logic'
+import type {
+  PostgresConnectionProfileInput,
+  PostgresConnectionProfilePublic
+} from '../../../src/shared/types/postgres-profile'
 
 const ROOT = resolve(__dirname, '..', '..', '..')
+
+const postgresInput = (
+  overrides: Partial<PostgresConnectionProfileInput> = {}
+): PostgresConnectionProfileInput => ({
+  name: 'Lab PG',
+  host: 'db.example.org',
+  port: 5432,
+  database: 'varlens',
+  username: 'varlens_app',
+  schema: 'workspace_a',
+  sslMode: 'require-verify',
+  poolMax: 4,
+  connectionTimeoutMillis: 5000,
+  statementTimeoutMs: 30000,
+  lockTimeoutMs: 5000,
+  idleInTransactionSessionTimeoutMs: 10000,
+  secrets: { password: 'super-secret', caCertificatePem: '-----BEGIN CERTIFICATE-----abc' },
+  ...overrides
+})
+
+const publicProfile = (
+  overrides: Partial<PostgresConnectionProfilePublic> = {}
+): PostgresConnectionProfilePublic => ({
+  id: 'profile-1',
+  name: 'Lab PG',
+  host: 'db.example.org',
+  port: 5432,
+  database: 'varlens',
+  username: 'varlens_app',
+  schema: 'workspace_a',
+  sslMode: 'require-verify',
+  poolMax: 4,
+  connectionTimeoutMillis: 5000,
+  statementTimeoutMs: 30000,
+  lockTimeoutMs: 5000,
+  idleInTransactionSessionTimeoutMs: 10000,
+  caCertificateConfigured: true,
+  ...overrides
+})
 
 afterEach(() => {
   vi.resetModules()
@@ -27,6 +70,172 @@ describe('database-logic exports', () => {
     expect(typeof logic.getDatabaseOverview).toBe('function')
     expect(typeof logic.removeRecentDatabase).toBe('function')
     expect(typeof logic.deleteDbFile).toBe('function')
+    expect(typeof logic.listPostgresProfiles).toBe('function')
+    expect(typeof logic.savePostgresProfile).toBe('function')
+    expect(typeof logic.removePostgresProfile).toBe('function')
+    expect(typeof logic.testPostgresProfile).toBe('function')
+    expect(typeof logic.openPostgresProfile).toBe('function')
+  })
+})
+
+describe('postgres profile logic', () => {
+  it('lists, saves, and removes profiles through the injected profile store', async () => {
+    const profile = publicProfile()
+    const store = {
+      listProfiles: vi.fn().mockResolvedValue([profile]),
+      saveProfile: vi.fn().mockResolvedValue(profile),
+      removeProfile: vi.fn().mockResolvedValue(undefined)
+    }
+
+    await expect(logic.listPostgresProfiles(store)).resolves.toEqual([profile])
+    await expect(logic.savePostgresProfile(postgresInput(), store)).resolves.toEqual(profile)
+    await expect(logic.removePostgresProfile('profile-1', store)).resolves.toEqual({
+      success: true
+    })
+
+    expect(store.listProfiles).toHaveBeenCalledOnce()
+    expect(store.saveProfile).toHaveBeenCalledWith(postgresInput())
+    expect(store.removeProfile).toHaveBeenCalledWith('profile-1')
+  })
+
+  it('tests a postgres profile with a temporary pool and closes it without opening a session', async () => {
+    const pool = { end: vi.fn().mockResolvedValue(undefined), query: vi.fn() }
+    const createPool = vi.fn().mockReturnValue(pool)
+    const collectDiagnostics = vi.fn().mockResolvedValue({
+      ok: true,
+      serverVersion: 'PostgreSQL 16',
+      currentUser: 'varlens_app',
+      schema: 'workspace_a',
+      currentMigration: '006'
+    })
+    const manager = { openPostgresSession: vi.fn() }
+
+    await expect(
+      logic.testPostgresProfile(postgresInput(), {
+        createPool,
+        collectDiagnostics
+      })
+    ).resolves.toEqual({
+      ok: true,
+      serverVersion: 'PostgreSQL 16',
+      currentUser: 'varlens_app',
+      database: 'varlens',
+      schema: 'workspace_a',
+      currentMigration: '006'
+    })
+
+    expect(createPool).toHaveBeenCalledOnce()
+    expect(collectDiagnostics).toHaveBeenCalledWith(pool, 'workspace_a')
+    expect(pool.end).toHaveBeenCalledOnce()
+    expect(manager.openPostgresSession).not.toHaveBeenCalled()
+  })
+
+  it('redacts postgres test failure messages before returning them', async () => {
+    const pool = { end: vi.fn().mockResolvedValue(undefined), query: vi.fn() }
+
+    const result = await logic.testPostgresProfile(postgresInput(), {
+      createPool: vi.fn().mockReturnValue(pool),
+      collectDiagnostics: vi.fn().mockResolvedValue({
+        ok: false,
+        schema: 'workspace_a',
+        message: 'password super-secret failed with -----BEGIN CERTIFICATE-----abc'
+      })
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.message).not.toContain('super-secret')
+    expect(result.message).not.toContain('-----BEGIN CERTIFICATE-----abc')
+    expect(pool.end).toHaveBeenCalledOnce()
+  })
+
+  it('redacts postgres pool construction failures before returning them', async () => {
+    const result = await logic.testPostgresProfile(postgresInput(), {
+      createPool: vi.fn(() => {
+        throw new Error(
+          'failed for postgresql://varlens_app:super-secret@db.example.org:5432/varlens with -----BEGIN CERTIFICATE-----abc'
+        )
+      })
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.message).not.toContain('super-secret')
+    expect(result.message).not.toContain('-----BEGIN CERTIFICATE-----abc')
+    expect(result.message).not.toContain('varlens_app:super-secret')
+  })
+
+  it('redacts postgres test cleanup failures before returning them', async () => {
+    const pool = {
+      end: vi
+        .fn()
+        .mockRejectedValue(
+          new Error('cleanup failed for super-secret and -----BEGIN CERTIFICATE-----abc')
+        ),
+      query: vi.fn()
+    }
+
+    const result = await logic.testPostgresProfile(postgresInput(), {
+      createPool: vi.fn().mockReturnValue(pool),
+      collectDiagnostics: vi.fn().mockResolvedValue({
+        ok: true,
+        schema: 'workspace_a'
+      })
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.message).toContain('cleanup failed')
+    expect(result.message).not.toContain('super-secret')
+    expect(result.message).not.toContain('-----BEGIN CERTIFICATE-----abc')
+    expect(pool.end).toHaveBeenCalledOnce()
+  })
+
+  it('opens a stored postgres profile through DatabaseManager.openPostgresSession', async () => {
+    const profile = publicProfile()
+    const pool = { end: vi.fn().mockResolvedValue(undefined), query: vi.fn() }
+    const session = {
+      close: vi.fn().mockResolvedValue(undefined),
+      workspace: {
+        kind: 'postgres',
+        schema: 'workspace_a',
+        connectionUrlRedacted: 'postgresql://db.example.org:5432/varlens',
+        connectionLabel: 'db.example.org:5432/varlens (workspace_a)'
+      },
+      capabilities: { backend: 'postgres' }
+    }
+    const expectedInfo = {
+      path: 'postgresql://db.example.org:5432/varlens',
+      name: 'PostgreSQL: db.example.org:5432/varlens (workspace_a)',
+      encrypted: false
+    }
+    const manager = {
+      openPostgresSession: vi.fn().mockResolvedValue(undefined),
+      getCurrentInfo: vi.fn().mockReturnValue(expectedInfo)
+    }
+    const store = {
+      listProfiles: vi.fn().mockResolvedValue([profile]),
+      getProfileSecrets: vi.fn().mockResolvedValue({
+        password: 'super-secret',
+        caCertificatePem: '-----BEGIN CERTIFICATE-----abc'
+      })
+    }
+    const migrate = vi.fn().mockResolvedValue(undefined)
+
+    await expect(
+      logic.openPostgresProfile('profile-1', {
+        profileStore: store,
+        getDbManager: () => manager as never,
+        createPool: vi.fn().mockReturnValue(pool),
+        createSession: vi.fn().mockReturnValue(session),
+        migrate,
+        collectDiagnostics: vi.fn().mockResolvedValue({ ok: true, schema: 'workspace_a' })
+      })
+    ).resolves.toEqual({ success: true, info: expectedInfo })
+
+    expect(store.listProfiles).toHaveBeenCalledOnce()
+    expect(store.getProfileSecrets).toHaveBeenCalledWith('profile-1')
+    expect(migrate).toHaveBeenCalledWith(pool, 'workspace_a')
+    expect(manager.openPostgresSession).toHaveBeenCalledWith(session)
+    expect(pool.end).not.toHaveBeenCalled()
+    expect(session.close).not.toHaveBeenCalled()
   })
 })
 

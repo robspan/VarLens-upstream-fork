@@ -29,6 +29,24 @@ export interface PostgresConnectionProfileInput extends Omit<
   secrets: PostgresConnectionProfileSecretInput
 }
 
+export interface PostgresConnectionProfileSaveInput extends Omit<
+  PostgresConnectionProfileInput,
+  'secrets'
+> {
+  id?: string
+  secrets?: PostgresConnectionProfileSecretInput
+}
+
+export interface PostgresConnectionTestResult {
+  ok: boolean
+  serverVersion?: string
+  currentUser?: string
+  database?: string
+  schema: string
+  currentMigration?: string | null
+  message?: string
+}
+
 export interface PostgresHealthDiagnosticResult {
   ok: boolean
   serverVersion?: string

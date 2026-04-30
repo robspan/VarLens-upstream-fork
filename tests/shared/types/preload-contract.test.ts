@@ -316,6 +316,31 @@ describe('Preload contract alignment', () => {
     )
     expect(databaseDomainSource).not.toContain('unwrapIpcResult')
     expect(databaseDomainSource).toContain("info: () => ipcRenderer.invoke('database:info')")
+    expect(databaseDomainSource).toContain('postgresProfilesList:')
+    expect(databaseDomainSource).toContain("'database:postgresProfilesList'")
+    expect(databaseDomainSource).toContain('postgresProfileSave:')
+    expect(databaseDomainSource).toContain("'database:postgresProfileSave'")
+    expect(databaseDomainSource).toContain('postgresProfileRemove:')
+    expect(databaseDomainSource).toContain("'database:postgresProfileRemove'")
+    expect(databaseDomainSource).toContain('postgresProfileTest:')
+    expect(databaseDomainSource).toContain("'database:postgresProfileTest'")
+    expect(databaseDomainSource).toContain('postgresProfileOpen:')
+    expect(databaseDomainSource).toContain("'database:postgresProfileOpen'")
+    expect(preloadSource).toContain(
+      'postgresProfilesList: () => databaseDomain.postgresProfilesList()'
+    )
+    expect(preloadSource).toContain(
+      'postgresProfileSave: (input) => databaseDomain.postgresProfileSave(input)'
+    )
+    expect(preloadSource).toContain(
+      'postgresProfileRemove: (profileId: string) => databaseDomain.postgresProfileRemove(profileId)'
+    )
+    expect(preloadSource).toContain(
+      'postgresProfileTest: (input) => databaseDomain.postgresProfileTest(input)'
+    )
+    expect(preloadSource).toContain(
+      'postgresProfileOpen: (profileId: string) => databaseDomain.postgresProfileOpen(profileId)'
+    )
     expect(databaseDomainSource).toContain(
       "showInFolder: (path) => ipcRenderer.invoke('database:showInFolder', path)"
     )

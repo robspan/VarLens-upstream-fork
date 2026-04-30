@@ -1,7 +1,7 @@
 <template>
-  <v-menu>
+  <v-menu @update:model-value="handleMenuToggle">
     <template #activator="{ props }">
-      <v-btn variant="text" v-bind="props" class="text-none">
+      <v-btn variant="text" v-bind="props" class="text-none" data-testid="database-picker">
         <v-progress-circular
           v-if="databaseStore.isLoading"
           indeterminate
@@ -78,6 +78,65 @@
 
       <v-divider />
 
+      <!-- PostgreSQL profiles section -->
+      <v-list-subheader>PostgreSQL Workspaces</v-list-subheader>
+      <template v-if="databaseStore.postgresProfiles.length > 0">
+        <v-list-item v-for="profile in databaseStore.postgresProfiles" :key="profile.id">
+          <template #prepend>
+            <v-icon :icon="mdiDatabaseCog" />
+          </template>
+          <v-list-item-title>{{ profile.name }}</v-list-item-title>
+          <v-list-item-subtitle class="text-truncate">
+            {{ profile.host }}:{{ profile.port }}/{{ profile.database }}
+          </v-list-item-subtitle>
+          <template #append>
+            <div class="d-flex align-center ml-2">
+              <v-btn
+                icon
+                size="x-small"
+                variant="text"
+                density="compact"
+                :aria-label="`Connect PostgreSQL workspace ${profile.name}`"
+                @click.stop="handleOpenPostgresProfile(profile.id)"
+              >
+                <v-icon :icon="mdiConnection" size="x-small" />
+                <v-tooltip activator="parent" location="top">Connect</v-tooltip>
+              </v-btn>
+              <v-btn
+                icon
+                size="x-small"
+                variant="text"
+                density="compact"
+                :aria-label="`Edit PostgreSQL workspace ${profile.name}`"
+                @click.stop="handleEditPostgresProfile(profile)"
+              >
+                <v-icon :icon="mdiPencil" size="x-small" />
+                <v-tooltip activator="parent" location="top">Edit</v-tooltip>
+              </v-btn>
+              <v-btn
+                icon
+                size="x-small"
+                variant="text"
+                density="compact"
+                color="error"
+                :aria-label="`Remove PostgreSQL workspace ${profile.name}`"
+                @click.stop="handleRemovePostgresProfile(profile.id)"
+              >
+                <v-icon :icon="mdiDeleteOutline" size="x-small" />
+                <v-tooltip activator="parent" location="top">Remove</v-tooltip>
+              </v-btn>
+            </div>
+          </template>
+        </v-list-item>
+      </template>
+      <v-list-item v-else disabled>
+        <v-list-item-title class="text-body-small text-disabled"
+          >No PostgreSQL workspaces</v-list-item-title
+        >
+      </v-list-item>
+
+      <v-divider />
+
       <!-- Actions -->
       <v-list-item @click="handleOpen">
         <template #prepend>
@@ -91,6 +150,26 @@
           <v-icon :icon="mdiDatabasePlus" />
         </template>
         <v-list-item-title>New...</v-list-item-title>
+      </v-list-item>
+
+      <v-list-item @click="handleAddPostgresProfile">
+        <template #prepend>
+          <v-icon :icon="mdiPlus" />
+        </template>
+        <v-list-item-title>Add PostgreSQL...</v-list-item-title>
+        <template #append>
+          <v-btn
+            icon
+            size="x-small"
+            variant="text"
+            density="compact"
+            aria-label="Add PostgreSQL workspace"
+            @click.stop="handleAddPostgresProfile"
+          >
+            <v-icon :icon="mdiPlus" size="x-small" />
+            <v-tooltip activator="parent" location="top">Add PostgreSQL workspace</v-tooltip>
+          </v-btn>
+        </template>
       </v-list-item>
 
       <!-- Change password (only for encrypted databases) -->
@@ -110,6 +189,12 @@
   <PasswordDialog ref="passwordDialogRef" />
   <CreateDatabaseDialog ref="createDialogRef" @database-created="handleDatabaseCreated" />
   <ChangePasswordDialog ref="changePasswordDialogRef" @password-changed="handlePasswordChanged" />
+  <PostgresConnectionDialog
+    ref="postgresDialogRef"
+    @saved="handlePostgresProfileSaved"
+    @connected="handlePostgresConnected"
+    @error="handlePostgresError"
+  />
 
   <!-- Delete confirmation dialog -->
   <v-dialog v-model="deleteDialog" max-width="440">
@@ -129,23 +214,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useDatabaseStore } from '../stores/databaseStore'
 import { useApiService } from '../composables/useApiService'
 import PasswordDialog from './PasswordDialog.vue'
 import CreateDatabaseDialog from './CreateDatabaseDialog.vue'
 import ChangePasswordDialog from './ChangePasswordDialog.vue'
+import PostgresConnectionDialog from './PostgresConnectionDialog.vue'
 import type { RecentDatabase } from '../../../shared/types/api'
+import type { PostgresConnectionProfilePublic } from '../../../shared/types/postgres-profile'
 import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 import {
   mdiClose,
+  mdiConnection,
   mdiDatabase,
+  mdiDatabaseCog,
   mdiDatabasePlus,
   mdiDeleteOutline,
   mdiFolderEye,
   mdiFolderOpen,
   mdiLock,
-  mdiLockReset
+  mdiLockReset,
+  mdiPencil,
+  mdiPlus
 } from '@mdi/js'
 
 const databaseStore = useDatabaseStore()
@@ -155,6 +246,7 @@ const { api } = useApiService()
 const passwordDialogRef = ref<InstanceType<typeof PasswordDialog> | null>(null)
 const createDialogRef = ref<InstanceType<typeof CreateDatabaseDialog> | null>(null)
 const changePasswordDialogRef = ref<InstanceType<typeof ChangePasswordDialog> | null>(null)
+const postgresDialogRef = ref<InstanceType<typeof PostgresConnectionDialog> | null>(null)
 
 // Track pending password authentication
 const pendingOpenPath = ref<string | null>(null)
@@ -168,6 +260,10 @@ const emit = defineEmits<{
   'database-switched': []
   error: [message: string]
 }>()
+
+onMounted(() => {
+  void fetchPostgresProfiles()
+})
 
 // Handlers
 async function handleOpenRecent(path: string): Promise<void> {
@@ -205,6 +301,14 @@ function handleCreate(): void {
   createDialogRef.value?.show()
 }
 
+function handleAddPostgresProfile(): void {
+  postgresDialogRef.value?.show()
+}
+
+function handleEditPostgresProfile(profile: PostgresConnectionProfilePublic): void {
+  postgresDialogRef.value?.show(profile)
+}
+
 function handleChangePassword(): void {
   changePasswordDialogRef.value?.show()
 }
@@ -233,6 +337,63 @@ function handleDatabaseCreated(): void {
 
 function handlePasswordChanged(): void {
   emit('database-switched')
+}
+
+async function handleMenuToggle(isOpen: boolean): Promise<void> {
+  if (isOpen) {
+    await fetchPostgresProfiles()
+  }
+}
+
+async function fetchPostgresProfiles(): Promise<void> {
+  try {
+    await databaseStore.fetchPostgresProfiles()
+  } catch (e) {
+    emit(
+      'error',
+      e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
+    )
+  }
+}
+
+async function handleOpenPostgresProfile(profileId: string): Promise<void> {
+  try {
+    const result = await databaseStore.openPostgresProfile(profileId)
+
+    if (result.success) {
+      emit('database-switched')
+    } else if (result.error !== undefined) {
+      emit('error', result.error)
+    }
+  } catch (e) {
+    emit(
+      'error',
+      e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
+    )
+  }
+}
+
+async function handleRemovePostgresProfile(profileId: string): Promise<void> {
+  try {
+    await databaseStore.removePostgresProfile(profileId)
+  } catch (e) {
+    emit(
+      'error',
+      e instanceof Error ? e.message : isIpcError(e) ? (e.userMessage ?? e.message) : String(e)
+    )
+  }
+}
+
+async function handlePostgresProfileSaved(): Promise<void> {
+  await fetchPostgresProfiles()
+}
+
+function handlePostgresConnected(): void {
+  emit('database-switched')
+}
+
+function handlePostgresError(message: string): void {
+  emit('error', message)
 }
 
 async function handleRemoveRecent(path: string): Promise<void> {

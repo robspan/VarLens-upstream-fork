@@ -1,10 +1,135 @@
 # VarLens PostgreSQL Roadmap Code Review
 
 **Date:** 2026-04-28  
-**Updated:** 2026-04-29  
-**Branch:** `main`  
+**Updated:** 2026-04-30  
+**Branch:** `feat/postgres-final-parity`  
 **Head at original review:** `67fda0f` (`chore(release): bump version to 0.57.0`)  
+**Current release candidate head:** `1a580ce3` (`chore(release): v0.58.3`)  
 **Scope:** Current repository status after PR #180 / Phase 16, with emphasis on making VarLens a unified variant analysis client for both local encrypted SQLite databases and hosted/cloud PostgreSQL.
+
+## 2026-04-30 Status Update
+
+The final PostgreSQL parity branch has now closed the user-facing parity gaps that were selected for the 0.58.3 APR/release candidate. The roadmap below should be read as historical context plus remaining productization work, not as the current code state.
+
+Completed in `feat/postgres-final-parity`:
+
+- Clinical variant filter parity for PostgreSQL:
+  - tags;
+  - per-case/global comments;
+  - ACMG classifications;
+  - annotation scope;
+  - panels;
+  - inheritance/analysis-group/phasing filters.
+- Cohort and export parity:
+  - PostgreSQL cohort query, summary, carriers, gene burden, and column metadata;
+  - PostgreSQL variant and cohort streaming export;
+  - export IPC routing through storage executors.
+- Audit/capability closure:
+  - PostgreSQL audit log repository and read/write routing;
+  - storage capability matrix now represents the implemented PostgreSQL feature surface more accurately;
+  - active PostgreSQL workspace is visible in the database picker instead of showing no database.
+- Shortlist parity:
+  - `variants:shortlist` now routes PostgreSQL sessions through the storage read executor;
+  - `PostgresShortlistService` supports built-in/ad-hoc shortlist configs, Stage-1 candidate generation, scoring/ranking, starred hydration, and preset validation;
+  - the Shortlist tab remains visible in PostgreSQL mode and no longer calls the SQLite-only `DatabaseService`.
+- Planning/spec housekeeping:
+  - final parity spec and execution plans archived under `.planning/archive/completed-*`.
+
+Verification completed on this branch:
+
+- `make ci` passed after the PostgreSQL Shortlist parity fix:
+  - 315 test files passed, 4 skipped;
+  - 3468 tests passed, 29 skipped.
+- Dockerized PostgreSQL 18 verification:
+  - `.env.postgres.local` uses local port `55433` because `55432` was already occupied;
+  - `make pg-reset`;
+  - `make pg-up`;
+  - `make rebuild-node`;
+  - `VARLENS_RUN_POSTGRES_E2E=1 npx vitest run --project main tests/main/storage/postgres-vcf-import-repository.copy.test.ts`;
+  - `make build`;
+  - PostgreSQL E2Es were run in a state-safe order:
+    - `tests/e2e/postgres-variants-read-dev-mode.e2e.ts` passed on a reset seed database;
+    - remaining `tests/e2e/postgres-*.e2e.ts` passed separately.
+- PostgreSQL Shortlist-specific verification:
+  - focused Vitest suites passed:
+    - `tests/main/ipc/handlers/shortlist.test.ts`;
+    - `tests/main/storage/postgres-shortlist-service.test.ts`;
+    - `tests/main/storage/postgres-read-executor.test.ts`;
+    - `tests/main/storage/postgres-variant-read-repository.test.ts`;
+    - `tests/renderer/views/CaseView.test.ts`;
+    - `tests/renderer/composables/useShortlistQuery.test.ts`;
+  - built Electron app E2E `tests/e2e/postgres-variants-read-dev-mode.e2e.ts` now includes a real `window.api.variants.shortlist(...)` assertion against Dockerized PostgreSQL and passed.
+- PostgreSQL query performance smoke:
+  - `make pg-query-perf` passed on the populated E2E database and wrote the gitignored artifact under `.planning/artifacts/perf/postgres-query/`.
+
+Current manual dev state:
+
+- Docker container: `varlens-postgres-dev` using PostgreSQL 18.
+- Connection: `.env.postgres.local`, `127.0.0.1:55433`.
+- Dev app command:
+  - `VARLENS_EXPERIMENTAL_STORAGE_BACKEND=postgres make dev`
+- After the final reset used for the Shortlist E2E, the seed database contains:
+  - 3 cases;
+  - 6 variants;
+  - 3 built-in shortlist presets.
+
+## What Remains Before Claiming Full PostgreSQL Product Parity
+
+The branch is a strong APR/release candidate for the final parity work that was planned, but "full PostgreSQL product parity" still has productization gaps that should not be hidden in the PR/release description.
+
+### Required before a broad public PostgreSQL claim
+
+1. Add a first-class PostgreSQL connection UX.
+   - Current PostgreSQL mode is environment-backed (`VARLENS_EXPERIMENTAL_STORAGE_BACKEND=postgres`, `VARLENS_PG_URL`, `VARLENS_PG_SCHEMA`).
+   - Users still cannot enter/select a PostgreSQL URL from the normal database picker.
+   - Needed UI:
+     - connect to PostgreSQL URL;
+     - schema field;
+     - SSL mode/certificate handling;
+     - test connection;
+     - save recent PostgreSQL workspaces;
+     - clear redacted display name in the database picker.
+
+2. Add a production PostgreSQL migration lifecycle.
+   - Docker init scripts are not enough for hosted or existing databases.
+   - Needed:
+     - schema version table;
+     - forward-only migration runner;
+     - startup verification/migration;
+     - clean-install and upgrade tests;
+     - destructive migration policy;
+     - non-`public` schema tests.
+
+3. Harden hosted-schema security.
+   - Schema-qualify migration objects.
+   - Avoid ambient `search_path` assumptions.
+   - Define app role versus migration/admin role.
+   - Define SSL/credential storage and rotation.
+   - Document tenant/workspace model.
+
+4. Run a final PostgreSQL E2E pass on the release candidate SHA.
+   - Reset PostgreSQL.
+   - Run the state-sensitive seed test first.
+   - Run the remaining PostgreSQL E2Es second.
+   - Then run `make ci`.
+   - This was done before the roadmap update; repeat after any further code or release metadata changes if the release tag moves.
+
+5. Do not claim WGS query readiness until the WGS query harness is rerun and reviewed.
+   - `scripts/postgres/download-wgs-fixture.sh`;
+   - `make pg-reset`;
+   - `make pg-query-perf`.
+   - This should be evidence for performance claims, not a hard release gate unless the PR/release text claims WGS query readiness.
+
+### Recommended next implementation PRs
+
+1. PostgreSQL connection manager UI and persisted workspace selection.
+2. PostgreSQL migration runner and hosted schema hardening.
+3. Non-`public` schema verification with quoted schema names.
+4. WGS query benchmark expansion and documented p50/p95 budgets.
+5. Managed/cloud PostgreSQL smoke profile distinct from the tuned local Docker profile.
+6. Release workflow/CI polish:
+   - ensure the exact tagged SHA has a successful GitHub `Build` workflow run before pushing the release tag;
+   - keep the tag on the final release commit only.
 
 ## Executive Summary
 

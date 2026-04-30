@@ -262,8 +262,16 @@ export class DatabaseManager {
    * @returns Database info object, or null if no database is open
    */
   getCurrentInfo(): { path: string; name: string; encrypted: boolean } | null {
-    if (this.currentSession?.workspace.kind !== 'sqlite') {
+    if (this.currentSession === null) {
       return null
+    }
+
+    if (this.currentSession.workspace.kind === 'postgres') {
+      return {
+        path: this.currentSession.workspace.connectionUrlRedacted,
+        name: `PostgreSQL: ${this.currentSession.workspace.connectionLabel}`,
+        encrypted: false
+      }
     }
 
     return {

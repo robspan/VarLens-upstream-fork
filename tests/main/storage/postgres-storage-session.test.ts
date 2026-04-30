@@ -2,10 +2,24 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { Case } from '../../../src/shared/types/database'
 import type { PostgresStorageConfig } from '../../../src/main/storage/config'
+import type { PostgresMigrationResult } from '../../../src/main/storage/postgres/migrations/types'
 import {
   POSTGRES_CAPABILITIES,
   PostgresStorageSession
 } from '../../../src/main/storage/postgres/PostgresStorageSession'
+
+const postgresMocks = vi.hoisted(() => ({
+  Pool: vi.fn(),
+  PostgresMigrationRunner: vi.fn()
+}))
+
+vi.mock('pg', () => ({
+  Pool: postgresMocks.Pool
+}))
+
+vi.mock('../../../src/main/storage/postgres/migrations/PostgresMigrationRunner', () => ({
+  PostgresMigrationRunner: postgresMocks.PostgresMigrationRunner
+}))
 
 function makeConfig(overrides: Partial<PostgresStorageConfig> = {}): PostgresStorageConfig {
   return {
@@ -78,6 +92,38 @@ describe('PostgresStorageSession', () => {
       ok: false,
       backend: 'postgres',
       message: 'connection refused'
+    })
+  })
+
+  it('includes the session migration version in diagnostics', async () => {
+    const migrationResult: PostgresMigrationResult = {
+      beforeVersion: '006',
+      applied: ['007'],
+      currentVersion: '007',
+      schema: 'workspace_a'
+    }
+    const pool = {
+      query: vi
+        .fn()
+        .mockResolvedValueOnce({ rows: [{ version: 'PostgreSQL 16' }] })
+        .mockResolvedValueOnce({ rows: [{ current_user: 'varlens_app' }] })
+        .mockResolvedValueOnce({ rows: [{ relation: null }] })
+        .mockResolvedValueOnce({ rows: [{ can_read_schema: true }] })
+        .mockResolvedValueOnce({ rows: [{ can_write_schema: true }] }),
+      end: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn()
+    }
+
+    const session = new PostgresStorageSession({
+      config: makeConfig({ schema: 'workspace_a' }),
+      pool: pool as never,
+      migrationResult
+    })
+
+    await expect(session.collectDiagnostics()).resolves.toMatchObject({
+      ok: true,
+      schema: 'workspace_a',
+      currentMigration: '007'
     })
   })
 
@@ -282,5 +328,196 @@ describe('PostgresStorageSession', () => {
 
     expect(pool.query).toHaveBeenCalledTimes(1)
     expect(pool.query.mock.calls[0][0]).toContain('"phase7_variants"."variants"')
+  })
+
+  it('routes cohort summary through the session-owned postgres read executor', async () => {
+    const pool = {
+      query: vi.fn().mockResolvedValue({
+        rows: [
+          {
+            total_cases: '2',
+            total_variants: '6',
+            unique_variants: '4',
+            genes_with_variants: '3',
+            starred_variants: '1',
+            pathogenic: '1',
+            likely_pathogenic: '0',
+            vus: '2',
+            likely_benign: '0',
+            benign: '1'
+          }
+        ]
+      }),
+      end: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn()
+    }
+    const session = new PostgresStorageSession({
+      config: makeConfig({ schema: 'phase8_cohort' }),
+      pool: pool as never
+    })
+
+    await expect(
+      session.getReadExecutor().execute({
+        type: 'cohort:summary',
+        params: []
+      })
+    ).resolves.toMatchObject({
+      total_cases: 2,
+      total_variants: 6,
+      unique_variants: 4,
+      avg_variants_per_case: 3,
+      genes_with_variants: 3,
+      starred_variants: 1,
+      acmg_counts: {
+        pathogenic: 1,
+        vus: 2,
+        benign: 1
+      }
+    })
+
+    expect(pool.query).toHaveBeenCalledTimes(1)
+    expect(pool.query.mock.calls[0][0]).toContain('"phase8_cohort"."cases"')
+    expect(pool.query.mock.calls[0][0]).toContain('"phase8_cohort"."variants"')
+  })
+
+  it('routes audit reads and writes through session-owned postgres executors', async () => {
+    const pool = {
+      query: vi
+        .fn()
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: '1',
+              action_type: 'star',
+              entity_type: 'variant_annotation',
+              entity_key: '1:100:A:G',
+              old_value: null,
+              new_value: '{}',
+              created_at: '1234'
+            }
+          ]
+        })
+        .mockResolvedValueOnce({ rows: [] }),
+      end: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn()
+    }
+    const session = new PostgresStorageSession({
+      config: makeConfig({ schema: 'phase9_audit' }),
+      pool: pool as never
+    })
+
+    await expect(
+      session.getReadExecutor().execute({
+        type: 'audit:getByEntity',
+        params: ['1:100:A:G']
+      })
+    ).resolves.toMatchObject([{ entity_key: '1:100:A:G', timestamp: 1234 }])
+    await expect(
+      session.getWriteExecutor().execute({
+        type: 'audit:append',
+        params: [
+          {
+            action_type: 'star',
+            entity_type: 'variant_annotation',
+            entity_key: '1:100:A:G',
+            old_value: null,
+            new_value: '{}'
+          }
+        ]
+      })
+    ).resolves.toBeUndefined()
+
+    expect(pool.query.mock.calls[0][0]).toContain('"phase9_audit"."audit_log"')
+    expect(pool.query.mock.calls[1][0]).toContain('"phase9_audit"."audit_log"')
+  })
+})
+
+describe('createPostgresStorageSession', () => {
+  it('runs migrations before exposing the session', async () => {
+    const events: string[] = []
+    const pool = {
+      connect: vi.fn(),
+      query: vi.fn(),
+      end: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn(() => {
+        events.push('session')
+      })
+    }
+    const migrationResult: PostgresMigrationResult = {
+      beforeVersion: null,
+      applied: ['001'],
+      currentVersion: '001',
+      schema: 'workspace_a'
+    }
+    postgresMocks.Pool.mockImplementation(function Pool() {
+      return pool
+    })
+    postgresMocks.PostgresMigrationRunner.mockImplementation(function PostgresMigrationRunner() {
+      return {
+        migrate: vi.fn(async () => {
+          events.push('migrate')
+          return migrationResult
+        })
+      }
+    })
+
+    const { createPostgresStorageSession } =
+      await import('../../../src/main/storage/postgres/createPostgresStorageSession')
+
+    const session = await createPostgresStorageSession(makeConfig({ schema: 'workspace_a' }))
+
+    expect(events).toEqual(['migrate', 'session'])
+    await expect(session.collectDiagnostics()).resolves.toMatchObject({
+      currentMigration: '001'
+    })
+  })
+
+  it('closes the pool when migration fails', async () => {
+    const pool = {
+      connect: vi.fn(),
+      query: vi.fn(),
+      end: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn()
+    }
+    postgresMocks.Pool.mockImplementation(function Pool() {
+      return pool
+    })
+    postgresMocks.PostgresMigrationRunner.mockImplementation(function PostgresMigrationRunner() {
+      return {
+        migrate: vi.fn().mockRejectedValue(new Error('migration failed'))
+      }
+    })
+
+    const { createPostgresStorageSession } =
+      await import('../../../src/main/storage/postgres/createPostgresStorageSession')
+
+    await expect(createPostgresStorageSession(makeConfig())).rejects.toThrow('migration failed')
+    expect(pool.end).toHaveBeenCalledOnce()
+  })
+
+  it('preserves the migration error when cleanup also fails', async () => {
+    const migrationError = new Error('migration failed')
+    const cleanupError = new Error('cleanup failed')
+    const pool = {
+      connect: vi.fn(),
+      query: vi.fn(),
+      end: vi.fn().mockRejectedValue(cleanupError),
+      on: vi.fn()
+    }
+    postgresMocks.Pool.mockImplementation(function Pool() {
+      return pool
+    })
+    postgresMocks.PostgresMigrationRunner.mockImplementation(function PostgresMigrationRunner() {
+      return {
+        migrate: vi.fn().mockRejectedValue(migrationError)
+      }
+    })
+
+    const { createPostgresStorageSession } =
+      await import('../../../src/main/storage/postgres/createPostgresStorageSession')
+
+    await expect(createPostgresStorageSession(makeConfig())).rejects.toThrow('migration failed')
+    expect((migrationError as Error & { cleanupError?: unknown }).cleanupError).toBe(cleanupError)
+    expect(pool.end).toHaveBeenCalledOnce()
   })
 })

@@ -28,6 +28,11 @@ const MIGRATION_FILES: readonly MigrationFile[] = [
     version: '0005',
     name: 'create_workflow_tables',
     fileName: '0005_create_workflow_tables.sql'
+  },
+  {
+    version: '0006',
+    name: 'create_audit_log',
+    fileName: '0006_create_audit_log.sql'
   }
 ]
 

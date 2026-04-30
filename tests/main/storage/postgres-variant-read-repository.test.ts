@@ -45,19 +45,37 @@ describe('PostgresVariantReadRepository', () => {
   })
 
   it.each([
-    ['tag_ids', { tag_ids: [1] }],
-    ['starred_only', { starred_only: true }],
-    ['has_comment', { has_comment: true }],
-    ['acmg_classifications', { acmg_classifications: ['Pathogenic'] }],
-    ['annotation_scope', { annotation_scope: 'all' }],
-    ['active_panel_ids', { active_panel_ids: [1] }],
-    ['inheritance_modes', { inheritance_modes: ['de_novo'] }]
-  ])('rejects unsupported postgres variant filter %s', async (_name, filter) => {
-    const repository = new PostgresVariantReadRepository({ query: vi.fn() } as never, 'public')
+    ['tag_ids', { tag_ids: [1] }, 'variant_tags'],
+    ['starred_only', { starred_only: true }, 'case_variant_annotations'],
+    ['has_comment', { has_comment: true }, 'per_case_comment'],
+    ['acmg_classifications', { acmg_classifications: ['Pathogenic'] }, 'acmg_classification'],
+    [
+      'annotation_scope all',
+      { starred_only: true, annotation_scope: 'all' },
+      'variant_annotations'
+    ],
+    ['active_panel_ids', { active_panel_ids: [1] }, 'case_active_panels'],
+    ['inheritance_modes', { inheritance_modes: ['heterozygous'] }, 'gt_num'],
+    [
+      'analysis_group_id',
+      { inheritance_modes: ['de_novo'], analysis_group_id: 7 },
+      'analysis_group_members'
+    ],
+    ['consider_phasing', { consider_phasing: true }, 'variants']
+  ])('supports postgres variant filter %s', async (_name, filter, expectedSql) => {
+    const pool = {
+      query: vi
+        .fn()
+        .mockResolvedValueOnce({ rows: [{ count: '0' }] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ count: '0' }] })
+    }
+    const repository = new PostgresVariantReadRepository(pool as never, 'public')
 
     await expect(
       repository.queryVariants({ case_id: 1, ...filter }, 25, 0, undefined, false, false)
-    ).rejects.toThrow('Unsupported PostgreSQL variant filter')
+    ).resolves.toMatchObject({ data: [] })
+    expect(pool.query.mock.calls.map(([sql]) => String(sql)).join('\n')).toContain(expectedSql)
   })
 
   it('queries variants with supported filters, sorting, counts, and unfiltered count', async () => {

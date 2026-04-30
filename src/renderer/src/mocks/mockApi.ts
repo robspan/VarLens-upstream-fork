@@ -313,6 +313,18 @@ export const mockApi: WindowAPI = {
     info: async () => ({ path: '/mock/database.db', name: 'Mock Database', encrypted: false }),
     capabilities: async () => MOCK_SQLITE_CAPABILITIES,
     postgresDiagnostics: async () => ({ ok: false, schema: '' }),
+    postgresProfilesList: async () => [],
+    postgresProfileSave: async (input) => {
+      const { secrets, ...profile } = input
+      return {
+        id: 'mock-postgres-profile',
+        ...profile,
+        caCertificateConfigured: Boolean(secrets?.caCertificatePem)
+      }
+    },
+    postgresProfileRemove: async () => ({ success: true }),
+    postgresProfileTest: async () => ({ ok: false, schema: '' }),
+    postgresProfileOpen: async () => ({ success: true }),
     recentList: async () => [
       { path: '/mock/database.db', name: 'Mock Database', lastOpened: Date.now() }
     ],

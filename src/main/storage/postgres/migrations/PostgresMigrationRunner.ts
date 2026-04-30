@@ -46,6 +46,7 @@ export class PostgresMigrationRunner {
       )
       const applied = new Map(appliedResult.rows.map((row) => [row.version, row.checksum]))
       this.validateAppliedMigrations(applied)
+      const beforeVersion = appliedResult.rows[appliedResult.rows.length - 1]?.version ?? null
 
       const appliedNow: string[] = []
       for (const migration of this.migrations) {
@@ -68,7 +69,12 @@ export class PostgresMigrationRunner {
       transactionStarted = false
 
       const current = this.migrations[this.migrations.length - 1]?.version ?? null
-      return { applied: appliedNow, currentVersion: current }
+      return {
+        beforeVersion,
+        applied: appliedNow,
+        currentVersion: current,
+        schema: this.schema
+      }
     } catch (error) {
       if (transactionStarted) {
         await this.rollbackPreservingError(client, error)

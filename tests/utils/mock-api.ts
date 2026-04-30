@@ -182,6 +182,18 @@ export function createMockApi(): MockApi {
       info: vi.fn().mockResolvedValue({ path: '/tmp/test.db', encrypted: false }),
       capabilities: vi.fn().mockResolvedValue(TEST_SQLITE_CAPABILITIES),
       postgresDiagnostics: vi.fn().mockResolvedValue({ ok: false, schema: '' }),
+      postgresProfilesList: vi.fn().mockResolvedValue([]),
+      postgresProfileSave: vi.fn().mockImplementation((input) => {
+        const { secrets, ...profile } = input
+        return Promise.resolve({
+          id: 'mock-postgres-profile',
+          ...profile,
+          caCertificateConfigured: Boolean(secrets?.caCertificatePem)
+        })
+      }),
+      postgresProfileRemove: vi.fn().mockResolvedValue({ success: true }),
+      postgresProfileTest: vi.fn().mockResolvedValue({ ok: false, schema: '' }),
+      postgresProfileOpen: vi.fn().mockResolvedValue({ success: true }),
       recentList: vi.fn().mockResolvedValue([])
     },
 

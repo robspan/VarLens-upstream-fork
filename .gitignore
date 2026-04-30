@@ -81,9 +81,8 @@ test-data/
 plan/
 *.json.gz
 
-# WGS perf benchmark fixtures (artifact outputs handled in the
-# "Local performance artifacts" block above).
-tests/.cache/wgs/
+# Local test caches, including WGS perf fixtures and generated PostgreSQL profile fixtures.
+tests/.cache/
 
 # VitePress — build artifacts only; `docs/.vitepress/config.mts` is tracked
 docs/.vitepress/dist/

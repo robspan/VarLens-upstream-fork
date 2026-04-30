@@ -7,10 +7,12 @@ import type { Case } from '../../../shared/types/database'
 import { PostgresAvailableBuildsRepository } from './PostgresAvailableBuildsRepository'
 import { PostgresAnalysisGroupsRepository } from './PostgresAnalysisGroupsRepository'
 import { PostgresAnnotationsRepository } from './PostgresAnnotationsRepository'
+import { PostgresAuditLogRepository } from './PostgresAuditLogRepository'
 import { PostgresCaseLifecycleRepository } from './PostgresCaseLifecycleRepository'
 import { PostgresCaseListRepository } from './PostgresCaseListRepository'
 import { PostgresCaseMetadataRepository } from './PostgresCaseMetadataRepository'
 import { PostgresCasesQueryRepository } from './PostgresCasesQueryRepository'
+import { PostgresCohortRepository } from './PostgresCohortRepository'
 import { PostgresCommentsMetricsRepository } from './PostgresCommentsMetricsRepository'
 import { PostgresExportRepository } from './PostgresExportRepository'
 import { PostgresFilterPresetsRepository } from './PostgresFilterPresetsRepository'
@@ -20,6 +22,7 @@ import { PostgresImportExecutor } from './PostgresImportExecutor'
 import { PostgresOverviewRepository } from './PostgresOverviewRepository'
 import { PostgresPanelsRepository } from './PostgresPanelsRepository'
 import { PostgresReadExecutor } from './PostgresReadExecutor'
+import { PostgresShortlistService } from './PostgresShortlistService'
 import { PostgresTagsRepository } from './PostgresTagsRepository'
 import { PostgresVariantReadRepository } from './PostgresVariantReadRepository'
 import type { StorageImportExecutor } from '../import-executor'
@@ -35,10 +38,12 @@ import { toPostgresClientConfigMessage } from '../../../shared/types/postgres-im
 import type { StorageSession } from '../session'
 import type { StorageCapabilities, StorageHealth, WorkspaceRef } from '../types'
 import type { StorageWriteExecutor } from '../write-executor'
+import type { PostgresMigrationResult } from './migrations/types'
 
 interface PostgresStorageSessionOptions {
   config: PostgresStorageConfig
   pool: Pool
+  migrationResult?: PostgresMigrationResult
   createCaseListRepository?: (pool: Pool, schema: string) => PostgresCaseListRepository
 }
 
@@ -75,14 +80,14 @@ export const POSTGRES_CAPABILITIES: StorageCapabilities = {
     typeCounts: true,
     typesPresent: true,
     geneSymbols: true,
-    panelFilters: false,
-    tagFilters: false,
-    commentFilters: false,
-    acmgFilters: false,
-    annotationFilters: false,
-    inheritanceFilters: false,
-    analysisGroupFilters: false,
-    phasingFilters: false
+    panelFilters: true,
+    tagFilters: true,
+    commentFilters: true,
+    acmgFilters: true,
+    annotationFilters: true,
+    inheritanceFilters: true,
+    analysisGroupFilters: true,
+    phasingFilters: true
   },
   workflow: {
     tags: true,
@@ -94,19 +99,19 @@ export const POSTGRES_CAPABILITIES: StorageCapabilities = {
     geneLists: true,
     regionFiles: true,
     analysisGroups: true,
-    auditLog: false
+    auditLog: true
   },
   cohort: {
-    query: false,
-    summary: false,
+    query: true,
+    summary: true,
     rebuild: false,
-    carriers: false,
-    geneBurden: false,
-    columnMeta: false
+    carriers: true,
+    geneBurden: true,
+    columnMeta: true
   },
   export: {
     variants: true,
-    cohort: false,
+    cohort: true,
     streaming: true
   }
 }
@@ -127,10 +132,12 @@ export class PostgresStorageSession implements StorageSession {
   private readonly readExecutor: StorageReadExecutor
   private readonly writeExecutor: StorageWriteExecutor
   private readonly importExecutor: StorageImportExecutor
+  private readonly migrationResult: PostgresMigrationResult | undefined
   private cases: PostgresCaseListRepository | null = null
 
   constructor(options: PostgresStorageSessionOptions) {
     this.pool = options.pool
+    this.migrationResult = options.migrationResult
     const caseMetadata = new PostgresCaseMetadataRepository(options.pool, options.config.schema)
     const tags = new PostgresTagsRepository(options.pool, options.config.schema)
     const annotations = new PostgresAnnotationsRepository(options.pool, options.config.schema)
@@ -141,19 +148,31 @@ export class PostgresStorageSession implements StorageSession {
     const panels = new PostgresPanelsRepository(options.pool, options.config.schema)
     const filterPresets = new PostgresFilterPresetsRepository(options.pool, options.config.schema)
     const analysisGroups = new PostgresAnalysisGroupsRepository(options.pool, options.config.schema)
+    const cohort = new PostgresCohortRepository(options.pool, options.config.schema)
+    const audit = new PostgresAuditLogRepository(options.pool, options.config.schema)
+    const variants = new PostgresVariantReadRepository(options.pool, options.config.schema)
+    const shortlist = new PostgresShortlistService({
+      pool: options.pool,
+      schema: options.config.schema,
+      filterPresets,
+      variants
+    })
     this.readExecutor = new PostgresReadExecutor({
       casesQuery: new PostgresCasesQueryRepository(options.pool, options.config.schema),
       availableBuilds: new PostgresAvailableBuildsRepository(options.pool, options.config.schema),
       overview: new PostgresOverviewRepository(options.pool, options.config.schema),
       export: new PostgresExportRepository(options.pool, options.config.schema),
+      cohort,
       tags,
       annotations,
       commentsMetrics,
       panels,
       filterPresets,
+      shortlist,
       analysisGroups,
+      audit,
       caseMetadata,
-      variants: new PostgresVariantReadRepository(options.pool, options.config.schema)
+      variants
     })
     this.writeExecutor = new PostgresWriteExecutor(
       caseMetadata,
@@ -164,7 +183,8 @@ export class PostgresStorageSession implements StorageSession {
         commentsMetrics,
         panels,
         filterPresets,
-        analysisGroups
+        analysisGroups,
+        audit
       }
     )
     this.importExecutor = new PostgresImportExecutor({
@@ -266,6 +286,14 @@ export class PostgresStorageSession implements StorageSession {
 
   async collectDiagnostics(): Promise<PostgresHealthDiagnosticResult> {
     const schema = this.workspace.kind === 'postgres' ? this.workspace.schema : 'public'
-    return await new PostgresHealthDiagnostics(this.pool, schema).collect()
+    const diagnostics = await new PostgresHealthDiagnostics(this.pool, schema).collect()
+    if (this.migrationResult === undefined) {
+      return diagnostics
+    }
+
+    return {
+      ...diagnostics,
+      currentMigration: this.migrationResult.currentVersion
+    }
   }
 }

@@ -54,8 +54,31 @@ function makeDeps(service: { getShortlist: ReturnType<typeof vi.fn> }): {
   getDbManager: () => unknown
 } {
   const getDb = vi.fn().mockReturnValue({ shortlistService: service })
-  const getDbManager = vi.fn().mockReturnValue({})
+  const getDbManager = vi.fn().mockReturnValue({
+    getCurrentSession: vi.fn().mockReturnValue({
+      capabilities: { backend: 'sqlite' }
+    })
+  })
   return { ipcMain, getDb, getDbManager }
+}
+
+function makePostgresDeps(readResult: unknown): {
+  ipcMain: typeof ipcMain
+  getDb: () => unknown
+  getDbManager: () => unknown
+  execute: ReturnType<typeof vi.fn>
+} {
+  const execute = vi.fn().mockResolvedValue(readResult)
+  const getDb = vi.fn(() => {
+    throw new Error('SQLite DatabaseService must not be used for PostgreSQL shortlist')
+  })
+  const getDbManager = vi.fn().mockReturnValue({
+    getCurrentSession: vi.fn().mockReturnValue({
+      capabilities: { backend: 'postgres' },
+      getReadExecutor: vi.fn().mockReturnValue({ execute })
+    })
+  })
+  return { ipcMain, getDb, getDbManager, execute }
 }
 
 function getHandler(channel: string): HandlerCallback {
@@ -96,6 +119,26 @@ describe('variants:shortlist handler', () => {
       totalCandidates: 0,
       presetUsed: null
     })
+  })
+
+  it('routes PostgreSQL sessions through the storage read executor', async () => {
+    const expected = {
+      rows: [],
+      totalCandidates: 0,
+      presetUsed: null,
+      elapsedMs: 5
+    }
+    const deps = makePostgresDeps(expected)
+    registerShortlistHandlers(deps as never)
+
+    const result = await invokeHandler('variants:shortlist', { caseId: 1, presetId: 7 })
+
+    expect(deps.getDb).not.toHaveBeenCalled()
+    expect(deps.execute).toHaveBeenCalledWith({
+      type: 'variants:shortlist',
+      params: [{ caseId: 1, presetId: 7 }]
+    })
+    expect(result).toBe(expected)
   })
 
   it('passes adHocConfig params through to service', async () => {

@@ -300,7 +300,9 @@ describe('cohort:variants — pool available path', () => {
     const deps: HandlerDependencies = {
       ipcMain: { handle: vi.fn() } as unknown as IpcMain,
       getDb: () => dbService,
-      getDbManager: vi.fn() as unknown as () => DatabaseManager,
+      getDbManager: (() => ({
+        getCurrentSession: () => ({ capabilities: { backend: 'sqlite' } })
+      })) as unknown as () => DatabaseManager,
       getDbPool: () => fakePool
     }
 

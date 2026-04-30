@@ -12,10 +12,12 @@ import type { ColumnFilterMeta } from '../../../shared/types/column-filters'
 import { quoteIdentifier } from './identifiers'
 import { POSTGRES_VARIANT_COLUMN_DEFINITIONS } from './postgres-variant-columns'
 import type { PostgresVariantColumnDefinition } from './postgres-variant-columns'
+import { addPostgresClinicalVariantFilters } from './postgres-variant-clinical-filter-sql'
 
 const POSTGRES_BASE_SORT_COLUMNS = Object.fromEntries(
   Object.entries(BASE_SORTABLE_COLUMNS).map(([key, column]) => [key, `v.${column}`])
 )
+POSTGRES_BASE_SORT_COLUMNS.id = 'v.id'
 
 const NUMERIC_VARIANT_FIELDS = new Set([
   'id',
@@ -106,8 +108,10 @@ export function buildPostgresVariantQueryParts(
 
   addWhere(`v.case_id = ${addParam(filter.case_id)}`)
 
+  const exactVariantType =
+    (filter as VariantFilter & { exact_variant_type?: boolean }).exact_variant_type === true
   if (filter.variant_type !== undefined && filter.variant_type !== '') {
-    if (filter.variant_type === 'snv') {
+    if (filter.variant_type === 'snv' && !exactVariantType) {
       addWhere("v.variant_type IN ('snv', 'indel')")
     } else {
       addWhere(`v.variant_type = ${addParam(filter.variant_type)}`)
@@ -179,16 +183,6 @@ export function buildPostgresVariantQueryParts(
     addWhere(`v.alt = ${addParam(filter.alt)}`)
   }
 
-  if (isNonEmptyArray(filter.panel_intervals)) {
-    const intervalClauses = filter.panel_intervals.map((interval) => {
-      const chr = addParam(interval.chr)
-      const start = addParam(interval.start)
-      const end = addParam(interval.end)
-      return `(v.chr = ${chr} AND v.pos <= ${end} AND COALESCE(v.end_pos, v.pos) >= ${start})`
-    })
-    addWhere(`(${intervalClauses.join(' OR ')})`)
-  }
-
   const joins = [`LEFT JOIN ${schemaName}."variant_frequency" vf ON vf.coord_hash = v.coord_hash`]
   const projections = [`v.*`, `${internalAfExpression} AS internal_af`]
 
@@ -238,6 +232,7 @@ export function buildPostgresVariantQueryParts(
     )
   }
 
+  addPostgresClinicalVariantFilters(filter, { schemaName, addParam, addWhere })
   addPostgresColumnFilters(filter, addParam, addWhere)
 
   return {
@@ -250,21 +245,8 @@ export function buildPostgresVariantQueryParts(
   }
 }
 
-function assertSupportedPostgresVariantFilter(filter: VariantFilter): void {
-  const unsupported: string[] = []
-  if ((filter.tag_ids?.length ?? 0) > 0) unsupported.push('tag_ids')
-  if (filter.starred_only === true) unsupported.push('starred_only')
-  if (filter.has_comment === true) unsupported.push('has_comment')
-  if ((filter.acmg_classifications?.length ?? 0) > 0) unsupported.push('acmg_classifications')
-  if (filter.annotation_scope !== undefined) unsupported.push('annotation_scope')
-  if ((filter.active_panel_ids?.length ?? 0) > 0) unsupported.push('active_panel_ids')
-  if ((filter.inheritance_modes?.length ?? 0) > 0) unsupported.push('inheritance_modes')
-  if (filter.analysis_group_id !== undefined) unsupported.push('analysis_group_id')
-  if (filter.consider_phasing !== undefined) unsupported.push('consider_phasing')
-
-  if (unsupported.length > 0) {
-    throw new Error(`Unsupported PostgreSQL variant filter(s): ${unsupported.join(', ')}`)
-  }
+function assertSupportedPostgresVariantFilter(_filter: VariantFilter): void {
+  // Dynamic column filter support is validated in addPostgresColumnFilters.
 }
 
 function addPostgresColumnFilters(

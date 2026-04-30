@@ -4,7 +4,7 @@
  * Tests tag repository methods with real SQLite backend.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { DatabaseService } from '../../../src/main/database/DatabaseService'
 
 describe('tag IPC handlers', () => {
@@ -172,6 +172,69 @@ describe('tag IPC handlers', () => {
       expect(names).toContain('New1')
       expect(names).toContain('New2')
       expect(names).not.toContain('Old')
+    })
+  })
+})
+
+describe('tag PostgreSQL audit routing', () => {
+  it('appends audit entries after postgres tag assignment and removal', async () => {
+    const writeExecute = vi.fn().mockResolvedValue(undefined)
+    const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>()
+    const ipcMain = {
+      handle: vi.fn((channel: string, handler: (...args: unknown[]) => Promise<unknown>) => {
+        handlers.set(channel, handler)
+      })
+    }
+    const { registerTagHandlers } = await import('../../../src/main/ipc/handlers/tags')
+
+    registerTagHandlers({
+      ipcMain: ipcMain as never,
+      getDb: (() => {
+        throw new Error('getDb should not be called for postgres tags')
+      }) as never,
+      getDbManager: (() => ({
+        getCurrentSession: () => ({
+          capabilities: { backend: 'postgres' },
+          getReadExecutor: () => ({ execute: vi.fn() }),
+          getWriteExecutor: () => ({ execute: writeExecute })
+        })
+      })) as never
+    })
+
+    await handlers.get('tags:assignVariantTag')!(undefined, 1, 2, 3)
+    await handlers.get('tags:removeVariantTag')!(undefined, 1, 2, 3)
+
+    expect(writeExecute).toHaveBeenNthCalledWith(1, {
+      type: 'tags:assignVariantTag',
+      params: [1, 2, 3]
+    })
+    expect(writeExecute).toHaveBeenNthCalledWith(2, {
+      type: 'audit:append',
+      params: [
+        {
+          action_type: 'tag_assign',
+          entity_type: 'case_variant_annotation',
+          entity_key: 'case:1:variant:2',
+          old_value: null,
+          new_value: JSON.stringify({ tag_id: 3 })
+        }
+      ]
+    })
+    expect(writeExecute).toHaveBeenNthCalledWith(3, {
+      type: 'tags:removeVariantTag',
+      params: [1, 2, 3]
+    })
+    expect(writeExecute).toHaveBeenNthCalledWith(4, {
+      type: 'audit:append',
+      params: [
+        {
+          action_type: 'tag_remove',
+          entity_type: 'case_variant_annotation',
+          entity_key: 'case:1:variant:2',
+          old_value: JSON.stringify({ tag_id: 3 }),
+          new_value: null
+        }
+      ]
     })
   })
 })

@@ -17,6 +17,7 @@ import type {
   PerCaseAnnotationUpdates,
   VariantCoords
 } from '../ipc/handlers/annotations-logic'
+import type { AuditAppendParams } from './audit-log-types'
 
 export type StorageWriteTask =
   | { type: 'cases:delete'; params: [caseId: number] }
@@ -121,6 +122,7 @@ export type StorageWriteTask =
       ]
     }
   | { type: 'analysis-groups:removeMember'; params: [groupId: number, caseId: number] }
+  | { type: 'audit:append'; params: [params: AuditAppendParams] }
 
 export interface StorageWriteExecutor {
   execute(task: StorageWriteTask): Promise<unknown>

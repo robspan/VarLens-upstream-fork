@@ -11,14 +11,15 @@
 | Variants | query | yes | yes | no | done |
 | Variants | filter options | yes | yes | no | done |
 | Variants | column metadata | yes | yes | no | done |
-| Variants | panel filters | yes | no | yes | high |
-| Variants | tag/comment/ACMG filters | yes | no | yes | high |
+| Variants | panel filters | yes | yes | no | done |
+| Variants | tag/comment/ACMG filters | yes | yes | no | done |
 | Export | variants | yes | yes | no | done |
-| Cohort | query | yes | no | yes | medium |
+| Export | cohort | yes | yes | no | done |
+| Cohort | query | yes | yes | no | done |
 | Workflow | tags | yes | yes | no | done |
 | Workflow | annotations | yes | yes | no | done |
 | Workflow | case comments/metrics | yes | yes | no | done |
 | Workflow | filter presets | yes | yes | no | done |
 | Workflow | panels/gene lists/region files | yes | yes | no | done |
 | Workflow | analysis groups | yes | yes | no | done |
-| Workflow | audit log | yes | no | yes | deferred |
+| Workflow | audit log | yes | yes | no | done |

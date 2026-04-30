@@ -220,6 +220,28 @@ export class SqliteWriteExecutor implements StorageWriteExecutor {
       case 'analysis-groups:removeMember':
         this.databaseService.analysisGroups.removeMember(...task.params)
         return undefined
+
+      case 'audit:append':
+        if (task.params[0].metadata !== undefined) {
+          throw new Error('SQLite audit append does not support metadata')
+        }
+        this.databaseService.auditLog.appendEntry({
+          ...task.params[0],
+          old_value:
+            task.params[0].old_value === undefined || task.params[0].old_value === null
+              ? null
+              : typeof task.params[0].old_value === 'string'
+                ? task.params[0].old_value
+                : JSON.stringify(task.params[0].old_value),
+          new_value:
+            task.params[0].new_value === undefined || task.params[0].new_value === null
+              ? null
+              : typeof task.params[0].new_value === 'string'
+                ? task.params[0].new_value
+                : JSON.stringify(task.params[0].new_value),
+          user_name: task.params[0].user_name ?? null
+        })
+        return undefined
     }
 
     const exhaustive: never = task

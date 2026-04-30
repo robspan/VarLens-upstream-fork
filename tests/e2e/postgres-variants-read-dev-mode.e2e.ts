@@ -50,7 +50,18 @@ test('postgres dev mode supports phase 7 variant reads', async () => {
         columnFilterQuery: await window.api.variants.query(1, { column_filters: { consequence: { operator: 'in', value: ['HIGH'] } } }, 0, 25),
         internalAfQuery: await window.api.variants.query(1, { max_internal_af: 0.6 }, 0, 25),
         ftsQuery: await window.api.variants.query(1, { search_query: 'Huntington' }, 0, 25),
-        coordinateQuery: await window.api.variants.query(1, { chr: '1', pos: 1000, ref: 'A', alt: 'G' }, 0, 25)
+        coordinateQuery: await window.api.variants.query(1, { chr: '1', pos: 1000, ref: 'A', alt: 'G' }, 0, 25),
+        shortlist: await window.api.variants.shortlist({
+          caseId: 1,
+          adHocConfig: {
+            variantTypeScope: ['snv', 'indel', 'sv', 'cnv', 'str'],
+            baseFilters: {},
+            topN: 5,
+            rankConfig: {
+              weights: { impact: 1, pathogenicity: 1, rarity: 1, clinvar: 1, phenotype: 0 }
+            }
+          }
+        })
       }
     })
 
@@ -110,6 +121,16 @@ test('postgres dev mode supports phase 7 variant reads', async () => {
       total_count: 1,
       data: [expect.objectContaining({ gene_symbol: 'BRCA1', pos: 1000 })]
     })
+
+    const shortlist = expectSuccessfulIpcResult(results.shortlist)
+    expect(shortlist.totalCandidates).toBeGreaterThan(0)
+    expect(shortlist.rows[0]).toEqual(
+      expect.objectContaining({
+        rank: 1,
+        rank_score: expect.any(Number),
+        rank_components: expect.any(Object)
+      })
+    )
   } finally {
     if (launched !== undefined) {
       await launched.cleanup()

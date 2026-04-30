@@ -2,6 +2,10 @@ import type { IpcMain } from 'electron'
 import type { DatabaseService } from '../database/DatabaseService'
 import type { DatabaseManager } from '../services/DatabaseManager'
 import type { DbPool } from '../database/DbPool'
+import type { PostgresPoolLike, PostgresProfileStoreLike } from './handlers/database-logic'
+import type { PostgresStorageConfig } from '../storage/config'
+import type { StorageSession } from '../storage/session'
+import type { PostgresHealthDiagnosticResult } from '../../shared/types/postgres-profile'
 
 /**
  * Dependencies injected into IPC handler registration functions.
@@ -15,4 +19,19 @@ export interface HandlerDependencies {
   getDbManager: () => DatabaseManager
   /** Optional Piscina-based worker pool for off-thread read queries */
   getDbPool?: () => DbPool | null
+  /** Optional PostgreSQL profile store factory for hosted workspace profile IPC. */
+  getPostgresProfileStore?: () => PostgresProfileStoreLike
+  /** Optional PostgreSQL pool factory so tests can avoid a real server. */
+  createPostgresPool?: (config: PostgresStorageConfig) => PostgresPoolLike
+  /** Optional PostgreSQL session factory so tests can avoid building repository graph. */
+  createPostgresSession?: (
+    config: PostgresStorageConfig
+  ) => Promise<StorageSession> | StorageSession
+  /** Optional PostgreSQL migration runner hook for tests. */
+  migratePostgres?: (pool: PostgresPoolLike, schema: string) => Promise<void>
+  /** Optional PostgreSQL diagnostics hook for tests. */
+  collectPostgresDiagnostics?: (
+    pool: PostgresPoolLike,
+    schema: string
+  ) => Promise<PostgresHealthDiagnosticResult>
 }

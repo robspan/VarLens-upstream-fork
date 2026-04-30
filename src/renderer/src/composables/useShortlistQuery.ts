@@ -33,6 +33,7 @@ import { ref, computed, watch, onBeforeUnmount, type Ref } from 'vue'
 import { useFilterPresetStore } from './useFilterPresetStore'
 import { useApiService } from './useApiService'
 import { logService } from '../services/LogService'
+import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 import type { ShortlistResult } from '../../../shared/types/shortlist'
 import type { AnnotationChangeEvent } from '../../../shared/types/api'
 
@@ -95,10 +96,12 @@ export function useShortlistQuery(caseId: Ref<number>) {
     loading.value = true
     error.value = null
     try {
-      const envelope = await api.variants.shortlist({
-        caseId: currentCaseId,
-        presetId
-      })
+      const envelope = unwrapIpcResult(
+        await api.variants.shortlist({
+          caseId: currentCaseId,
+          presetId
+        })
+      )
       // Drop stale results — a newer request has been issued since this
       // call started, so we let the newer call commit its own state.
       if (requestId !== activeRequestId) return
@@ -109,7 +112,11 @@ export function useShortlistQuery(caseId: Ref<number>) {
       )
     } catch (e) {
       if (requestId !== activeRequestId) return
-      error.value = e instanceof Error ? e : new Error(String(e))
+      error.value = isIpcError(e)
+        ? new Error(e.userMessage ?? e.message)
+        : e instanceof Error
+          ? e
+          : new Error(String(e))
       result.value = null
       logService.error(`shortlist fetch failed: ${error.value.message}`, 'shortlist.fetch')
     } finally {

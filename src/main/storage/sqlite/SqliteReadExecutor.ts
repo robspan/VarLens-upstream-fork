@@ -157,10 +157,43 @@ export class SqliteReadExecutor implements StorageReadExecutor {
           return await this.dbPool.run({ type: task.type, params: task.params })
         return this.databaseService.variants.getFilterOptions(task.params[0])
 
+      case 'variants:shortlist':
+        return this.databaseService.shortlistService.getShortlist(task.params[0])
+
       case 'variants:columnMeta':
         if (this.dbPool !== null)
           return await this.dbPool.run({ type: task.type, params: task.params })
         return this.databaseService.variants.getColumnMeta(task.params[0], task.params[1])
+
+      case 'cohort:query':
+        if (this.dbPool !== null) {
+          return await this.dbPool.run({ type: 'cohort:variants', params: task.params })
+        }
+        return this.databaseService.cohort.getCohortVariants(task.params[0])
+
+      case 'cohort:summary':
+        if (this.dbPool !== null) {
+          return await this.dbPool.run({ type: 'cohort:summary', params: task.params })
+        }
+        return this.databaseService.cohort.getCohortSummary()
+
+      case 'cohort:columnMeta':
+        if (this.dbPool !== null) {
+          return await this.dbPool.run({ type: 'cohort:columnMeta', params: task.params })
+        }
+        return this.databaseService.cohort.getColumnMeta()
+
+      case 'cohort:carriers':
+        if (this.dbPool !== null) {
+          return await this.dbPool.run({ type: 'cohort:carriers', params: task.params })
+        }
+        return this.databaseService.cohort.getCarriers(...task.params)
+
+      case 'cohort:geneBurden':
+        if (this.dbPool !== null) {
+          return await this.dbPool.run({ type: 'cohort:geneBurden', params: task.params })
+        }
+        return this.databaseService.cohort.getGeneBurden()
 
       case 'database:overview':
         if (this.dbPool !== null)
@@ -169,6 +202,9 @@ export class SqliteReadExecutor implements StorageReadExecutor {
 
       case 'export:variants':
         throw new Error('SQLite export uses the dedicated export worker path')
+
+      case 'export:cohort':
+        throw new Error('SQLite cohort export uses the dedicated export worker path')
 
       case 'tags:list':
         if (this.dbPool !== null) return await this.dbPool.run({ type: 'tags:list', params: [] })
@@ -261,6 +297,12 @@ export class SqliteReadExecutor implements StorageReadExecutor {
 
       case 'analysis-groups:getForCase':
         return this.databaseService.analysisGroups.getGroupForCase(task.params[0])
+
+      case 'audit:getByEntity':
+        return this.databaseService.auditLog.getByEntityKey(task.params[0])
+
+      case 'audit:query':
+        return this.databaseService.auditLog.query(task.params[0])
     }
 
     const _exhaustive: never = task

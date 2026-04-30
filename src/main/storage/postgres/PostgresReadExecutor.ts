@@ -1,14 +1,17 @@
 import type { StorageReadExecutor, StorageReadTask } from '../read-executor'
+import type { PostgresAuditLogRepository } from './PostgresAuditLogRepository'
 import type { PostgresAvailableBuildsRepository } from './PostgresAvailableBuildsRepository'
 import type { PostgresAnalysisGroupsRepository } from './PostgresAnalysisGroupsRepository'
 import type { PostgresAnnotationsRepository } from './PostgresAnnotationsRepository'
 import type { PostgresCaseMetadataRepository } from './PostgresCaseMetadataRepository'
 import type { PostgresCasesQueryRepository } from './PostgresCasesQueryRepository'
+import type { PostgresCohortRepository } from './PostgresCohortRepository'
 import type { PostgresCommentsMetricsRepository } from './PostgresCommentsMetricsRepository'
 import type { PostgresExportRepository } from './PostgresExportRepository'
 import type { PostgresFilterPresetsRepository } from './PostgresFilterPresetsRepository'
 import type { PostgresOverviewRepository } from './PostgresOverviewRepository'
 import type { PostgresPanelsRepository } from './PostgresPanelsRepository'
+import type { PostgresShortlistService } from './PostgresShortlistService'
 import type { PostgresTagsRepository } from './PostgresTagsRepository'
 import type { PostgresVariantReadRepository } from './PostgresVariantReadRepository'
 
@@ -17,6 +20,15 @@ interface PostgresReadExecutorRepositories {
   availableBuilds: Pick<PostgresAvailableBuildsRepository, 'getAvailableGenomeBuilds'>
   overview: Pick<PostgresOverviewRepository, 'getOverview'>
   export: Pick<PostgresExportRepository, 'streamVariantRows'>
+  cohort: Pick<
+    PostgresCohortRepository,
+    | 'queryVariants'
+    | 'getSummary'
+    | 'getColumnMeta'
+    | 'getCarriers'
+    | 'getGeneBurden'
+    | 'streamCohortRows'
+  >
   tags: Pick<PostgresTagsRepository, 'listTags' | 'getTagUsageCount' | 'getVariantTags'>
   annotations: Pick<
     PostgresAnnotationsRepository,
@@ -37,10 +49,12 @@ interface PostgresReadExecutorRepositories {
     | 'listRegionFiles'
   >
   filterPresets: Pick<PostgresFilterPresetsRepository, 'listPresets'>
+  shortlist: Pick<PostgresShortlistService, 'getShortlist'>
   analysisGroups: Pick<
     PostgresAnalysisGroupsRepository,
     'listGroups' | 'getGroupWithMembers' | 'getGroupForCase'
   >
+  audit: Pick<PostgresAuditLogRepository, 'getByEntityKey' | 'query'>
   caseMetadata: Pick<
     PostgresCaseMetadataRepository,
     | 'getCaseMetadata'
@@ -129,14 +143,35 @@ export class PostgresReadExecutor implements StorageReadExecutor {
       case 'variants:filterOptions':
         return await this.repositories.variants.getFilterOptions(task.params[0])
 
+      case 'variants:shortlist':
+        return await this.repositories.shortlist.getShortlist(task.params[0])
+
       case 'variants:columnMeta':
         return await this.repositories.variants.getColumnMeta(task.params[0], task.params[1])
+
+      case 'cohort:query':
+        return await this.repositories.cohort.queryVariants(task.params[0])
+
+      case 'cohort:summary':
+        return await this.repositories.cohort.getSummary()
+
+      case 'cohort:columnMeta':
+        return await this.repositories.cohort.getColumnMeta()
+
+      case 'cohort:carriers':
+        return await this.repositories.cohort.getCarriers(...task.params)
+
+      case 'cohort:geneBurden':
+        return await this.repositories.cohort.getGeneBurden()
 
       case 'database:overview':
         return await this.repositories.overview.getOverview()
 
       case 'export:variants':
         return this.repositories.export.streamVariantRows(task.params[0])
+
+      case 'export:cohort':
+        return this.repositories.cohort.streamCohortRows(task.params[0])
 
       case 'tags:list':
         return await this.repositories.tags.listTags()
@@ -214,6 +249,12 @@ export class PostgresReadExecutor implements StorageReadExecutor {
 
       case 'analysis-groups:getForCase':
         return await this.repositories.analysisGroups.getGroupForCase(task.params[0])
+
+      case 'audit:getByEntity':
+        return await this.repositories.audit.getByEntityKey(task.params[0])
+
+      case 'audit:query':
+        return await this.repositories.audit.query(task.params[0])
     }
 
     const _exhaustive: never = task

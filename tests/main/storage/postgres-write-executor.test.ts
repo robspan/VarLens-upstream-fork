@@ -4,6 +4,7 @@ import { PostgresWriteExecutor } from '../../../src/main/storage/postgres/Postgr
 
 function workflowRepositories(): ConstructorParameters<typeof PostgresWriteExecutor>[2] {
   return {
+    audit: {} as never,
     tags: {} as never,
     annotations: {} as never,
     commentsMetrics: {} as never,
@@ -96,5 +97,34 @@ describe('PostgresWriteExecutor', () => {
       acmg_classification: 'VUS'
     })
     expect(workflow.panels.createPanel).toHaveBeenCalledWith({ name: 'Panel', source: 'manual' })
+  })
+
+  it('routes audit append tasks to the postgres audit repository', async () => {
+    const workflow = workflowRepositories()
+    workflow.audit = {
+      append: vi.fn().mockResolvedValue(undefined)
+    } as never
+    const executor = new PostgresWriteExecutor({} as never, {} as never, workflow)
+
+    await executor.execute({
+      type: 'audit:append',
+      params: [
+        {
+          action_type: 'star',
+          entity_type: 'variant_annotation',
+          entity_key: '1:100:A:G',
+          old_value: null,
+          new_value: JSON.stringify({ starred: 1 })
+        }
+      ]
+    })
+
+    expect(workflow.audit.append).toHaveBeenCalledWith({
+      action_type: 'star',
+      entity_type: 'variant_annotation',
+      entity_key: '1:100:A:G',
+      old_value: null,
+      new_value: JSON.stringify({ starred: 1 })
+    })
   })
 })

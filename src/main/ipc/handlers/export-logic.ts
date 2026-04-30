@@ -16,7 +16,7 @@ import type { DatabaseService } from '../../database/DatabaseService'
 import type { VariantFilter } from '../../database/types'
 import type { CohortSearchParams, CohortVariant } from '../../../shared/types/cohort'
 import type { ExportFilterSummary } from '../../../shared/types/export-worker'
-import { EXPORT_COLUMNS } from '../../workers/export-pipeline'
+import { EXPORT_COLUMNS, type ExportColumn } from '../../workers/export-pipeline'
 import { csvEscape, formatCellValue } from '../../workers/export-renderer'
 
 const EXPORT_HARD_LIMIT = 100_000
@@ -152,10 +152,12 @@ export function exportVariants(
   })
 }
 
-export async function exportPostgresVariants(
+async function exportRowsToCsv(
   rows: AsyncIterable<Record<string, unknown>>,
   outputFilePath: string,
-  callbacks: ExportCallbacks
+  columns: readonly ExportColumn[],
+  callbacks: ExportCallbacks,
+  label: string
 ): Promise<ExportResult> {
   const stream = createWriteStream(outputFilePath, { encoding: 'utf8' })
 
@@ -175,13 +177,13 @@ export async function exportPostgresVariants(
       once(stream, 'open'),
       once(stream, 'error').then(([error]) => Promise.reject(error))
     ])
-    await writeLine(EXPORT_COLUMNS.map((column) => csvEscape(column.header)).join(','))
+    await writeLine(columns.map((column) => csvEscape(column.header)).join(','))
 
     let rowCount = 0
     for await (const row of rows) {
-      const line = EXPORT_COLUMNS.map((column) =>
-        csvEscape(formatCellValue(column.key, row[column.key]))
-      ).join(',')
+      const line = columns
+        .map((column) => csvEscape(formatCellValue(column.key, row[column.key])))
+        .join(',')
       await writeLine(line)
       rowCount += 1
 
@@ -196,17 +198,42 @@ export async function exportPostgresVariants(
       stream.end()
     })
 
-    mainLogger.info(
-      `PostgreSQL export complete: ${rowCount} variants to ${outputFilePath}`,
-      'export'
-    )
+    mainLogger.info(`${label} complete: ${rowCount} rows to ${outputFilePath}`, 'export')
     return { success: true, filePath: outputFilePath }
   } catch (error) {
     stream.destroy()
     const message = error instanceof Error ? error.message : String(error)
-    mainLogger.error(`PostgreSQL export error: ${message}`, 'export')
+    mainLogger.error(`${label} error: ${message}`, 'export')
     return { success: false, error: message }
   }
+}
+
+export function exportPostgresVariants(
+  rows: AsyncIterable<Record<string, unknown>>,
+  outputFilePath: string,
+  callbacks: ExportCallbacks
+): Promise<ExportResult> {
+  return exportRowsToCsv(
+    rows,
+    outputFilePath,
+    EXPORT_COLUMNS,
+    callbacks,
+    'PostgreSQL variant export'
+  )
+}
+
+export function exportPostgresCohort(
+  rows: AsyncIterable<Record<string, unknown>>,
+  outputFilePath: string,
+  callbacks: ExportCallbacks
+): Promise<ExportResult> {
+  return exportRowsToCsv(
+    rows,
+    outputFilePath,
+    COHORT_EXPORT_COLUMNS,
+    callbacks,
+    'PostgreSQL cohort export'
+  )
 }
 
 /**

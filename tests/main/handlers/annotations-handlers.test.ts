@@ -444,3 +444,64 @@ describe('annotations:upsertPerCase — variants:annotationChanged broadcast', (
     expect(sentMessages).toHaveLength(0)
   })
 })
+
+describe('annotation PostgreSQL audit routing', () => {
+  it('appends audit entries after postgres global annotation mutations', async () => {
+    const readExecute = vi.fn().mockResolvedValue({ starred: 0 })
+    const writeExecute = vi.fn().mockResolvedValue({ starred: 1 })
+    const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>()
+    const ipcMain = {
+      handle: vi.fn((channel: string, handler: (...args: unknown[]) => Promise<unknown>) => {
+        handlers.set(channel, handler)
+      })
+    }
+    const { registerAnnotationHandlers } =
+      await import('../../../src/main/ipc/handlers/annotations')
+
+    registerAnnotationHandlers({
+      ipcMain: ipcMain as never,
+      getDb: (() => {
+        throw new Error('getDb should not be called for postgres annotations')
+      }) as never,
+      getDbManager: (() => ({
+        getCurrentSession: () => ({
+          capabilities: { backend: 'postgres' },
+          getReadExecutor: () => ({ execute: readExecute }),
+          getWriteExecutor: () => ({ execute: writeExecute })
+        })
+      })) as never
+    })
+
+    await expect(
+      handlers.get('annotations:upsertGlobal')!(undefined, '1', 123, 'A', 'G', {
+        starred: true,
+        user_name: 'analyst'
+      })
+    ).resolves.toEqual({ starred: 1 })
+
+    expect(readExecute).toHaveBeenCalledWith({
+      type: 'annotations:getGlobal',
+      params: [{ chr: '1', pos: 123, ref: 'A', alt: 'G' }]
+    })
+    expect(writeExecute).toHaveBeenNthCalledWith(1, {
+      type: 'annotations:upsertGlobal',
+      params: [
+        { chr: '1', pos: 123, ref: 'A', alt: 'G' },
+        { starred: true, user_name: 'analyst' }
+      ]
+    })
+    expect(writeExecute).toHaveBeenNthCalledWith(2, {
+      type: 'audit:append',
+      params: [
+        {
+          action_type: 'star',
+          entity_type: 'variant_annotation',
+          entity_key: '1:123:A:G',
+          old_value: JSON.stringify({ starred: 0 }),
+          new_value: JSON.stringify({ starred: 1 }),
+          user_name: 'analyst'
+        }
+      ]
+    })
+  })
+})

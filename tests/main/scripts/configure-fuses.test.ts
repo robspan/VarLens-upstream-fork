@@ -3,6 +3,8 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses'
 import { FUSE_BASELINE } from '../../../scripts/configure-fuses.mjs'
 
 describe('FUSE_BASELINE', () => {
+  const unsupportedByElectron40 = new Set<number>([FuseV1Options.WasmTrapHandlers])
+
   it('targets fuse wire version V1', () => {
     expect(FUSE_BASELINE.version).toBe(FuseVersion.V1)
   })
@@ -16,11 +18,16 @@ describe('FUSE_BASELINE', () => {
       (v): v is number => typeof v === 'number'
     )
     for (const fuseKey of numericFuseKeys) {
+      if (unsupportedByElectron40.has(fuseKey)) continue
       expect(
         FUSE_BASELINE,
         `FUSE_BASELINE is missing a declaration for FuseV1Options=${FuseV1Options[fuseKey]} (${fuseKey})`
       ).toHaveProperty(String(fuseKey))
     }
+  })
+
+  it('does not configure fuses absent from the Electron 40 fuse wire', () => {
+    expect(FUSE_BASELINE).not.toHaveProperty(String(FuseV1Options.WasmTrapHandlers))
   })
 
   it('enables OnlyLoadAppFromAsar', () => {

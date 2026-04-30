@@ -126,6 +126,20 @@ runcmd:
   # until then. The directory itself should still exist.
   - install -m 0700 -d /etc/restic
 
+  # Robust volume mount: Hetzner attaches the volume asynchronously and the
+  # device under /dev/disk/by-id/scsi-0HC_Volume_<id> may not yet be present
+  # when cloud-init's `mounts` module runs. With `nofail` the mount silently
+  # skips on miss and /mnt/data ends up empty. Wait up to 60s for the link,
+  # then mount-a until success. This makes provisioning reliable end-to-end.
+  - |
+    for i in $(seq 1 30); do
+      if [ -b /dev/disk/by-id/scsi-0HC_Volume_${volume_id} ]; then break; fi
+      sleep 2
+    done
+    mountpoint -q /mnt/data || mount /mnt/data || mount -a
+    mountpoint -q /mnt/data && echo "[cloud-init] /mnt/data mounted OK" \
+      || echo "[cloud-init] WARN: /mnt/data still not mounted after retry"
+
   # Set up the official Docker repository and install the engine plus Compose plugin.
   - install -m 0755 -d /etc/apt/keyrings
   - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc

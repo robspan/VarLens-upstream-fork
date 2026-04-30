@@ -15,6 +15,7 @@ import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 import { logService } from '../services/LogService'
 import { useApiService } from '../composables/useApiService'
 import { useSettingsStore } from '../stores/settingsStore'
+import { useDatabaseStore } from '../stores/databaseStore'
 
 const {
   selectedCaseId,
@@ -36,7 +37,9 @@ const {
 
 const { api } = useApiService()
 const settingsStore = useSettingsStore()
+const databaseStore = useDatabaseStore()
 const hasCases = computed(() => caseCount.value > 0)
+const shortlistSupported = computed(() => databaseStore.capabilities?.backend !== 'postgres')
 
 // ── Variant type tabs ─────────────────────────────────────────
 
@@ -152,7 +155,7 @@ async function loadTypeCounts(caseId: number | null): Promise<void> {
     // VariantTable bind on sv-only / cnv+str cases.
     lastNonShortlistType.value = presentTypes[0]
 
-    if (settingsStore.defaultCaseTab === 'shortlist') {
+    if (settingsStore.defaultCaseTab === 'shortlist' && shortlistSupported.value) {
       selectedVariantType.value = 'shortlist'
     } else {
       // 'snv' preference: land on the first present real type.
@@ -185,7 +188,7 @@ const tabItems = computed<TabItem[]>(() => {
   const snvCount = (counts.snv ?? 0) + (counts.indel ?? 0)
   const items: TabItem[] = []
 
-  if (presentTypes.length >= 1) {
+  if (shortlistSupported.value && presentTypes.length >= 1) {
     // `mdiStarFourPoints` from @mdi/js — four-point star reads as
     // "curated / featured / best-of" in clinical dashboards without the
     // awards-ceremony feel of `mdi-star-circle`. The icon field stores
@@ -205,6 +208,12 @@ const tabItems = computed<TabItem[]>(() => {
 })
 
 const showVariantTypeTabs = computed(() => tabItems.value.length > 1)
+
+watch(shortlistSupported, (supported) => {
+  if (!supported && selectedVariantType.value === 'shortlist') {
+    selectedVariantType.value = lastNonShortlistType.value
+  }
+})
 
 // Effective filters include variant_type from `variantTableType` (NOT
 // `selectedVariantType`) — load-bearing: the filter prop seen by

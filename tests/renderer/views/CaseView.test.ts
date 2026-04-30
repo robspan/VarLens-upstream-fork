@@ -23,6 +23,7 @@ import { createVuetify } from 'vuetify'
 import { setActivePinia, createPinia } from 'pinia'
 import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
+import type { StorageCapabilities } from '../../../src/shared/types/storage-capabilities'
 
 // ─── Mock useApiService (typeCounts IPC surface used by loadTypeCounts) ──
 const typeCountsMock = vi.fn<[number], Promise<Record<string, number>>>()
@@ -128,8 +129,78 @@ vi.mock('../../../src/renderer/src/services/LogService', () => ({
 // Import AFTER mocks so the hoisted `vi.mock` factories take effect.
 import CaseView from '../../../src/renderer/src/views/CaseView.vue'
 import { AppStateKey, createAppState } from '../../../src/renderer/src/composables/useAppState'
+import { useDatabaseStore } from '../../../src/renderer/src/stores/databaseStore'
 
 const vuetify = createVuetify({ components, directives })
+
+const POSTGRES_CAPABILITIES: StorageCapabilities = {
+  backend: 'postgres',
+  workspace: {
+    localFileLifecycle: false,
+    hostedConnectionLifecycle: true,
+    encryptionAtRest: false,
+    migrations: false,
+    healthDiagnostics: true
+  },
+  cases: {
+    list: true,
+    query: true,
+    deleteOne: true,
+    deleteMany: true,
+    deleteAll: true,
+    overview: true
+  },
+  imports: {
+    json: true,
+    vcf: true,
+    multiFileVcf: true,
+    bedFilters: true,
+    cancellation: true
+  },
+  variants: {
+    query: true,
+    searchQuery: true,
+    legacySearch: true,
+    filterOptions: true,
+    columnMeta: true,
+    typeCounts: true,
+    typesPresent: true,
+    geneSymbols: true,
+    panelFilters: true,
+    tagFilters: true,
+    commentFilters: true,
+    acmgFilters: true,
+    annotationFilters: true,
+    inheritanceFilters: true,
+    analysisGroupFilters: true,
+    phasingFilters: true
+  },
+  workflow: {
+    tags: true,
+    annotations: true,
+    caseComments: true,
+    caseMetrics: true,
+    filterPresets: true,
+    panels: true,
+    geneLists: true,
+    regionFiles: true,
+    analysisGroups: true,
+    auditLog: true
+  },
+  cohort: {
+    query: true,
+    summary: true,
+    rebuild: true,
+    carriers: true,
+    geneBurden: true,
+    columnMeta: true
+  },
+  export: {
+    variants: true,
+    cohort: true,
+    streaming: true
+  }
+}
 
 /**
  * Mount CaseView with a fresh AppState provide. Returns the wrapper and
@@ -186,6 +257,24 @@ describe('CaseView — Shortlist tab integration', () => {
     expect((wrapper.vm as unknown as { selectedVariantType: string }).selectedVariantType).toBe(
       'shortlist'
     )
+  })
+
+  it('does not select or mount Shortlist when the active backend is PostgreSQL', async () => {
+    const databaseStore = useDatabaseStore()
+    databaseStore.capabilities = POSTGRES_CAPABILITIES
+
+    typeCountsMock.mockResolvedValue({ snv: 10, sv: 3 })
+    const { wrapper } = mountCaseView(1)
+    await flushPromises()
+
+    const vm = wrapper.vm as unknown as {
+      selectedVariantType: string
+      tabItems: Array<{ type: string }>
+    }
+    expect(vm.selectedVariantType).toBe('snv')
+    expect(vm.tabItems.map((item) => item.type)).not.toContain('shortlist')
+    expect(wrapper.text()).not.toContain('Shortlist')
+    expect(wrapper.findComponent({ name: 'ShortlistPanelStub' }).exists()).toBe(false)
   })
 
   it('seeds lastNonShortlistType to first present type on cnv+str case', async () => {

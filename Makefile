@@ -184,7 +184,7 @@ lint:
 	@echo "=== shellcheck ===" && shellcheck --severity=warning scripts/*.sh
 	@echo "=== Caddyfile validate ===" && \
 		if command -v docker >/dev/null 2>&1; then \
-			docker run --rm -v "$(PWD)/compose/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile; \
+			docker run --rm -e SERVER_HOST=lint.example.invalid -e CADDY_TLS_PROFILE=tls-internal -v "$(PWD)/compose/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile; \
 		elif [ -n "$(call IPV4)" ]; then \
 			ssh -i $(SSH_KEY) deploy@$(call IPV4) 'docker exec caddy caddy validate --config /etc/caddy/Caddyfile' || \
 				echo "  (Caddyfile validate via server: Caddy container must be running)"; \

@@ -122,12 +122,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Validate Caddyfile
-        # SERVER_HOST is read from compose/.env in the real deploy.
-        # For CI validation a placeholder suffices so Caddy does not
-        # stumble over `default_sni {$SERVER_HOST}` with an empty value.
+        # SERVER_HOST and CADDY_TLS_PROFILE are read from compose/.env in the
+        # real deploy. For CI validation placeholders suffice so Caddy does
+        # not stumble over `default_sni {$SERVER_HOST}` with an empty value
+        # or `import {$CADDY_TLS_PROFILE}` with no argument.
         run: |
           docker run --rm \
             -e SERVER_HOST=ci.example.invalid \
+            -e CADDY_TLS_PROFILE=tls-internal \
             -v "$PWD/compose/Caddyfile:/etc/caddy/Caddyfile:ro" \
             caddy:2-alpine \
             caddy validate --config /etc/caddy/Caddyfile

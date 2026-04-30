@@ -31,7 +31,7 @@ endef
 
 CLI := ./bin/varlens
 
-.PHONY: help plan up down stop start status ssh ip logs deploy-stack stack-up stack-down stack-logs sops-edit sops-decrypt smoke lint restore-drill setup-backup setup-monitoring e2e e2e-keep
+.PHONY: help plan up down stop start status ssh ip logs deploy-stack stack-up stack-down stack-logs sops-edit sops-decrypt smoke lint restore-drill setup-backup setup-monitoring e2e e2e-keep install-hooks
 
 help:
 	@echo "VarLens-IaC - Concept Pilot control"
@@ -177,6 +177,18 @@ sops-edit:
 sops-decrypt:
 	@if [ -z "$(FILE)" ]; then echo "Usage: make sops-decrypt FILE=secrets/<file>.yaml"; exit 1; fi
 	SOPS_AGE_KEY_FILE=$$HOME/.config/sops/age/keys.txt sops -d $(FILE)
+
+# Install the tracked pre-commit hook into .git/hooks. Idempotent.
+# Run once per fresh clone. Versioned source: scripts/git-hooks/pre-commit.
+install-hooks:
+	@chmod +x scripts/git-hooks/pre-commit
+	@if [ -e .git/hooks/pre-commit ] && [ ! -L .git/hooks/pre-commit ]; then \
+		echo "Backing up existing .git/hooks/pre-commit -> .git/hooks/pre-commit.bak"; \
+		mv .git/hooks/pre-commit .git/hooks/pre-commit.bak; \
+	fi
+	@ln -sfn ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit
+	@echo "Pre-commit hook installed: .git/hooks/pre-commit -> scripts/git-hooks/pre-commit"
+	@echo "Bypass for emergency: git commit --no-verify"
 
 lint:
 	@echo "=== tofu fmt ===" && tofu -chdir=$(TOFU_DIR) fmt -check -recursive

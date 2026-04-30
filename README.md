@@ -10,6 +10,9 @@ Infrastructure-as-Code for the VarLens web port. Go from zero to a running Conce
 ## Quickstart
 
 ```bash
+# 0. Install local pre-commit hook (one-time per clone)
+make install-hooks
+
 # 1. SSH key
 ssh-keygen -t ed25519 -f ~/.ssh/varlens-tofu -C "varlens-tofu" -N ""
 

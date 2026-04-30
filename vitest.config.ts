@@ -99,7 +99,11 @@ export default defineConfig({
         test: {
           name: 'main',
           environment: 'node',
-          include: ['tests/main/**/*.test.ts', 'tests/shared/**/*.test.ts']
+          include: [
+            'tests/main/**/*.test.ts',
+            'tests/shared/**/*.test.ts',
+            'tests/scripts/**/*.test.ts'
+          ]
         }
       },
       {

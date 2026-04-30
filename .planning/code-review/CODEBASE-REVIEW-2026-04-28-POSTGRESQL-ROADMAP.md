@@ -4,7 +4,7 @@
 **Updated:** 2026-04-30  
 **Branch:** `feat/postgres-final-parity`  
 **Head at original review:** `67fda0f` (`chore(release): bump version to 0.57.0`)  
-**Current release candidate head:** `4558878a` (`fix(storage): route sqlite shortlist read task`)  
+**Current release candidate head:** `411330c1` (`docs(planning): refresh postgres roadmap release status`)
 **Scope:** Current repository status after PR #180 / Phase 16, with emphasis on making VarLens a unified variant analysis client for both local encrypted SQLite databases and hosted/cloud PostgreSQL.
 
 ## 2026-04-30 Status Update
@@ -127,6 +127,14 @@ The branch is a strong APR/release candidate for the final parity work that was 
    - This should be evidence for performance claims, not a hard release gate unless the PR/release text claims WGS query readiness.
 
 ### Recommended next implementation PRs
+
+Current execution documents:
+
+- Spec: `.planning/specs/2026-04-30-postgresql-product-parity-spec.md`
+- Plan 1: `.planning/plans/2026-04-30-postgresql-connection-manager-ui.md`
+- Plan 2: `.planning/plans/2026-04-30-postgresql-migration-lifecycle-hardening.md`
+- Plan 3: `.planning/plans/2026-04-30-postgresql-hosted-verification-dev-tooling.md`
+- Plan 4: `.planning/plans/2026-04-30-postgresql-wgs-query-readiness.md`
 
 1. PostgreSQL connection manager UI and persisted workspace selection.
 2. PostgreSQL migration runner and hosted schema hardening.

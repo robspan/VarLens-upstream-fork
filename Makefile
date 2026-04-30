@@ -234,8 +234,10 @@ pg-logs: ## Tail local PostgreSQL dev container logs
 pg-psql: ## Open psql in the local PostgreSQL dev container
 	docker compose -f docker-compose.postgres.yml --env-file .env.postgres.local exec postgres sh -lc 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'
 
-pg-query-perf: ## Run opt-in PostgreSQL WGS query perf benchmark
-	VARLENS_RUN_WGS_QUERY_PERF=1 VARLENS_PG_QUERY_EXPLAIN=1 npx vitest run tests/perf/postgres-wgs-query.perf.test.ts
+pg-query-perf: build ## Import WGS fixture and run opt-in PostgreSQL WGS query perf benchmark
+	@if [ ! -f .env.postgres.local ]; then echo "Missing .env.postgres.local. Copy .env.postgres.example first."; exit 1; fi
+	@set -a; . ./.env.postgres.local; set +a; VARLENS_RUN_WGS_PERF=1 npx vitest run tests/perf/postgres-vcf-wgs-import.perf.test.ts
+	@set -a; . ./.env.postgres.local; set +a; VARLENS_RUN_WGS_QUERY_PERF=1 VARLENS_PG_QUERY_EXPLAIN=1 npx vitest run tests/perf/postgres-wgs-query.perf.test.ts
 
 pg-seed-dev: ## Seed deterministic PostgreSQL dev workspace data
 	node scripts/postgres/seed-dev-workspace.mjs

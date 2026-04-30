@@ -199,6 +199,8 @@ Current baseline (read the script for the authoritative list):
 - `GrantFileProtocolExtraPrivileges: true` — current default preserved; tightening this fuse is a separate, deliberate decision.
 - `resetAdHocDarwinSignature: true` — re-ad-hoc-signs the macOS binary after fuse flipping so local ad-hoc builds remain launchable.
 
+`@electron/fuses` 2.x exposes `WasmTrapHandlers`, but Electron 40's fuse wire and electron-builder's bundled fuse implementation cannot configure it yet. Do not add it to the baseline until the packaged Electron binary supports that fuse.
+
 The baseline lives only in `scripts/configure-fuses.mjs`. Do not reintroduce `build.electronFuses` in `package.json`; the hook owns the flip and `doAddElectronFuses` short-circuits when the declarative block is absent.
 
 ## What NOT to do

@@ -1,6 +1,6 @@
 {
   "name": "varlens",
-  "version": "0.58.0",
+  "version": "0.58.1",
   "description": "Offline variant analysis tool for external collaborators",
   "main": "./out/main/index.js",
   "author": "Bernt Popp <bernt.popp@gmail.com>",
@@ -41,7 +41,7 @@
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
-    "@electron/fuses": "^1.8.0",
+    "@electron/fuses": "^2.1.1",
     "@electron/rebuild": "^4.0.4",
     "@eslint/js": "^10.0.1",
     "@mdi/js": "^7.4.47",
@@ -175,7 +175,7 @@
     "kysely": "^0.28.16",
     "markdown-it": "^14.1.0",
     "nanoid": "^5.1.9",
-    "pdbe-molstar": "^3.11.0",
+    "pdbe-molstar": "^3.12.0",
     "pg": "^8.20.0",
     "pg-copy-streams": "^7.0.0",
     "pg-query-stream": "^4.14.0",
@@ -187,7 +187,7 @@
     "vuedraggable": "^4.1.0",
     "vuetify": "^4.0.6",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
-    "zod": "^4.3.6"
+    "zod": "^4.4.0"
   },
   "overrides": {
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",

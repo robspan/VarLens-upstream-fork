@@ -9,7 +9,7 @@
 #   5. Restores the snapshot to a temporary path.
 #   6. Verifies that the marker reappears in the restore and is identical.
 #   7. Cleans up the restore directory and the marker file.
-#   8. Writes a protocol entry to docs/restore-log.md.
+#   8. Writes a protocol entry to .internalplanning/restore-log.md.
 #
 # Precondition: /etc/restic/env on the server is populated
 # (bucket + credentials + password - see docs/backup.md).
@@ -26,7 +26,7 @@ set -uo pipefail
 
 IP="${IP:?IP variable must be set, for example IP=178.104.176.148}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/varlens-tofu}"
-PROTOCOL_FILE="${PROTOCOL_FILE:-docs/restore-log.md}"
+PROTOCOL_FILE="${PROTOCOL_FILE:-.internalplanning/restore-log.md}"
 # SSH_STRICT=no for e2e (recycled IPs, host-key collision possible).
 SSH_STRICT="${SSH_STRICT:-accept-new}"
 if [ "$SSH_STRICT" = "no" ]; then

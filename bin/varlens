@@ -518,7 +518,7 @@ def _run_restore_drill(ip: str, *, expect_repo: bool) -> None:
     e = os.environ.copy()
     e["IP"] = ip
     e["SSH_KEY"] = str(e2e_ssh_key_path())
-    e["PROTOCOL_FILE"] = str(REPO / "docs" / "restore-log-e2e.md")
+    e["PROTOCOL_FILE"] = str(REPO / ".internalplanning" / "restore-log-e2e.md")
     e["SSH_STRICT"] = "no"
     proc = subprocess.run([str(REPO / "scripts" / "restore-drill.sh")], env=e)
     if proc.returncode != 0:

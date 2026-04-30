@@ -55,11 +55,11 @@
 	handle @welcome {
 		respond "VarLens Concept Pilot - running.
 
-Monitoring (basic auth, login admin / varlens-konzept):
-- Uptime Kuma:   /         (root - this is the dashboard after login)
+Monitoring (login admin / varlens-konzept):
+- Uptime Kuma:   /         (root - dashboard after login)
 - Dozzle Logs:   /logs/
 
-Note: self-signed certificate from Caddy's internal CA (Concept Pilot intranet).
+Stage 1 - Concept (test data only, no real data per the Application Contract).
 As of April 2026: application container and database are still to come.
 " 200
 	}

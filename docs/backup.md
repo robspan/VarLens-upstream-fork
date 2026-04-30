@@ -131,7 +131,7 @@ sudo bash -c 'set -a; source /etc/restic/env; restic restore latest --target /tm
 ## Restore drill (gate criterion)
 
 Plan §infrastruktur2 requires "at least one restore drill with test data is logged".
-Log of the first drill: `docs/restore-log.md` (added after the first drill).
+Log of the first drill: `.internalplanning/restore-log.md` (added after the first drill).
 
 Mandatory repetition: after every major plan or schema change, at minimum once before the migration block.
 

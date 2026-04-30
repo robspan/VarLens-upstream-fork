@@ -76,7 +76,7 @@ What happens:
 - Delete the marker
 - Restore the snapshot to `/tmp/restore-drill-...`
 - Verification: marker content identical to before
-- Clean up, append entry to `docs/restore-log.md`
+- Clean up, append entry to `.internalplanning/restore-log.md`
 
 Result: exit code 0 on PASS, exit code 1 on FAIL. The log grows monotonically.
 
@@ -136,7 +136,7 @@ to the server (Stage 2).
    make smoke
    ```
 
-7. Append the entry to `docs/restore-log.md` with date, snapshot ID, duration, and result.
+7. Append the entry to `.internalplanning/restore-log.md` with date, snapshot ID, duration, and result.
 
 ### Escalation
 

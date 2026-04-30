@@ -228,6 +228,11 @@ def main() -> None:
         # user_id must be set or Kuma's UI won't show the monitor (it filters
         # the dashboard by ownership). We map to the admin user we just
         # inserted (or that was already there).
+        # Push monitor cadence: the daily restic timer fires at 02:30, so the
+        # monitor expects ~24h between heartbeats. Set interval=90000 (25h)
+        # to give a 1h grace window; retry_interval=3600 (1h) so a missed
+        # push doesn't immediately flip the monitor red. Without this it
+        # would be red 23h59m of every 24h.
         sql = (
             "INSERT INTO monitor (name, type, active, user_id, interval, retry_interval, "
             "maxretries, push_token, weight, accepted_statuscodes_json, method, "
@@ -236,7 +241,7 @@ def main() -> None:
             "timeout, packet_size, resend_interval, grpc_enable_tls, invert_keyword) "
             f"VALUES ('{MONITOR_NAME}', 'push', 1, "
             "(SELECT id FROM user WHERE username = 'admin' LIMIT 1), "
-            f"60, 60, 0, '{push_token}', 2000, "
+            f"90000, 3600, 0, '{push_token}', 2000, "
             "'[\"200-299\"]', 'GET', 0, 0, 10, 1, 1, 0, 0, 0, 56, 0, 0, 0);"
         )
         # Use stdin to keep the dollar-safe pattern consistent with the

@@ -94,7 +94,11 @@ describe('DatabaseManager storage-session compatibility', () => {
 
     expect(manager.getCurrentSession()).toBe(session)
     expect(manager.getCurrentPath()).toBeNull()
-    expect(manager.getCurrentInfo()).toBeNull()
+    expect(manager.getCurrentInfo()).toEqual({
+      path: 'postgres://127.0.0.1:55432/varlens_dev',
+      name: 'PostgreSQL: 127.0.0.1:55432/varlens_dev (public)',
+      encrypted: false
+    })
 
     await manager.close()
   })

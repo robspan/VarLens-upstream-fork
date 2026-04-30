@@ -283,4 +283,54 @@ describe('PostgresStorageSession', () => {
     expect(pool.query).toHaveBeenCalledTimes(1)
     expect(pool.query.mock.calls[0][0]).toContain('"phase7_variants"."variants"')
   })
+
+  it('routes cohort summary through the session-owned postgres read executor', async () => {
+    const pool = {
+      query: vi.fn().mockResolvedValue({
+        rows: [
+          {
+            total_cases: '2',
+            total_variants: '6',
+            unique_variants: '4',
+            genes_with_variants: '3',
+            starred_variants: '1',
+            pathogenic: '1',
+            likely_pathogenic: '0',
+            vus: '2',
+            likely_benign: '0',
+            benign: '1'
+          }
+        ]
+      }),
+      end: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn()
+    }
+    const session = new PostgresStorageSession({
+      config: makeConfig({ schema: 'phase8_cohort' }),
+      pool: pool as never
+    })
+
+    await expect(
+      session.getReadExecutor().execute({
+        type: 'cohort:summary',
+        params: []
+      })
+    ).resolves.toMatchObject({
+      total_cases: 2,
+      total_variants: 6,
+      unique_variants: 4,
+      avg_variants_per_case: 3,
+      genes_with_variants: 3,
+      starred_variants: 1,
+      acmg_counts: {
+        pathogenic: 1,
+        vus: 2,
+        benign: 1
+      }
+    })
+
+    expect(pool.query).toHaveBeenCalledTimes(1)
+    expect(pool.query.mock.calls[0][0]).toContain('"phase8_cohort"."cases"')
+    expect(pool.query.mock.calls[0][0]).toContain('"phase8_cohort"."variants"')
+  })
 })

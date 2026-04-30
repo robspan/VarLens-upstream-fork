@@ -1,4 +1,5 @@
 import type { SortItem, VariantFilter } from '../../shared/types/database'
+import type { CohortSearchParams } from '../../shared/types/cohort'
 import type { ValidatedCaseSearchParams } from '../../shared/types/ipc-schemas'
 import type { VariantCoords, VariantKey } from '../ipc/handlers/annotations-logic'
 
@@ -46,8 +47,14 @@ export type StorageReadTask =
       type: 'variants:columnMeta'
       params: [scope: { caseId: number } | { caseIds: number[] }, columnKey: string]
     }
+  | { type: 'cohort:query'; params: [params: CohortSearchParams] }
+  | { type: 'cohort:summary'; params: [] }
+  | { type: 'cohort:columnMeta'; params: [] }
+  | { type: 'cohort:carriers'; params: [chr: string, pos: number, ref: string, alt: string] }
+  | { type: 'cohort:geneBurden'; params: [] }
   | { type: 'database:overview'; params: [] }
   | { type: 'export:variants'; params: [filter: VariantFilter] }
+  | { type: 'export:cohort'; params: [params: CohortSearchParams] }
   | { type: 'tags:list'; params: [] }
   | { type: 'tags:getUsageCount'; params: [tagId: number] }
   | { type: 'tags:getVariantTags'; params: [caseId: number, variantId: number] }

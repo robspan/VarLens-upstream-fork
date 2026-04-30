@@ -11,6 +11,7 @@ import { PostgresCaseLifecycleRepository } from './PostgresCaseLifecycleReposito
 import { PostgresCaseListRepository } from './PostgresCaseListRepository'
 import { PostgresCaseMetadataRepository } from './PostgresCaseMetadataRepository'
 import { PostgresCasesQueryRepository } from './PostgresCasesQueryRepository'
+import { PostgresCohortRepository } from './PostgresCohortRepository'
 import { PostgresCommentsMetricsRepository } from './PostgresCommentsMetricsRepository'
 import { PostgresExportRepository } from './PostgresExportRepository'
 import { PostgresFilterPresetsRepository } from './PostgresFilterPresetsRepository'
@@ -97,16 +98,16 @@ export const POSTGRES_CAPABILITIES: StorageCapabilities = {
     auditLog: false
   },
   cohort: {
-    query: false,
-    summary: false,
+    query: true,
+    summary: true,
     rebuild: false,
-    carriers: false,
-    geneBurden: false,
-    columnMeta: false
+    carriers: true,
+    geneBurden: true,
+    columnMeta: true
   },
   export: {
     variants: true,
-    cohort: false,
+    cohort: true,
     streaming: true
   }
 }
@@ -141,11 +142,13 @@ export class PostgresStorageSession implements StorageSession {
     const panels = new PostgresPanelsRepository(options.pool, options.config.schema)
     const filterPresets = new PostgresFilterPresetsRepository(options.pool, options.config.schema)
     const analysisGroups = new PostgresAnalysisGroupsRepository(options.pool, options.config.schema)
+    const cohort = new PostgresCohortRepository(options.pool, options.config.schema)
     this.readExecutor = new PostgresReadExecutor({
       casesQuery: new PostgresCasesQueryRepository(options.pool, options.config.schema),
       availableBuilds: new PostgresAvailableBuildsRepository(options.pool, options.config.schema),
       overview: new PostgresOverviewRepository(options.pool, options.config.schema),
       export: new PostgresExportRepository(options.pool, options.config.schema),
+      cohort,
       tags,
       annotations,
       commentsMetrics,

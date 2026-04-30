@@ -263,4 +263,56 @@ describe('PostgresReadExecutor', () => {
       { id: 3 }
     ])
   })
+
+  it('dispatches cohort and cohort export reads to the postgres cohort repository', async () => {
+    const cohortRows = (async function* () {
+      yield { variant_key: 'chr1:100:A:T' }
+    })()
+    const cohort = {
+      queryVariants: vi.fn().mockResolvedValue({ data: [], total_count: 0 }),
+      getSummary: vi.fn().mockResolvedValue({ total_cases: 1 }),
+      getColumnMeta: vi.fn().mockResolvedValue([{ key: 'gene_symbol' }]),
+      getCarriers: vi.fn().mockResolvedValue([{ case_id: 1 }]),
+      getGeneBurden: vi.fn().mockResolvedValue([{ gene_symbol: 'BRCA1' }]),
+      streamCohortRows: vi.fn().mockReturnValue(cohortRows)
+    }
+    const executor = new PostgresReadExecutor({
+      casesQuery: {} as never,
+      availableBuilds: {} as never,
+      overview: {} as never,
+      export: {} as never,
+      cohort,
+      ...workflowRepositories(),
+      caseMetadata: {} as never,
+      variants: {} as never
+    } as never)
+
+    const cohortParams = { search_term: 'BRCA1', limit: 25, offset: 0 }
+
+    await expect(
+      executor.execute({ type: 'cohort:query', params: [cohortParams] })
+    ).resolves.toStrictEqual({ data: [], total_count: 0 })
+    await expect(executor.execute({ type: 'cohort:summary', params: [] })).resolves.toStrictEqual({
+      total_cases: 1
+    })
+    await expect(
+      executor.execute({ type: 'cohort:columnMeta', params: [] })
+    ).resolves.toStrictEqual([{ key: 'gene_symbol' }])
+    await expect(
+      executor.execute({ type: 'cohort:carriers', params: ['chr1', 100, 'A', 'T'] })
+    ).resolves.toStrictEqual([{ case_id: 1 }])
+    await expect(
+      executor.execute({ type: 'cohort:geneBurden', params: [] })
+    ).resolves.toStrictEqual([{ gene_symbol: 'BRCA1' }])
+    await expect(
+      executor.execute({ type: 'export:cohort', params: [cohortParams] })
+    ).resolves.toBe(cohortRows)
+
+    expect(cohort.queryVariants).toHaveBeenCalledWith(cohortParams)
+    expect(cohort.getSummary).toHaveBeenCalledWith()
+    expect(cohort.getColumnMeta).toHaveBeenCalledWith()
+    expect(cohort.getCarriers).toHaveBeenCalledWith('chr1', 100, 'A', 'T')
+    expect(cohort.getGeneBurden).toHaveBeenCalledWith()
+    expect(cohort.streamCohortRows).toHaveBeenCalledWith(cohortParams)
+  })
 })

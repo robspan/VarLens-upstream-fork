@@ -4,6 +4,7 @@ import type { PostgresAnalysisGroupsRepository } from './PostgresAnalysisGroupsR
 import type { PostgresAnnotationsRepository } from './PostgresAnnotationsRepository'
 import type { PostgresCaseMetadataRepository } from './PostgresCaseMetadataRepository'
 import type { PostgresCasesQueryRepository } from './PostgresCasesQueryRepository'
+import type { PostgresCohortRepository } from './PostgresCohortRepository'
 import type { PostgresCommentsMetricsRepository } from './PostgresCommentsMetricsRepository'
 import type { PostgresExportRepository } from './PostgresExportRepository'
 import type { PostgresFilterPresetsRepository } from './PostgresFilterPresetsRepository'
@@ -17,6 +18,15 @@ interface PostgresReadExecutorRepositories {
   availableBuilds: Pick<PostgresAvailableBuildsRepository, 'getAvailableGenomeBuilds'>
   overview: Pick<PostgresOverviewRepository, 'getOverview'>
   export: Pick<PostgresExportRepository, 'streamVariantRows'>
+  cohort: Pick<
+    PostgresCohortRepository,
+    | 'queryVariants'
+    | 'getSummary'
+    | 'getColumnMeta'
+    | 'getCarriers'
+    | 'getGeneBurden'
+    | 'streamCohortRows'
+  >
   tags: Pick<PostgresTagsRepository, 'listTags' | 'getTagUsageCount' | 'getVariantTags'>
   annotations: Pick<
     PostgresAnnotationsRepository,
@@ -132,11 +142,29 @@ export class PostgresReadExecutor implements StorageReadExecutor {
       case 'variants:columnMeta':
         return await this.repositories.variants.getColumnMeta(task.params[0], task.params[1])
 
+      case 'cohort:query':
+        return await this.repositories.cohort.queryVariants(task.params[0])
+
+      case 'cohort:summary':
+        return await this.repositories.cohort.getSummary()
+
+      case 'cohort:columnMeta':
+        return await this.repositories.cohort.getColumnMeta()
+
+      case 'cohort:carriers':
+        return await this.repositories.cohort.getCarriers(...task.params)
+
+      case 'cohort:geneBurden':
+        return await this.repositories.cohort.getGeneBurden()
+
       case 'database:overview':
         return await this.repositories.overview.getOverview()
 
       case 'export:variants':
         return this.repositories.export.streamVariantRows(task.params[0])
+
+      case 'export:cohort':
+        return this.repositories.cohort.streamCohortRows(task.params[0])
 
       case 'tags:list':
         return await this.repositories.tags.listTags()

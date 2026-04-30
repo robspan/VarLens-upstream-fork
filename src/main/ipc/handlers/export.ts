@@ -13,7 +13,8 @@ import {
   prepareVariantExport,
   exportVariants,
   exportCohort,
-  exportPostgresVariants
+  exportPostgresVariants,
+  exportPostgresCohort
 } from './export-logic'
 import type { ExportCallbacks } from './export-logic'
 
@@ -148,6 +149,8 @@ export function registerExportHandlers({
           `Cohort export handler called with params: ${JSON.stringify(validated.data)}`,
           'export'
         )
+        const session = getDbManager().getCurrentSession()
+        const isPostgres = session.capabilities.backend === 'postgres'
         const mainWindow = BrowserWindow.getAllWindows()[0]
 
         // Check for valid window before showing dialog
@@ -160,18 +163,40 @@ export function registerExportHandlers({
         }
 
         // Show save dialog
-        const defaultFileName = `cohort_variants_${new Date().toISOString().slice(0, 10)}.xlsx`
+        const defaultFileName = `cohort_variants_${new Date().toISOString().slice(0, 10)}.${isPostgres ? 'csv' : 'xlsx'}`
         const result = await dialog.showSaveDialog(mainWindow, {
-          title: 'Export Cohort Variants to Excel',
+          title: isPostgres ? 'Export Cohort Variants to CSV' : 'Export Cohort Variants to Excel',
           defaultPath: defaultFileName,
-          filters: [
-            { name: 'Excel Files', extensions: ['xlsx'] },
-            { name: 'All Files', extensions: ['*'] }
-          ]
+          filters: isPostgres
+            ? [
+                { name: 'CSV Files', extensions: ['csv'] },
+                { name: 'All Files', extensions: ['*'] }
+              ]
+            : [
+                { name: 'Excel Files', extensions: ['xlsx'] },
+                { name: 'All Files', extensions: ['*'] }
+              ]
         })
 
         if (result.canceled === true || result.filePath === undefined || result.filePath === '') {
           return { success: false, error: 'Export cancelled' }
+        }
+
+        /** Wire progress events to renderer via safeEmit. */
+        const exportCallbacks: ExportCallbacks = {
+          onProgress: (data) => {
+            if (!mainWindow.isDestroyed()) {
+              safeEmit('export:progress', data)
+            }
+          }
+        }
+
+        if (isPostgres) {
+          const rows = (await session.getReadExecutor().execute({
+            type: 'export:cohort',
+            params: [validated.data]
+          })) as AsyncIterable<Record<string, unknown>>
+          return await exportPostgresCohort(rows, result.filePath, exportCallbacks)
         }
 
         return exportCohort(getDb, validated.data, result.filePath)

@@ -162,6 +162,36 @@ export class SqliteReadExecutor implements StorageReadExecutor {
           return await this.dbPool.run({ type: task.type, params: task.params })
         return this.databaseService.variants.getColumnMeta(task.params[0], task.params[1])
 
+      case 'cohort:query':
+        if (this.dbPool !== null) {
+          return await this.dbPool.run({ type: 'cohort:variants', params: task.params })
+        }
+        return this.databaseService.cohort.getCohortVariants(task.params[0])
+
+      case 'cohort:summary':
+        if (this.dbPool !== null) {
+          return await this.dbPool.run({ type: 'cohort:summary', params: task.params })
+        }
+        return this.databaseService.cohort.getCohortSummary()
+
+      case 'cohort:columnMeta':
+        if (this.dbPool !== null) {
+          return await this.dbPool.run({ type: 'cohort:columnMeta', params: task.params })
+        }
+        return this.databaseService.cohort.getColumnMeta()
+
+      case 'cohort:carriers':
+        if (this.dbPool !== null) {
+          return await this.dbPool.run({ type: 'cohort:carriers', params: task.params })
+        }
+        return this.databaseService.cohort.getCarriers(...task.params)
+
+      case 'cohort:geneBurden':
+        if (this.dbPool !== null) {
+          return await this.dbPool.run({ type: 'cohort:geneBurden', params: task.params })
+        }
+        return this.databaseService.cohort.getGeneBurden()
+
       case 'database:overview':
         if (this.dbPool !== null)
           return await this.dbPool.run({ type: task.type, params: task.params })
@@ -169,6 +199,9 @@ export class SqliteReadExecutor implements StorageReadExecutor {
 
       case 'export:variants':
         throw new Error('SQLite export uses the dedicated export worker path')
+
+      case 'export:cohort':
+        throw new Error('SQLite cohort export uses the dedicated export worker path')
 
       case 'tags:list':
         if (this.dbPool !== null) return await this.dbPool.run({ type: 'tags:list', params: [] })

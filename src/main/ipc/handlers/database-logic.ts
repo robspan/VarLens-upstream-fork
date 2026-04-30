@@ -21,6 +21,7 @@ import {
 } from '../../storage/config'
 import { PostgresHealthDiagnostics } from '../../storage/postgres/PostgresHealthDiagnostics'
 import { PostgresStorageSession } from '../../storage/postgres/PostgresStorageSession'
+import { createPostgresStorageSession } from '../../storage/postgres/createPostgresStorageSession'
 import { PostgresMigrationRunner } from '../../storage/postgres/migrations/PostgresMigrationRunner'
 import { POSTGRES_MIGRATIONS } from '../../storage/postgres/migrations/definitions'
 import {
@@ -42,6 +43,8 @@ import type {
 } from '../../../shared/types/postgres-profile'
 import type { PostgresProfileStore } from '../../storage/postgres/PostgresProfileStore'
 
+export { createPostgresStorageSession }
+
 /** File extensions allowed for database deletion -- prevents accidental non-DB file removal */
 const ALLOWED_DB_EXTENSIONS = new Set(['.db', '.sqlite', '.sqlite3'])
 
@@ -61,11 +64,10 @@ export interface PostgresProfileTestDependencies {
   ) => Promise<PostgresHealthDiagnosticResult>
 }
 
-export interface PostgresProfileOpenDependencies extends PostgresProfileTestDependencies {
+export interface PostgresProfileOpenDependencies {
   profileStore: Pick<PostgresProfileStoreLike, 'listProfiles' | 'getProfileSecrets'>
   getDbManager: () => Pick<DatabaseManager, 'openPostgresSession' | 'getCurrentInfo'>
-  createSession?: (config: PostgresStorageConfig, pool: PostgresPoolLike) => StorageSession
-  migrate?: (pool: PostgresPoolLike, schema: string) => Promise<void>
+  createSession?: (config: PostgresStorageConfig) => Promise<StorageSession> | StorageSession
 }
 
 /** Callbacks for pool init and cohort rebuild during database open/create. */
@@ -156,28 +158,6 @@ function sanitizePostgresMessage(
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
-}
-
-async function cleanupPostgresOpenResources(
-  pool: PostgresPoolLike | undefined,
-  session: StorageSession | undefined,
-  originalError: unknown,
-  secrets: PostgresConnectionProfileSecretInput,
-  config: PostgresStorageConfig | undefined
-): Promise<never> {
-  try {
-    if (session !== undefined) {
-      await session.close()
-    } else if (pool !== undefined) {
-      await pool.end()
-    }
-  } catch (cleanupError) {
-    const sanitizedOriginal = sanitizePostgresMessage(errorMessage(originalError), secrets, config)
-    const sanitizedCleanup = sanitizePostgresMessage(errorMessage(cleanupError), secrets, config)
-    throw new Error(`${sanitizedOriginal}; cleanup failed: ${sanitizedCleanup}`)
-  }
-
-  throw new Error(sanitizePostgresMessage(errorMessage(originalError), secrets, config))
 }
 
 // ============================================================
@@ -414,27 +394,16 @@ export async function openPostgresProfile(
   if (profile === undefined) {
     throw new Error(`Missing PostgreSQL profile ${id}`)
   }
+  const profileName = profile.name
 
   const secrets = await dependencies.profileStore.getProfileSecrets(id)
   let config: PostgresStorageConfig | undefined
-  let pool: PostgresPoolLike | undefined
   let session: StorageSession | undefined
   let opened = false
 
   try {
     config = buildPostgresStorageConfigFromProfile(profile, secrets)
-    pool = dependencies.createPool(config)
-    await (dependencies.migrate ?? migratePostgresStorage)(pool, config.schema)
-
-    const diagnostics = await (dependencies.collectDiagnostics ?? collectPostgresDiagnostics)(
-      pool,
-      config.schema
-    )
-    if (!diagnostics.ok) {
-      throw new Error(diagnostics.message ?? 'PostgreSQL diagnostics failed')
-    }
-
-    session = (dependencies.createSession ?? createDefaultPostgresSession)(config, pool)
+    session = await (dependencies.createSession ?? createPostgresStorageSession)(config)
     const manager = dependencies.getDbManager()
     await manager.openPostgresSession(session)
     opened = true
@@ -448,7 +417,7 @@ export async function openPostgresProfile(
   } catch (error) {
     if (opened) {
       throw new Error(
-        `Failed to finish opening PostgreSQL profile "${profile.name}": ${sanitizePostgresMessage(
+        `Failed to finish opening PostgreSQL profile "${profileName}": ${sanitizePostgresMessage(
           errorMessage(error),
           secrets,
           config
@@ -457,19 +426,33 @@ export async function openPostgresProfile(
     }
 
     try {
-      await cleanupPostgresOpenResources(pool, session, error, secrets, config)
-    } catch (cleanupOrOriginalError) {
+      if (session !== undefined) {
+        await session.close()
+      }
+    } catch (cleanupError) {
       throw new Error(
-        `Failed to open PostgreSQL profile "${profile.name}": ${sanitizePostgresMessage(
-          errorMessage(cleanupOrOriginalError),
+        `Failed to open PostgreSQL profile "${profileName}": ${sanitizePostgresMessage(
+          errorMessage(error),
+          secrets,
+          config
+        )}; cleanup failed: ${sanitizePostgresMessage(
+          errorMessage(cleanupError),
           secrets,
           config
         )}`
       )
     }
+
+    throw new Error(
+      `Failed to open PostgreSQL profile "${profileName}": ${sanitizePostgresMessage(
+        errorMessage(error),
+        secrets,
+        config
+      )}`
+    )
   }
 
-  throw new Error(`Failed to open PostgreSQL profile "${profile.name}"`)
+  throw new Error(`Failed to open PostgreSQL profile "${profileName}"`)
 }
 
 export function getRecentDatabases(getDbManager: () => DatabaseManager): unknown {

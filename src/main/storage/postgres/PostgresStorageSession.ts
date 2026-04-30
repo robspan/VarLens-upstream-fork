@@ -38,10 +38,12 @@ import { toPostgresClientConfigMessage } from '../../../shared/types/postgres-im
 import type { StorageSession } from '../session'
 import type { StorageCapabilities, StorageHealth, WorkspaceRef } from '../types'
 import type { StorageWriteExecutor } from '../write-executor'
+import type { PostgresMigrationResult } from './migrations/types'
 
 interface PostgresStorageSessionOptions {
   config: PostgresStorageConfig
   pool: Pool
+  migrationResult?: PostgresMigrationResult
   createCaseListRepository?: (pool: Pool, schema: string) => PostgresCaseListRepository
 }
 
@@ -130,10 +132,12 @@ export class PostgresStorageSession implements StorageSession {
   private readonly readExecutor: StorageReadExecutor
   private readonly writeExecutor: StorageWriteExecutor
   private readonly importExecutor: StorageImportExecutor
+  private readonly migrationResult: PostgresMigrationResult | undefined
   private cases: PostgresCaseListRepository | null = null
 
   constructor(options: PostgresStorageSessionOptions) {
     this.pool = options.pool
+    this.migrationResult = options.migrationResult
     const caseMetadata = new PostgresCaseMetadataRepository(options.pool, options.config.schema)
     const tags = new PostgresTagsRepository(options.pool, options.config.schema)
     const annotations = new PostgresAnnotationsRepository(options.pool, options.config.schema)
@@ -282,6 +286,14 @@ export class PostgresStorageSession implements StorageSession {
 
   async collectDiagnostics(): Promise<PostgresHealthDiagnosticResult> {
     const schema = this.workspace.kind === 'postgres' ? this.workspace.schema : 'public'
-    return await new PostgresHealthDiagnostics(this.pool, schema).collect()
+    const diagnostics = await new PostgresHealthDiagnostics(this.pool, schema).collect()
+    if (this.migrationResult === undefined) {
+      return diagnostics
+    }
+
+    return {
+      ...diagnostics,
+      currentMigration: this.migrationResult.currentVersion
+    }
   }
 }

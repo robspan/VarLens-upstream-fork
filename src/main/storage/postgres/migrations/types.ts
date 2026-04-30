@@ -9,6 +9,8 @@ export interface PostgresMigration {
 }
 
 export interface PostgresMigrationResult {
+  beforeVersion: string | null
   applied: string[]
   currentVersion: string | null
+  schema: string
 }

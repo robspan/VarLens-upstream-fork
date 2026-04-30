@@ -36,8 +36,7 @@ import {
   testPostgresProfile,
   openPostgresProfile,
   createDefaultPostgresPool,
-  createDefaultPostgresSession,
-  migratePostgresStorage,
+  createPostgresStorageSession,
   PostgresProfileIdSchema
 } from './database-logic'
 import type { DatabaseLifecycleCallbacks } from './database-logic'
@@ -177,8 +176,7 @@ export function registerDatabaseHandlers({
   getDbPool,
   getPostgresProfileStore = getDefaultPostgresProfileStore,
   createPostgresPool = createDefaultPostgresPool,
-  createPostgresSession = createDefaultPostgresSession,
-  migratePostgres = migratePostgresStorage,
+  createPostgresSession = createPostgresStorageSession,
   collectPostgresDiagnostics
 }: HandlerDependencies): void {
   /**
@@ -373,12 +371,7 @@ export function registerDatabaseHandlers({
       return await openPostgresProfile(validated.data, {
         profileStore: getPostgresProfileStore(),
         getDbManager,
-        createPool: createPostgresPool,
-        createSession: createPostgresSession,
-        migrate: migratePostgres,
-        ...(collectPostgresDiagnostics !== undefined
-          ? { collectDiagnostics: collectPostgresDiagnostics }
-          : {})
+        createSession: createPostgresSession
       })
     })
   })

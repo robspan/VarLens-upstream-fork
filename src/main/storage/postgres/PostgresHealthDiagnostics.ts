@@ -5,6 +5,27 @@ import { quoteIdentifier } from './identifiers'
 
 export type { PostgresHealthDiagnosticResult }
 
+const POSTGRES_FAILURE_MESSAGES: Record<string, string> = {
+  '28P01': 'PostgreSQL authentication failed. Check the username and password for this profile.',
+  '3D000': 'PostgreSQL database does not exist. Check the configured database name.',
+  '42501':
+    'PostgreSQL user has insufficient privilege. Check the role grants for this database and schema.',
+  '3F000': 'PostgreSQL schema does not exist. Check the configured schema name.'
+}
+
+const CONNECTION_UNAVAILABLE_MESSAGE =
+  'PostgreSQL connection unavailable. Check the host, port, network, and server availability.'
+
+const CONNECTION_UNAVAILABLE_CODES = new Set([
+  'CONNECTION_TIMEOUT',
+  'EAI_AGAIN',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ENOTFOUND',
+  'EHOSTUNREACH',
+  'ETIMEDOUT'
+])
+
 export class PostgresHealthDiagnostics {
   private readonly schemaName: string
 
@@ -52,12 +73,58 @@ export class PostgresHealthDiagnostics {
       return {
         ok: false,
         schema: this.schema,
-        message: error instanceof Error ? error.message : String(error)
+        message: classifyPostgresFailureMessage(error)
       }
     }
   }
 }
 
+export function classifyPostgresFailureMessage(error: unknown): string {
+  const code = getErrorCode(error)
+  if (code !== undefined) {
+    const message = POSTGRES_FAILURE_MESSAGES[code]
+    if (message !== undefined) {
+      return message
+    }
+
+    if (CONNECTION_UNAVAILABLE_CODES.has(code)) {
+      return CONNECTION_UNAVAILABLE_MESSAGE
+    }
+  }
+
+  const message = error instanceof Error ? error.message : String(error)
+  if (isConnectionUnavailableMessage(message)) {
+    return CONNECTION_UNAVAILABLE_MESSAGE
+  }
+
+  return redactPostgresFailureMessage(message)
+}
+
 function literalString(value: string): string {
   return `'${value.replace(/'/g, "''")}'`
+}
+
+function getErrorCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null || !('code' in error)) {
+    return undefined
+  }
+
+  const code = (error as { code?: unknown }).code
+  return typeof code === 'string' ? code : undefined
+}
+
+function isConnectionUnavailableMessage(message: string): boolean {
+  return /connection (?:timed out|timeout)|timeout exceeded|getaddrinfo|enotfound|eai_again|econnrefused|etimedout/i.test(
+    message
+  )
+}
+
+function redactPostgresFailureMessage(message: string): string {
+  return message
+    .replace(/postgres(?:ql)?:\/\/\S+/gi, '[redacted PostgreSQL connection URL]')
+    .replace(/password\s*=\s*([^\s;]+)/gi, 'password=[redacted]')
+    .replace(
+      /-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/gi,
+      '[redacted CA certificate]'
+    )
 }

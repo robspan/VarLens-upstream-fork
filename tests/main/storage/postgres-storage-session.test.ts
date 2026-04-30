@@ -2,10 +2,24 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { Case } from '../../../src/shared/types/database'
 import type { PostgresStorageConfig } from '../../../src/main/storage/config'
+import type { PostgresMigrationResult } from '../../../src/main/storage/postgres/migrations/types'
 import {
   POSTGRES_CAPABILITIES,
   PostgresStorageSession
 } from '../../../src/main/storage/postgres/PostgresStorageSession'
+
+const postgresMocks = vi.hoisted(() => ({
+  Pool: vi.fn(),
+  PostgresMigrationRunner: vi.fn()
+}))
+
+vi.mock('pg', () => ({
+  Pool: postgresMocks.Pool
+}))
+
+vi.mock('../../../src/main/storage/postgres/migrations/PostgresMigrationRunner', () => ({
+  PostgresMigrationRunner: postgresMocks.PostgresMigrationRunner
+}))
 
 function makeConfig(overrides: Partial<PostgresStorageConfig> = {}): PostgresStorageConfig {
   return {
@@ -78,6 +92,38 @@ describe('PostgresStorageSession', () => {
       ok: false,
       backend: 'postgres',
       message: 'connection refused'
+    })
+  })
+
+  it('includes the session migration version in diagnostics', async () => {
+    const migrationResult: PostgresMigrationResult = {
+      beforeVersion: '006',
+      applied: ['007'],
+      currentVersion: '007',
+      schema: 'workspace_a'
+    }
+    const pool = {
+      query: vi
+        .fn()
+        .mockResolvedValueOnce({ rows: [{ version: 'PostgreSQL 16' }] })
+        .mockResolvedValueOnce({ rows: [{ current_user: 'varlens_app' }] })
+        .mockResolvedValueOnce({ rows: [{ relation: null }] })
+        .mockResolvedValueOnce({ rows: [{ can_read_schema: true }] })
+        .mockResolvedValueOnce({ rows: [{ can_write_schema: true }] }),
+      end: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn()
+    }
+
+    const session = new PostgresStorageSession({
+      config: makeConfig({ schema: 'workspace_a' }),
+      pool: pool as never,
+      migrationResult
+    })
+
+    await expect(session.collectDiagnostics()).resolves.toMatchObject({
+      ok: true,
+      schema: 'workspace_a',
+      currentMigration: '007'
     })
   })
 
@@ -383,5 +429,104 @@ describe('PostgresStorageSession', () => {
 
     expect(pool.query.mock.calls[0][0]).toContain('"phase9_audit"."audit_log"')
     expect(pool.query.mock.calls[1][0]).toContain('"phase9_audit"."audit_log"')
+  })
+})
+
+describe('createPostgresStorageSession', () => {
+  it('runs migrations before exposing the session', async () => {
+    const events: string[] = []
+    const pool = {
+      connect: vi.fn(),
+      query: vi.fn(),
+      end: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn(() => {
+        events.push('session')
+      })
+    }
+    const migrationResult: PostgresMigrationResult = {
+      beforeVersion: null,
+      applied: ['001'],
+      currentVersion: '001',
+      schema: 'workspace_a'
+    }
+    postgresMocks.Pool.mockImplementation(function Pool() {
+      return pool
+    })
+    postgresMocks.PostgresMigrationRunner.mockImplementation(
+      function PostgresMigrationRunner() {
+        return {
+          migrate: vi.fn(async () => {
+            events.push('migrate')
+            return migrationResult
+          })
+        }
+      }
+    )
+
+    const { createPostgresStorageSession } = await import(
+      '../../../src/main/storage/postgres/createPostgresStorageSession'
+    )
+
+    const session = await createPostgresStorageSession(makeConfig({ schema: 'workspace_a' }))
+
+    expect(events).toEqual(['migrate', 'session'])
+    await expect(session.collectDiagnostics()).resolves.toMatchObject({
+      currentMigration: '001'
+    })
+  })
+
+  it('closes the pool when migration fails', async () => {
+    const pool = {
+      connect: vi.fn(),
+      query: vi.fn(),
+      end: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn()
+    }
+    postgresMocks.Pool.mockImplementation(function Pool() {
+      return pool
+    })
+    postgresMocks.PostgresMigrationRunner.mockImplementation(
+      function PostgresMigrationRunner() {
+        return {
+          migrate: vi.fn().mockRejectedValue(new Error('migration failed'))
+        }
+      }
+    )
+
+    const { createPostgresStorageSession } = await import(
+      '../../../src/main/storage/postgres/createPostgresStorageSession'
+    )
+
+    await expect(createPostgresStorageSession(makeConfig())).rejects.toThrow('migration failed')
+    expect(pool.end).toHaveBeenCalledOnce()
+  })
+
+  it('preserves the migration error when cleanup also fails', async () => {
+    const migrationError = new Error('migration failed')
+    const cleanupError = new Error('cleanup failed')
+    const pool = {
+      connect: vi.fn(),
+      query: vi.fn(),
+      end: vi.fn().mockRejectedValue(cleanupError),
+      on: vi.fn()
+    }
+    postgresMocks.Pool.mockImplementation(function Pool() {
+      return pool
+    })
+    postgresMocks.PostgresMigrationRunner.mockImplementation(
+      function PostgresMigrationRunner() {
+        return {
+          migrate: vi.fn().mockRejectedValue(migrationError)
+        }
+      }
+    )
+
+    const { createPostgresStorageSession } = await import(
+      '../../../src/main/storage/postgres/createPostgresStorageSession'
+    )
+
+    await expect(createPostgresStorageSession(makeConfig())).rejects.toThrow('migration failed')
+    expect((migrationError as Error & { cleanupError?: unknown }).cleanupError).toBe(cleanupError)
+    expect(pool.end).toHaveBeenCalledOnce()
   })
 })

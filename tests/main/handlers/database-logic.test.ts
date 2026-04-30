@@ -190,7 +190,6 @@ describe('postgres profile logic', () => {
 
   it('opens a stored postgres profile through DatabaseManager.openPostgresSession', async () => {
     const profile = publicProfile()
-    const pool = { end: vi.fn().mockResolvedValue(undefined), query: vi.fn() }
     const session = {
       close: vi.fn().mockResolvedValue(undefined),
       workspace: {
@@ -217,25 +216,52 @@ describe('postgres profile logic', () => {
         caCertificatePem: '-----BEGIN CERTIFICATE-----abc'
       })
     }
-    const migrate = vi.fn().mockResolvedValue(undefined)
+    const createSession = vi.fn().mockResolvedValue(session)
 
     await expect(
       logic.openPostgresProfile('profile-1', {
         profileStore: store,
         getDbManager: () => manager as never,
-        createPool: vi.fn().mockReturnValue(pool),
-        createSession: vi.fn().mockReturnValue(session),
-        migrate,
-        collectDiagnostics: vi.fn().mockResolvedValue({ ok: true, schema: 'workspace_a' })
+        createSession
       })
     ).resolves.toEqual({ success: true, info: expectedInfo })
 
     expect(store.listProfiles).toHaveBeenCalledOnce()
     expect(store.getProfileSecrets).toHaveBeenCalledWith('profile-1')
-    expect(migrate).toHaveBeenCalledWith(pool, 'workspace_a')
+    expect(createSession).toHaveBeenCalledOnce()
+    expect(createSession.mock.calls[0][0]).toMatchObject({
+      schema: 'workspace_a',
+      applicationName: 'varlens-main'
+    })
     expect(manager.openPostgresSession).toHaveBeenCalledWith(session)
-    expect(pool.end).not.toHaveBeenCalled()
     expect(session.close).not.toHaveBeenCalled()
+  })
+
+  it('does not switch the active session when postgres profile migration fails', async () => {
+    const profile = publicProfile()
+    const manager = {
+      openPostgresSession: vi.fn(),
+      getCurrentInfo: vi.fn()
+    }
+    const store = {
+      listProfiles: vi.fn().mockResolvedValue([profile]),
+      getProfileSecrets: vi.fn().mockResolvedValue({
+        password: 'super-secret',
+        caCertificatePem: '-----BEGIN CERTIFICATE-----abc'
+      })
+    }
+    const createSession = vi.fn().mockRejectedValue(new Error('migration failed'))
+
+    await expect(
+      logic.openPostgresProfile('profile-1', {
+        profileStore: store,
+        getDbManager: () => manager as never,
+        createSession
+      })
+    ).rejects.toThrow('Failed to open PostgreSQL profile "Lab PG": migration failed')
+
+    expect(createSession).toHaveBeenCalledOnce()
+    expect(manager.openPostgresSession).not.toHaveBeenCalled()
   })
 })
 

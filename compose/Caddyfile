@@ -18,8 +18,17 @@
 
 # Port 80: redirect HTTP requests to HTTPS so nobody accidentally lands on
 # an unencrypted connection. 308 instead of 301 to preserve POST bodies.
+# /healthz is exempt from the redirect (the catch-all `handle` runs only
+# after the @healthz matcher misses) so the Docker healthcheck inside the
+# container can probe it without TLS / SNI gymnastics.
 :80 {
-	redir https://{host}{uri} 308
+	@healthz path /healthz
+	handle @healthz {
+		respond "ok" 200
+	}
+	handle {
+		redir https://{host}{uri} 308
+	}
 }
 
 # Port 443: TLS with Caddy's internal self-signed certificate. SERVER_HOST

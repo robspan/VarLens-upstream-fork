@@ -24,11 +24,11 @@ services:
     networks:
       - varlens
     healthcheck:
-      # :80 responds with 308 since the HTTPS redirect was added. BusyBox wget
-      # would follow the redirect and fail at SNI/cert verification.
-      # --max-redirect=0 plus a grep on the status code accepts the 308
-      # response as "healthy".
-      test: ["CMD-SHELL", "wget -O - --spider --max-redirect=0 -S http://localhost/ 2>&1 | grep -q '308'"]
+      # /healthz is a redirect-exempt 200 endpoint defined in the Caddyfile
+      # specifically for this probe. BusyBox wget in caddy:2-alpine has no
+      # --max-redirect option, so a redirect-following probe of / would
+      # fail at SNI/cert. /healthz keeps the probe trivial.
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/healthz"]
       interval: 30s
       timeout: 5s
       retries: 3

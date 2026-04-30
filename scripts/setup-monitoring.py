@@ -321,6 +321,9 @@ def main() -> None:
             cols.append("port"); vals.append(str(m['port']))
         if m['basic_auth_user']:
             cols.append("basic_auth_user"); vals.append(f"'{m['basic_auth_user']}'")
+            # Kuma only uses basic_auth_user/pass when auth_method='basic'.
+            # Without this, the monitor probes without auth and gets 401.
+            cols.append("auth_method"); vals.append("'basic'")
         if m['basic_auth_pass']:
             cols.append("basic_auth_pass"); vals.append(f"'{m['basic_auth_pass']}'")
         sql = f"INSERT INTO monitor ({', '.join(cols)}) VALUES ({', '.join(vals)});"

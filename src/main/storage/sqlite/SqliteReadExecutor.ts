@@ -157,6 +157,9 @@ export class SqliteReadExecutor implements StorageReadExecutor {
           return await this.dbPool.run({ type: task.type, params: task.params })
         return this.databaseService.variants.getFilterOptions(task.params[0])
 
+      case 'variants:shortlist':
+        return this.databaseService.shortlistService.getShortlist(task.params[0])
+
       case 'variants:columnMeta':
         if (this.dbPool !== null)
           return await this.dbPool.run({ type: task.type, params: task.params })

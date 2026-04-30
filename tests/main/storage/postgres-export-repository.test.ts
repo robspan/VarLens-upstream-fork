@@ -30,13 +30,18 @@ describe('PostgresExportRepository', () => {
     expect(release).toHaveBeenCalledTimes(1)
   })
 
-  it('rejects unsupported filters before opening a streaming client', async () => {
+  it('rejects unsupported column filters before opening a streaming client', async () => {
     const connect = vi.fn()
     const repo = new PostgresExportRepository({ connect } as never, 'public')
 
     await expect(async () => {
-      await repo.streamVariantRows({ case_id: 5, tag_ids: [1] }).next()
-    }).rejects.toThrow('Unsupported PostgreSQL variant filter(s): tag_ids')
+      await repo
+        .streamVariantRows({
+          case_id: 5,
+          column_filters: { 'sv.does_not_exist': { operator: '>', value: 1 } }
+        })
+        .next()
+    }).rejects.toThrow('Unsupported PostgreSQL column filter(s): sv.does_not_exist')
     expect(connect).not.toHaveBeenCalled()
   })
 })

@@ -75,14 +75,14 @@ export const POSTGRES_CAPABILITIES: StorageCapabilities = {
     typeCounts: true,
     typesPresent: true,
     geneSymbols: true,
-    panelFilters: false,
-    tagFilters: false,
-    commentFilters: false,
-    acmgFilters: false,
-    annotationFilters: false,
-    inheritanceFilters: false,
-    analysisGroupFilters: false,
-    phasingFilters: false
+    panelFilters: true,
+    tagFilters: true,
+    commentFilters: true,
+    acmgFilters: true,
+    annotationFilters: true,
+    inheritanceFilters: true,
+    analysisGroupFilters: true,
+    phasingFilters: true
   },
   workflow: {
     tags: true,

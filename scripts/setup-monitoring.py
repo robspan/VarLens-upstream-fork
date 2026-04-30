@@ -187,6 +187,26 @@ def main() -> None:
     else:
         log("  Admin already exists, skipping setup")
 
+    # ----- 3a. Self-heal previously broken rows -----
+    # Earlier versions of this script inserted the JSON value
+    # accepted_statuscodes_json via shell argv. The bash layer stripped
+    # the inner double-quotes from '["200-299"]', leaving '[200-299]' in
+    # the DB. Kuma's getAcceptedStatuscodes() JSON.parse then throws and
+    # the whole monitor list fails to render in the UI. Detect the broken
+    # value and rewrite it to the canonical form. Idempotent: a no-op on
+    # already-clean DBs.
+    log("Repairing any corrupted accepted_statuscodes_json values")
+    ssh_with_stdin(
+        ip, ssh_key,
+        "docker exec -i uptime-kuma sqlite3 /app/data/kuma.db",
+        stdin=(
+            "UPDATE monitor "
+            "SET accepted_statuscodes_json = '[\"200-299\"]' "
+            "WHERE accepted_statuscodes_json = '[200-299]';"
+        ),
+        check=False,
+    )
+
     # ----- 3. Create or find push monitor -----
     log("Checking whether push monitor 'varlens-backup' exists")
     rc, token_raw = ssh(

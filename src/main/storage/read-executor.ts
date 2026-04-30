@@ -2,6 +2,7 @@ import type { SortItem, VariantFilter } from '../../shared/types/database'
 import type { CohortSearchParams } from '../../shared/types/cohort'
 import type { ValidatedCaseSearchParams } from '../../shared/types/ipc-schemas'
 import type { VariantCoords, VariantKey } from '../ipc/handlers/annotations-logic'
+import type { AuditQueryParams } from './audit-log-types'
 
 export type { AvailableBuild } from '../../shared/types/database'
 
@@ -82,6 +83,8 @@ export type StorageReadTask =
   | { type: 'analysis-groups:list'; params: [] }
   | { type: 'analysis-groups:get'; params: [groupId: number] }
   | { type: 'analysis-groups:getForCase'; params: [caseId: number] }
+  | { type: 'audit:getByEntity'; params: [entityKey: string] }
+  | { type: 'audit:query'; params: [params: AuditQueryParams] }
 
 export interface StorageReadExecutor {
   execute(task: StorageReadTask): Promise<unknown>

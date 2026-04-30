@@ -194,7 +194,9 @@ function mergeOverlappingIntervals(intervals: GenomicInterval[]): GenomicInterva
 }
 
 function withoutActivePanelFields(params: CohortSearchParams): CohortSearchParams {
-  const { active_panel_ids: _activePanelIds, panel_padding_bp: _panelPaddingBp, ...rest } = params
+  const rest = { ...params }
+  delete rest.active_panel_ids
+  delete rest.panel_padding_bp
   return rest
 }
 

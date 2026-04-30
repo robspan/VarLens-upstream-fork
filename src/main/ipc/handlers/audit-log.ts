@@ -44,7 +44,11 @@ const AuditQueryParamsSchema = z.object({
  * Audit Log IPC handlers
  * Channels: audit:getByEntity, audit:query
  */
-export function registerAuditLogHandlers({ ipcMain, getDb }: HandlerDependencies): void {
+export function registerAuditLogHandlers({
+  ipcMain,
+  getDb,
+  getDbManager
+}: HandlerDependencies): void {
   /**
    * Get audit log entries for a specific entity
    */
@@ -60,6 +64,13 @@ export function registerAuditLogHandlers({ ipcMain, getDb }: HandlerDependencies
         throw new Error('Invalid parameters')
       }
 
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session.getReadExecutor().execute({
+          type: 'audit:getByEntity',
+          params: [validated.data]
+        })
+      }
       const db = getDb()
       return db.auditLog.getByEntityKey(validated.data)
     })
@@ -77,6 +88,13 @@ export function registerAuditLogHandlers({ ipcMain, getDb }: HandlerDependencies
         throw new Error('Invalid parameters')
       }
 
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session.getReadExecutor().execute({
+          type: 'audit:query',
+          params: [validated.data as AuditQueryParams]
+        })
+      }
       const db = getDb()
       return db.auditLog.query(validated.data as AuditQueryParams)
     })

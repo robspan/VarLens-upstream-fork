@@ -56,12 +56,7 @@ describe('cohort-logic PostgreSQL session routing', () => {
       panel_padding_bp: 50
     } as unknown as ValidatedCohortSearchParams
 
-    const result = await logic.queryCohortVariants(
-      cohortParams,
-      getDb,
-      getDbPool,
-      () => session
-    )
+    const result = await logic.queryCohortVariants(cohortParams, getDb, getDbPool, () => session)
 
     expect(execute).toHaveBeenCalledWith({
       type: 'cohort:query',

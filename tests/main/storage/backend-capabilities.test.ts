@@ -54,6 +54,6 @@ describe('backend capabilities', () => {
     expect(POSTGRES_CAPABILITIES.workflow.geneLists).toBe(true)
     expect(POSTGRES_CAPABILITIES.workflow.regionFiles).toBe(true)
     expect(POSTGRES_CAPABILITIES.workflow.analysisGroups).toBe(true)
-    expect(POSTGRES_CAPABILITIES.workflow.auditLog).toBe(false)
+    expect(POSTGRES_CAPABILITIES.workflow.auditLog).toBe(true)
   })
 })

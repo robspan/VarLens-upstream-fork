@@ -7,6 +7,7 @@ import type { Case } from '../../../shared/types/database'
 import { PostgresAvailableBuildsRepository } from './PostgresAvailableBuildsRepository'
 import { PostgresAnalysisGroupsRepository } from './PostgresAnalysisGroupsRepository'
 import { PostgresAnnotationsRepository } from './PostgresAnnotationsRepository'
+import { PostgresAuditLogRepository } from './PostgresAuditLogRepository'
 import { PostgresCaseLifecycleRepository } from './PostgresCaseLifecycleRepository'
 import { PostgresCaseListRepository } from './PostgresCaseListRepository'
 import { PostgresCaseMetadataRepository } from './PostgresCaseMetadataRepository'
@@ -95,7 +96,7 @@ export const POSTGRES_CAPABILITIES: StorageCapabilities = {
     geneLists: true,
     regionFiles: true,
     analysisGroups: true,
-    auditLog: false
+    auditLog: true
   },
   cohort: {
     query: true,
@@ -143,6 +144,7 @@ export class PostgresStorageSession implements StorageSession {
     const filterPresets = new PostgresFilterPresetsRepository(options.pool, options.config.schema)
     const analysisGroups = new PostgresAnalysisGroupsRepository(options.pool, options.config.schema)
     const cohort = new PostgresCohortRepository(options.pool, options.config.schema)
+    const audit = new PostgresAuditLogRepository(options.pool, options.config.schema)
     this.readExecutor = new PostgresReadExecutor({
       casesQuery: new PostgresCasesQueryRepository(options.pool, options.config.schema),
       availableBuilds: new PostgresAvailableBuildsRepository(options.pool, options.config.schema),
@@ -155,6 +157,7 @@ export class PostgresStorageSession implements StorageSession {
       panels,
       filterPresets,
       analysisGroups,
+      audit,
       caseMetadata,
       variants: new PostgresVariantReadRepository(options.pool, options.config.schema)
     })
@@ -167,7 +170,8 @@ export class PostgresStorageSession implements StorageSession {
         commentsMetrics,
         panels,
         filterPresets,
-        analysisGroups
+        analysisGroups,
+        audit
       }
     )
     this.importExecutor = new PostgresImportExecutor({

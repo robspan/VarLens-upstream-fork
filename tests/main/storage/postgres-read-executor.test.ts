@@ -4,6 +4,7 @@ import { PostgresReadExecutor } from '../../../src/main/storage/postgres/Postgre
 
 function workflowRepositories() {
   return {
+    audit: {} as never,
     tags: {} as never,
     annotations: {} as never,
     commentsMetrics: {} as never,
@@ -304,9 +305,9 @@ describe('PostgresReadExecutor', () => {
     await expect(
       executor.execute({ type: 'cohort:geneBurden', params: [] })
     ).resolves.toStrictEqual([{ gene_symbol: 'BRCA1' }])
-    await expect(
-      executor.execute({ type: 'export:cohort', params: [cohortParams] })
-    ).resolves.toBe(cohortRows)
+    await expect(executor.execute({ type: 'export:cohort', params: [cohortParams] })).resolves.toBe(
+      cohortRows
+    )
 
     expect(cohort.queryVariants).toHaveBeenCalledWith(cohortParams)
     expect(cohort.getSummary).toHaveBeenCalledWith()
@@ -314,5 +315,33 @@ describe('PostgresReadExecutor', () => {
     expect(cohort.getCarriers).toHaveBeenCalledWith('chr1', 100, 'A', 'T')
     expect(cohort.getGeneBurden).toHaveBeenCalledWith()
     expect(cohort.streamCohortRows).toHaveBeenCalledWith(cohortParams)
+  })
+
+  it('dispatches audit reads to the postgres audit repository', async () => {
+    const audit = {
+      getByEntityKey: vi.fn().mockResolvedValue([{ entity_key: 'case:1:variant:2' }]),
+      query: vi.fn().mockResolvedValue({ data: [], total_count: 0 })
+    }
+    const executor = new PostgresReadExecutor({
+      casesQuery: {} as never,
+      availableBuilds: {} as never,
+      overview: {} as never,
+      export: {} as never,
+      cohort: {} as never,
+      ...workflowRepositories(),
+      audit,
+      caseMetadata: {} as never,
+      variants: {} as never
+    } as never)
+
+    await expect(
+      executor.execute({ type: 'audit:getByEntity', params: ['case:1:variant:2'] })
+    ).resolves.toEqual([{ entity_key: 'case:1:variant:2' }])
+    await expect(
+      executor.execute({ type: 'audit:query', params: [{ action_type: 'star' }] })
+    ).resolves.toEqual({ data: [], total_count: 0 })
+
+    expect(audit.getByEntityKey).toHaveBeenCalledWith('case:1:variant:2')
+    expect(audit.query).toHaveBeenCalledWith({ action_type: 'star' })
   })
 })

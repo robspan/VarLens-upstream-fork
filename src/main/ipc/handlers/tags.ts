@@ -9,6 +9,8 @@ import {
   CaseVariantIdSchema
 } from '../../../shared/types/ipc-schemas'
 import { mainLogger } from '../../services/MainLogger'
+import type { AuditAppendParams } from '../../storage/audit-log-types'
+import type { StorageWriteExecutor } from '../../storage/write-executor'
 import {
   listTags,
   createTag,
@@ -20,6 +22,13 @@ import {
   removeVariantTag,
   setVariantTags
 } from './tags-logic'
+
+async function appendTagAudit(
+  writeExecutor: StorageWriteExecutor,
+  params: AuditAppendParams
+): Promise<void> {
+  await writeExecutor.execute({ type: 'audit:append', params: [params] })
+}
 
 /**
  * Tags IPC handlers
@@ -160,9 +169,17 @@ export function registerTagHandlers({
         }
         const session = getDbManager().getCurrentSession()
         if (session.capabilities.backend === 'postgres') {
-          await session.getWriteExecutor().execute({
+          const writeExecutor = session.getWriteExecutor()
+          await writeExecutor.execute({
             type: 'tags:assignVariantTag',
             params: [validated.data.caseId, validated.data.variantId, validated.data.tagId]
+          })
+          await appendTagAudit(writeExecutor, {
+            action_type: 'tag_assign',
+            entity_type: 'case_variant_annotation',
+            entity_key: `case:${validated.data.caseId}:variant:${validated.data.variantId}`,
+            old_value: null,
+            new_value: JSON.stringify({ tag_id: validated.data.tagId })
           })
           return undefined
         }
@@ -191,9 +208,17 @@ export function registerTagHandlers({
         }
         const session = getDbManager().getCurrentSession()
         if (session.capabilities.backend === 'postgres') {
-          await session.getWriteExecutor().execute({
+          const writeExecutor = session.getWriteExecutor()
+          await writeExecutor.execute({
             type: 'tags:removeVariantTag',
             params: [validated.data.caseId, validated.data.variantId, validated.data.tagId]
+          })
+          await appendTagAudit(writeExecutor, {
+            action_type: 'tag_remove',
+            entity_type: 'case_variant_annotation',
+            entity_key: `case:${validated.data.caseId}:variant:${validated.data.variantId}`,
+            old_value: JSON.stringify({ tag_id: validated.data.tagId }),
+            new_value: null
           })
           return undefined
         }

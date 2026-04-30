@@ -333,4 +333,55 @@ describe('PostgresStorageSession', () => {
     expect(pool.query.mock.calls[0][0]).toContain('"phase8_cohort"."cases"')
     expect(pool.query.mock.calls[0][0]).toContain('"phase8_cohort"."variants"')
   })
+
+  it('routes audit reads and writes through session-owned postgres executors', async () => {
+    const pool = {
+      query: vi
+        .fn()
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: '1',
+              action_type: 'star',
+              entity_type: 'variant_annotation',
+              entity_key: '1:100:A:G',
+              old_value: null,
+              new_value: '{}',
+              created_at: '1234'
+            }
+          ]
+        })
+        .mockResolvedValueOnce({ rows: [] }),
+      end: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn()
+    }
+    const session = new PostgresStorageSession({
+      config: makeConfig({ schema: 'phase9_audit' }),
+      pool: pool as never
+    })
+
+    await expect(
+      session.getReadExecutor().execute({
+        type: 'audit:getByEntity',
+        params: ['1:100:A:G']
+      })
+    ).resolves.toMatchObject([{ entity_key: '1:100:A:G', timestamp: 1234 }])
+    await expect(
+      session.getWriteExecutor().execute({
+        type: 'audit:append',
+        params: [
+          {
+            action_type: 'star',
+            entity_type: 'variant_annotation',
+            entity_key: '1:100:A:G',
+            old_value: null,
+            new_value: '{}'
+          }
+        ]
+      })
+    ).resolves.toBeUndefined()
+
+    expect(pool.query.mock.calls[0][0]).toContain('"phase9_audit"."audit_log"')
+    expect(pool.query.mock.calls[1][0]).toContain('"phase9_audit"."audit_log"')
+  })
 })

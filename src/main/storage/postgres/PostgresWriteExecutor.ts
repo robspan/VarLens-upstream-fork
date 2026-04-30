@@ -1,6 +1,7 @@
 import type { StorageWriteExecutor, StorageWriteTask } from '../write-executor'
 import type { PostgresAnalysisGroupsRepository } from './PostgresAnalysisGroupsRepository'
 import type { PostgresAnnotationsRepository } from './PostgresAnnotationsRepository'
+import type { PostgresAuditLogRepository } from './PostgresAuditLogRepository'
 import type { PostgresCaseLifecycleRepository } from './PostgresCaseLifecycleRepository'
 import type { PostgresCaseMetadataRepository } from './PostgresCaseMetadataRepository'
 import type { PostgresCommentsMetricsRepository } from './PostgresCommentsMetricsRepository'
@@ -39,6 +40,7 @@ export class PostgresWriteExecutor implements StorageWriteExecutor {
     private readonly caseMetadata: PostgresCaseMetadataWriter,
     private readonly caseLifecycle: Pick<PostgresCaseLifecycleRepository, 'deleteCase'>,
     private readonly workflow: {
+      audit: Pick<PostgresAuditLogRepository, 'append'>
       tags: Pick<
         PostgresTagsRepository,
         | 'createTag'
@@ -271,6 +273,9 @@ export class PostgresWriteExecutor implements StorageWriteExecutor {
 
       case 'analysis-groups:removeMember':
         return await this.workflow.analysisGroups.removeMember(...task.params)
+
+      case 'audit:append':
+        return await this.workflow.audit.append(task.params[0])
     }
 
     const exhaustive: never = task

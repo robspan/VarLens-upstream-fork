@@ -1,4 +1,5 @@
 import type { StorageReadExecutor, StorageReadTask } from '../read-executor'
+import type { PostgresAuditLogRepository } from './PostgresAuditLogRepository'
 import type { PostgresAvailableBuildsRepository } from './PostgresAvailableBuildsRepository'
 import type { PostgresAnalysisGroupsRepository } from './PostgresAnalysisGroupsRepository'
 import type { PostgresAnnotationsRepository } from './PostgresAnnotationsRepository'
@@ -51,6 +52,7 @@ interface PostgresReadExecutorRepositories {
     PostgresAnalysisGroupsRepository,
     'listGroups' | 'getGroupWithMembers' | 'getGroupForCase'
   >
+  audit: Pick<PostgresAuditLogRepository, 'getByEntityKey' | 'query'>
   caseMetadata: Pick<
     PostgresCaseMetadataRepository,
     | 'getCaseMetadata'
@@ -242,6 +244,12 @@ export class PostgresReadExecutor implements StorageReadExecutor {
 
       case 'analysis-groups:getForCase':
         return await this.repositories.analysisGroups.getGroupForCase(task.params[0])
+
+      case 'audit:getByEntity':
+        return await this.repositories.audit.getByEntityKey(task.params[0])
+
+      case 'audit:query':
+        return await this.repositories.audit.query(task.params[0])
     }
 
     const _exhaustive: never = task

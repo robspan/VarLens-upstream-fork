@@ -294,6 +294,12 @@ export class SqliteReadExecutor implements StorageReadExecutor {
 
       case 'analysis-groups:getForCase':
         return this.databaseService.analysisGroups.getGroupForCase(task.params[0])
+
+      case 'audit:getByEntity':
+        return this.databaseService.auditLog.getByEntityKey(task.params[0])
+
+      case 'audit:query':
+        return this.databaseService.auditLog.query(task.params[0])
     }
 
     const _exhaustive: never = task

@@ -22,4 +22,4 @@
 | Workflow | filter presets | yes | yes | no | done |
 | Workflow | panels/gene lists/region files | yes | yes | no | done |
 | Workflow | analysis groups | yes | yes | no | done |
-| Workflow | audit log | yes | no | yes | deferred |
+| Workflow | audit log | yes | yes | no | done |

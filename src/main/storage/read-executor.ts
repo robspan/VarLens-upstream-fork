@@ -3,6 +3,7 @@ import type { CohortSearchParams } from '../../shared/types/cohort'
 import type { ValidatedCaseSearchParams } from '../../shared/types/ipc-schemas'
 import type { VariantCoords, VariantKey } from '../ipc/handlers/annotations-logic'
 import type { AuditQueryParams } from './audit-log-types'
+import type { GetShortlistParams } from '../database/ShortlistService'
 
 export type { AvailableBuild } from '../../shared/types/database'
 
@@ -44,6 +45,7 @@ export type StorageReadTask =
       ]
     }
   | { type: 'variants:filterOptions'; params: [caseId: number] }
+  | { type: 'variants:shortlist'; params: [params: GetShortlistParams] }
   | {
       type: 'variants:columnMeta'
       params: [scope: { caseId: number } | { caseIds: number[] }, columnKey: string]

@@ -11,6 +11,7 @@ import type { PostgresExportRepository } from './PostgresExportRepository'
 import type { PostgresFilterPresetsRepository } from './PostgresFilterPresetsRepository'
 import type { PostgresOverviewRepository } from './PostgresOverviewRepository'
 import type { PostgresPanelsRepository } from './PostgresPanelsRepository'
+import type { PostgresShortlistService } from './PostgresShortlistService'
 import type { PostgresTagsRepository } from './PostgresTagsRepository'
 import type { PostgresVariantReadRepository } from './PostgresVariantReadRepository'
 
@@ -48,6 +49,7 @@ interface PostgresReadExecutorRepositories {
     | 'listRegionFiles'
   >
   filterPresets: Pick<PostgresFilterPresetsRepository, 'listPresets'>
+  shortlist: Pick<PostgresShortlistService, 'getShortlist'>
   analysisGroups: Pick<
     PostgresAnalysisGroupsRepository,
     'listGroups' | 'getGroupWithMembers' | 'getGroupForCase'
@@ -140,6 +142,9 @@ export class PostgresReadExecutor implements StorageReadExecutor {
 
       case 'variants:filterOptions':
         return await this.repositories.variants.getFilterOptions(task.params[0])
+
+      case 'variants:shortlist':
+        return await this.repositories.shortlist.getShortlist(task.params[0])
 
       case 'variants:columnMeta':
         return await this.repositories.variants.getColumnMeta(task.params[0], task.params[1])

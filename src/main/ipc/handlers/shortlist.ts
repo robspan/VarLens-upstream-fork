@@ -47,7 +47,11 @@ import type { GetShortlistParams } from '../../database/ShortlistService'
  * `ipcMain`. Pulls `ShortlistService` off the `DatabaseService` getter
  * exposed in Wave 3 (see `DatabaseService.shortlistService`).
  */
-export function registerShortlistHandlers({ ipcMain, getDb }: HandlerDependencies): void {
+export function registerShortlistHandlers({
+  ipcMain,
+  getDb,
+  getDbManager
+}: HandlerDependencies): void {
   ipcMain.handle('variants:shortlist', async (_event, params: unknown) => {
     return wrapHandler(async () => {
       // ── Step 1: shape validation at the IPC boundary ────────────
@@ -89,6 +93,14 @@ export function registerShortlistHandlers({ ipcMain, getDb }: HandlerDependencie
       // blocking). Cast to the service-level union because the Zod
       // schema inference widens `Partial<FilterState>` shapes that
       // the service typing narrows back via its own imports.
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session.getReadExecutor().execute({
+          type: 'variants:shortlist',
+          params: [parsed.data as unknown as GetShortlistParams]
+        })
+      }
+
       const db = getDb()
       return db.shortlistService.getShortlist(parsed.data as unknown as GetShortlistParams)
     })

@@ -22,6 +22,7 @@ import { PostgresImportExecutor } from './PostgresImportExecutor'
 import { PostgresOverviewRepository } from './PostgresOverviewRepository'
 import { PostgresPanelsRepository } from './PostgresPanelsRepository'
 import { PostgresReadExecutor } from './PostgresReadExecutor'
+import { PostgresShortlistService } from './PostgresShortlistService'
 import { PostgresTagsRepository } from './PostgresTagsRepository'
 import { PostgresVariantReadRepository } from './PostgresVariantReadRepository'
 import type { StorageImportExecutor } from '../import-executor'
@@ -145,6 +146,13 @@ export class PostgresStorageSession implements StorageSession {
     const analysisGroups = new PostgresAnalysisGroupsRepository(options.pool, options.config.schema)
     const cohort = new PostgresCohortRepository(options.pool, options.config.schema)
     const audit = new PostgresAuditLogRepository(options.pool, options.config.schema)
+    const variants = new PostgresVariantReadRepository(options.pool, options.config.schema)
+    const shortlist = new PostgresShortlistService({
+      pool: options.pool,
+      schema: options.config.schema,
+      filterPresets,
+      variants
+    })
     this.readExecutor = new PostgresReadExecutor({
       casesQuery: new PostgresCasesQueryRepository(options.pool, options.config.schema),
       availableBuilds: new PostgresAvailableBuildsRepository(options.pool, options.config.schema),
@@ -156,10 +164,11 @@ export class PostgresStorageSession implements StorageSession {
       commentsMetrics,
       panels,
       filterPresets,
+      shortlist,
       analysisGroups,
       audit,
       caseMetadata,
-      variants: new PostgresVariantReadRepository(options.pool, options.config.schema)
+      variants
     })
     this.writeExecutor = new PostgresWriteExecutor(
       caseMetadata,

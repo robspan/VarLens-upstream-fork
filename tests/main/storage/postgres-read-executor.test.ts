@@ -10,6 +10,7 @@ function workflowRepositories() {
     commentsMetrics: {} as never,
     panels: {} as never,
     filterPresets: {} as never,
+    shortlist: {} as never,
     analysisGroups: {} as never
   }
 }
@@ -172,6 +173,29 @@ describe('PostgresReadExecutor', () => {
       false,
       true
     )
+  })
+
+  it('dispatches shortlist reads to the postgres shortlist service', async () => {
+    const expected = { rows: [], totalCandidates: 0, presetUsed: null, elapsedMs: 3 }
+    const shortlist = {
+      getShortlist: vi.fn().mockResolvedValue(expected)
+    }
+    const executor = new PostgresReadExecutor({
+      casesQuery: {} as never,
+      availableBuilds: {} as never,
+      overview: {} as never,
+      export: {} as never,
+      ...workflowRepositories(),
+      shortlist,
+      caseMetadata: {} as never,
+      variants: {} as never
+    } as never)
+
+    const params = { caseId: 1, presetId: 7 }
+    await expect(executor.execute({ type: 'variants:shortlist', params: [params] })).resolves.toBe(
+      expected
+    )
+    expect(shortlist.getShortlist).toHaveBeenCalledWith(params)
   })
 
   it('dispatches variant metadata reads to explicit postgres deferral methods', async () => {

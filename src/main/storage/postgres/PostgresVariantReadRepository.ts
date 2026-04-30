@@ -17,6 +17,7 @@ import { addPostgresClinicalVariantFilters } from './postgres-variant-clinical-f
 const POSTGRES_BASE_SORT_COLUMNS = Object.fromEntries(
   Object.entries(BASE_SORTABLE_COLUMNS).map(([key, column]) => [key, `v.${column}`])
 )
+POSTGRES_BASE_SORT_COLUMNS.id = 'v.id'
 
 const NUMERIC_VARIANT_FIELDS = new Set([
   'id',
@@ -107,8 +108,10 @@ export function buildPostgresVariantQueryParts(
 
   addWhere(`v.case_id = ${addParam(filter.case_id)}`)
 
+  const exactVariantType =
+    (filter as VariantFilter & { exact_variant_type?: boolean }).exact_variant_type === true
   if (filter.variant_type !== undefined && filter.variant_type !== '') {
-    if (filter.variant_type === 'snv') {
+    if (filter.variant_type === 'snv' && !exactVariantType) {
       addWhere("v.variant_type IN ('snv', 'indel')")
     } else {
       addWhere(`v.variant_type = ${addParam(filter.variant_type)}`)

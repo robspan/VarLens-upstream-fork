@@ -31,11 +31,23 @@
 	}
 }
 
-# Port 443: TLS with Caddy's internal self-signed certificate. SERVER_HOST
-# comes from compose/.env (= server IPv4 or hostname). Caddy issues a cert
-# for this name from its internal CA.
+# Port 443: TLS.
+#
+# CADDY_TLS_DIRECTIVE (in compose/.env) controls the certificate source:
+#   - "tls internal"        -> self-signed cert from Caddy's internal CA
+#                              (used when SERVER_HOST is an IP, since public
+#                              CAs do not issue certs for raw IPs)
+#   - ""                    -> Caddy automatically requests + renews from
+#                              Let's Encrypt via ACME HTTP-01. Requires
+#                              SERVER_HOST to be a real domain whose DNS
+#                              A-record points to this server. Renewal
+#                              every ~60 days, fully automatic, persisted
+#                              in the /mnt/data/caddy volume.
+#
+# Switch to public CA: set SERVER_DOMAIN env var, set CADDY_TLS_DIRECTIVE
+# to empty (no quotes). See docs/operations.md "TLS modes" section.
 {$SERVER_HOST}:443 {
-	tls internal
+	{$CADDY_TLS_DIRECTIVE}
 
 	# Welcome page on /welcome (open, no auth). Acts as a directory for
 	# adopters / new users who land here without knowing the URLs.

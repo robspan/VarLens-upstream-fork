@@ -17,10 +17,13 @@ services:
       - /mnt/data/caddy/data:/data
       - /mnt/data/caddy/config:/config
     environment:
-      # Hostname/IP for the TLS certificate. Injected into .env at deploy time
-      # (see make stack-up). Caddy issues a self-signed cert for this name
-      # from its internal CA.
+      # Hostname or IP used as the Caddy site address. Injected into .env
+      # at deploy time (see make stack-up).
       SERVER_HOST: ${SERVER_HOST:-localhost}
+      # TLS source. "tls internal" = self-signed (default, IP deploys).
+      # Empty string = Caddy ACMEs from Let's Encrypt automatically; this
+      # requires SERVER_HOST to be a real domain with DNS pointing here.
+      CADDY_TLS_DIRECTIVE: ${CADDY_TLS_DIRECTIVE:-tls internal}
     networks:
       - varlens
     healthcheck:

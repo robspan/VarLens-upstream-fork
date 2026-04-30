@@ -127,16 +127,30 @@ deploy-stack:
 		compose/ \
 		deploy@$(call IPV4):/mnt/data/app/
 
+# Optional: when DOMAIN=foo.example.de is passed, the stack switches Caddy
+# to Let's Encrypt automatic ACME for that domain (requires DNS pointing to
+# the server's IPv4 and port 80 reachable). Without DOMAIN, Caddy stays on
+# the self-signed internal CA matching the IP.
+ifneq ($(DOMAIN),)
+  CADDY_HOST = $(DOMAIN)
+  CADDY_TLS_LINE =
+else
+  CADDY_HOST = $(call IPV4)
+  CADDY_TLS_LINE = tls internal
+endif
+
 stack-up: deploy-stack
 	@if [ -z "$(call IPV4)" ]; then echo "No server present."; exit 1; fi
 	@echo "Database profile: $(DB)"
+	@if [ -n "$(DOMAIN)" ]; then echo "TLS mode: Let's Encrypt for $(DOMAIN)"; else echo "TLS mode: self-signed (internal CA, IP-based)"; fi
 	@ssh -i $(SSH_KEY) deploy@$(call IPV4) 'cd /mnt/data/app && \
 		if [ ! -f .env ]; then \
 			echo "Generating random PostgreSQL password for compose/.env"; \
 			cp .env.example .env && \
 			sed -i "s|REPLACE_WITH_GENERATED_PASSWORD|$$(openssl rand -base64 32 | tr -d /+= | head -c 32)|" .env; \
 		fi && \
-		sed -i "s|^SERVER_HOST=.*|SERVER_HOST=$(call IPV4)|" .env && \
+		sed -i "s|^SERVER_HOST=.*|SERVER_HOST=$(CADDY_HOST)|" .env && \
+		sed -i "s|^CADDY_TLS_DIRECTIVE=.*|CADDY_TLS_DIRECTIVE=$(CADDY_TLS_LINE)|" .env && \
 		$(COMPOSE_PROFILES_FLAG) docker compose pull && \
 		$(COMPOSE_PROFILES_FLAG) docker compose up -d --force-recreate caddy && \
 		$(COMPOSE_PROFILES_FLAG) docker compose up -d'

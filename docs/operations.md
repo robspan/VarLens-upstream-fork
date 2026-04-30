@@ -54,6 +54,34 @@ action: plan | up | down | stop | start | status | ssh | ip
 
 `pilot down` requires literally typing `pilot` as a safety measure. `pilot stop` requires a y/N confirm. Both can be bypassed with `--yes`, e.g. in CI pipelines.
 
+## TLS Modes (self-signed vs Let's Encrypt)
+
+The Caddy site block reads two env-vars from `compose/.env`:
+
+| Var | IP-only deploy (default) | Domain deploy (production) |
+|---|---|---|
+| `SERVER_HOST` | server IPv4 | the public domain, e.g. `varlens-pilot.example.de` |
+| `CADDY_TLS_DIRECTIVE` | `tls internal` (self-signed via Caddy's internal CA) | empty string (Caddy auto-ACMEs from Let's Encrypt) |
+
+Switch the active mode at deploy time via the `DOMAIN` make variable:
+
+```bash
+# IP-based, self-signed (default — works without DNS)
+make stack-up
+
+# Domain-based, Let's Encrypt with auto-renewal
+make stack-up DOMAIN=varlens-pilot.example.de
+```
+
+Prerequisites for Let's Encrypt:
+- A domain registered and an A-record (and ideally AAAA-record) pointing to the server's public IP.
+- Port 80 reachable from the public internet so Caddy can answer the HTTP-01 challenge (already the case via the Hetzner firewall + UFW rules).
+- SOA propagation finished — verify with `dig +short A varlens-pilot.example.de` returning the correct IP before issuing.
+
+Caddy then handles everything: cert provisioning, renewal every ~60 days, OCSP stapling, automatic redirect of HTTP→HTTPS for the actual domain. Cert files persist in the `/mnt/data/caddy/data` volume (Tofu-managed), so survive container restarts and Compose redeploys. No cron jobs, no certbot, no manual renewals on the server itself — everything is in IaC.
+
+To roll back to self-signed (e.g. when DNS is removed): just `make stack-up` without `DOMAIN`.
+
 ## CI Workflow on GitHub and PAT Configuration
 
 The CI workflow (`.github/workflows/ci.yml`) runs on every push to `main` and on every pull request. It checks:

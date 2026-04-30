@@ -19,6 +19,7 @@ import { ref, nextTick, type Ref } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 import { flushPromises, withSetup } from '../../utils/test-helpers'
 import type { AnnotationChangeEvent } from '../../../src/shared/types/api'
+import { ErrorCode } from '../../../src/shared/types/errors'
 import type { FilterPreset } from '../../../src/shared/types/filter-presets'
 
 // ─── Mock useFilterPresetStore so every harness call gets the same ref ────────
@@ -232,6 +233,26 @@ describe('useShortlistQuery', () => {
 
     expect(h.composable.error.value).toBeInstanceOf(Error)
     expect(h.composable.error.value?.message).toBe('boom')
+    expect(h.composable.result.value).toBeNull()
+    expect(h.composable.loading.value).toBe(false)
+  })
+
+  it('unwraps serialized IPC errors before reading shortlist rows', async () => {
+    const h = harness()
+    app = h.app
+
+    await flushPromises()
+    await flushPromises()
+
+    h.shortlistMock.mockResolvedValueOnce({
+      code: ErrorCode.DB_ERROR,
+      message: 'DatabaseService is not available for postgres sessions',
+      userMessage: 'A database error occurred. Please try again.'
+    })
+    await h.composable.refresh()
+
+    expect(h.composable.error.value).toBeInstanceOf(Error)
+    expect(h.composable.error.value?.message).toBe('A database error occurred. Please try again.')
     expect(h.composable.result.value).toBeNull()
     expect(h.composable.loading.value).toBe(false)
   })

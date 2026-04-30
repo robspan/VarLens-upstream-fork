@@ -1,7 +1,7 @@
 # PostgreSQL Product Parity Spec
 
-**Date:** 2026-04-30  
-**Branch:** `feat/postgres-final-parity`  
+**Date:** 2026-04-30
+**Branch:** `feat/postgres-final-parity`
 **Motivation:** Follow-up to `.planning/code-review/CODEBASE-REVIEW-2026-04-28-POSTGRESQL-ROADMAP.md` after `v0.58.3`.
 
 ## Goal
@@ -199,4 +199,3 @@ Product parity may be claimed when:
 - core workflows still pass in PostgreSQL E2E: import/read/filter/shortlist/cohort/export/audit;
 - `make ci` passes;
 - release notes avoid WGS query claims unless the WGS benchmark plan has been executed.
-

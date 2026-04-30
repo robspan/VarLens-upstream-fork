@@ -360,4 +360,3 @@ Commit:
 git add src tests
 git commit -m "feat(postgres): add connection manager UI"
 ```
-

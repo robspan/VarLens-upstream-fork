@@ -44,7 +44,10 @@ const createStore = async () => {
     set: vi.fn(async (key: string, value: string) => {
       secretValues.set(key, value)
     }),
-    get: vi.fn(async (key: string) => secretValues.get(key) ?? null)
+    get: vi.fn(async (key: string) => secretValues.get(key) ?? null),
+    delete: vi.fn(async (key: string) => {
+      secretValues.delete(key)
+    })
   }
 
   return {
@@ -173,6 +176,21 @@ describe('PostgresProfileStore', () => {
     await expect(store.listProfiles()).resolves.toEqual([second])
   })
 
+  it('removes profile secrets when deleting a profile', async () => {
+    const { secretValues, secrets, store } = await createStore()
+    const profile = await store.saveProfile(profileInput())
+
+    expect(secretValues.get(`postgres:${profile.id}:password`)).toBe('secret')
+    expect(secretValues.get(`postgres:${profile.id}:ca`)).toBe('pem')
+
+    await store.removeProfile(profile.id)
+
+    expect(secrets.delete).toHaveBeenCalledWith(`postgres:${profile.id}:password`)
+    expect(secrets.delete).toHaveBeenCalledWith(`postgres:${profile.id}:ca`)
+    expect(secretValues.has(`postgres:${profile.id}:password`)).toBe(false)
+    expect(secretValues.has(`postgres:${profile.id}:ca`)).toBe(false)
+  })
+
   it('does not return leftover secrets after a profile is removed', async () => {
     const { store } = await createStore()
     const profile = await store.saveProfile(profileInput())
@@ -203,5 +221,20 @@ describe('PostgresProfileStore', () => {
     expect(settings).not.toContain('pem-one')
     expect(settings).not.toContain('secret-two')
     expect(settings).not.toContain('pem-two')
+  })
+
+  it('does not persist CA secrets when SSL verification is disabled', async () => {
+    const { secretValues, secrets, store } = await createStore()
+
+    const profile = await store.saveProfile(
+      profileInput({
+        sslMode: 'disable',
+        secrets: { password: 'secret', caCertificatePem: 'unused-pem' }
+      })
+    )
+
+    expect(profile.caCertificateConfigured).toBe(false)
+    expect(secrets.set).not.toHaveBeenCalledWith(`postgres:${profile.id}:ca`, 'unused-pem')
+    expect(secretValues.has(`postgres:${profile.id}:ca`)).toBe(false)
   })
 })

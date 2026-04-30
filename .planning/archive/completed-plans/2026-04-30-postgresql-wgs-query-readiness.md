@@ -170,4 +170,3 @@ Commit:
 git add Makefile scripts tests .planning/docs .planning/plans
 git commit -m "test(postgres): document WGS query readiness evidence"
 ```
-

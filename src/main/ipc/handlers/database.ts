@@ -82,6 +82,12 @@ class ElectronSafeStorageSecretStore implements SecretStore {
     return safeStorage.decryptString(Buffer.from(encrypted, 'base64'))
   }
 
+  async delete(key: string): Promise<void> {
+    const data = await this.readSecrets()
+    delete data.secrets[key]
+    await this.writeSecrets(data)
+  }
+
   private async readSecrets(): Promise<{ secrets: Record<string, string> }> {
     try {
       const raw = await readFile(this.secretPath, 'utf8')
@@ -116,6 +122,12 @@ class InsecureLocalPostgresSecretStore implements SecretStore {
   async get(key: string): Promise<string | null> {
     const data = await this.readSecrets()
     return data.secrets[key] ?? null
+  }
+
+  async delete(key: string): Promise<void> {
+    const data = await this.readSecrets()
+    delete data.secrets[key]
+    await this.writeSecrets(data)
   }
 
   private async readSecrets(): Promise<{ secrets: Record<string, string> }> {

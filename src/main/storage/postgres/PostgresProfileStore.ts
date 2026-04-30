@@ -11,6 +11,7 @@ import { PostgresConnectionProfileSaveInputSchema } from './postgres-profile-val
 export interface SecretStore {
   set(key: string, value: string): Promise<void>
   get(key: string): Promise<string | null>
+  delete(key: string): Promise<void>
 }
 
 interface ProfileSettingsFile {
@@ -44,9 +45,16 @@ export class PostgresProfileStore {
     if (validatedInput.secrets !== undefined) {
       await this.secrets.set(this.secretKey(id, 'password'), validatedInput.secrets.password)
 
-      if (validatedInput.secrets.caCertificatePem !== undefined) {
+      if (
+        validatedInput.sslMode === 'require-verify' &&
+        validatedInput.secrets.caCertificatePem !== undefined
+      ) {
         await this.secrets.set(this.secretKey(id, 'ca'), validatedInput.secrets.caCertificatePem)
       }
+    }
+
+    if (validatedInput.sslMode === 'disable') {
+      await this.secrets.delete(this.secretKey(id, 'ca'))
     }
 
     const caCertificateConfigured =
@@ -83,7 +91,8 @@ export class PostgresProfileStore {
     settings.postgresProfiles = (settings.postgresProfiles ?? []).filter(
       (candidate) => candidate.id !== profileId
     )
-    // SecretStore intentionally has no delete API yet; removing profile secrets is future work.
+    await this.secrets.delete(this.secretKey(profileId, 'password'))
+    await this.secrets.delete(this.secretKey(profileId, 'ca'))
     await this.writeSettings(settings)
   }
 

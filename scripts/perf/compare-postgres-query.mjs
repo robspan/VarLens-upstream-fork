@@ -45,7 +45,11 @@ export function validatePostgresQueryPerfReport(report) {
     for (const [field, type] of REQUIRED_QUERY_FIELDS) {
       assertFieldType(query, field, type, `queries[${index}].`)
     }
-    if (query.budgetStatus !== 'pass' && query.budgetStatus !== 'fail' && query.budgetStatus !== 'unavailable') {
+    if (
+      query.budgetStatus !== 'pass' &&
+      query.budgetStatus !== 'fail' &&
+      query.budgetStatus !== 'unavailable'
+    ) {
       throw new Error(
         `postgres query perf report queries[${index}].budgetStatus must be pass, fail, or unavailable`
       )

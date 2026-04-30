@@ -20,8 +20,7 @@ const PG_URL =
 const PG_SCHEMA = process.env.VARLENS_PG_SCHEMA ?? 'public'
 const SCHEMA_NAME = quoteIdentifier(PG_SCHEMA)
 const FIXTURE =
-  process.env.VARLENS_WGS_FIXTURE ??
-  'tests/.cache/wgs/HG002_GRCh38_1_22_v4.2.1_benchmark.vcf.gz'
+  process.env.VARLENS_WGS_FIXTURE ?? 'tests/.cache/wgs/HG002_GRCh38_1_22_v4.2.1_benchmark.vcf.gz'
 const REPORT_SCRIPT_URL = pathToFileURL(resolve('scripts/perf/compare-postgres-query.mjs')).href
 const BENCHMARK_ITERATIONS = 5
 
@@ -44,10 +43,7 @@ interface QueryReport {
 
 function percentile(values: number[], percentileValue: number): number {
   const sorted = [...values].sort((a, b) => a - b)
-  const index = Math.min(
-    sorted.length - 1,
-    Math.ceil((percentileValue / 100) * sorted.length) - 1
-  )
+  const index = Math.min(sorted.length - 1, Math.ceil((percentileValue / 100) * sorted.length) - 1)
   return sorted[index] ?? 0
 }
 

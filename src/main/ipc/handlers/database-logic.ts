@@ -24,9 +24,7 @@ import { PostgresStorageSession } from '../../storage/postgres/PostgresStorageSe
 import { createPostgresStorageSession } from '../../storage/postgres/createPostgresStorageSession'
 import { PostgresMigrationRunner } from '../../storage/postgres/migrations/PostgresMigrationRunner'
 import { POSTGRES_MIGRATIONS } from '../../storage/postgres/migrations/definitions'
-import {
-  PostgresConnectionProfileInputSchema
-} from '../../storage/postgres/postgres-profile-validation'
+import { PostgresConnectionProfileInputSchema } from '../../storage/postgres/postgres-profile-validation'
 import type { DatabaseService } from '../../database/DatabaseService'
 import type { DatabaseManager } from '../../services/DatabaseManager'
 import type { DbPool } from '../../database/DbPool'
@@ -158,6 +156,12 @@ function sanitizePostgresMessage(
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+function errorWithCause(message: string, cause: unknown): Error {
+  const error = new Error(message)
+  ;(error as Error & { cause?: unknown }).cause = cause
+  return error
 }
 
 // ============================================================
@@ -416,12 +420,13 @@ export async function openPostgresProfile(
     return { success: true, info }
   } catch (error) {
     if (opened) {
-      throw new Error(
+      throw errorWithCause(
         `Failed to finish opening PostgreSQL profile "${profileName}": ${sanitizePostgresMessage(
           errorMessage(error),
           secrets,
           config
-        )}`
+        )}`,
+        error
       )
     }
 
@@ -430,7 +435,7 @@ export async function openPostgresProfile(
         await session.close()
       }
     } catch (cleanupError) {
-      throw new Error(
+      throw errorWithCause(
         `Failed to open PostgreSQL profile "${profileName}": ${sanitizePostgresMessage(
           errorMessage(error),
           secrets,
@@ -439,16 +444,18 @@ export async function openPostgresProfile(
           errorMessage(cleanupError),
           secrets,
           config
-        )}`
+        )}`,
+        cleanupError
       )
     }
 
-    throw new Error(
+    throw errorWithCause(
       `Failed to open PostgreSQL profile "${profileName}": ${sanitizePostgresMessage(
         errorMessage(error),
         secrets,
         config
-      )}`
+      )}`,
+      error
     )
   }
 

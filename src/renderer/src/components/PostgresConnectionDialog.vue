@@ -399,9 +399,9 @@ function parseInteger(
   return parsed
 }
 
-function validate(requirePassword: true): PostgresConnectionProfileInput | null
-function validate(requirePassword: false): PostgresConnectionProfileSaveInput | null
-function validate(requirePassword: boolean): PostgresConnectionProfileInput | PostgresConnectionProfileSaveInput | null {
+function validateForm(
+  requirePassword: boolean
+): PostgresConnectionProfileInput | PostgresConnectionProfileSaveInput | null {
   resetErrors()
   statusMessage.value = ''
 
@@ -474,6 +474,14 @@ function validate(requirePassword: boolean): PostgresConnectionProfileInput | Po
   }
 }
 
+function validateConnection(): PostgresConnectionProfileInput | null {
+  return validateForm(true) as PostgresConnectionProfileInput | null
+}
+
+function validateSave(): PostgresConnectionProfileSaveInput | null {
+  return validateForm(false) as PostgresConnectionProfileSaveInput | null
+}
+
 function showError(message: string): void {
   statusType.value = 'error'
   statusMessage.value = message
@@ -487,7 +495,7 @@ function errorToMessage(error: unknown): string {
 }
 
 async function handleTest(): Promise<void> {
-  const input = validate(true)
+  const input = validateConnection()
   if (input === null) return
 
   testing.value = true
@@ -495,9 +503,12 @@ async function handleTest(): Promise<void> {
     const result = await databaseStore.testPostgresProfile(input)
     if (result.ok) {
       statusType.value = 'success'
-      statusMessage.value = result.serverVersion
-        ? `Connection test succeeded (${result.serverVersion})`
-        : 'Connection test succeeded'
+      statusMessage.value =
+        result.serverVersion !== undefined &&
+        result.serverVersion !== null &&
+        result.serverVersion !== ''
+          ? `Connection test succeeded (${result.serverVersion})`
+          : 'Connection test succeeded'
     } else {
       showError(result.message ?? 'Connection test failed')
     }
@@ -509,7 +520,7 @@ async function handleTest(): Promise<void> {
 }
 
 async function saveProfile(): Promise<PostgresConnectionProfilePublic | null> {
-  const input = validate(false)
+  const input = validateSave()
   if (input === null) return null
 
   saving.value = true

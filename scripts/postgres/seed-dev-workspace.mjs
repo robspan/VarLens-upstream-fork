@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import process from 'node:process'
+import { setTimeout as delay } from 'node:timers/promises'
 import { URL } from 'node:url'
 import { fileURLToPath } from 'node:url'
 
@@ -638,7 +639,7 @@ async function connectWithRetry(Client, clientConfig) {
     } catch (error) {
       lastError = error
       if (attempt === CONNECTION_ATTEMPTS) break
-      await new Promise((resolveDelay) => setTimeout(resolveDelay, CONNECTION_RETRY_DELAY_MS))
+      await delay(CONNECTION_RETRY_DELAY_MS)
     }
   }
 

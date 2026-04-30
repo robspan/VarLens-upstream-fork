@@ -452,20 +452,17 @@ describe('createPostgresStorageSession', () => {
     postgresMocks.Pool.mockImplementation(function Pool() {
       return pool
     })
-    postgresMocks.PostgresMigrationRunner.mockImplementation(
-      function PostgresMigrationRunner() {
-        return {
-          migrate: vi.fn(async () => {
-            events.push('migrate')
-            return migrationResult
-          })
-        }
+    postgresMocks.PostgresMigrationRunner.mockImplementation(function PostgresMigrationRunner() {
+      return {
+        migrate: vi.fn(async () => {
+          events.push('migrate')
+          return migrationResult
+        })
       }
-    )
+    })
 
-    const { createPostgresStorageSession } = await import(
-      '../../../src/main/storage/postgres/createPostgresStorageSession'
-    )
+    const { createPostgresStorageSession } =
+      await import('../../../src/main/storage/postgres/createPostgresStorageSession')
 
     const session = await createPostgresStorageSession(makeConfig({ schema: 'workspace_a' }))
 
@@ -485,17 +482,14 @@ describe('createPostgresStorageSession', () => {
     postgresMocks.Pool.mockImplementation(function Pool() {
       return pool
     })
-    postgresMocks.PostgresMigrationRunner.mockImplementation(
-      function PostgresMigrationRunner() {
-        return {
-          migrate: vi.fn().mockRejectedValue(new Error('migration failed'))
-        }
+    postgresMocks.PostgresMigrationRunner.mockImplementation(function PostgresMigrationRunner() {
+      return {
+        migrate: vi.fn().mockRejectedValue(new Error('migration failed'))
       }
-    )
+    })
 
-    const { createPostgresStorageSession } = await import(
-      '../../../src/main/storage/postgres/createPostgresStorageSession'
-    )
+    const { createPostgresStorageSession } =
+      await import('../../../src/main/storage/postgres/createPostgresStorageSession')
 
     await expect(createPostgresStorageSession(makeConfig())).rejects.toThrow('migration failed')
     expect(pool.end).toHaveBeenCalledOnce()
@@ -513,17 +507,14 @@ describe('createPostgresStorageSession', () => {
     postgresMocks.Pool.mockImplementation(function Pool() {
       return pool
     })
-    postgresMocks.PostgresMigrationRunner.mockImplementation(
-      function PostgresMigrationRunner() {
-        return {
-          migrate: vi.fn().mockRejectedValue(migrationError)
-        }
+    postgresMocks.PostgresMigrationRunner.mockImplementation(function PostgresMigrationRunner() {
+      return {
+        migrate: vi.fn().mockRejectedValue(migrationError)
       }
-    )
+    })
 
-    const { createPostgresStorageSession } = await import(
-      '../../../src/main/storage/postgres/createPostgresStorageSession'
-    )
+    const { createPostgresStorageSession } =
+      await import('../../../src/main/storage/postgres/createPostgresStorageSession')
 
     await expect(createPostgresStorageSession(makeConfig())).rejects.toThrow('migration failed')
     expect((migrationError as Error & { cleanupError?: unknown }).cleanupError).toBe(cleanupError)

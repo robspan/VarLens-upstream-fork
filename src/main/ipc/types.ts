@@ -24,7 +24,9 @@ export interface HandlerDependencies {
   /** Optional PostgreSQL pool factory so tests can avoid a real server. */
   createPostgresPool?: (config: PostgresStorageConfig) => PostgresPoolLike
   /** Optional PostgreSQL session factory so tests can avoid building repository graph. */
-  createPostgresSession?: (config: PostgresStorageConfig) => Promise<StorageSession> | StorageSession
+  createPostgresSession?: (
+    config: PostgresStorageConfig
+  ) => Promise<StorageSession> | StorageSession
   /** Optional PostgreSQL migration runner hook for tests. */
   migratePostgres?: (pool: PostgresPoolLike, schema: string) => Promise<void>
   /** Optional PostgreSQL diagnostics hook for tests. */

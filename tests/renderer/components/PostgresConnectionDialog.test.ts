@@ -234,7 +234,9 @@ describe('PostgresConnectionDialog', () => {
     await flushPromises()
 
     expect(mockApi.database.postgresProfileSave).not.toHaveBeenCalled()
-    expect(document.body.textContent).toContain('Password is required to replace the CA certificate')
+    expect(document.body.textContent).toContain(
+      'Password is required to replace the CA certificate'
+    )
   })
 
   it('shows IPC user message when saving fails', async () => {

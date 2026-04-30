@@ -23,7 +23,10 @@ services:
       # TLS source. "tls internal" = self-signed (default, IP deploys).
       # Empty string = Caddy ACMEs from Let's Encrypt automatically; this
       # requires SERVER_HOST to be a real domain with DNS pointing here.
-      CADDY_TLS_DIRECTIVE: ${CADDY_TLS_DIRECTIVE:-tls internal}
+      # Note: ${VAR-default} (no colon) so an empty value is preserved as
+      # empty. ${VAR:-default} would treat empty as 'use default' and
+      # silently break Let's Encrypt mode.
+      CADDY_TLS_DIRECTIVE: ${CADDY_TLS_DIRECTIVE-tls internal}
     networks:
       - varlens
     healthcheck:

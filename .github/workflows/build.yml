@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 # Cancel stale in-flight runs on the same PR branch when a new push arrives.
 # Gated on pull_request so a push-to-main or release run is never cancelled

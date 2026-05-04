@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Pre-push: refuse to push canonical branches if they are missing commits from upstream/main.
+#
+# Guarded branches default to "main VarLens-Web" and can be overridden via
+# VARLENS_HOOK_BRANCHES (space-separated). Bypass with VARLENS_HOOK_SKIP=1.
+#
+# Install via `make install-hooks` (symlinks this file into .git/hooks/pre-push).
+
+set -euo pipefail
+
+GUARDED_BRANCHES="${VARLENS_HOOK_BRANCHES:-main VarLens-Web}"
+ZERO_SHA="0000000000000000000000000000000000000000"
+
+if [ "${VARLENS_HOOK_SKIP:-0}" = "1" ]; then
+  echo "pre-push: VARLENS_HOOK_SKIP=1 set — bypassing upstream sync check." >&2
+  exit 0
+fi
+
+if ! git remote get-url upstream >/dev/null 2>&1; then
+  echo "pre-push: 'upstream' remote not configured — skipping sync check." >&2
+  exit 0
+fi
+
+# Collect refs to check from stdin (git's pre-push protocol).
+checks=""
+while read -r local_ref local_sha remote_ref _remote_sha; do
+  [ -z "${remote_ref:-}" ] && continue
+  [ "$local_sha" = "$ZERO_SHA" ] && continue   # branch deletion
+  branch="${remote_ref#refs/heads/}"
+  for guarded in $GUARDED_BRANCHES; do
+    if [ "$branch" = "$guarded" ]; then
+      checks="$checks $local_sha:$branch"
+      break
+    fi
+  done
+done
+
+if [ -z "$checks" ]; then
+  exit 0
+fi
+
+echo "pre-push: checking sync with upstream/main..." >&2
+if ! git fetch upstream main --quiet 2>/dev/null; then
+  echo "pre-push: failed to fetch upstream/main (offline?)." >&2
+  echo "  Bypass for one push: VARLENS_HOOK_SKIP=1 git push ..." >&2
+  exit 1
+fi
+
+for entry in $checks; do
+  sha="${entry%%:*}"
+  branch="${entry##*:}"
+  if ! git merge-base --is-ancestor upstream/main "$sha" 2>/dev/null; then
+    behind=$(git rev-list --count "$sha..upstream/main" 2>/dev/null || echo "?")
+    echo "pre-push: refusing push of '$branch' — missing $behind commit(s) from upstream/main." >&2
+    echo "  Run: make sync-upstream" >&2
+    echo "  Or bypass: VARLENS_HOOK_SKIP=1 git push ..." >&2
+    exit 1
+  fi
+done
+
+echo "pre-push: all guarded branches up-to-date with upstream/main." >&2
+exit 0

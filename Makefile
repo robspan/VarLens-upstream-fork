@@ -1,4 +1,4 @@
-.PHONY: help rebuild dev build preview lint lint-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-reset web-gate web-gate-static web-gate-integration web-gate-parity
+.PHONY: help rebuild dev build preview lint lint-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-reset web-gate web-gate-static web-gate-integration web-gate-parity sync-upstream install-hooks
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -281,3 +281,30 @@ clean-all: clean ## Clean everything including node_modules
 	rm -rf node_modules
 
 reinstall: clean-all install ## Clean and reinstall everything
+
+#---------------------------------------------------------------------------
+# Upstream sync (private fork → berntpopp/VarLens)
+#---------------------------------------------------------------------------
+
+sync-upstream: ## Fetch upstream and merge upstream/main into local main + VarLens-Web (ours wins on conflict)
+	@if ! git remote get-url upstream >/dev/null 2>&1; then \
+		echo "ERROR: 'upstream' remote not configured."; \
+		echo "  Run: git remote add upstream https://github.com/berntpopp/VarLens.git"; \
+		exit 1; \
+	fi
+	@echo "==> Fetching upstream..."
+	git fetch upstream
+	@echo "==> Fast-forwarding main..."
+	git checkout main
+	git merge --ff-only upstream/main
+	@echo "==> Merging main into VarLens-Web (ours wins on conflict)..."
+	git checkout VarLens-Web
+	git merge -X ours main
+	@echo "==> Done. Review with 'git log --oneline main..HEAD' then push when ready."
+
+install-hooks: ## Install repo git hooks into .git/hooks/ (currently: pre-push)
+	@mkdir -p .git/hooks
+	@ln -sf ../../scripts/git-hooks/pre-push .git/hooks/pre-push
+	@chmod +x scripts/git-hooks/pre-push
+	@echo "==> Installed: .git/hooks/pre-push -> scripts/git-hooks/pre-push"
+	@echo "    Bypass for one push: VARLENS_HOOK_SKIP=1 git push ..."

@@ -50,5 +50,4 @@ None of these run during `make ci` or default `npm run test`. They are a paralle
 ## See also
 
 - `.planning/web/testing/desktop-to-web-parity.md` — full plan + named-but-deferred scenarios
-- `.planning/web/testing/desktop-to-web-parity-perspectives.md` — agent perspectives that informed the design
 - `VarLens-IaC/.internalplanning/konzept/app.html` §app2.1 — upstream Phase 1 contract

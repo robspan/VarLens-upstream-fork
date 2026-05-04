@@ -139,3 +139,23 @@ describe.skipIf(POSTGRES_E2E)('StorageSession contract — postgres half (skippe
     expect(POSTGRES_E2E).toBe(false)
   })
 })
+
+/**
+ * Deferred (rule-of-three): cross-backend behavioral parity.
+ *
+ * The contract tests above pin the *interface* — both backends expose the
+ * same observable surface for shape-level operations. The next layer is
+ * behavioral parity: insert N variants on each backend, run 3 filter
+ * queries, assert identical normalized results.
+ *
+ * Why deferred: behavioral parity for VCF-derived data is already pinned
+ * on the SQLite path by `tests/web-gate/parity/import-and-filter.test.ts`.
+ * Adding the Postgres equivalent requires Postgres-side variant fixture
+ * setup (COPY-from-stdin or repository writes) and a normalized comparator.
+ * That work lands when the third parity scenario is needed (rule of three).
+ */
+describe.skip('StorageSession behavioral parity — cross-backend filter results', () => {
+  it('insert N variants on each backend, run 3 filter queries, assert identical', () => {
+    expect(true).toBe(true)
+  })
+})

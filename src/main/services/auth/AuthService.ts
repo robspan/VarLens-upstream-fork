@@ -5,15 +5,13 @@
  * databases that have accounts enabled.
  */
 
-import { hash, verify } from '@node-rs/argon2'
 import { nanoid } from 'nanoid'
 import type { Database as DatabaseType } from 'better-sqlite3-multiple-ciphers'
 
-const ARGON2_OPTIONS = {
-  memoryCost: 65536, // 64 MB
-  timeCost: 3,
-  parallelism: 4
-}
+import {
+  defaultPasswordProvider,
+  type PasswordProvider
+} from '../../auth/providers/argon2-provider'
 
 /** Max failed login attempts before lockout */
 const MAX_FAILED_ATTEMPTS = 5
@@ -45,7 +43,14 @@ interface AuthResult {
 }
 
 export class AuthService {
-  constructor(private db: DatabaseType) {}
+  private readonly passwordProvider: PasswordProvider
+
+  constructor(
+    private db: DatabaseType,
+    passwordProvider: PasswordProvider = defaultPasswordProvider
+  ) {
+    this.passwordProvider = passwordProvider
+  }
 
   async createFirstUser(
     username: string,
@@ -59,9 +64,9 @@ export class AuthService {
 
     if (existing) throw new Error('Admin user already exists')
 
-    const passwordHash = await hash(password, ARGON2_OPTIONS)
+    const passwordHash = await this.passwordProvider.hashPassword(password)
     const recoveryKey = nanoid(32)
-    const recoveryKeyHash = await hash(recoveryKey, ARGON2_OPTIONS)
+    const recoveryKeyHash = await this.passwordProvider.hashPassword(recoveryKey)
 
     const createUser = this.db.transaction(() => {
       // Store recovery key hash
@@ -110,7 +115,7 @@ export class AuthService {
       return { success: false, user: null, locked: true }
     }
 
-    const valid = await verify(user.password_hash, password)
+    const valid = await this.passwordProvider.verifyPassword(user.password_hash, password)
 
     if (!valid) {
       const newCount = user.failed_login_count + 1
@@ -148,7 +153,7 @@ export class AuthService {
     createdByUsername: string
   ): Promise<{ id: number; username: string; role: string; must_change_password: number }> {
     const creator = this.getUser(createdByUsername)
-    const passwordHash = await hash(tempPassword, ARGON2_OPTIONS)
+    const passwordHash = await this.passwordProvider.hashPassword(tempPassword)
 
     const result = this.db
       .prepare(
@@ -187,7 +192,7 @@ export class AuthService {
   }
 
   async resetPassword(username: string, newPassword: string): Promise<void> {
-    const passwordHash = await hash(newPassword, ARGON2_OPTIONS)
+    const passwordHash = await this.passwordProvider.hashPassword(newPassword)
     this.db
       .prepare(
         `UPDATE users SET password_hash = ?, must_change_password = 1,
@@ -209,10 +214,10 @@ export class AuthService {
 
     if (!user) return false
 
-    const valid = await verify(user.password_hash, oldPassword)
+    const valid = await this.passwordProvider.verifyPassword(user.password_hash, oldPassword)
     if (!valid) return false
 
-    const passwordHash = await hash(newPassword, ARGON2_OPTIONS)
+    const passwordHash = await this.passwordProvider.hashPassword(newPassword)
     this.db
       .prepare(
         `UPDATE users SET password_hash = ?, must_change_password = 0,

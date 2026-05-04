@@ -25,10 +25,9 @@ const BANNED_PACKAGES = new Set([
 const PROVIDER_DIR_PREFIX = 'src/main/auth/providers/'
 
 describe('auth-isolation gate', () => {
-  test.fails('phase 1: no direct password/token imports outside src/main/auth/providers/', () => {
-    // Self-revoking TODO. Will start passing when AuthService is moved
-    // behind the AuthProvider abstraction. At that point flip
-    // `test.fails()` → `test()` in the same PR.
+  test('phase 1: no direct password/token imports outside src/main/auth/providers/', () => {
+    // Sealed: argon2 lives only in src/main/auth/providers/argon2-provider.ts;
+    // AuthService consumes it through the PasswordProvider interface.
     const project = getProject()
     const violations: string[] = []
 

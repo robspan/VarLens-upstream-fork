@@ -22,7 +22,7 @@ import {
  *     normalizable
  *
  * When the second parity scenario lands, this is the trigger to extract
- * the `BackendDriver` abstraction (see `.planning/web/phase1-gate-tests.md`
+ * the `BackendDriver` abstraction (see `.planning/web/testing/desktop-to-web-parity.md`
  * §named-but-deferred).
  *
  * Skipped if `out/main/index.js` is missing — run `make build` first.

@@ -2,7 +2,7 @@
 
 Status: decided (2026-05-04)
 Branch target: `VarLens-Web`
-Resolves: open question in `phase1-gate-tests.md` §"Postgres in the gate"
+Resolves: open question in `desktop-to-web-parity.md` §"Postgres in the gate"
 
 ## Decision
 
@@ -17,7 +17,7 @@ For the Charité web deployment, **Postgres is the only supported backend**. SQL
 
 ## Consequences for Phase 1 gate suite
 
-- The import-and-filter scenario in `phase1-gate-tests.md` §Layer 3 runs against **Postgres**, not SQLite. Update scenario #1 accordingly.
+- The import-and-filter scenario in `desktop-to-web-parity.md` §Layer 3 runs against **Postgres**, not SQLite. Update scenario #1 accordingly.
 - `read-concurrency.parity.test.ts` (Layer 3, deferred) is **dropped from the web track**. The "better-sqlite3 sync API + Piscina pool under HTTP concurrency" risk it covers is moot — the web backend is Postgres. Keep the test only if it is useful for desktop regression.
 - `migrations-idempotent.test.ts` boots against a Postgres tmp database for the web build (still SQLite for desktop).
 - Postgres-readiness lints (AUTOINCREMENT, etc.) called out in §"Future" can move forward immediately as a Phase 1 input rather than a Stage 2 deferral.
@@ -29,6 +29,6 @@ For the Charité web deployment, **Postgres is the only supported backend**. SQL
 
 ## Follow-ups
 
-- Update `phase1-gate-tests.md` §Layer 3 scenario #1 to specify Postgres.
+- Update `desktop-to-web-parity.md` §Layer 3 scenario #1 to specify Postgres.
 - Decide whether `read-concurrency.parity.test.ts` is dropped or kept as desktop-only regression.
 - Open a Phase 1 task to enable the Postgres-readiness lints early.

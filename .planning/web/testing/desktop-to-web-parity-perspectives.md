@@ -1,6 +1,6 @@
 # Phase 1 Gate Tests — 10 Agent Perspectives (raw)
 
-Companion to `phase1-gate-tests.md`. Captured 2026-05-04 from 10 parallel Opus 4.7 sub-agents, each briefed with the same Phase 1 context but a distinct lens. Kept verbatim for traceability — the synthesis in the sibling doc deliberately rejects parts of these proposals (notably most of the up-front abstraction work).
+Companion to `desktop-to-web-parity.md`. Captured 2026-05-04 from 10 parallel Opus 4.7 sub-agents, each briefed with the same Phase 1 context but a distinct lens. Kept verbatim for traceability — the synthesis in the sibling doc deliberately rejects parts of these proposals (notably most of the up-front abstraction work).
 
 ---
 

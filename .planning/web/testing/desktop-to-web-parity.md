@@ -1,12 +1,16 @@
-# Phase 1 Gate Test Suite
+# Phase 1 Gate Test Suite — desktop → web parity
 
 Status: proposal (2026-05-04)
 Branch target: `VarLens-Web`
 Source plan: `VarLens-IaC/.internalplanning/konzept/app.html` §app2.1
+Sibling concern: `desktop-preservation.md` (refactor-checkpoint tests for Purpose 2)
+Index: `README.md`
 
 ## Purpose
 
 Turn the 12 Phase 1 gate criteria into an executable test suite **before** any web code is written. The suite is the finish line: when every gate test is green on both Electron and the web build, Phase 1 is done. Until then, every red test names concrete remaining work.
+
+This document covers **Purpose 1: desktop → web parity** — the web variant must reproduce desktop behavior on every observable surface that matters. **Purpose 2 (desktop → desktop sameness across the refactor)** is a separate concern with different mechanics and lives in `desktop-preservation.md`. See `README.md` in this folder for why the two purposes are tracked separately.
 
 ## Guiding principle
 
@@ -155,7 +159,7 @@ On a `feat/phase1-gate-tests` branch off `VarLens-Web`:
 7. Layer 2 web tests with `test.skipIf` guards (all skipped today)
 8. `tests/web-gate/parity/import-and-filter.test.ts` — Electron side only, **must go green**
 9. `Makefile` additions for `web-gate-static` / `web-gate-integration` / `web-gate-parity` / `gate`
-10. This document committed at `.planning/web/phase1-gate-tests.md`
+10. This document committed at `.planning/web/testing/desktop-to-web-parity.md`
 
 That commit sets the finish line. After that, every Phase 1 PR is judged by "does it move a red gate to green without regressing a green one."
 

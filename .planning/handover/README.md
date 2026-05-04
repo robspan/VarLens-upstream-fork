@@ -49,12 +49,12 @@ git remote set-url origin <new-url>
 # upstream remote stays unchanged
 ```
 
-The `pre-push` hook (installed via `make install-hooks`) and `upstream-sync-check.yml` workflow continue to function — they don't depend on the origin URL.
+The `pre-commit` hook (installed via `make install-hooks`) and `upstream-sync-check.yml` workflow continue to function — they don't depend on the origin URL.
 
 ### 5. Decision records that should stay
 
 - `.planning/web/decision-postgres-as-web-backend.md` — Postgres backend choice for the web build.
-- `.planning/web/phase1-gate-tests.md` and related — Phase 1 gate suite design.
+- `.planning/web/testing/desktop-to-web-parity.md` and related — Phase 1 gate suite design.
 
 These are project decisions, not fork-specific overrides. They travel with the repo.
 

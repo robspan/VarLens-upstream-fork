@@ -79,7 +79,7 @@ describe('handler-seam gate', () => {
       // for now we mark this as the place where that check belongs.
       throw new Error(
         'handler-seam web-side check: implement once src/web/routes/ exists. See ' +
-          '.planning/web/phase1-gate-tests.md.'
+          '.planning/web/testing/desktop-to-web-parity.md.'
       )
     }
   )

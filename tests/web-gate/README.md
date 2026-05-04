@@ -4,7 +4,7 @@ Phase 1 gate tests for the **web-migration** track. **Desktop is the default mod
 
 The intentional consequence: a researcher can ship a new IPC handler that imports `getDatabaseService` directly without their PR being blocked. The gate only fires when someone explicitly runs `make web-gate-*`. If the web track decides not to wrap a particular IPC for the web variant, that's accepted divergence — web ships with fewer features than desktop, by design.
 
-If you DO see one of these tests failing (because you ran `make web-gate-static`), the failure message points at `.planning/web/phase1-gate-tests.md` for context. The short version:
+If you DO see one of these tests failing (because you ran `make web-gate-static`), the failure message points at `.planning/web/testing/desktop-to-web-parity.md` for context. The short version:
 
 | Layer | What it pins | When it runs |
 |---|---|---|
@@ -49,6 +49,6 @@ None of these run during `make ci` or default `npm run test`. They are a paralle
 
 ## See also
 
-- `.planning/web/phase1-gate-tests.md` — full plan + named-but-deferred scenarios
-- `.planning/web/phase1-gate-tests-perspectives.md` — agent perspectives that informed the design
+- `.planning/web/testing/desktop-to-web-parity.md` — full plan + named-but-deferred scenarios
+- `.planning/web/testing/desktop-to-web-parity-perspectives.md` — agent perspectives that informed the design
 - `VarLens-IaC/.internalplanning/konzept/app.html` §app2.1 — upstream Phase 1 contract

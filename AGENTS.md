@@ -89,6 +89,7 @@ The **Makefile is the source of truth**. GitHub Actions workflows mirror it targ
 | `make ci-full` / `make ci-actions`                                  | Full local mirror of GitHub Actions pipeline                               |
 | `make ci-startup-smoke`                                             | Playwright Electron startup smoke under xvfb (Linux)                       |
 | `make docs-dev` / `make docs`                                       | VitePress user docs                                                        |
+| `VARLENS_WEB=1 make ...`                                            | Mode toggle: extends `dev` / `test` / `ci` to include the web layer (see § "Mode toggle" below) |
 
 **Before claiming work is done, run `make ci` at minimum.** If you have run local packaging first, clean `release/` before `make ci` because ESLint still traverses generated release artifacts. For anything touching Electron lifecycle, IPC, workers, or packaging, run `make ci-full`.
 

@@ -49,4 +49,4 @@ Use judgement:
 - Branch-and-PR is still preferable for: substantive code changes you want reviewed, anything that should be reverted as a unit, work that may be cherry-picked back to upstream later.
 - The `upstream-sync-check` workflow and `pre-commit` hook still gate every commit on guarded branches against `upstream/main` — direct commits don't bypass the upstream sync requirement.
 
-Once the repo transfers to Labor Berlin, this override must be removed. The post-handover version of this file is preserved at `.planning/handover/CLAUDE.post-handover.md`; see `.planning/handover/README.md` for the full transfer checklist. Until handover, optimise for iteration speed.
+**Sunset on handover to Labor Berlin** (target ~2026-06-01; update once scheduled). This override must be removed at transfer. Post-handover snapshot: `.planning/handover/CLAUDE.post-handover.md`. Checklist: `.planning/handover/README.md`. Until then, optimise for iteration speed.

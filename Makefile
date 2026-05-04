@@ -314,6 +314,19 @@ sync-upstream: ## Fetch upstream and merge upstream/main into local main + VarLe
 		echo "  Run: git remote add upstream https://github.com/berntpopp/VarLens.git"; \
 		exit 1; \
 	fi
+	@current=$$(git symbolic-ref --short -q HEAD || echo ""); \
+	if [ -z "$$current" ]; then \
+		echo "ERROR: detached HEAD. Check out main or VarLens-Web first."; exit 1; \
+	fi; \
+	if [ "$$current" != "main" ] && [ "$$current" != "VarLens-Web" ]; then \
+		echo "ERROR: refusing to sync from branch '$$current' (only main / VarLens-Web supported)."; \
+		echo "  Check out the right branch first, or override deliberately by running the steps manually."; \
+		exit 1; \
+	fi
+	@if ! git diff --quiet || ! git diff --cached --quiet; then \
+		echo "ERROR: working tree is dirty. Commit or stash before sync-upstream."; \
+		exit 1; \
+	fi
 	@echo "==> Fetching upstream..."
 	git fetch upstream
 	@echo "==> Fast-forwarding main..."

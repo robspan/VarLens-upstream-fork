@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# Pre-commit: refuse to record commits on guarded branches when behind upstream/main.
+#
+# Rationale: this fork's working branches (main, VarLens-Web) must continuously
+# reflect upstream/main so accumulated work — including failing web-gate tests —
+# always sits on top of the latest upstream code, not a stale snapshot.
+#
+# Guarded branches default to "main VarLens-Web" (override: VARLENS_HOOK_BRANCHES).
+# The fetch is cached for VARLENS_FETCH_CACHE_SECONDS (default 300s) to keep
+# commit latency low; delete .git/varlens-upstream-fetch-stamp to force a refetch.
+# Bypass for one commit: VARLENS_HOOK_SKIP=1 git commit ...
+
+set -euo pipefail
+
+GUARDED_BRANCHES="${VARLENS_HOOK_BRANCHES:-main VarLens-Web}"
+FETCH_CACHE_SECONDS="${VARLENS_FETCH_CACHE_SECONDS:-300}"
+
+if [ "${VARLENS_HOOK_SKIP:-0}" = "1" ]; then
+  echo "pre-commit: VARLENS_HOOK_SKIP=1 — bypassing upstream sync check." >&2
+  exit 0
+fi
+
+# Determine current branch (skip if detached HEAD, e.g. mid-rebase).
+branch=$(git symbolic-ref --short -q HEAD || true)
+if [ -z "$branch" ]; then
+  exit 0
+fi
+
+guarded=0
+for g in $GUARDED_BRANCHES; do
+  if [ "$branch" = "$g" ]; then
+    guarded=1
+    break
+  fi
+done
+if [ "$guarded" -eq 0 ]; then
+  exit 0
+fi
+
+if ! git remote get-url upstream >/dev/null 2>&1; then
+  echo "pre-commit: 'upstream' remote not configured — skipping sync check." >&2
+  exit 0
+fi
+
+# Cached fetch: skip if we fetched recently.
+git_dir=$(git rev-parse --git-dir)
+stamp="$git_dir/varlens-upstream-fetch-stamp"
+need_fetch=1
+if [ -f "$stamp" ]; then
+  now=$(date +%s)
+  last=$(cat "$stamp" 2>/dev/null || echo 0)
+  age=$((now - last))
+  if [ "$age" -lt "$FETCH_CACHE_SECONDS" ]; then
+    need_fetch=0
+  fi
+fi
+
+if [ "$need_fetch" -eq 1 ]; then
+  if git fetch upstream main --quiet 2>/dev/null; then
+    date +%s > "$stamp"
+  else
+    echo "pre-commit: failed to fetch upstream/main (offline?)." >&2
+    echo "  Bypass for one commit: VARLENS_HOOK_SKIP=1 git commit ..." >&2
+    exit 1
+  fi
+fi
+
+if git merge-base --is-ancestor upstream/main HEAD 2>/dev/null; then
+  exit 0
+fi
+
+behind=$(git rev-list --count "HEAD..upstream/main" 2>/dev/null || echo "?")
+echo "pre-commit: refusing commit on '$branch' — branch is missing $behind commit(s) from upstream/main." >&2
+echo "  Run: make sync-upstream" >&2
+echo "  Or bypass: VARLENS_HOOK_SKIP=1 git commit ..." >&2
+exit 1

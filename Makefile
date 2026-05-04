@@ -302,9 +302,10 @@ sync-upstream: ## Fetch upstream and merge upstream/main into local main + VarLe
 	git merge -X ours main
 	@echo "==> Done. Review with 'git log --oneline main..HEAD' then push when ready."
 
-install-hooks: ## Install repo git hooks into .git/hooks/ (currently: pre-push)
+install-hooks: ## Install repo git hooks into .git/hooks/ (currently: pre-commit)
 	@mkdir -p .git/hooks
-	@ln -sf ../../scripts/git-hooks/pre-push .git/hooks/pre-push
-	@chmod +x scripts/git-hooks/pre-push
-	@echo "==> Installed: .git/hooks/pre-push -> scripts/git-hooks/pre-push"
-	@echo "    Bypass for one push: VARLENS_HOOK_SKIP=1 git push ..."
+	@ln -sf ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit
+	@chmod +x scripts/git-hooks/pre-commit
+	@rm -f .git/hooks/pre-push  # cleanup: hook moved from pre-push to pre-commit
+	@echo "==> Installed: .git/hooks/pre-commit -> scripts/git-hooks/pre-commit"
+	@echo "    Bypass for one commit: VARLENS_HOOK_SKIP=1 git commit ..."

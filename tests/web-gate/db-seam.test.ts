@@ -184,12 +184,11 @@ describe('db-seam gate', () => {
     expect(violations, violations.join('\n')).toEqual([])
   })
 
-  test.fails('phase 1: StorageSession declares no escape-hatch methods', () => {
-    // Self-revoking TODO. Today this assertion FAILS (StorageSession
-    // declares both `getDatabaseService` and `getDbPool`). When the
-    // Phase 1 refactor seals the seam, the assertion succeeds — at which
-    // point `test.fails()` itself starts failing, prompting us to flip
-    // it to `test()` in the same PR.
+  test('phase 1: StorageSession declares no escape-hatch methods', () => {
+    // Sealed: getDatabaseService / getDbPool are off the interface.
+    // Concrete classes (SqliteStorageSession) keep them as public
+    // methods; consumers that need them type-narrow on capabilities.backend
+    // first (see DatabaseManager.getCurrent and dbPoolManager.getDbPool).
     const project = ensureFreshProject()
     const sessionFile = project.getSourceFileOrThrow('src/main/storage/session.ts')
     const iface = sessionFile.getInterfaceOrThrow('StorageSession')

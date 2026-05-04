@@ -234,13 +234,24 @@ export class DatabaseManager {
   }
 
   /**
-   * Get the current database service
+   * Get the current database service.
+   *
+   * SQLite-only: Postgres sessions don't expose an underlying DatabaseService.
+   * The StorageSession interface no longer declares getDatabaseService(); the
+   * concrete SqliteStorageSession class still has it as a public method.
    *
    * @returns Current database service
-   * @throws DatabaseError if no database is open
+   * @throws DatabaseError if no database is open or backend is not SQLite
    */
   getCurrent(): DatabaseService {
-    return this.getCurrentSession().getDatabaseService()
+    const session = this.getCurrentSession()
+    if (session.capabilities.backend !== 'sqlite') {
+      throw new DatabaseError('getCurrent() is SQLite-only; use the StorageSession executors instead')
+    }
+    // SqliteStorageSession defines getDatabaseService() as a public method
+    // outside the StorageSession interface. Cast through unknown to satisfy
+    // TypeScript without re-declaring the method on the interface.
+    return (session as unknown as { getDatabaseService(): DatabaseService }).getDatabaseService()
   }
 
   /**

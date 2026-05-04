@@ -12,7 +12,9 @@ import type { StorageSession } from '../storage/session'
 let dbPool: DbPool | null = null
 type DbPoolSource = {
   capabilities: Pick<StorageSession['capabilities'], 'backend'>
-  getDbPool: StorageSession['getDbPool']
+  // Concrete-class method on SqliteStorageSession; no longer on the
+  // sealed StorageSession interface (see src/main/storage/session.ts).
+  getDbPool(): DbPool | null
 }
 let getActiveSession: (() => DbPoolSource | null) | null = null
 

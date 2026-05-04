@@ -1,8 +1,6 @@
 import type { Pool } from 'pg'
 
 import { mainLogger } from '../../services/MainLogger'
-import type { DatabaseService } from '../../database/DatabaseService'
-import type { DbPool } from '../../database/DbPool'
 import type { Case } from '../../../shared/types/database'
 import { PostgresAvailableBuildsRepository } from './PostgresAvailableBuildsRepository'
 import { PostgresAnalysisGroupsRepository } from './PostgresAnalysisGroupsRepository'
@@ -237,14 +235,6 @@ export class PostgresStorageSession implements StorageSession {
 
   getImportExecutor(): StorageImportExecutor {
     return this.importExecutor
-  }
-
-  getDatabaseService(): DatabaseService {
-    return unsupported('DatabaseService is not available for postgres sessions')
-  }
-
-  getDbPool(): DbPool | null {
-    return unsupported('DbPool is not available for postgres sessions')
   }
 
   getEncryptionKey(): string | undefined {

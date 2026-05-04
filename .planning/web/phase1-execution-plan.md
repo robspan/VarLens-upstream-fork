@@ -7,32 +7,44 @@ Companion: [`testing/`](testing/) (test vehicles), [`decision-postgres-as-web-ba
 
 The 12 §app2.1 criteria, mapped to: blocking dependencies · test vehicle · current status. **No criterion text restated** — read the konzept for the spec.
 
-## Order of work
+## Order of work — status (2026-05-04)
 
-The big unblockers, in order:
+The three big unblockers all landed in this PR:
 
-1. **Web build target** (`src/web/server.ts` → `out/web/server.cjs`). Activates 4 integration tests (#1, #3, #8, #9) and the web halves of parity scenarios (#5). Single highest-leverage move.
-2. **StorageSession refactor** (close `getDatabaseService` / `getDbPool` loopholes). Flips `db-seam` red → green and unblocks renderer-side use of either backend. Also flips two refactor-checkpoint snapshots — drift expected and reviewed in the same PR.
-3. **Auth abstraction** (provider interface in `src/main/auth/providers/`, Argon2 migrated behind it). Flips `auth-isolation` red → green and unblocks the 4 auth parity placeholders.
+1. **Web build target** (`src/web/server.ts` → `out/web/server.cjs`) ✅
+   Fastify app with Pino logging, SIGTERM lifecycle, /healthz. Three domain
+   routes wired (cases, auth, variants), all reusing the corresponding
+   `<name>-logic` modules per the handler-seam rule.
+2. **StorageSession refactor** (interface seal) ✅
+   `getDatabaseService` / `getDbPool` removed from the interface. The 3
+   remaining call sites (DatabaseManager, dbPoolManager, SqliteImportExecutor)
+   type-narrow on `capabilities.backend` first.
+3. **Auth abstraction** ✅
+   Argon2 lives only in `src/main/auth/providers/argon2-provider.ts`.
+   `Credential = {kind:'password'} | {kind:'token'}` is in place for the
+   OIDC retrofit.
 
-After (3), parity scenarios are TDD work — each PR adds the scenario for the user-facing flow it implements.
+What remains: behavioral coverage. Each new user-facing flow in the web
+build adds its parity scenario (TDD via the existing harness). The
+`user-id-schema` web-gate tracks per-tenant prep table-by-table; not a
+hard Phase 1 blocker — it's the visible Stage-2 backlog.
 
 ## Status table
 
 | # | Criterion (short) | Blocked by | Test vehicle | Status |
 |---|---|---|---|---|
-| 1 | Web container starts w/o Electron deps | Web build | `electron-leak` + `integration/healthz` | Test exists; awaits build |
+| 1 | Web container starts w/o Electron deps | — | `electron-leak` + `integration/healthz` | ✅ |
 | 2 | Migrations idempotent | — | `integration/migrations-idempotent` (SQLite) + `postgres-migrations-idempotent` (real PG, gated) | ✅ both backends |
-| 3 | `/healthz` 200 / 503 | Web build | `integration/healthz` (both paths) | Test exists; awaits build |
-| 4 | Argon2 login + multi-user | Auth abstraction | `parity/auth-scenarios.parity.test.ts` (4 placeholders) | Skipped, awaits provider |
-| 5 | Import / filter / analysis preserved | Web build (for web half) | `parity/import-and-filter` (Electron green; web skipped) | ✅ Electron pinned |
-| 6 | Services use repository iface only | StorageSession refactor | `db-seam` | Red on day one — that's the work |
+| 3 | `/healthz` 200 / 503 | — | `integration/healthz` (both paths) | ✅ |
+| 4 | Argon2 login + multi-user | — | `auth-isolation` (structural) + `parity/auth-scenarios` (4 deferred) | ✅ structural; parity flips with each user-flow PR |
+| 5 | Import / filter / analysis preserved | Web client integration | `parity/import-and-filter` (Electron green) | ✅ Electron pinned; web HTTP wired for cases/auth/variants |
+| 6 | Services use repository iface only | — | `db-seam` (interface seal) | ✅ sealed |
 | 7 | Electron variant builds w/o regression | — | `make ci-full` + `tests/refactor-checkpoint/` | ✅ |
-| 8 | Logs JSON to stdout | Web build | `integration/json-logs` | Test exists; awaits build |
-| 9 | SIGTERM clean shutdown | Web build | `integration/sigterm` | Test exists; awaits build |
+| 8 | Logs JSON to stdout | — | `integration/json-logs` | ✅ |
+| 9 | SIGTERM clean shutdown | — | `integration/sigterm` | ✅ |
 | 10 | ADRs 1, 2, 3 filed | — | Doc gate | ✅ `.planning/adr/0001..0003` |
-| 11 | §bewertung1 / §bewertung3 current | IaC repo work | Doc gate | Tracked in IaC |
-| 12 | Bridge-clause structural | StorageSession refactor (partial) | `db-seam` + `auth-isolation` + `user-id-schema` + `handler-seam` | Partial — gates exist, several red until #2/#3 |
+| 11 | §bewertung1 / §bewertung3 current | IaC repo work | Doc gate | Tracked in IaC (out of repo scope) |
+| 12 | Bridge-clause structural | — | `db-seam` + `auth-isolation` + `user-id-schema` + `handler-seam` | 3/4 ✅; `user-id-schema` tracks per-tenant prep |
 
 ## Per-criterion implementation notes (only where non-obvious)
 

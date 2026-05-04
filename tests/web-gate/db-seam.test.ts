@@ -3,28 +3,26 @@ import { Project, SyntaxKind } from 'ts-morph'
 import { getProject, relPath } from './helpers/ts-morph-project'
 
 /**
- * Phase 1 gate — `getDatabaseService` and `getDbPool` are the two
- * "compatibility loopholes" on `StorageSession` (see `src/main/storage/
- * session.ts:21,26`). The Phase 1 plan calls for them to be sealed.
+ * Phase 1 gate — `getDatabaseService` and `getDbPool` are no longer on
+ * the `StorageSession` interface (sealed 2026-05-04). They remain as
+ * concrete public methods on `SqliteStorageSession` only; consumers
+ * type-narrow on `capabilities.backend` first.
  *
  * Three orthogonal assertions:
  *
  * 1. **Import shrinking allowlist** — every file that imports
  *    `getDatabaseService` or `getDbPool` from the definer modules is
  *    listed. New imports outside the allowlist fail. Stale entries fail.
- *    The Phase 1 work shrinks the list to empty.
+ *    The list trends toward empty as remaining call sites migrate.
  *
- * 2. **Tripwire (real green today)** — no module outside the definer
- *    files contains a CallExpression with bare-identifier callee
- *    `getDatabaseService` / `getDbPool` *that resolves to the imported
- *    binding*. (DI parameters with the same name are fine.)
- *    Implementation: filter the candidates by whether the file actually
- *    imports those globals — non-importers can't be calling the imported
- *    binding, so they're noise.
+ * 2. **Tripwire** — no module outside the definer files contains a
+ *    CallExpression with bare-identifier callee `getDatabaseService` /
+ *    `getDbPool` *that resolves to the imported binding*. (DI parameters
+ *    with the same name are fine.)
  *
- * 3. **Currently-failing target (test.fails today)** — `StorageSession`
- *    interface declares zero escape-hatch methods. When sealed, flip
- *    `test.fails()` → `test()`.
+ * 3. **Interface seal** — `StorageSession` declares zero escape-hatch
+ *    methods (was `test.fails()` until the seal landed; now a regular
+ *    `test()`).
  *
  * The "definers" are the files that own these symbols and may freely
  * reference them: see `DEFINER_FILES`. Storage-session implementations

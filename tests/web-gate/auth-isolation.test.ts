@@ -3,14 +3,13 @@ import { getProject, relPath } from './helpers/ts-morph-project'
 
 /**
  * Phase 1 gate — direct imports of password-hashing or token libraries
- * must live ONLY behind an auth-provider abstraction
- * (`src/main/auth/providers/**`). This forces the `AuthProvider` interface
- * to exist before Phase 1 ships, which in turn keeps the OIDC swap in
- * Stage 2 a one-file change.
+ * live ONLY behind the auth-provider abstraction at
+ * `src/main/auth/providers/`. AuthService consumes Argon2 through the
+ * `PasswordProvider` interface. The OIDC swap in Stage 2 is a one-file
+ * addition under `providers/`.
  *
- * Currently the assertion FAILS — `src/main/services/auth/AuthService.ts`
- * imports `@node-rs/argon2` directly. Wrapped in `test.fails()` so the
- * branch stays green; flip to `test()` when the refactor lands.
+ * Sealed 2026-05-04 by extracting `argon2-provider.ts`; the assertion
+ * is a regular `test()` (was `test.fails()` until the refactor landed).
  */
 
 const BANNED_PACKAGES = new Set([

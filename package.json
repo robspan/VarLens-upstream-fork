@@ -12,7 +12,9 @@
   "packageManager": "npm@11.11.0",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build": "electron-vite build && vite build --config vite.web.config.ts",
+    "build:electron": "electron-vite build",
+    "build:web": "vite build --config vite.web.config.ts",
     "preview": "electron-vite preview",
     "dist": "electron-vite build && electron-builder --publish onTag",
     "dist:win": "electron-vite build && electron-builder --win --publish onTag",
@@ -172,6 +174,7 @@
     "d3": "^7.9.0",
     "electron-log": "^5.4.3",
     "electron-updater": "^6.8.3",
+    "fastify": "^5.8.5",
     "file-saver": "^2.0.5",
     "jstat": "^1.9.6",
     "kysely": "^0.28.16",

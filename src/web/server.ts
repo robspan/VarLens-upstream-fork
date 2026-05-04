@@ -24,6 +24,9 @@
 import Fastify, { type FastifyInstance } from 'fastify'
 
 import { DatabaseService } from '../main/database/DatabaseService'
+import { SqliteStorageSession } from '../main/storage/sqlite/SqliteStorageSession'
+import type { StorageSession } from '../main/storage/session'
+import { registerCasesRoutes } from './routes/cases'
 import pkg from '../../package.json'
 
 export interface BuildAppOptions {
@@ -38,10 +41,18 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   })
 
   let db: DatabaseService | null = null
+  let session: StorageSession | null = null
   try {
     db = new DatabaseService(options.db)
+    session = new SqliteStorageSession({ databaseService: db, dbPool: null })
   } catch {
     db = null
+    session = null
+  }
+
+  if (session !== null) {
+    const getSession = (): StorageSession => session as StorageSession
+    registerCasesRoutes(app, getSession)
   }
 
   app.get('/healthz', async (_request, reply) => {
@@ -54,9 +65,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   })
 
   app.addHook('onClose', async () => {
-    if (db) {
+    if (session) {
       try {
-        db.close()
+        await session.close()
       } catch {
         // ignore close errors during shutdown
       }

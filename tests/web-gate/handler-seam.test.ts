@@ -67,20 +67,32 @@ describe('handler-seam gate', () => {
   })
 
   test.skipIf(!existsSync(resolve(process.cwd(), WEB_DIR)))(
-    'every web route reuses the same handler function as the main IPC registration',
-    () => {
-      // Forward-compatible: this test only runs once src/web/routes/ exists.
-      // When it does, each web route file must import from the same handler
-      // module the main process registers. Concrete check: the web file
-      // imports from src/main/ipc/handlers/<domain> (or a shared logic
-      // module), not a duplicated implementation.
-      //
-      // The exact assertion shape will firm up when the first web route lands;
-      // for now we mark this as the place where that check belongs.
-      throw new Error(
-        'handler-seam web-side check: implement once src/web/routes/ exists. See ' +
-          '.planning/web/testing/desktop-to-web-parity.md.'
-      )
+    'every web route file imports from the corresponding main IPC handler / logic module',
+    async () => {
+      const { readFileSync } = await import('fs')
+      const webRoutes = listDomains(WEB_DIR)
+      expect(webRoutes.length).toBeGreaterThan(0)
+
+      const violations: string[] = []
+      for (const domain of webRoutes) {
+        const file = resolve(process.cwd(), WEB_DIR, `${domain}.ts`)
+        const source = readFileSync(file, 'utf8')
+
+        // Acceptable seam imports: the per-domain logic module or the
+        // per-domain handler module from src/main/ipc/handlers/.
+        const reusesLogic =
+          source.includes(`from '../../main/ipc/handlers/${domain}-logic'`) ||
+          source.includes(`from '../../main/ipc/handlers/${domain}'`)
+
+        if (!reusesLogic) {
+          violations.push(
+            `${WEB_DIR}/${domain}.ts must import from src/main/ipc/handlers/${domain}-logic ` +
+              `(or src/main/ipc/handlers/${domain}). Reuse the same function — do not re-implement.`
+          )
+        }
+      }
+
+      expect(violations, violations.join('\n')).toEqual([])
     }
   )
 })

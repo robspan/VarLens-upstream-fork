@@ -246,7 +246,9 @@ export class DatabaseManager {
   getCurrent(): DatabaseService {
     const session = this.getCurrentSession()
     if (session.capabilities.backend !== 'sqlite') {
-      throw new DatabaseError('getCurrent() is SQLite-only; use the StorageSession executors instead')
+      throw new DatabaseError(
+        'getCurrent() is SQLite-only; use the StorageSession executors instead'
+      )
     }
     // SqliteStorageSession defines getDatabaseService() as a public method
     // outside the StorageSession interface. Cast through unknown to satisfy

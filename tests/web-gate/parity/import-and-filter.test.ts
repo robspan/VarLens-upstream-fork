@@ -154,7 +154,7 @@ async function runImportScenarioOnElectron(vcfPath: string): Promise<ImportAndFi
       // unwraps via `unwrapIpcResult` in production. In raw form the result
       // is `{ ok: true, data: T }` — handle both shapes defensively so this
       // test is robust to whichever transport the preload happens to use.
-      const unwrap = <T,>(v: unknown): T => {
+      const unwrap = <T>(v: unknown): T => {
         if (v && typeof v === 'object' && 'ok' in v) {
           const r = v as { ok: boolean; data?: T; error?: { message?: string } }
           if (!r.ok) {
@@ -216,11 +216,7 @@ function normalizeVariantQuery(raw: unknown): NormalizedVariantQuery {
     rows?: unknown[]
     total?: number
   }
-  const rows = Array.isArray(obj.data)
-    ? obj.data
-    : Array.isArray(obj.rows)
-      ? obj.rows
-      : []
+  const rows = Array.isArray(obj.data) ? obj.data : Array.isArray(obj.rows) ? obj.rows : []
   // Snapshot only stable identity fields: chr/pos/ref/alt. Drop volatile
   // columns like id, created_at, imported_at, info_json (annotation order).
   const projected = rows
@@ -341,22 +337,19 @@ describe.skipIf(!SHOULD_RUN_PARITY || !isElectronBuilt)(
       expect(electronSnapshot, driftMessage()).toEqual(existing)
     })
 
-    test.skipIf(!isWebBuilt)(
-      'Web path: VCF import + filters match Electron snapshot',
-      async () => {
-        // Mirrors the existing cases.list web stub. The HTTP shape will be
-        // pinned in a follow-up once `src/web/server` exposes import + query
-        // routes; for today this test activates only when the web build is
-        // present and is intentionally minimal: it asserts the snapshot file
-        // exists, so the parity assertion has a baseline to match against.
-        const existing = loadSnapshot()
-        expect(existing, 'Run the Electron half first to seed the snapshot.').not.toBeNull()
-        // Once `src/web/server` ships an import + query surface, replace the
-        // line below with a fastify.inject-driven scenario that builds the
-        // same `ImportAndFilterSnapshot` shape and `expect().toEqual(existing)`.
-        expect(electronSnapshot ?? existing).toEqual(existing)
-      }
-    )
+    test.skipIf(!isWebBuilt)('Web path: VCF import + filters match Electron snapshot', async () => {
+      // Mirrors the existing cases.list web stub. The HTTP shape will be
+      // pinned in a follow-up once `src/web/server` exposes import + query
+      // routes; for today this test activates only when the web build is
+      // present and is intentionally minimal: it asserts the snapshot file
+      // exists, so the parity assertion has a baseline to match against.
+      const existing = loadSnapshot()
+      expect(existing, 'Run the Electron half first to seed the snapshot.').not.toBeNull()
+      // Once `src/web/server` ships an import + query surface, replace the
+      // line below with a fastify.inject-driven scenario that builds the
+      // same `ImportAndFilterSnapshot` shape and `expect().toEqual(existing)`.
+      expect(electronSnapshot ?? existing).toEqual(existing)
+    })
   }
 )
 

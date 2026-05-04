@@ -22,10 +22,7 @@ interface LoginBody {
   password?: unknown
 }
 
-export function registerAuthRoutes(
-  app: FastifyInstance,
-  getDb: () => DatabaseService
-): void {
+export function registerAuthRoutes(app: FastifyInstance, getDb: () => DatabaseService): void {
   app.post<{ Body: LoginBody }>('/api/auth/login', async (request, reply) => {
     const { username, password } = request.body ?? {}
     if (typeof username !== 'string' || typeof password !== 'string') {

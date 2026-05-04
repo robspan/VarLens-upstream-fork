@@ -2,7 +2,11 @@ import { resolve } from 'node:path'
 import { describe, test } from 'vitest'
 import { SyntaxKind } from 'ts-morph'
 import { getProject, relPath } from '../web-gate/helpers/ts-morph-project'
-import { assertSnapshotMatches, findEnclosingFunctionName, type Snapshot } from './helpers/snapshot-io'
+import {
+  assertSnapshotMatches,
+  findEnclosingFunctionName,
+  type Snapshot
+} from './helpers/snapshot-io'
 
 interface Entry {
   file: string

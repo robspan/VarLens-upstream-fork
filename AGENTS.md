@@ -75,20 +75,20 @@ Do **not** use `electron-builder install-app-deps` — it has been broken for El
 
 The **Makefile is the source of truth**. GitHub Actions workflows mirror it target-for-target. When in doubt, run the `make` target, not the underlying npm script.
 
-| Command                                                             | Purpose                                                                    |
-| ------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `make dev`                                                          | Rebuild for Electron, start hot-reload dev server                          |
-| `make lint` / `make lint-check`                                     | ESLint with / without auto-fix                                             |
-| `make format` / `make format-check`                                 | Prettier with / without write                                              |
-| `make typecheck`                                                    | `vue-tsc` (renderer) + `tsc` (node) in parallel                            |
-| `make test`                                                         | Vitest once (run `make rebuild-node` first)                                |
-| `make test-watch` / `make test-coverage`                            | Vitest watch / with coverage                                               |
-| `make build`                                                        | `electron-vite build` into `out/`                                          |
-| `make dist` / `make dist-linux` / `make dist-mac` / `make dist-win` | Build + package                                                            |
-| `make ci`                                                           | Local minimum: lint-check + format-check + typecheck + rebuild-node + test |
-| `make ci-full` / `make ci-actions`                                  | Full local mirror of GitHub Actions pipeline                               |
-| `make ci-startup-smoke`                                             | Playwright Electron startup smoke under xvfb (Linux)                       |
-| `make docs-dev` / `make docs`                                       | VitePress user docs                                                        |
+| Command                                                             | Purpose                                                                                         |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `make dev`                                                          | Rebuild for Electron, start hot-reload dev server                                               |
+| `make lint` / `make lint-check`                                     | ESLint with / without auto-fix                                                                  |
+| `make format` / `make format-check`                                 | Prettier with / without write                                                                   |
+| `make typecheck`                                                    | `vue-tsc` (renderer) + `tsc` (node) in parallel                                                 |
+| `make test`                                                         | Vitest once (run `make rebuild-node` first)                                                     |
+| `make test-watch` / `make test-coverage`                            | Vitest watch / with coverage                                                                    |
+| `make build`                                                        | `electron-vite build` into `out/`                                                               |
+| `make dist` / `make dist-linux` / `make dist-mac` / `make dist-win` | Build + package                                                                                 |
+| `make ci`                                                           | Local minimum: lint-check + format-check + typecheck + rebuild-node + test                      |
+| `make ci-full` / `make ci-actions`                                  | Full local mirror of GitHub Actions pipeline                                                    |
+| `make ci-startup-smoke`                                             | Playwright Electron startup smoke under xvfb (Linux)                                            |
+| `make docs-dev` / `make docs`                                       | VitePress user docs                                                                             |
 | `VARLENS_WEB=1 make ...`                                            | Mode toggle: extends `dev` / `test` / `ci` to include the web layer (see § "Mode toggle" below) |
 
 **Before claiming work is done, run `make ci` at minimum.** If you have run local packaging first, clean `release/` before `make ci` because ESLint still traverses generated release artifacts. For anything touching Electron lifecycle, IPC, workers, or packaging, run `make ci-full`.

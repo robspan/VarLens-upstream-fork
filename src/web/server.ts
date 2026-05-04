@@ -101,8 +101,7 @@ async function main(): Promise<void> {
   await app.listen({ port, host: '127.0.0.1' })
 
   const address = app.server.address()
-  const boundPort =
-    address !== null && typeof address === 'object' ? address.port : port
+  const boundPort = address !== null && typeof address === 'object' ? address.port : port
   app.log.info({ port: boundPort }, 'listening')
 
   const shutdown = async (signal: string): Promise<void> => {

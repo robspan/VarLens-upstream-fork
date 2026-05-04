@@ -38,3 +38,15 @@ Project-level memory lives under `~/.claude/projects/-home-bernt-popp-developmen
 ### Skills over free-form instructions
 
 If a skill exists for what you're about to do (brainstorming, TDD, finishing-a-branch, code review, debugging, GSD workflow), invoke it instead of improvising. Skills encode the repo's conventions; improvisation drifts.
+
+### Fork-specific override: direct pushes to main are allowed
+
+`AGENTS.md` says "Never commit feature/work changes directly to `main`." That rule is for the upstream `berntpopp/VarLens` collaboration model. **In this private fork (`robspan/VarLens`, branch `VarLens-Web`), it does not apply.** Agents may commit to and push directly to `main` when it serves the workflow — in particular for **iterative run-and-fix cycles** where round-tripping every CI failure through a PR adds pure friction with no review benefit (single operator, private repo).
+
+Use judgement:
+
+- Direct-to-main is fine for: CI fixes, workflow/permission tweaks, doc/planning updates, reverts, anything where waiting for a PR adds nothing.
+- Branch-and-PR is still preferable for: substantive code changes you want reviewed, anything that should be reverted as a unit, work that may be cherry-picked back to upstream later.
+- The `upstream-sync-check` workflow and `pre-push` hook still gate every push to `main` — direct commits don't bypass the upstream sync requirement.
+
+Once the repo transfers to Labor Berlin, this override likely tightens again. Until then, optimise for iteration speed.

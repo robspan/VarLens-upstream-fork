@@ -27,6 +27,8 @@ import { DatabaseService } from '../main/database/DatabaseService'
 import { SqliteStorageSession } from '../main/storage/sqlite/SqliteStorageSession'
 import type { StorageSession } from '../main/storage/session'
 import { registerCasesRoutes } from './routes/cases'
+import { registerAuthRoutes } from './routes/auth'
+import { registerVariantsRoutes } from './routes/variants'
 import pkg from '../../package.json'
 
 export interface BuildAppOptions {
@@ -50,9 +52,12 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     session = null
   }
 
-  if (session !== null) {
+  if (session !== null && db !== null) {
     const getSession = (): StorageSession => session as StorageSession
+    const getDb = (): DatabaseService => db as DatabaseService
     registerCasesRoutes(app, getSession)
+    registerAuthRoutes(app, getDb)
+    registerVariantsRoutes(app, getSession)
   }
 
   app.get('/healthz', async (_request, reply) => {

@@ -57,7 +57,7 @@ Deferred (named, not built):
 |---|---|
 | Web container starts without Electron deps | `electron-leak` + `integration/healthz` |
 | Migrations idempotent | `integration/migrations-idempotent` |
-| `/healthz` returns 200 / 503 correctly | `integration/healthz` (200; 503 path TODO) |
+| `/healthz` returns 200 / 503 correctly | `integration/healthz` (both paths) |
 | Argon2 login + multi-user | Layer 3 expansion (deferred — first auth scenario after import-and-filter green on web) |
 | Import/filter/analysis preserved | `parity/import-and-filter` |
 | Services use repository interface only | `db-seam` |

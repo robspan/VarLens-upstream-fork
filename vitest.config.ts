@@ -103,6 +103,45 @@ export default defineConfig({
         }
       },
       {
+        // Phase 1 web-migration gate. Static structural rules + skipped
+        // web-only integration tests.
+        //
+        // **OPT-IN — desktop is the default mode of VarLens.** The gate
+        // validates the path that adds web mode alongside the existing
+        // Electron app, so a desktop-only contributor (researcher, clinician)
+        // should never see web-gate failures during `make ci` or
+        // `npm run test`. The project is therefore excluded from the
+        // default `npm run test` script (see package.json — `--project main
+        // --project renderer`) and only runs when explicitly invoked via
+        // `npm run test:web-gate` or `make web-gate-static`.
+        //
+        // Layer 3 parity (heavy, boots Electron) is its own project below
+        // and additionally requires VARLENS_RUN_WEB_GATE_PARITY=1.
+        //
+        // See .planning/web/phase1-gate-tests.md.
+        extends: true,
+        test: {
+          name: 'web-gate',
+          environment: 'node',
+          include: ['tests/web-gate/*.test.ts', 'tests/web-gate/integration/**/*.test.ts']
+        }
+      },
+      {
+        // Layer 3 parity. Opt-in mirror of the `perf` project: tests use
+        // `describe.skipIf(!SHOULD_RUN)` keyed on VARLENS_RUN_WEB_GATE_PARITY.
+        // Without the env var the project schedules but every test skips,
+        // so desktop-only contributors never pay the Electron-boot cost.
+        // Run via `make web-gate-parity`.
+        extends: true,
+        test: {
+          name: 'web-gate-parity',
+          environment: 'node',
+          include: ['tests/web-gate/parity/**/*.test.ts'],
+          testTimeout: 120_000,
+          hookTimeout: 60_000
+        }
+      },
+      {
         extends: true,
         test: {
           name: 'renderer',

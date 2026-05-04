@@ -1,4 +1,4 @@
-.PHONY: help rebuild dev build preview lint lint-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-reset
+.PHONY: help rebuild dev build preview lint lint-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-reset web-gate web-gate-static web-gate-integration web-gate-parity
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -104,6 +104,25 @@ test-watch: ## Run tests in watch mode
 
 test-coverage: ## Run tests with coverage report
 	npm run test:coverage
+
+#---------------------------------------------------------------------------
+# Phase 1 web-migration gate (see .planning/web/phase1-gate-tests.md)
+#---------------------------------------------------------------------------
+
+web-gate-static: ## Run Layer 1 static gate tests (assumes Node ABI — run `make rebuild-node` first if needed)
+	npx vitest run --project web-gate
+
+web-gate-integration: ## Run Layer 2 web-only integration tests (skipped until out/web/ exists)
+	npx vitest run --project web-gate tests/web-gate/integration
+
+web-gate-parity: ## Run Layer 3 parity scenarios (opt-in; boots Electron, switches native ABI)
+	@echo "=== web-gate-parity (opt-in; switches native module to Electron ABI) ==="
+	@if [ ! -f out/main/index.js ]; then echo "out/main/index.js missing — running 'make build' first"; npm run build; fi
+	npm run rebuild:electron
+	VARLENS_RUN_WEB_GATE_PARITY=1 npx vitest run --project web-gate-parity
+
+web-gate: web-gate-static ## Run the Phase 1 gate fast tests (parity is opt-in via web-gate-parity)
+	@echo "Static + integration done. Run 'make web-gate-parity' to validate the desktop↔web parity path (opt-in)."
 
 #---------------------------------------------------------------------------
 # CI / Full Checks

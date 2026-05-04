@@ -92,6 +92,23 @@ The **Makefile is the source of truth**. GitHub Actions workflows mirror it targ
 
 **Before claiming work is done, run `make ci` at minimum.** If you have run local packaging first, clean `release/` before `make ci` because ESLint still traverses generated release artifacts. For anything touching Electron lifecycle, IPC, workers, or packaging, run `make ci-full`.
 
+### Mode toggle: desktop (default) / web (opt-in)
+
+`VARLENS_WEB=1` extends `make dev`, `make test`, and `make ci` to include the web layer. Default is desktop. Direct targets (`make web-gate-static`, etc.) still work for web-only invocations.
+
+```
+make test                    # desktop suite (main + renderer + refactor-checkpoint)
+VARLENS_WEB=1 make test      # adds web-gate static + integration
+
+make ci                      # desktop CI gate
+VARLENS_WEB=1 make ci        # desktop + web
+
+make dev                     # Electron dev server
+VARLENS_WEB=1 make dev       # web dev (placeholder; web build target not yet implemented)
+```
+
+This matches the §app2.1 "desktop is default; web is opt-in" model. A desktop-only contributor never needs to set the var; a web-track contributor sets it once per shell.
+
 ## Testing
 
 - **Unit / integration**: Vitest. Files live next to source (e.g. `src/main/foo.ts` → `tests/main/foo.test.ts`). Happy-dom is the renderer environment. Run `make rebuild-node` first or the native module will ABI-fail.

@@ -16,6 +16,22 @@ define ensure_ci_node
 endef
 
 #---------------------------------------------------------------------------
+# Mode toggle: desktop (default) / web (opt-in via VARLENS_WEB=1)
+#
+# Sets which projects vitest runs and whether `make dev` starts the web
+# server. Direct targets (web-gate-static, etc.) still work standalone for
+# web-only invocations.
+#---------------------------------------------------------------------------
+
+VARLENS_WEB ?= 0
+
+ifeq ($(VARLENS_WEB),1)
+    VITEST_EXTRA_ARGS := -- --project web-gate
+else
+    VITEST_EXTRA_ARGS :=
+endif
+
+#---------------------------------------------------------------------------
 # Help
 #---------------------------------------------------------------------------
 
@@ -36,8 +52,14 @@ rebuild: ## Rebuild native modules for Electron (fixes native module version mis
 rebuild-node: ## Rebuild native modules for Node.js (needed before running tests)
 	npm run rebuild:node
 
-dev: rebuild ## Start development server with hot reload
+dev: rebuild ## Start development server with hot reload (set VARLENS_WEB=1 for web mode)
+ifeq ($(VARLENS_WEB),1)
+	@echo "Web dev mode is not yet implemented — no web build target exists."
+	@echo "See .planning/web/testing/desktop-to-web-parity.md for status."
+	@exit 1
+else
 	npm run dev
+endif
 
 dev-postgres: ## Start development server with PostgreSQL backend enabled
 	@if [ ! -f .env.postgres.local ]; then echo "Missing .env.postgres.local. Copy .env.postgres.example first."; exit 1; fi
@@ -100,8 +122,8 @@ typecheck: ## Run TypeScript type checking
 # Testing
 #---------------------------------------------------------------------------
 
-test: ## Run tests once
-	npm run test
+test: ## Run tests once (set VARLENS_WEB=1 to also run web-gate static + integration)
+	npm run test $(VITEST_EXTRA_ARGS)
 
 test-watch: ## Run tests in watch mode
 	npm run test:watch
@@ -110,7 +132,7 @@ test-coverage: ## Run tests with coverage report
 	npm run test:coverage
 
 #---------------------------------------------------------------------------
-# Phase 1 web-migration gate (see .planning/web/phase1-gate-tests.md)
+# Phase 1 web-migration gate (see .planning/web/testing/desktop-to-web-parity.md)
 #---------------------------------------------------------------------------
 
 web-gate-static: ## Run Layer 1 static gate tests (assumes Node ABI — run `make rebuild-node` first if needed)
@@ -132,7 +154,7 @@ web-gate: web-gate-static ## Run the Phase 1 gate fast tests (parity is opt-in v
 # CI / Full Checks
 #---------------------------------------------------------------------------
 
-ci: lint-check format-check typecheck rebuild-node test ## Run all CI checks (lint, format, typecheck, rebuild, test)
+ci: lint-check format-check typecheck rebuild-node test ## Run all CI checks (lint, format, typecheck, rebuild, test). Set VARLENS_WEB=1 to include web-gate.
 
 ci-checks: ## Run the GitHub Actions "Checks (Ubuntu)" job under Node $(CI_NODE_VERSION)
 	@echo "=== Checks (Ubuntu) using Node $(CI_NODE_VERSION) ==="

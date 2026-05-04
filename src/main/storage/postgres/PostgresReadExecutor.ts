@@ -1,12 +1,60 @@
 import type { StorageReadExecutor, StorageReadTask } from '../read-executor'
+import type { PostgresAuditLogRepository } from './PostgresAuditLogRepository'
 import type { PostgresAvailableBuildsRepository } from './PostgresAvailableBuildsRepository'
+import type { PostgresAnalysisGroupsRepository } from './PostgresAnalysisGroupsRepository'
+import type { PostgresAnnotationsRepository } from './PostgresAnnotationsRepository'
 import type { PostgresCaseMetadataRepository } from './PostgresCaseMetadataRepository'
 import type { PostgresCasesQueryRepository } from './PostgresCasesQueryRepository'
+import type { PostgresCohortRepository } from './PostgresCohortRepository'
+import type { PostgresCommentsMetricsRepository } from './PostgresCommentsMetricsRepository'
+import type { PostgresExportRepository } from './PostgresExportRepository'
+import type { PostgresFilterPresetsRepository } from './PostgresFilterPresetsRepository'
+import type { PostgresOverviewRepository } from './PostgresOverviewRepository'
+import type { PostgresPanelsRepository } from './PostgresPanelsRepository'
+import type { PostgresShortlistService } from './PostgresShortlistService'
+import type { PostgresTagsRepository } from './PostgresTagsRepository'
 import type { PostgresVariantReadRepository } from './PostgresVariantReadRepository'
 
 interface PostgresReadExecutorRepositories {
   casesQuery: Pick<PostgresCasesQueryRepository, 'queryCases'>
   availableBuilds: Pick<PostgresAvailableBuildsRepository, 'getAvailableGenomeBuilds'>
+  overview: Pick<PostgresOverviewRepository, 'getOverview'>
+  export: Pick<PostgresExportRepository, 'streamVariantRows'>
+  cohort: Pick<
+    PostgresCohortRepository,
+    | 'queryVariants'
+    | 'getSummary'
+    | 'getColumnMeta'
+    | 'getCarriers'
+    | 'getGeneBurden'
+    | 'streamCohortRows'
+  >
+  tags: Pick<PostgresTagsRepository, 'listTags' | 'getTagUsageCount' | 'getVariantTags'>
+  annotations: Pick<
+    PostgresAnnotationsRepository,
+    'getGlobalAnnotation' | 'getPerCaseAnnotation' | 'getAnnotationsForVariant' | 'getBatch'
+  >
+  commentsMetrics: Pick<
+    PostgresCommentsMetricsRepository,
+    'listCaseComments' | 'listMetricDefinitions' | 'listCaseMetrics'
+  >
+  panels: Pick<
+    PostgresPanelsRepository,
+    | 'listPanels'
+    | 'getPanel'
+    | 'getGenes'
+    | 'getActivePanelsForCase'
+    | 'listGeneLists'
+    | 'getGeneListGenes'
+    | 'listRegionFiles'
+  >
+  filterPresets: Pick<PostgresFilterPresetsRepository, 'listPresets'>
+  shortlist: Pick<PostgresShortlistService, 'getShortlist'>
+  analysisGroups: Pick<
+    PostgresAnalysisGroupsRepository,
+    'listGroups' | 'getGroupWithMembers' | 'getGroupForCase'
+  >
+  audit: Pick<PostgresAuditLogRepository, 'getByEntityKey' | 'query'>
   caseMetadata: Pick<
     PostgresCaseMetadataRepository,
     | 'getCaseMetadata'
@@ -95,8 +143,118 @@ export class PostgresReadExecutor implements StorageReadExecutor {
       case 'variants:filterOptions':
         return await this.repositories.variants.getFilterOptions(task.params[0])
 
+      case 'variants:shortlist':
+        return await this.repositories.shortlist.getShortlist(task.params[0])
+
       case 'variants:columnMeta':
         return await this.repositories.variants.getColumnMeta(task.params[0], task.params[1])
+
+      case 'cohort:query':
+        return await this.repositories.cohort.queryVariants(task.params[0])
+
+      case 'cohort:summary':
+        return await this.repositories.cohort.getSummary()
+
+      case 'cohort:columnMeta':
+        return await this.repositories.cohort.getColumnMeta()
+
+      case 'cohort:carriers':
+        return await this.repositories.cohort.getCarriers(...task.params)
+
+      case 'cohort:geneBurden':
+        return await this.repositories.cohort.getGeneBurden()
+
+      case 'database:overview':
+        return await this.repositories.overview.getOverview()
+
+      case 'export:variants':
+        return this.repositories.export.streamVariantRows(task.params[0])
+
+      case 'export:cohort':
+        return this.repositories.cohort.streamCohortRows(task.params[0])
+
+      case 'tags:list':
+        return await this.repositories.tags.listTags()
+
+      case 'tags:getUsageCount':
+        return await this.repositories.tags.getTagUsageCount(task.params[0])
+
+      case 'tags:getVariantTags':
+        return await this.repositories.tags.getVariantTags(task.params[0], task.params[1])
+
+      case 'annotations:getGlobal':
+        return await this.repositories.annotations.getGlobalAnnotation(
+          task.params[0].chr,
+          task.params[0].pos,
+          task.params[0].ref,
+          task.params[0].alt
+        )
+
+      case 'annotations:getPerCase':
+        return await this.repositories.annotations.getPerCaseAnnotation(
+          task.params[0],
+          task.params[1]
+        )
+
+      case 'annotations:getForVariant':
+        return await this.repositories.annotations.getAnnotationsForVariant(
+          task.params[0],
+          task.params[1].chr,
+          task.params[1].pos,
+          task.params[1].ref,
+          task.params[1].alt
+        )
+
+      case 'annotations:batchGet':
+        return await this.repositories.annotations.getBatch(task.params[0], task.params[1])
+
+      case 'case-comments:list':
+        return await this.repositories.commentsMetrics.listCaseComments(task.params[0])
+
+      case 'case-metrics:listDefinitions':
+        return await this.repositories.commentsMetrics.listMetricDefinitions()
+
+      case 'case-metrics:listForCase':
+        return await this.repositories.commentsMetrics.listCaseMetrics(task.params[0])
+
+      case 'panels:list':
+        return await this.repositories.panels.listPanels()
+
+      case 'panels:get':
+        return await this.repositories.panels.getPanel(task.params[0])
+
+      case 'panels:getGenes':
+        return await this.repositories.panels.getGenes(task.params[0])
+
+      case 'panels:activeForCase':
+        return await this.repositories.panels.getActivePanelsForCase(task.params[0])
+
+      case 'gene-lists:list':
+        return await this.repositories.panels.listGeneLists()
+
+      case 'gene-lists:getGenes':
+        return await this.repositories.panels.getGeneListGenes(task.params[0])
+
+      case 'region-files:list':
+        return await this.repositories.panels.listRegionFiles()
+
+      case 'presets:list':
+        return await this.repositories.filterPresets.listPresets()
+
+      case 'analysis-groups:list':
+        return await this.repositories.analysisGroups.listGroups()
+
+      case 'analysis-groups:get':
+        return await this.repositories.analysisGroups.getGroupWithMembers(task.params[0])
+
+      case 'analysis-groups:getForCase':
+        return await this.repositories.analysisGroups.getGroupForCase(task.params[0])
+
+      case 'audit:getByEntity':
+        return await this.repositories.audit.getByEntityKey(task.params[0])
+
+      case 'audit:query':
+        return await this.repositories.audit.query(task.params[0])
     }
 
     const _exhaustive: never = task

@@ -3,6 +3,11 @@ import { useApiService } from './useApiService'
 import { buildFilterFromState, type FilterState, type ExportResult } from './filter-types'
 import { logService } from '../services/LogService'
 import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
+import { getCurrentUnsupportedReason } from '../utils/backend-capabilities'
+
+async function getVariantExportBlockReason(): Promise<string | null> {
+  return getCurrentUnsupportedReason('export.variants')
+}
 
 /**
  * Composable for variant export functionality.
@@ -19,6 +24,12 @@ export function useFilterExport(
     if (!api) {
       logService.warn('API not available - running outside Electron', 'export')
       return null
+    }
+
+    const reason = await getVariantExportBlockReason()
+    if (reason !== null) {
+      logService.warn(reason, 'backend-capabilities')
+      return { success: false, error: reason }
     }
 
     exporting.value = true

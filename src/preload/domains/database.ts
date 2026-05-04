@@ -10,6 +10,15 @@ export function createDatabaseApi(): DatabaseDomainContract {
     create: (path, password) => ipcRenderer.invoke('database:create', path, password),
     rekey: (newPassword) => ipcRenderer.invoke('database:rekey', newPassword),
     info: () => ipcRenderer.invoke('database:info'),
+    capabilities: () => ipcRenderer.invoke('database:capabilities'),
+    postgresDiagnostics: () => ipcRenderer.invoke('database:postgresDiagnostics'),
+    postgresProfilesList: () => ipcRenderer.invoke('database:postgresProfilesList'),
+    postgresProfileSave: (input) => ipcRenderer.invoke('database:postgresProfileSave', input),
+    postgresProfileRemove: (profileId) =>
+      ipcRenderer.invoke('database:postgresProfileRemove', profileId),
+    postgresProfileTest: (input) => ipcRenderer.invoke('database:postgresProfileTest', input),
+    postgresProfileOpen: (profileId) =>
+      ipcRenderer.invoke('database:postgresProfileOpen', profileId),
     recentList: () => ipcRenderer.invoke('database:recentList'),
     getOverview: () => ipcRenderer.invoke('database:overview'),
     removeRecent: (path) => ipcRenderer.invoke('database:removeRecent', path),

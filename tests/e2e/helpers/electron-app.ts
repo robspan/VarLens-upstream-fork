@@ -6,6 +6,7 @@ import { join, resolve } from 'path'
 export interface LaunchElectronAppOptions {
   perfMode?: boolean
   env?: Record<string, string | undefined>
+  isolationRoot?: string
 }
 
 export interface LaunchElectronAppResult {
@@ -21,7 +22,7 @@ export interface LaunchElectronAppResult {
 export async function launchElectronApp(
   options: LaunchElectronAppOptions = {}
 ): Promise<LaunchElectronAppResult> {
-  const isolationRoot = mkdtempSync(join(tmpdir(), 'varlens-e2e-'))
+  const isolationRoot = options.isolationRoot ?? mkdtempSync(join(tmpdir(), 'varlens-e2e-'))
   const userDataDir = join(isolationRoot, 'user-data')
   const appDataDir = join(isolationRoot, 'app-data')
   mkdirSync(userDataDir, { recursive: true })

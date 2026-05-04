@@ -1,5 +1,13 @@
 import type { DatabaseOverview } from '../../types/database-overview'
 import type { IpcResult } from '../../types/errors'
+import type {
+  PostgresConnectionProfileInput,
+  PostgresConnectionProfilePublic,
+  PostgresConnectionProfileSaveInput,
+  PostgresConnectionTestResult,
+  PostgresHealthDiagnosticResult
+} from '../../types/postgres-profile'
+import type { StorageCapabilities } from '../../types/storage-capabilities'
 
 export interface DatabaseInfo {
   path: string
@@ -31,6 +39,17 @@ export interface DatabaseDomainContract {
   create: (path: string, password?: string) => Promise<IpcResult<DatabaseOpenResult>>
   rekey: (newPassword: string) => Promise<IpcResult<DatabaseActionResult>>
   info: () => Promise<IpcResult<DatabaseInfo | null>>
+  capabilities: () => Promise<IpcResult<StorageCapabilities>>
+  postgresDiagnostics: () => Promise<IpcResult<PostgresHealthDiagnosticResult>>
+  postgresProfilesList: () => Promise<IpcResult<PostgresConnectionProfilePublic[]>>
+  postgresProfileSave: (
+    input: PostgresConnectionProfileSaveInput
+  ) => Promise<IpcResult<PostgresConnectionProfilePublic>>
+  postgresProfileRemove: (profileId: string) => Promise<IpcResult<DatabaseActionResult>>
+  postgresProfileTest: (
+    input: PostgresConnectionProfileInput
+  ) => Promise<IpcResult<PostgresConnectionTestResult>>
+  postgresProfileOpen: (profileId: string) => Promise<IpcResult<DatabaseOpenResult>>
   recentList: () => Promise<IpcResult<RecentDatabase[]>>
   getOverview: () => Promise<IpcResult<DatabaseOverview>>
   removeRecent: (path: string) => Promise<IpcResult<DatabaseActionResult>>

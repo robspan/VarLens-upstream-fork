@@ -45,4 +45,28 @@ describe('SqliteWriteExecutor', () => {
     ).resolves.toBeUndefined()
     expect(databaseService.metadata.deleteCaseExternalId).toHaveBeenCalledWith(1, 'MRN')
   })
+
+  it('rejects audit metadata instead of silently dropping it', async () => {
+    const databaseService = {
+      auditLog: {
+        appendEntry: vi.fn()
+      }
+    }
+    const executor = new SqliteWriteExecutor(databaseService as never)
+
+    await expect(
+      executor.execute({
+        type: 'audit:append',
+        params: [
+          {
+            action_type: 'star',
+            entity_type: 'variant_annotation',
+            entity_key: '1:100:A:G',
+            metadata: { source: 'postgres-only' }
+          }
+        ]
+      })
+    ).rejects.toThrow('SQLite audit append does not support metadata')
+    expect(databaseService.auditLog.appendEntry).not.toHaveBeenCalled()
+  })
 })

@@ -40,11 +40,20 @@ const MetricDeleteSchema = z.object({
  * Channels: case-metrics:listDefinitions, case-metrics:createDefinition,
  *           case-metrics:listForCase, case-metrics:upsert, case-metrics:delete
  */
-export function registerCaseMetricHandlers({ ipcMain, getDb }: HandlerDependencies): void {
+export function registerCaseMetricHandlers({
+  ipcMain,
+  getDb,
+  getDbManager
+}: HandlerDependencies): void {
   ipcMain.handle('case-metrics:listDefinitions', async () => {
     return wrapHandler(async () => {
-      const db = getDb()
-      return db.metadata.listMetricDefinitions()
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session
+          .getReadExecutor()
+          .execute({ type: 'case-metrics:listDefinitions', params: [] })
+      }
+      return getDb().metadata.listMetricDefinitions()
     })
   })
 
@@ -67,8 +76,19 @@ export function registerCaseMetricHandlers({ ipcMain, getDb }: HandlerDependenci
           throw new Error('Invalid parameters')
         }
 
-        const db = getDb()
-        return db.metadata.createMetricDefinition(
+        const session = getDbManager().getCurrentSession()
+        if (session.capabilities.backend === 'postgres') {
+          return await session.getWriteExecutor().execute({
+            type: 'case-metrics:createDefinition',
+            params: [
+              validated.data.name,
+              validated.data.valueType,
+              validated.data.unit,
+              validated.data.category
+            ]
+          })
+        }
+        return getDb().metadata.createMetricDefinition(
           validated.data.name,
           validated.data.valueType,
           validated.data.unit,
@@ -90,8 +110,13 @@ export function registerCaseMetricHandlers({ ipcMain, getDb }: HandlerDependenci
         throw new Error('Invalid parameters')
       }
 
-      const db = getDb()
-      return db.metadata.listCaseMetrics(validated.data)
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session
+          .getReadExecutor()
+          .execute({ type: 'case-metrics:listForCase', params: [validated.data] })
+      }
+      return getDb().metadata.listCaseMetrics(validated.data)
     })
   })
 
@@ -109,8 +134,14 @@ export function registerCaseMetricHandlers({ ipcMain, getDb }: HandlerDependenci
           throw new Error('Invalid parameters')
         }
 
-        const db = getDb()
-        return db.metadata.upsertCaseMetric(
+        const session = getDbManager().getCurrentSession()
+        if (session.capabilities.backend === 'postgres') {
+          return await session.getWriteExecutor().execute({
+            type: 'case-metrics:upsert',
+            params: [validated.data.caseId, validated.data.metricId, validated.data.value]
+          })
+        }
+        return getDb().metadata.upsertCaseMetric(
           validated.data.caseId,
           validated.data.metricId,
           validated.data.value
@@ -131,8 +162,15 @@ export function registerCaseMetricHandlers({ ipcMain, getDb }: HandlerDependenci
         throw new Error('Invalid parameters')
       }
 
-      const db = getDb()
-      db.metadata.deleteCaseMetric(validated.data.caseId, validated.data.metricId)
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        await session.getWriteExecutor().execute({
+          type: 'case-metrics:delete',
+          params: [validated.data.caseId, validated.data.metricId]
+        })
+        return undefined
+      }
+      getDb().metadata.deleteCaseMetric(validated.data.caseId, validated.data.metricId)
       return undefined
     })
   })

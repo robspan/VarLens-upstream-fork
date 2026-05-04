@@ -154,6 +154,7 @@ import type { ColumnFiltersParam } from '../../../shared/types/column-filters'
 import { mdiDatabaseSync, mdiRefresh } from '@mdi/js'
 import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 import type { AcmgClassification } from '../../../shared/config/domain.config'
+import { getCurrentUnsupportedReason } from '../utils/backend-capabilities'
 
 // Emit for navigation and row click
 const emit = defineEmits<{
@@ -208,6 +209,34 @@ const {
 const { prefs, resetToDefaults, toggleColumnVisibility, setColumnOrder } =
   useColumnPreferences('cohort-table')
 const { orderedColumns, visibleHeaders } = useCohortColumns(prefs)
+
+async function getCohortQueryBlockReason(): Promise<string | null> {
+  return getCurrentUnsupportedReason('cohort.query')
+}
+
+async function getCohortExportBlockReason(): Promise<string | null> {
+  return getCurrentUnsupportedReason('export.cohort')
+}
+
+async function fetchSupportedCohortSummary(): Promise<void> {
+  const reason = await getCurrentUnsupportedReason('cohort.summary')
+  if (reason !== null) {
+    logService.warn(reason, 'backend-capabilities')
+    return
+  }
+
+  await fetchSummary()
+}
+
+async function fetchSupportedCohortColumnMeta(): Promise<void> {
+  const reason = await getCurrentUnsupportedReason('cohort.columnMeta')
+  if (reason !== null) {
+    logService.warn(reason, 'backend-capabilities')
+    return
+  }
+
+  await fetchColumnMeta()
+}
 
 // Flow trace tracking
 let activeFlowTraceId: string | null = null
@@ -275,6 +304,12 @@ const {
       return { data: [], total_count: 0 }
     }
 
+    const reason = await getCohortQueryBlockReason()
+    if (reason !== null) {
+      logService.warn(reason, 'backend-capabilities')
+      throw new Error(reason)
+    }
+
     const sortKey = sortItems.length > 0 ? sortItems[0].key : undefined
     const sortOrder: 'asc' | 'desc' = sortItems.length > 0 ? sortItems[0].order : 'desc'
 
@@ -320,6 +355,20 @@ const snackbar = ref({
 const exportToExcel = async (): Promise<void> => {
   if (!api) {
     logService.warn('API not available - running outside Electron', 'cohort')
+    return
+  }
+
+  const reason = await getCohortExportBlockReason()
+  if (reason !== null) {
+    logService.warn(reason, 'backend-capabilities')
+    snackbar.value = {
+      visible: true,
+      message: reason,
+      color: 'error',
+      timeout: -1,
+      actionText: null,
+      actionCallback: null
+    }
     return
   }
 
@@ -588,8 +637,8 @@ watch(
       // and metadata.
       stopRebuildTimer(true)
       void invalidateAndReload()
-      void fetchSummary()
-      void fetchColumnMeta()
+      void fetchSupportedCohortSummary()
+      void fetchSupportedCohortColumnMeta()
     }
   },
   { immediate: true }
@@ -599,8 +648,8 @@ watch(
 // filtered/total from the start. Table data itself loads via v-data-table-server's
 // immediate update:options event, so we only need summary + meta here.
 onMounted(() => {
-  void fetchSummary()
-  void fetchColumnMeta()
+  void fetchSupportedCohortSummary()
+  void fetchSupportedCohortColumnMeta()
 })
 
 onUnmounted(() => {
@@ -621,7 +670,11 @@ onDeactivated(() => {
 
 // Expose refresh method — single entry point for all data loading
 const refresh = async () => {
-  await Promise.all([fetchSummary(), fetchColumnMeta(), invalidateAndReload()])
+  await Promise.all([
+    fetchSupportedCohortSummary(),
+    fetchSupportedCohortColumnMeta(),
+    invalidateAndReload()
+  ])
 }
 defineExpose({ refresh })
 </script>

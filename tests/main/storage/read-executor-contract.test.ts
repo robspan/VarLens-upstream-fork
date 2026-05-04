@@ -77,4 +77,13 @@ describe('StorageReadExecutor contract', () => {
 
     expect(tasks).toHaveLength(7)
   })
+
+  it('supports database overview and variant export read tasks', () => {
+    const tasks = [
+      { type: 'database:overview', params: [] },
+      { type: 'export:variants', params: [{ case_id: 1 }] }
+    ] satisfies StorageReadTask[]
+
+    expect(tasks).toHaveLength(2)
+  })
 })

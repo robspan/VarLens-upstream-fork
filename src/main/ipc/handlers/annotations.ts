@@ -11,6 +11,8 @@ import {
 } from '../../../shared/types/ipc-schemas'
 import { mainLogger } from '../../services/MainLogger'
 import type { AnnotationChangeEvent } from '../../../shared/types/api'
+import type { AuditAppendParams } from '../../storage/audit-log-types'
+import type { StorageWriteExecutor } from '../../storage/write-executor'
 import {
   getGlobalAnnotation,
   upsertGlobalAnnotation,
@@ -54,6 +56,88 @@ function detectAnnotationChangeKind(updates: {
   return 'comment'
 }
 
+async function appendAuditEntries(
+  writeExecutor: StorageWriteExecutor,
+  entries: AuditAppendParams[]
+): Promise<void> {
+  for (const entry of entries) {
+    await writeExecutor.execute({ type: 'audit:append', params: [entry] })
+  }
+}
+
+function globalAuditEntries(
+  coords: { chr: string; pos: number; ref: string; alt: string },
+  updates: {
+    user_name?: string | null
+    starred?: boolean
+    acmg_classification?: unknown
+    acmg_evidence?: unknown
+  },
+  oldAnnotation: Record<string, unknown> | null
+): AuditAppendParams[] {
+  const entityKey = `${coords.chr}:${coords.pos}:${coords.ref}:${coords.alt}`
+  const entries: AuditAppendParams[] = []
+  if (updates.acmg_classification !== undefined) {
+    entries.push({
+      action_type: 'acmg_classify',
+      entity_type: 'variant_annotation',
+      entity_key: entityKey,
+      old_value:
+        oldAnnotation === null
+          ? null
+          : JSON.stringify({ acmg_classification: oldAnnotation.acmg_classification }),
+      new_value: JSON.stringify({ acmg_classification: updates.acmg_classification }),
+      user_name: updates.user_name ?? null
+    })
+  }
+  if (updates.acmg_evidence !== undefined) {
+    entries.push({
+      action_type: 'acmg_evidence_update',
+      entity_type: 'variant_annotation',
+      entity_key: entityKey,
+      old_value:
+        oldAnnotation === null
+          ? null
+          : JSON.stringify({ acmg_evidence: oldAnnotation.acmg_evidence }),
+      new_value: JSON.stringify({ acmg_evidence: updates.acmg_evidence }),
+      user_name: updates.user_name ?? null
+    })
+  }
+  if (updates.starred !== undefined) {
+    entries.push({
+      action_type: updates.starred ? 'star' : 'unstar',
+      entity_type: 'variant_annotation',
+      entity_key: entityKey,
+      old_value: oldAnnotation === null ? null : JSON.stringify({ starred: oldAnnotation.starred }),
+      new_value: JSON.stringify({ starred: updates.starred ? 1 : 0 }),
+      user_name: updates.user_name ?? null
+    })
+  }
+  return entries
+}
+
+function perCaseAuditEntries(
+  caseId: number,
+  variantId: number,
+  updates: {
+    user_name?: string | null
+    starred?: boolean
+    acmg_classification?: unknown
+    acmg_evidence?: unknown
+  },
+  oldAnnotation: Record<string, unknown> | null
+): AuditAppendParams[] {
+  return globalAuditEntries(
+    { chr: 'case', pos: caseId, ref: 'variant', alt: String(variantId) },
+    updates,
+    oldAnnotation
+  ).map((entry) => ({
+    ...entry,
+    entity_type: 'case_variant_annotation',
+    entity_key: `case:${caseId}:variant:${variantId}`
+  }))
+}
+
 /**
  * Annotations IPC handlers
  * Channels: annotations:getGlobal, annotations:upsertGlobal, annotations:getPerCase,
@@ -63,7 +147,8 @@ function detectAnnotationChangeKind(updates: {
 export function registerAnnotationHandlers({
   ipcMain,
   getDb,
-  getDbPool
+  getDbPool,
+  getDbManager
 }: HandlerDependencies): void {
   /**
    * Get global annotation for a variant
@@ -82,6 +167,12 @@ export function registerAnnotationHandlers({
           throw new Error('Invalid variant coordinates')
         }
 
+        const session = getDbManager().getCurrentSession()
+        if (session.capabilities.backend === 'postgres') {
+          return await session
+            .getReadExecutor()
+            .execute({ type: 'annotations:getGlobal', params: [validated.data] })
+        }
         return getGlobalAnnotation(validated.data, getDb, getDbPool)
       })
     }
@@ -113,6 +204,24 @@ export function registerAnnotationHandlers({
           throw new Error('Invalid annotation updates')
         }
 
+        const session = getDbManager().getCurrentSession()
+        if (session.capabilities.backend === 'postgres') {
+          const readExecutor = session.getReadExecutor()
+          const writeExecutor = session.getWriteExecutor()
+          const oldAnnotation = (await readExecutor.execute({
+            type: 'annotations:getGlobal',
+            params: [validatedCoords.data]
+          })) as Record<string, unknown> | null
+          const result = await writeExecutor.execute({
+            type: 'annotations:upsertGlobal',
+            params: [validatedCoords.data, validatedUpdates.data]
+          })
+          await appendAuditEntries(
+            writeExecutor,
+            globalAuditEntries(validatedCoords.data, validatedUpdates.data, oldAnnotation)
+          )
+          return result
+        }
         return upsertGlobalAnnotation(validatedCoords.data, validatedUpdates.data, getDb)
       })
     }
@@ -135,6 +244,13 @@ export function registerAnnotationHandlers({
           throw new Error('Invalid variant coordinates')
         }
 
+        const session = getDbManager().getCurrentSession()
+        if (session.capabilities.backend === 'postgres') {
+          await session
+            .getWriteExecutor()
+            .execute({ type: 'annotations:deleteGlobal', params: [validated.data] })
+          return undefined
+        }
         deleteGlobalAnnotation(validated.data, getDb)
         return undefined
       })
@@ -156,6 +272,13 @@ export function registerAnnotationHandlers({
         throw new Error('Invalid case/variant ID')
       }
 
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session.getReadExecutor().execute({
+          type: 'annotations:getPerCase',
+          params: [validated.data.caseId, validated.data.variantId]
+        })
+      }
       return getPerCaseAnnotation(validated.data.caseId, validated.data.variantId, getDb, getDbPool)
     })
   })
@@ -187,12 +310,36 @@ export function registerAnnotationHandlers({
           throw new Error('Invalid annotation updates')
         }
 
-        const result = upsertPerCaseAnnotation(
-          validatedIds.data.caseId,
-          validatedIds.data.variantId,
-          validatedUpdates.data,
-          getDb
-        )
+        const session = getDbManager().getCurrentSession()
+        let result: unknown
+        if (session.capabilities.backend === 'postgres') {
+          const readExecutor = session.getReadExecutor()
+          const writeExecutor = session.getWriteExecutor()
+          const oldAnnotation = (await readExecutor.execute({
+            type: 'annotations:getPerCase',
+            params: [validatedIds.data.caseId, validatedIds.data.variantId]
+          })) as Record<string, unknown> | null
+          result = await writeExecutor.execute({
+            type: 'annotations:upsertPerCase',
+            params: [validatedIds.data.caseId, validatedIds.data.variantId, validatedUpdates.data]
+          })
+          await appendAuditEntries(
+            writeExecutor,
+            perCaseAuditEntries(
+              validatedIds.data.caseId,
+              validatedIds.data.variantId,
+              validatedUpdates.data,
+              oldAnnotation
+            )
+          )
+        } else {
+          result = upsertPerCaseAnnotation(
+            validatedIds.data.caseId,
+            validatedIds.data.variantId,
+            validatedUpdates.data,
+            getDb
+          )
+        }
 
         // Broadcast AFTER the logic-layer write succeeds. If the call above
         // throws, `wrapHandler` catches it and this line never runs — the
@@ -225,6 +372,14 @@ export function registerAnnotationHandlers({
           throw new Error('Invalid case/variant ID')
         }
 
+        const session = getDbManager().getCurrentSession()
+        if (session.capabilities.backend === 'postgres') {
+          await session.getWriteExecutor().execute({
+            type: 'annotations:deletePerCase',
+            params: [validated.data.caseId, validated.data.variantId]
+          })
+          return undefined
+        }
         deletePerCaseAnnotation(validated.data.caseId, validated.data.variantId, getDb)
         return undefined
       })
@@ -257,6 +412,13 @@ export function registerAnnotationHandlers({
           throw new Error('Invalid variant coordinates')
         }
 
+        const session = getDbManager().getCurrentSession()
+        if (session.capabilities.backend === 'postgres') {
+          return await session.getReadExecutor().execute({
+            type: 'annotations:getForVariant',
+            params: [validatedCaseId.data, validatedCoords.data]
+          })
+        }
         return getAnnotationsForVariant(
           validatedCaseId.data,
           validatedCoords.data,
@@ -290,6 +452,13 @@ export function registerAnnotationHandlers({
         throw new Error('Invalid variantKeys parameter')
       }
 
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session.getReadExecutor().execute({
+          type: 'annotations:batchGet',
+          params: [validatedCaseId.data, validatedKeys.data]
+        })
+      }
       return batchGetAnnotations(validatedCaseId.data, validatedKeys.data, getDb, getDbPool)
     })
   })

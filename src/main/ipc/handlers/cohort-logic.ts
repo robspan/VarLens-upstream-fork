@@ -12,11 +12,14 @@ import type { CohortService } from '../../database/cohort'
 import type { DatabaseService } from '../../database/DatabaseService'
 import type { DbPool } from '../../database/DbPool'
 import type { RebuildWorkerResponse, RebuildPhase } from '../../workers/rebuild-summary-worker'
+import type { StorageSession } from '../../storage/session'
 import { AssociationEngine } from '../../statistics/AssociationEngine'
 import { computePanelIntervals } from './panelIntervalHelper'
 import { convertBigInts } from '../../utils/convertBigInts'
 import type { ValidatedCohortSearchParams } from '../../../shared/types/ipc-schemas'
 import type { AssociationConfig } from '../../statistics/types'
+
+type GetSession = () => StorageSession
 
 /** Progress payload emitted during a cohort summary rebuild. */
 export interface CohortRebuildProgressData {
@@ -41,6 +44,13 @@ export interface CohortCallbacks {
 
 // Keep a reference for cancellation
 let activeEngine: AssociationEngine | null = null
+
+function getPostgresSession(getSession?: GetSession): StorageSession | undefined {
+  if (getSession === undefined) return undefined
+
+  const session = getSession()
+  return session.capabilities.backend === 'postgres' ? session : undefined
+}
 
 /**
  * Spawn a worker thread to rebuild the cohort summary.
@@ -115,7 +125,8 @@ export function spawnRebuildWorker(
 export async function queryCohortVariants(
   params: ValidatedCohortSearchParams,
   getDb: () => DatabaseService,
-  getDbPool?: () => DbPool | null
+  getDbPool?: () => DbPool | null,
+  getSession?: GetSession
 ): Promise<unknown> {
   const cohortParams = { ...params } as typeof params & {
     panel_intervals?: Array<{ chr: string; start: number; end: number }>
@@ -127,6 +138,15 @@ export async function queryCohortVariants(
   // The renderer populates this from the cohort view's genome build selector,
   // which is seeded from cases:availableBuilds.
   cohortParams.genome_build = cohortParams.genome_build ?? 'GRCh38'
+
+  const postgresSession = getPostgresSession(getSession)
+  if (postgresSession !== undefined) {
+    const result = await postgresSession.getReadExecutor().execute({
+      type: 'cohort:query',
+      params: [cohortParams]
+    })
+    return convertBigInts(result)
+  }
 
   const pool = getDbPool?.()
 
@@ -171,8 +191,17 @@ export async function queryCohortVariants(
  */
 export async function getColumnMeta(
   getDb: () => DatabaseService,
-  getDbPool?: () => DbPool | null
+  getDbPool?: () => DbPool | null,
+  getSession?: GetSession
 ): Promise<unknown> {
+  const postgresSession = getPostgresSession(getSession)
+  if (postgresSession !== undefined) {
+    return await postgresSession.getReadExecutor().execute({
+      type: 'cohort:columnMeta',
+      params: []
+    })
+  }
+
   const pool = getDbPool?.()
   if (pool) {
     return await pool.run({ type: 'cohort:columnMeta', params: [] })
@@ -187,8 +216,18 @@ export async function getColumnMeta(
  */
 export async function getCohortSummary(
   getDb: () => DatabaseService,
-  getDbPool?: () => DbPool | null
+  getDbPool?: () => DbPool | null,
+  getSession?: GetSession
 ): Promise<unknown> {
+  const postgresSession = getPostgresSession(getSession)
+  if (postgresSession !== undefined) {
+    const summary = await postgresSession.getReadExecutor().execute({
+      type: 'cohort:summary',
+      params: []
+    })
+    return convertBigInts(summary)
+  }
+
   const pool = getDbPool?.()
   let summary: ReturnType<CohortService['getCohortSummary']>
   if (pool) {
@@ -210,8 +249,18 @@ export async function getCarriers(
   ref: string,
   alt: string,
   getDb: () => DatabaseService,
-  getDbPool?: () => DbPool | null
+  getDbPool?: () => DbPool | null,
+  getSession?: GetSession
 ): Promise<unknown> {
+  const postgresSession = getPostgresSession(getSession)
+  if (postgresSession !== undefined) {
+    const carriers = await postgresSession.getReadExecutor().execute({
+      type: 'cohort:carriers',
+      params: [chr, pos, ref, alt]
+    })
+    return convertBigInts(carriers)
+  }
+
   const pool = getDbPool?.()
   let carriers: ReturnType<CohortService['getCarriers']>
   if (pool) {
@@ -232,8 +281,17 @@ export async function getCarriers(
  */
 export async function getGeneBurden(
   getDb: () => DatabaseService,
-  getDbPool?: () => DbPool | null
+  getDbPool?: () => DbPool | null,
+  getSession?: GetSession
 ): Promise<unknown> {
+  const postgresSession = getPostgresSession(getSession)
+  if (postgresSession !== undefined) {
+    return await postgresSession.getReadExecutor().execute({
+      type: 'cohort:geneBurden',
+      params: []
+    })
+  }
+
   const pool = getDbPool?.()
   if (pool) {
     return await pool.run({ type: 'cohort:geneBurden', params: [] })

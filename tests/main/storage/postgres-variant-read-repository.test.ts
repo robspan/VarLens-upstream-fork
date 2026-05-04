@@ -45,20 +45,37 @@ describe('PostgresVariantReadRepository', () => {
   })
 
   it.each([
-    ['tag_ids', { tag_ids: [1] }],
-    ['starred_only', { starred_only: true }],
-    ['has_comment', { has_comment: true }],
-    ['acmg_classifications', { acmg_classifications: ['Pathogenic'] }],
-    ['annotation_scope', { annotation_scope: 'all' }],
-    ['active_panel_ids', { active_panel_ids: [1] }],
-    ['panel_intervals', { panel_intervals: [{ chr: '1', start: 1, end: 2 }] }],
-    ['inheritance_modes', { inheritance_modes: ['de_novo'] }]
-  ])('rejects unsupported postgres variant filter %s', async (_name, filter) => {
-    const repository = new PostgresVariantReadRepository({ query: vi.fn() } as never, 'public')
+    ['tag_ids', { tag_ids: [1] }, 'variant_tags'],
+    ['starred_only', { starred_only: true }, 'case_variant_annotations'],
+    ['has_comment', { has_comment: true }, 'per_case_comment'],
+    ['acmg_classifications', { acmg_classifications: ['Pathogenic'] }, 'acmg_classification'],
+    [
+      'annotation_scope all',
+      { starred_only: true, annotation_scope: 'all' },
+      'variant_annotations'
+    ],
+    ['active_panel_ids', { active_panel_ids: [1] }, 'case_active_panels'],
+    ['inheritance_modes', { inheritance_modes: ['heterozygous'] }, 'gt_num'],
+    [
+      'analysis_group_id',
+      { inheritance_modes: ['de_novo'], analysis_group_id: 7 },
+      'analysis_group_members'
+    ],
+    ['consider_phasing', { consider_phasing: true }, 'variants']
+  ])('supports postgres variant filter %s', async (_name, filter, expectedSql) => {
+    const pool = {
+      query: vi
+        .fn()
+        .mockResolvedValueOnce({ rows: [{ count: '0' }] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ count: '0' }] })
+    }
+    const repository = new PostgresVariantReadRepository(pool as never, 'public')
 
     await expect(
       repository.queryVariants({ case_id: 1, ...filter }, 25, 0, undefined, false, false)
-    ).rejects.toThrow('Unsupported PostgreSQL variant filter')
+    ).resolves.toMatchObject({ data: [] })
+    expect(pool.query.mock.calls.map(([sql]) => String(sql)).join('\n')).toContain(expectedSql)
   })
 
   it('queries variants with supported filters, sorting, counts, and unfiltered count', async () => {
@@ -224,31 +241,39 @@ describe('PostgresVariantReadRepository', () => {
     })
   })
 
+  it('supports extension column filters with the required extension join', async () => {
+    const pool = { query: vi.fn().mockResolvedValue({ rows: [] }) }
+    const repository = new PostgresVariantReadRepository(pool as never, 'public')
+
+    await repository.queryVariants(
+      { case_id: 1, column_filters: { 'sv.support': { operator: '>', value: 1 } } },
+      25,
+      0,
+      undefined,
+      false,
+      false
+    )
+
+    const sql = pool.query.mock.calls[0][0] as string
+    expect(sql).toContain('"variant_sv" sv')
+    expect(sql).toContain('sv.support >')
+    expect(sql).not.toContain('sv.support IS NULL')
+  })
+
   it('rejects unsupported postgres column filter keys instead of ignoring them', async () => {
     const pool = { query: vi.fn().mockResolvedValue({ rows: [] }) }
     const repository = new PostgresVariantReadRepository(pool as never, 'public')
 
     await expect(
       repository.queryVariants(
-        { case_id: 1, column_filters: { 'sv.support': { operator: '>', value: 1 } } },
+        { case_id: 1, column_filters: { 'sv.does_not_exist': { operator: '>', value: 1 } } },
         25,
         0,
         undefined,
         false,
         false
       )
-    ).rejects.toThrow('Unsupported PostgreSQL column filter(s): sv.support')
+    ).rejects.toThrow('Unsupported PostgreSQL column filter(s): sv.does_not_exist')
     expect(pool.query).not.toHaveBeenCalled()
-  })
-
-  it('fails filter metadata reads with explicit Phase 7 deferral errors', async () => {
-    const repository = new PostgresVariantReadRepository({ query: vi.fn() } as never, 'public')
-
-    await expect(repository.getFilterOptions(1)).rejects.toThrow(
-      'PostgreSQL variants:filterOptions is deferred from Phase 7'
-    )
-    await expect(repository.getColumnMeta({ caseId: 1 }, 'cadd')).rejects.toThrow(
-      'PostgreSQL variants:columnMeta is deferred from Phase 7'
-    )
   })
 })

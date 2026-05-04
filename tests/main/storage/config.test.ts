@@ -4,6 +4,7 @@ import {
   buildPostgresClientConfig,
   buildPostgresConnectionLabel,
   buildPostgresPoolConfig,
+  buildPostgresStorageConfigFromProfile,
   getPostgresStorageConfig,
   redactPostgresConnectionUrl
 } from '../../../src/main/storage/config'
@@ -171,6 +172,43 @@ describe('buildPostgresPoolConfig', () => {
     })
 
     expect(() => buildPostgresPoolConfig(config!)).toThrow('VARLENS_PG_SSL_MODE=prefer')
+  })
+})
+
+describe('buildPostgresStorageConfigFromProfile', () => {
+  it('builds a pg config with secret material only from the secret input', () => {
+    const config = buildPostgresStorageConfigFromProfile(
+      {
+        id: 'profile-1',
+        name: 'Lab PG',
+        host: 'db.example.org',
+        port: 5432,
+        database: 'varlens',
+        username: 'varlens_app',
+        schema: 'workspace_a',
+        sslMode: 'require-verify',
+        poolMax: 3,
+        connectionTimeoutMillis: 4000,
+        statementTimeoutMs: 25000,
+        lockTimeoutMs: 2000,
+        idleInTransactionSessionTimeoutMs: 9000,
+        caCertificateConfigured: true
+      },
+      { password: 'secret', caCertificatePem: 'pem' }
+    )
+
+    expect(config).toMatchObject({
+      schema: 'workspace_a',
+      sslMode: 'require',
+      caCertificatePem: 'pem',
+      poolMax: 3,
+      connectionTimeoutMillis: 4000,
+      statementTimeoutMs: 25000,
+      queryTimeoutMs: 25000,
+      lockTimeoutMs: 2000,
+      idleInTransactionSessionTimeoutMs: 9000
+    })
+    expect(config.url).toContain('varlens_app:secret@db.example.org:5432/varlens')
   })
 })
 

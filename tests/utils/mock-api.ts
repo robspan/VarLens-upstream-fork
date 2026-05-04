@@ -7,6 +7,7 @@
 
 import { vi, type Mock } from 'vitest'
 import type { WindowAPI } from '../../src/shared/types/api'
+import type { StorageCapabilities } from '../../src/shared/types/storage-capabilities'
 
 type MockApiDomain<T extends Record<string, unknown>> = {
   [K in keyof T]: T[K] extends (...args: infer Args) => infer Result
@@ -51,6 +52,75 @@ export type MockApi = {
   auth: MockApiDomain<WindowAPI['auth']>
   analysisGroups: MockApiDomain<WindowAPI['analysisGroups']>
   perf: MockApiDomain<WindowAPI['perf']>
+}
+
+const TEST_SQLITE_CAPABILITIES: StorageCapabilities = {
+  backend: 'sqlite',
+  workspace: {
+    localFileLifecycle: true,
+    hostedConnectionLifecycle: false,
+    encryptionAtRest: true,
+    migrations: true,
+    healthDiagnostics: true
+  },
+  cases: {
+    list: true,
+    query: true,
+    deleteOne: true,
+    deleteMany: true,
+    deleteAll: true,
+    overview: true
+  },
+  imports: {
+    json: true,
+    vcf: true,
+    multiFileVcf: true,
+    bedFilters: true,
+    cancellation: true
+  },
+  variants: {
+    query: true,
+    searchQuery: true,
+    legacySearch: true,
+    filterOptions: true,
+    columnMeta: true,
+    typeCounts: true,
+    typesPresent: true,
+    geneSymbols: true,
+    panelFilters: true,
+    tagFilters: true,
+    commentFilters: true,
+    acmgFilters: true,
+    annotationFilters: true,
+    inheritanceFilters: true,
+    analysisGroupFilters: true,
+    phasingFilters: true
+  },
+  workflow: {
+    tags: true,
+    annotations: true,
+    caseComments: true,
+    caseMetrics: true,
+    filterPresets: true,
+    panels: true,
+    geneLists: true,
+    regionFiles: true,
+    analysisGroups: true,
+    auditLog: true
+  },
+  cohort: {
+    query: true,
+    summary: true,
+    rebuild: true,
+    carriers: true,
+    geneBurden: true,
+    columnMeta: true
+  },
+  export: {
+    variants: true,
+    cohort: true,
+    streaming: true
+  }
 }
 
 /**
@@ -110,6 +180,20 @@ export function createMockApi(): MockApi {
       create: vi.fn().mockResolvedValue({ success: true }),
       rekey: vi.fn().mockResolvedValue({ success: true }),
       info: vi.fn().mockResolvedValue({ path: '/tmp/test.db', encrypted: false }),
+      capabilities: vi.fn().mockResolvedValue(TEST_SQLITE_CAPABILITIES),
+      postgresDiagnostics: vi.fn().mockResolvedValue({ ok: false, schema: '' }),
+      postgresProfilesList: vi.fn().mockResolvedValue([]),
+      postgresProfileSave: vi.fn().mockImplementation((input) => {
+        const { secrets, ...profile } = input
+        return Promise.resolve({
+          id: 'mock-postgres-profile',
+          ...profile,
+          caCertificateConfigured: Boolean(secrets?.caCertificatePem)
+        })
+      }),
+      postgresProfileRemove: vi.fn().mockResolvedValue({ success: true }),
+      postgresProfileTest: vi.fn().mockResolvedValue({ ok: false, schema: '' }),
+      postgresProfileOpen: vi.fn().mockResolvedValue({ success: true }),
       recentList: vi.fn().mockResolvedValue([])
     },
 

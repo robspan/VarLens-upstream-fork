@@ -13,13 +13,22 @@ import { mainLogger } from '../../services/MainLogger'
 /**
  * Gene Lists and Region Files IPC handlers
  */
-export function registerGeneListHandlers({ ipcMain, getDb, getDbPool }: HandlerDependencies): void {
+export function registerGeneListHandlers({
+  ipcMain,
+  getDb,
+  getDbPool,
+  getDbManager
+}: HandlerDependencies): void {
   // ============================================================
   // Gene Lists
   // ============================================================
 
   ipcMain.handle('gene-lists:list', async () => {
     return wrapHandler(async () => {
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session.getReadExecutor().execute({ type: 'gene-lists:list', params: [] })
+      }
       const pool = getDbPool?.()
       if (pool) {
         return await pool.run({ type: 'gene-lists:list' as const, params: [] })
@@ -41,8 +50,14 @@ export function registerGeneListHandlers({ ipcMain, getDb, getDbPool }: HandlerD
         throw new Error('Invalid gene list parameters')
       }
 
-      const db = getDb()
-      return db.geneLists.createGeneList(validated.data.name, validated.data.description)
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session.getWriteExecutor().execute({
+          type: 'gene-lists:create',
+          params: [validated.data.name, validated.data.description]
+        })
+      }
+      return getDb().geneLists.createGeneList(validated.data.name, validated.data.description)
     })
   })
 
@@ -55,8 +70,14 @@ export function registerGeneListHandlers({ ipcMain, getDb, getDbPool }: HandlerD
         throw new Error('Invalid gene list ID')
       }
 
-      const db = getDb()
-      db.geneLists.deleteGeneList(validated.data)
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        await session
+          .getWriteExecutor()
+          .execute({ type: 'gene-lists:delete', params: [validated.data] })
+        return undefined
+      }
+      getDb().geneLists.deleteGeneList(validated.data)
       return undefined
     })
   })
@@ -73,6 +94,12 @@ export function registerGeneListHandlers({ ipcMain, getDb, getDbPool }: HandlerD
         throw new Error('Invalid gene list ID')
       }
 
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session
+          .getReadExecutor()
+          .execute({ type: 'gene-lists:getGenes', params: [validated.data] })
+      }
       const pool = getDbPool?.()
       if (pool) {
         return await pool.run({ type: 'gene-lists:getGenes' as const, params: [validated.data] })
@@ -94,6 +121,16 @@ export function registerGeneListHandlers({ ipcMain, getDb, getDbPool }: HandlerD
         throw new Error('Invalid gene list parameters')
       }
 
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        await session.getWriteExecutor().execute({
+          type: 'gene-lists:setGenes',
+          params: [validated.data.listId, validated.data.genes]
+        })
+        return await session
+          .getReadExecutor()
+          .execute({ type: 'gene-lists:getGenes', params: [validated.data.listId] })
+      }
       const db = getDb()
       db.geneLists.setGeneListGenes(validated.data.listId, validated.data.genes)
       return db.geneLists.getGeneListGenes(validated.data.listId)
@@ -106,6 +143,10 @@ export function registerGeneListHandlers({ ipcMain, getDb, getDbPool }: HandlerD
 
   ipcMain.handle('region-files:list', async () => {
     return wrapHandler(async () => {
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session.getReadExecutor().execute({ type: 'region-files:list', params: [] })
+      }
       const pool = getDbPool?.()
       if (pool) {
         return await pool.run({ type: 'region-files:list' as const, params: [] })
@@ -127,8 +168,17 @@ export function registerGeneListHandlers({ ipcMain, getDb, getDbPool }: HandlerD
         throw new Error('Invalid region file parameters')
       }
 
-      const db = getDb()
-      return db.geneLists.createRegionFile(validated.data.name, validated.data.description ?? null)
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session.getWriteExecutor().execute({
+          type: 'region-files:create',
+          params: [validated.data.name, validated.data.description ?? null]
+        })
+      }
+      return getDb().geneLists.createRegionFile(
+        validated.data.name,
+        validated.data.description ?? null
+      )
     })
   })
 
@@ -141,8 +191,14 @@ export function registerGeneListHandlers({ ipcMain, getDb, getDbPool }: HandlerD
         throw new Error('Invalid region file ID')
       }
 
-      const db = getDb()
-      db.geneLists.deleteRegionFile(validated.data)
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        await session
+          .getWriteExecutor()
+          .execute({ type: 'region-files:delete', params: [validated.data] })
+        return undefined
+      }
+      getDb().geneLists.deleteRegionFile(validated.data)
       return undefined
     })
   })
@@ -187,8 +243,14 @@ export function registerGeneListHandlers({ ipcMain, getDb, getDbPool }: HandlerD
         }
       }
 
-      const db = getDb()
-      return db.geneLists.importBedEntries(validated.data.fileId, entries)
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session.getWriteExecutor().execute({
+          type: 'region-files:importBed',
+          params: [validated.data.fileId, entries]
+        })
+      }
+      return getDb().geneLists.importBedEntries(validated.data.fileId, entries)
     })
   })
 }

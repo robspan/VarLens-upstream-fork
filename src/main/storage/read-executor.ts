@@ -1,5 +1,9 @@
 import type { SortItem, VariantFilter } from '../../shared/types/database'
+import type { CohortSearchParams } from '../../shared/types/cohort'
 import type { ValidatedCaseSearchParams } from '../../shared/types/ipc-schemas'
+import type { VariantCoords, VariantKey } from '../ipc/handlers/annotations-logic'
+import type { AuditQueryParams } from './audit-log-types'
+import type { GetShortlistParams } from '../database/ShortlistService'
 
 export type { AvailableBuild } from '../../shared/types/database'
 
@@ -41,10 +45,48 @@ export type StorageReadTask =
       ]
     }
   | { type: 'variants:filterOptions'; params: [caseId: number] }
+  | { type: 'variants:shortlist'; params: [params: GetShortlistParams] }
   | {
       type: 'variants:columnMeta'
       params: [scope: { caseId: number } | { caseIds: number[] }, columnKey: string]
     }
+  | { type: 'cohort:query'; params: [params: CohortSearchParams] }
+  | { type: 'cohort:summary'; params: [] }
+  | { type: 'cohort:columnMeta'; params: [] }
+  | { type: 'cohort:carriers'; params: [chr: string, pos: number, ref: string, alt: string] }
+  | { type: 'cohort:geneBurden'; params: [] }
+  | { type: 'database:overview'; params: [] }
+  | { type: 'export:variants'; params: [filter: VariantFilter] }
+  | { type: 'export:cohort'; params: [params: CohortSearchParams] }
+  | { type: 'tags:list'; params: [] }
+  | { type: 'tags:getUsageCount'; params: [tagId: number] }
+  | { type: 'tags:getVariantTags'; params: [caseId: number, variantId: number] }
+  | { type: 'annotations:getGlobal'; params: [coords: VariantCoords] }
+  | { type: 'annotations:getPerCase'; params: [caseId: number, variantId: number] }
+  | {
+      type: 'annotations:getForVariant'
+      params: [caseId: number, coords: VariantCoords]
+    }
+  | {
+      type: 'annotations:batchGet'
+      params: [caseId: number | null, variantKeys: VariantKey[]]
+    }
+  | { type: 'case-comments:list'; params: [caseId: number] }
+  | { type: 'case-metrics:listDefinitions'; params: [] }
+  | { type: 'case-metrics:listForCase'; params: [caseId: number] }
+  | { type: 'panels:list'; params: [] }
+  | { type: 'panels:get'; params: [panelId: number] }
+  | { type: 'panels:getGenes'; params: [panelId: number] }
+  | { type: 'panels:activeForCase'; params: [caseId: number] }
+  | { type: 'gene-lists:list'; params: [] }
+  | { type: 'gene-lists:getGenes'; params: [listId: number] }
+  | { type: 'region-files:list'; params: [] }
+  | { type: 'presets:list'; params: [] }
+  | { type: 'analysis-groups:list'; params: [] }
+  | { type: 'analysis-groups:get'; params: [groupId: number] }
+  | { type: 'analysis-groups:getForCase'; params: [caseId: number] }
+  | { type: 'audit:getByEntity'; params: [entityKey: string] }
+  | { type: 'audit:query'; params: [params: AuditQueryParams] }
 
 export interface StorageReadExecutor {
   execute(task: StorageReadTask): Promise<unknown>

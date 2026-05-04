@@ -3,6 +3,11 @@
 Files in this directory are mounted into `/docker-entrypoint-initdb.d` by
 `docker-compose.postgres.yml`.
 
+Runtime PostgreSQL schema creation is owned by
+`src/main/storage/postgres/migrations/`. This folder is retained only for local
+Docker bootstrap compatibility and must not be updated independently from
+migrations.
+
 They run only when Docker initializes a fresh `varlens_postgres_data` volume.
 If the named volume already exists, PostgreSQL skips these scripts on startup.
 

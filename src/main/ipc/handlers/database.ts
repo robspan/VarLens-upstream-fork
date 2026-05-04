@@ -6,7 +6,9 @@
  * Dialog operations and shell access stay in this handler layer.
  */
 
-import { dialog, shell } from 'electron'
+import { app, dialog, safeStorage, shell } from 'electron'
+import { mkdir, readFile, writeFile } from 'fs/promises'
+import { dirname, join } from 'path'
 import { wrapHandler } from '../errorHandler'
 import type { HandlerDependencies } from '../types'
 import { mainLogger } from '../../services/MainLogger'
@@ -22,23 +24,172 @@ import {
   createDatabase,
   rekeyDatabase,
   getDatabaseInfo,
+  getDatabaseCapabilities,
+  getPostgresDiagnostics,
   getRecentDatabases,
   getDatabaseOverview,
   removeRecentDatabase,
-  deleteDbFile
+  deleteDbFile,
+  listPostgresProfiles,
+  savePostgresProfile,
+  removePostgresProfile,
+  testPostgresProfile,
+  openPostgresProfile,
+  createDefaultPostgresPool,
+  createPostgresStorageSession,
+  PostgresProfileIdSchema
 } from './database-logic'
 import type { DatabaseLifecycleCallbacks } from './database-logic'
+import { PostgresProfileStore, type SecretStore } from '../../storage/postgres/PostgresProfileStore'
+import {
+  PostgresConnectionProfileInputSchema,
+  PostgresConnectionProfileSaveInputSchema
+} from '../../storage/postgres/postgres-profile-validation'
 
 /** Shared lifecycle callbacks wiring pool init and cohort rebuild. */
 const lifecycleCallbacks: DatabaseLifecycleCallbacks = {
   triggerStartupRebuild: (db) => triggerStartupRebuildIfNeeded(db)
 }
 
+interface EncryptedSecretFile {
+  secrets?: Record<string, string>
+}
+
+class ElectronSafeStorageSecretStore implements SecretStore {
+  constructor(private readonly secretPath: string) {}
+
+  async set(key: string, value: string): Promise<void> {
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error('Secure credential storage is not available on this system')
+    }
+
+    const data = await this.readSecrets()
+    data.secrets[key] = safeStorage.encryptString(value).toString('base64')
+    await this.writeSecrets(data)
+  }
+
+  async get(key: string): Promise<string | null> {
+    const data = await this.readSecrets()
+    const encrypted = data.secrets[key]
+    if (encrypted === undefined) {
+      return null
+    }
+
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error('Secure credential storage is not available on this system')
+    }
+
+    return safeStorage.decryptString(Buffer.from(encrypted, 'base64'))
+  }
+
+  async delete(key: string): Promise<void> {
+    const data = await this.readSecrets()
+    delete data.secrets[key]
+    await this.writeSecrets(data)
+  }
+
+  private async readSecrets(): Promise<{ secrets: Record<string, string> }> {
+    try {
+      const raw = await readFile(this.secretPath, 'utf8')
+      const parsed = JSON.parse(raw) as EncryptedSecretFile
+      return {
+        secrets:
+          parsed.secrets !== undefined && typeof parsed.secrets === 'object' ? parsed.secrets : {}
+      }
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        return { secrets: {} }
+      }
+      throw error
+    }
+  }
+
+  private async writeSecrets(data: { secrets: Record<string, string> }): Promise<void> {
+    await mkdir(dirname(this.secretPath), { recursive: true })
+    await writeFile(this.secretPath, JSON.stringify(data, null, 2), 'utf8')
+  }
+}
+
+class InsecureLocalPostgresSecretStore implements SecretStore {
+  constructor(private readonly secretPath: string) {}
+
+  async set(key: string, value: string): Promise<void> {
+    const data = await this.readSecrets()
+    data.secrets[key] = value
+    await this.writeSecrets(data)
+  }
+
+  async get(key: string): Promise<string | null> {
+    const data = await this.readSecrets()
+    return data.secrets[key] ?? null
+  }
+
+  async delete(key: string): Promise<void> {
+    const data = await this.readSecrets()
+    delete data.secrets[key]
+    await this.writeSecrets(data)
+  }
+
+  private async readSecrets(): Promise<{ secrets: Record<string, string> }> {
+    try {
+      const raw = await readFile(this.secretPath, 'utf8')
+      const parsed = JSON.parse(raw) as EncryptedSecretFile
+      return {
+        secrets:
+          parsed.secrets !== undefined && typeof parsed.secrets === 'object' ? parsed.secrets : {}
+      }
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        return { secrets: {} }
+      }
+      throw error
+    }
+  }
+
+  private async writeSecrets(data: { secrets: Record<string, string> }): Promise<void> {
+    await mkdir(dirname(this.secretPath), { recursive: true })
+    await writeFile(this.secretPath, JSON.stringify(data, null, 2), 'utf8')
+  }
+}
+
+let defaultPostgresProfileStore: PostgresProfileStore | null = null
+
+function getDefaultPostgresProfileStore(): PostgresProfileStore {
+  if (defaultPostgresProfileStore === null) {
+    const userDataPath = app.getPath('userData')
+    const secretStore =
+      process.env.VARLENS_POSTGRES_PROFILE_SECRET_STORE === 'insecure-local'
+        ? createInsecureLocalPostgresSecretStore(userDataPath)
+        : new ElectronSafeStorageSecretStore(join(userDataPath, 'varlens-postgres-secrets.json'))
+
+    defaultPostgresProfileStore = new PostgresProfileStore(
+      join(userDataPath, 'varlens-postgres-profiles.json'),
+      secretStore
+    )
+  }
+
+  return defaultPostgresProfileStore
+}
+
+function createInsecureLocalPostgresSecretStore(userDataPath: string): SecretStore {
+  if (app.isPackaged) {
+    throw new Error('Insecure local PostgreSQL secret storage is unavailable in packaged builds')
+  }
+
+  return new InsecureLocalPostgresSecretStore(
+    join(userDataPath, 'varlens-postgres-secrets.insecure-local.json')
+  )
+}
+
 export function registerDatabaseHandlers({
   ipcMain,
   getDb,
   getDbManager,
-  getDbPool
+  getDbPool,
+  getPostgresProfileStore = getDefaultPostgresProfileStore,
+  createPostgresPool = createDefaultPostgresPool,
+  createPostgresSession = createPostgresStorageSession,
+  collectPostgresDiagnostics
 }: HandlerDependencies): void {
   /**
    * Show file picker for selecting database file
@@ -141,6 +292,103 @@ export function registerDatabaseHandlers({
   })
 
   /**
+   * Get capability flags for the current storage backend/session
+   */
+  ipcMain.handle('database:capabilities', async () => {
+    return wrapHandler(async () => {
+      return getDatabaseCapabilities(getDbManager)
+    })
+  })
+
+  /**
+   * Get PostgreSQL hosted workspace diagnostics for the current session.
+   */
+  ipcMain.handle('database:postgresDiagnostics', async () => {
+    return wrapHandler(async () => {
+      return await getPostgresDiagnostics(getDbManager)
+    })
+  })
+
+  /**
+   * List saved PostgreSQL connection profiles.
+   */
+  ipcMain.handle('database:postgresProfilesList', async () => {
+    return wrapHandler(async () => {
+      return await listPostgresProfiles(getPostgresProfileStore())
+    })
+  })
+
+  /**
+   * Save a PostgreSQL connection profile. Secrets are written through the
+   * profile store's secret backend and are never returned in the public profile.
+   */
+  ipcMain.handle('database:postgresProfileSave', async (_event, input: unknown) => {
+    return wrapHandler(async () => {
+      const validated = PostgresConnectionProfileSaveInputSchema.safeParse(input)
+      if (!validated.success) {
+        mainLogger.error('Invalid database:postgresProfileSave params', 'database')
+        throw new Error('Invalid PostgreSQL profile parameters')
+      }
+
+      return await savePostgresProfile(validated.data, getPostgresProfileStore())
+    })
+  })
+
+  /**
+   * Remove a saved PostgreSQL connection profile.
+   */
+  ipcMain.handle('database:postgresProfileRemove', async (_event, profileId: unknown) => {
+    return wrapHandler(async () => {
+      const validated = PostgresProfileIdSchema.safeParse(profileId)
+      if (!validated.success) {
+        mainLogger.error('Invalid database:postgresProfileRemove profileId', 'database')
+        throw new Error('Invalid PostgreSQL profile id')
+      }
+
+      return await removePostgresProfile(validated.data, getPostgresProfileStore())
+    })
+  })
+
+  /**
+   * Test PostgreSQL connection settings without switching the active database.
+   */
+  ipcMain.handle('database:postgresProfileTest', async (_event, input: unknown) => {
+    return wrapHandler(async () => {
+      const validated = PostgresConnectionProfileInputSchema.safeParse(input)
+      if (!validated.success) {
+        mainLogger.error('Invalid database:postgresProfileTest params', 'database')
+        throw new Error('Invalid PostgreSQL profile parameters')
+      }
+
+      return await testPostgresProfile(validated.data, {
+        createPool: createPostgresPool,
+        ...(collectPostgresDiagnostics !== undefined
+          ? { collectDiagnostics: collectPostgresDiagnostics }
+          : {})
+      })
+    })
+  })
+
+  /**
+   * Open a saved PostgreSQL profile as the active database session.
+   */
+  ipcMain.handle('database:postgresProfileOpen', async (_event, profileId: unknown) => {
+    return wrapHandler(async () => {
+      const validated = PostgresProfileIdSchema.safeParse(profileId)
+      if (!validated.success) {
+        mainLogger.error('Invalid database:postgresProfileOpen profileId', 'database')
+        throw new Error('Invalid PostgreSQL profile id')
+      }
+
+      return await openPostgresProfile(validated.data, {
+        profileStore: getPostgresProfileStore(),
+        getDbManager,
+        createSession: createPostgresSession
+      })
+    })
+  })
+
+  /**
    * Get the list of recent databases
    */
   ipcMain.handle('database:recentList', async () => {
@@ -154,6 +402,10 @@ export function registerDatabaseHandlers({
    */
   ipcMain.handle('database:overview', async () => {
     return wrapHandler(async () => {
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session.getReadExecutor().execute({ type: 'database:overview', params: [] })
+      }
       return getDatabaseOverview(getDb, getDbPool)
     })
   })

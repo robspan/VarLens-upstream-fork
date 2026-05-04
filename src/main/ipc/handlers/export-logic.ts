@@ -6,6 +6,8 @@
  * without mocking Electron internals.
  */
 import * as XLSX from 'xlsx'
+import { once } from 'node:events'
+import { createWriteStream } from 'node:fs'
 import { writeFile } from 'fs/promises'
 import { mainLogger } from '../../services/MainLogger'
 import { CohortService } from '../../database/cohort'
@@ -14,6 +16,8 @@ import type { DatabaseService } from '../../database/DatabaseService'
 import type { VariantFilter } from '../../database/types'
 import type { CohortSearchParams, CohortVariant } from '../../../shared/types/cohort'
 import type { ExportFilterSummary } from '../../../shared/types/export-worker'
+import { EXPORT_COLUMNS, type ExportColumn } from '../../workers/export-pipeline'
+import { csvEscape, formatCellValue } from '../../workers/export-renderer'
 
 const EXPORT_HARD_LIMIT = 100_000
 
@@ -146,6 +150,90 @@ export function exportVariants(
       }
     })
   })
+}
+
+async function exportRowsToCsv(
+  rows: AsyncIterable<Record<string, unknown>>,
+  outputFilePath: string,
+  columns: readonly ExportColumn[],
+  callbacks: ExportCallbacks,
+  label: string
+): Promise<ExportResult> {
+  const stream = createWriteStream(outputFilePath, { encoding: 'utf8' })
+
+  const writeLine = async (line: string): Promise<void> => {
+    if (stream.write(`${line}\r\n`)) {
+      return
+    }
+
+    await Promise.race([
+      once(stream, 'drain'),
+      once(stream, 'error').then(([error]) => Promise.reject(error))
+    ])
+  }
+
+  try {
+    await Promise.race([
+      once(stream, 'open'),
+      once(stream, 'error').then(([error]) => Promise.reject(error))
+    ])
+    await writeLine(columns.map((column) => csvEscape(column.header)).join(','))
+
+    let rowCount = 0
+    for await (const row of rows) {
+      const line = columns
+        .map((column) => csvEscape(formatCellValue(column.key, row[column.key])))
+        .join(',')
+      await writeLine(line)
+      rowCount += 1
+
+      if (rowCount % 1000 === 0) {
+        callbacks.onProgress?.({ current: rowCount, total: 0 })
+      }
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      stream.on('finish', resolve)
+      stream.on('error', reject)
+      stream.end()
+    })
+
+    mainLogger.info(`${label} complete: ${rowCount} rows to ${outputFilePath}`, 'export')
+    return { success: true, filePath: outputFilePath }
+  } catch (error) {
+    stream.destroy()
+    const message = error instanceof Error ? error.message : String(error)
+    mainLogger.error(`${label} error: ${message}`, 'export')
+    return { success: false, error: message }
+  }
+}
+
+export function exportPostgresVariants(
+  rows: AsyncIterable<Record<string, unknown>>,
+  outputFilePath: string,
+  callbacks: ExportCallbacks
+): Promise<ExportResult> {
+  return exportRowsToCsv(
+    rows,
+    outputFilePath,
+    EXPORT_COLUMNS,
+    callbacks,
+    'PostgreSQL variant export'
+  )
+}
+
+export function exportPostgresCohort(
+  rows: AsyncIterable<Record<string, unknown>>,
+  outputFilePath: string,
+  callbacks: ExportCallbacks
+): Promise<ExportResult> {
+  return exportRowsToCsv(
+    rows,
+    outputFilePath,
+    COHORT_EXPORT_COLUMNS,
+    callbacks,
+    'PostgreSQL cohort export'
+  )
 }
 
 /**

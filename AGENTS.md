@@ -111,6 +111,8 @@ The **Makefile is the source of truth**. GitHub Actions workflows mirror it targ
 
   Each run writes a per-backend baseline artifact and a comparison file under `.planning/artifacts/perf/wgs-import/` (also gitignored). `BUDGET_S` per backend is `1.5×` the baseline. The Phase 9 escalation rule is "PG/SQLite ≤ 2.0×"; sustained ratios above that trigger a follow-up phase.
 
+  PostgreSQL WGS query benchmarks are opt-in via `VARLENS_RUN_WGS_QUERY_PERF=1`. They write artifacts under `.planning/artifacts/perf/postgres-query/` and should be used before adding query indexes.
+
   **Current state (Phase 16/16.1/16.2, 2026-04-26):** PG VCF imports use `COPY FROM STDIN` via `pg-copy-streams`, with `search_document` populated by STORED generated columns on `variants`/`variant_sv`/`variant_str` (no FTS triggers, no per-batch bulk UPDATE). The dev container ships tuned postgresql.conf flags via `docker-compose.postgres.yml` (`max_wal_size=8GB`, `shared_buffers=2GB`, `wal_level=minimal`, etc.). Latest GIAB HG002 v4.2.1 numbers: **PG 97.28s vs SQLite 52.65s, ratio 1.85×** — comfortably under the ≤2.0× gate. Postgres is not yet strictly faster than SQLite (the residual gap is dominated by the COPY wire protocol vs SQLite's in-process call overhead); pushing under SQLite would require additional levers (binary COPY format, dropping per-batch ID reservation) tracked under future phases. The previous Phase 16 design that wrote `search_document` via a per-batch bulk UPDATE was 38.9% slower than the trigger path it replaced — confirmed via the `VARLENS_PG_IMPORT_PROFILE=1` instrumentation in `src/main/storage/postgres/postgres-import-profile.ts`, kept available for future debugging.
 
 - **Preload contract**: `tests/shared/types/preload-contract.test.ts` locks the IPC surface to `IpcResult<T>` return types. If you touch IPC, this test is your first-line guardrail.
@@ -196,6 +198,8 @@ Current baseline (read the script for the authoritative list):
 - `LoadBrowserProcessSpecificV8Snapshot: false` — current default preserved.
 - `GrantFileProtocolExtraPrivileges: true` — current default preserved; tightening this fuse is a separate, deliberate decision.
 - `resetAdHocDarwinSignature: true` — re-ad-hoc-signs the macOS binary after fuse flipping so local ad-hoc builds remain launchable.
+
+`@electron/fuses` 2.x exposes `WasmTrapHandlers`, but Electron 40's fuse wire and electron-builder's bundled fuse implementation cannot configure it yet. Do not add it to the baseline until the packaged Electron binary supports that fuse.
 
 The baseline lives only in `scripts/configure-fuses.mjs`. Do not reintroduce `build.electronFuses` in `package.json`; the hook owns the flip and `doAddElectronFuses` short-circuits when the declarative block is absent.
 

@@ -39,6 +39,10 @@ rebuild-node: ## Rebuild native modules for Node.js (needed before running tests
 dev: rebuild ## Start development server with hot reload
 	npm run dev
 
+dev-postgres: ## Start development server with PostgreSQL backend enabled
+	@if [ ! -f .env.postgres.local ]; then echo "Missing .env.postgres.local. Copy .env.postgres.example first."; exit 1; fi
+	@set -a; . ./.env.postgres.local; set +a; VARLENS_EXPERIMENTAL_STORAGE_BACKEND=postgres $(MAKE) dev
+
 preview: ## Preview production build locally
 	npm run preview
 
@@ -248,6 +252,17 @@ pg-logs: ## Tail local PostgreSQL dev container logs
 
 pg-psql: ## Open psql in the local PostgreSQL dev container
 	docker compose -f docker-compose.postgres.yml --env-file .env.postgres.local exec postgres sh -lc 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'
+
+pg-query-perf: build ## Import WGS fixture and run opt-in PostgreSQL WGS query perf benchmark
+	@if [ ! -f .env.postgres.local ]; then echo "Missing .env.postgres.local. Copy .env.postgres.example first."; exit 1; fi
+	@set -a; . ./.env.postgres.local; set +a; VARLENS_RUN_WGS_PERF=1 npx vitest run tests/perf/postgres-vcf-wgs-import.perf.test.ts
+	@set -a; . ./.env.postgres.local; set +a; VARLENS_RUN_WGS_QUERY_PERF=1 VARLENS_PG_QUERY_EXPLAIN=1 npx vitest run tests/perf/postgres-wgs-query.perf.test.ts
+
+pg-seed-dev: ## Seed deterministic PostgreSQL dev workspace data
+	node scripts/postgres/seed-dev-workspace.mjs
+
+pg-hosted-smoke: ## Run hosted PostgreSQL workspace smoke E2E
+	VARLENS_RUN_POSTGRES_E2E=1 npx playwright test tests/e2e/postgres-hosted-workspace-smoke.e2e.ts --workers=1
 
 pg-reset: ## Destroy local PostgreSQL dev container and volume
 	docker compose -f docker-compose.postgres.yml --env-file .env.postgres.local down -v

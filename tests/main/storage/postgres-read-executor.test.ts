@@ -2,6 +2,19 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { PostgresReadExecutor } from '../../../src/main/storage/postgres/PostgresReadExecutor'
 
+function workflowRepositories() {
+  return {
+    audit: {} as never,
+    tags: {} as never,
+    annotations: {} as never,
+    commentsMetrics: {} as never,
+    panels: {} as never,
+    filterPresets: {} as never,
+    shortlist: {} as never,
+    analysisGroups: {} as never
+  }
+}
+
 describe('PostgresReadExecutor', () => {
   it('dispatches cases:query to the postgres cases query repository', async () => {
     const expected = { data: [], total_count: 0 }
@@ -20,6 +33,9 @@ describe('PostgresReadExecutor', () => {
     const executor = new PostgresReadExecutor({
       casesQuery,
       availableBuilds,
+      overview: {} as never,
+      export: {} as never,
+      ...workflowRepositories(),
       caseMetadata: {} as never
     })
 
@@ -39,6 +55,9 @@ describe('PostgresReadExecutor', () => {
     const executor = new PostgresReadExecutor({
       casesQuery,
       availableBuilds,
+      overview: {} as never,
+      export: {} as never,
+      ...workflowRepositories(),
       caseMetadata: {} as never
     })
 
@@ -66,6 +85,9 @@ describe('PostgresReadExecutor', () => {
     const executor = new PostgresReadExecutor({
       casesQuery: {} as never,
       availableBuilds: {} as never,
+      overview: {} as never,
+      export: {} as never,
+      ...workflowRepositories(),
       caseMetadata: caseMetadata as never
     })
 
@@ -102,6 +124,9 @@ describe('PostgresReadExecutor', () => {
     const executor = new PostgresReadExecutor({
       casesQuery,
       availableBuilds,
+      overview: {} as never,
+      export: {} as never,
+      ...workflowRepositories(),
       caseMetadata,
       variants
     } as never)
@@ -127,6 +152,9 @@ describe('PostgresReadExecutor', () => {
     const executor = new PostgresReadExecutor({
       casesQuery: {} as never,
       availableBuilds: {} as never,
+      overview: {} as never,
+      export: {} as never,
+      ...workflowRepositories(),
       caseMetadata: {} as never,
       variants
     } as never)
@@ -147,6 +175,29 @@ describe('PostgresReadExecutor', () => {
     )
   })
 
+  it('dispatches shortlist reads to the postgres shortlist service', async () => {
+    const expected = { rows: [], totalCandidates: 0, presetUsed: null, elapsedMs: 3 }
+    const shortlist = {
+      getShortlist: vi.fn().mockResolvedValue(expected)
+    }
+    const executor = new PostgresReadExecutor({
+      casesQuery: {} as never,
+      availableBuilds: {} as never,
+      overview: {} as never,
+      export: {} as never,
+      ...workflowRepositories(),
+      shortlist,
+      caseMetadata: {} as never,
+      variants: {} as never
+    } as never)
+
+    const params = { caseId: 1, presetId: 7 }
+    await expect(executor.execute({ type: 'variants:shortlist', params: [params] })).resolves.toBe(
+      expected
+    )
+    expect(shortlist.getShortlist).toHaveBeenCalledWith(params)
+  })
+
   it('dispatches variant metadata reads to explicit postgres deferral methods', async () => {
     const variants = {
       getVariantTypeCounts: vi.fn(),
@@ -163,6 +214,9 @@ describe('PostgresReadExecutor', () => {
     const executor = new PostgresReadExecutor({
       casesQuery: {} as never,
       availableBuilds: {} as never,
+      overview: {} as never,
+      export: {} as never,
+      ...workflowRepositories(),
       caseMetadata: {} as never,
       variants
     } as never)
@@ -175,5 +229,143 @@ describe('PostgresReadExecutor', () => {
     ).rejects.toThrow('PostgreSQL variants:columnMeta is deferred from Phase 7')
     expect(variants.getFilterOptions).toHaveBeenCalledWith(1)
     expect(variants.getColumnMeta).toHaveBeenCalledWith({ caseId: 1 }, 'cadd')
+  })
+
+  it('dispatches database overview and export reads to postgres repositories', async () => {
+    const overview = {
+      getOverview: vi.fn().mockResolvedValue({ summary: { total_cases: 0 }, cases: [] })
+    }
+    const exportedRows = (async function* () {
+      yield { id: 1 }
+    })()
+    const exportRepository = {
+      streamVariantRows: vi.fn().mockReturnValue(exportedRows)
+    }
+    const executor = new PostgresReadExecutor({
+      casesQuery: {} as never,
+      availableBuilds: {} as never,
+      overview,
+      export: exportRepository,
+      ...workflowRepositories(),
+      caseMetadata: {} as never,
+      variants: {} as never
+    })
+
+    await expect(executor.execute({ type: 'database:overview', params: [] })).resolves.toEqual({
+      summary: { total_cases: 0 },
+      cases: []
+    })
+    await expect(
+      executor.execute({ type: 'export:variants', params: [{ case_id: 5 }] })
+    ).resolves.toBe(exportedRows)
+
+    expect(overview.getOverview).toHaveBeenCalledWith()
+    expect(exportRepository.streamVariantRows).toHaveBeenCalledWith({ case_id: 5 })
+  })
+
+  it('dispatches workflow reads to postgres workflow repositories', async () => {
+    const tags = { listTags: vi.fn().mockResolvedValue([{ id: 1 }]) }
+    const panels = { listGeneLists: vi.fn().mockResolvedValue([{ id: 2 }]) }
+    const filterPresets = { listPresets: vi.fn().mockResolvedValue([{ id: 3 }]) }
+    const executor = new PostgresReadExecutor({
+      casesQuery: {} as never,
+      availableBuilds: {} as never,
+      overview: {} as never,
+      export: {} as never,
+      ...workflowRepositories(),
+      tags,
+      panels: panels as never,
+      filterPresets,
+      caseMetadata: {} as never,
+      variants: {} as never
+    })
+
+    await expect(executor.execute({ type: 'tags:list', params: [] })).resolves.toEqual([{ id: 1 }])
+    await expect(executor.execute({ type: 'gene-lists:list', params: [] })).resolves.toEqual([
+      { id: 2 }
+    ])
+    await expect(executor.execute({ type: 'presets:list', params: [] })).resolves.toEqual([
+      { id: 3 }
+    ])
+  })
+
+  it('dispatches cohort and cohort export reads to the postgres cohort repository', async () => {
+    const cohortRows = (async function* () {
+      yield { variant_key: 'chr1:100:A:T' }
+    })()
+    const cohort = {
+      queryVariants: vi.fn().mockResolvedValue({ data: [], total_count: 0 }),
+      getSummary: vi.fn().mockResolvedValue({ total_cases: 1 }),
+      getColumnMeta: vi.fn().mockResolvedValue([{ key: 'gene_symbol' }]),
+      getCarriers: vi.fn().mockResolvedValue([{ case_id: 1 }]),
+      getGeneBurden: vi.fn().mockResolvedValue([{ gene_symbol: 'BRCA1' }]),
+      streamCohortRows: vi.fn().mockReturnValue(cohortRows)
+    }
+    const executor = new PostgresReadExecutor({
+      casesQuery: {} as never,
+      availableBuilds: {} as never,
+      overview: {} as never,
+      export: {} as never,
+      cohort,
+      ...workflowRepositories(),
+      caseMetadata: {} as never,
+      variants: {} as never
+    } as never)
+
+    const cohortParams = { search_term: 'BRCA1', limit: 25, offset: 0 }
+
+    await expect(
+      executor.execute({ type: 'cohort:query', params: [cohortParams] })
+    ).resolves.toStrictEqual({ data: [], total_count: 0 })
+    await expect(executor.execute({ type: 'cohort:summary', params: [] })).resolves.toStrictEqual({
+      total_cases: 1
+    })
+    await expect(
+      executor.execute({ type: 'cohort:columnMeta', params: [] })
+    ).resolves.toStrictEqual([{ key: 'gene_symbol' }])
+    await expect(
+      executor.execute({ type: 'cohort:carriers', params: ['chr1', 100, 'A', 'T'] })
+    ).resolves.toStrictEqual([{ case_id: 1 }])
+    await expect(
+      executor.execute({ type: 'cohort:geneBurden', params: [] })
+    ).resolves.toStrictEqual([{ gene_symbol: 'BRCA1' }])
+    await expect(executor.execute({ type: 'export:cohort', params: [cohortParams] })).resolves.toBe(
+      cohortRows
+    )
+
+    expect(cohort.queryVariants).toHaveBeenCalledWith(cohortParams)
+    expect(cohort.getSummary).toHaveBeenCalledWith()
+    expect(cohort.getColumnMeta).toHaveBeenCalledWith()
+    expect(cohort.getCarriers).toHaveBeenCalledWith('chr1', 100, 'A', 'T')
+    expect(cohort.getGeneBurden).toHaveBeenCalledWith()
+    expect(cohort.streamCohortRows).toHaveBeenCalledWith(cohortParams)
+  })
+
+  it('dispatches audit reads to the postgres audit repository', async () => {
+    const audit = {
+      getByEntityKey: vi.fn().mockResolvedValue([{ entity_key: 'case:1:variant:2' }]),
+      query: vi.fn().mockResolvedValue({ data: [], total_count: 0 })
+    }
+    const executor = new PostgresReadExecutor({
+      casesQuery: {} as never,
+      availableBuilds: {} as never,
+      overview: {} as never,
+      export: {} as never,
+      cohort: {} as never,
+      ...workflowRepositories(),
+      audit,
+      caseMetadata: {} as never,
+      variants: {} as never
+    } as never)
+
+    await expect(
+      executor.execute({ type: 'audit:getByEntity', params: ['case:1:variant:2'] })
+    ).resolves.toEqual([{ entity_key: 'case:1:variant:2' }])
+    await expect(
+      executor.execute({ type: 'audit:query', params: [{ action_type: 'star' }] })
+    ).resolves.toEqual({ data: [], total_count: 0 })
+
+    expect(audit.getByEntityKey).toHaveBeenCalledWith('case:1:variant:2')
+    expect(audit.query).toHaveBeenCalledWith({ action_type: 'star' })
   })
 })

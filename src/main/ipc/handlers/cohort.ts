@@ -53,7 +53,15 @@ const cohortCallbacks: CohortCallbacks = {
  * Channels: cohort:variants, cohort:summary, cohort:carriers,
  *           cohort:geneBurden, cohort:geneBurdenCompare, cohort:geneBurdenCancel
  */
-export function registerCohortHandlers({ ipcMain, getDb, getDbPool }: HandlerDependencies): void {
+export function registerCohortHandlers({
+  ipcMain,
+  getDb,
+  getDbPool,
+  getDbManager
+}: HandlerDependencies): void {
+  const getSession =
+    getDbManager === undefined ? undefined : () => getDbManager().getCurrentSession()
+
   ipcMain.handle('cohort:variants', async (_event, params: unknown) => {
     return wrapHandler(async () => {
       // ANTI-07: Runtime validation at IPC boundary
@@ -63,19 +71,19 @@ export function registerCohortHandlers({ ipcMain, getDb, getDbPool }: HandlerDep
         throw new Error('Invalid search parameters')
       }
 
-      return queryCohortVariants(validated.data, getDb, getDbPool)
+      return queryCohortVariants(validated.data, getDb, getDbPool, getSession)
     })
   })
 
   ipcMain.handle('cohort:columnMeta', async (_event) => {
     return wrapHandler(async () => {
-      return getColumnMeta(getDb, getDbPool)
+      return getColumnMeta(getDb, getDbPool, getSession)
     })
   })
 
   ipcMain.handle('cohort:summary', async (_event) => {
     return wrapHandler(async () => {
-      return getCohortSummary(getDb, getDbPool)
+      return getCohortSummary(getDb, getDbPool, getSession)
     })
   })
 
@@ -96,7 +104,8 @@ export function registerCohortHandlers({ ipcMain, getDb, getDbPool }: HandlerDep
           validated.data.ref,
           validated.data.alt,
           getDb,
-          getDbPool
+          getDbPool,
+          getSession
         )
       })
     }
@@ -104,7 +113,7 @@ export function registerCohortHandlers({ ipcMain, getDb, getDbPool }: HandlerDep
 
   ipcMain.handle('cohort:geneBurden', async (_event) => {
     return wrapHandler(async () => {
-      return getGeneBurden(getDb, getDbPool)
+      return getGeneBurden(getDb, getDbPool, getSession)
     })
   })
 

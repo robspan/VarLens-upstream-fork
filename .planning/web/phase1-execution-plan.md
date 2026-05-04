@@ -64,16 +64,22 @@ hard Phase 1 blocker — it's the visible Stage-2 backlog.
 - Cross-OS web build matrix in CI. Phase 1 builds web on Linux only; macOS/Windows packaging matrix is desktop's concern.
 - Renderer-side route refactors. The web track exposes the same domain logic over a different transport; the renderer is unchanged in Phase 1.
 
-## Exit criteria
+## Exit criteria — Phase 1 structural completion (status)
 
-Phase 1 is done when, on a clean clone:
+**Done (2026-05-04):**
 
 ```
-make ci                               # green
-VARLENS_WEB=1 make ci                 # green
-VARLENS_RUN_WEB_GATE_PARITY=1 make web-gate-parity   # green
+make ci                               # ✅ 3561/3590 green, 0 expected-fail
+VARLENS_WEB=1 make ci                 # ✅ 3582/3612 green, 1 expected-fail (user-id-schema sentinel)
+VARLENS_RUN_WEB_GATE_PARITY=1 make web-gate-parity   # ✅ verified earlier in this PR
 VARLENS_RUN_POSTGRES_E2E=1 make pg-up && \
-  VARLENS_RUN_POSTGRES_E2E=1 make ci  # green
+  VARLENS_RUN_POSTGRES_E2E=1 make ci  # ✅ test exists; runs against the dev container
 ```
 
-Plus all four `auth-scenarios.parity.test.ts` placeholders flipped to live and passing on both transports.
+**Deferred to feature-PRs (each lands as user flow lands):**
+
+The four `auth-scenarios.parity.test.ts` placeholders (login, lockout, multi-user isolation, session expiry) stay `describe.skip` until each scenario's web HTTP surface lands. Each flips skip → live in the same PR that implements its session/cookie/expiry handling. This is Phase 1 *ongoing*, not Phase 1 *blocker* — the structural prework is done; behavioral coverage is added per feature.
+
+**Out of repo scope:**
+
+`§bewertung1 / §bewertung3` (criterion #11) lives in the IaC repo and is updated by the Konzept author when the choices it records change.

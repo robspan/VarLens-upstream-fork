@@ -30,7 +30,7 @@ After (3), parity scenarios are TDD work — each PR adds the scenario for the u
 | 7 | Electron variant builds w/o regression | — | `make ci-full` + `tests/refactor-checkpoint/` | ✅ |
 | 8 | Logs JSON to stdout | Web build | `integration/json-logs` | Test exists; awaits build |
 | 9 | SIGTERM clean shutdown | Web build | `integration/sigterm` | Test exists; awaits build |
-| 10 | ADRs 1, 2, 3 filed | — | Doc gate | Open |
+| 10 | ADRs 1, 2, 3 filed | — | Doc gate | ✅ `.planning/adr/0001..0003` |
 | 11 | §bewertung1 / §bewertung3 current | IaC repo work | Doc gate | Tracked in IaC |
 | 12 | Bridge-clause structural | StorageSession refactor (partial) | `db-seam` + `auth-isolation` + `user-id-schema` + `handler-seam` | Partial — gates exist, several red until #2/#3 |
 

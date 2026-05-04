@@ -102,7 +102,8 @@ export default defineConfig({
           include: [
             'tests/main/**/*.test.ts',
             'tests/shared/**/*.test.ts',
-            'tests/scripts/**/*.test.ts'
+            'tests/scripts/**/*.test.ts',
+            'tests/refactor-checkpoint/**/*.test.ts'
           ]
         }
       },
@@ -122,7 +123,7 @@ export default defineConfig({
         // Layer 3 parity (heavy, boots Electron) is its own project below
         // and additionally requires VARLENS_RUN_WEB_GATE_PARITY=1.
         //
-        // See .planning/web/phase1-gate-tests.md.
+        // See .planning/web/testing/desktop-to-web-parity.md.
         extends: true,
         test: {
           name: 'web-gate',

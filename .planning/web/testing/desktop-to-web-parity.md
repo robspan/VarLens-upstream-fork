@@ -3,14 +3,11 @@
 Status: proposal (2026-05-04)
 Branch target: `VarLens-Web`
 Source plan: `VarLens-IaC/.internalplanning/konzept/app.html` §app2.1
-Sibling concern: `desktop-preservation.md` (refactor-checkpoint tests for Purpose 2)
-Index: `README.md`
+Companion: [`desktop-preservation.md`](desktop-preservation.md) · [`README.md`](README.md)
 
 ## Purpose
 
 Turn the 12 Phase 1 gate criteria into an executable test suite **before** any web code is written. The suite is the finish line: when every gate test is green on both Electron and the web build, Phase 1 is done. Until then, every red test names concrete remaining work.
-
-This document covers **Purpose 1: desktop → web parity** — the web variant must reproduce desktop behavior on every observable surface that matters. **Purpose 2 (desktop → desktop sameness across the refactor)** is a separate concern with different mechanics and lives in `desktop-preservation.md`. See `README.md` in this folder for why the two purposes are tracked separately.
 
 ## Guiding principle
 

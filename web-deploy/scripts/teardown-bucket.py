@@ -169,10 +169,84 @@ def delete_object(endpoint, region, access, secret, bucket, key, version_id):
     return True
 
 
-def delete_bucket(endpoint, region, access, secret, bucket):
-    code, body = s3_request("DELETE", endpoint, region, access, secret, f"/{bucket}")
+def list_multipart_uploads(endpoint, region, access, secret, bucket):
+    """Yield (key, upload_id) for every in-flight multipart upload.
+
+    Restic uses multipart uploads for objects >5 MB and abandons them
+    on signal (SIGTERM during a backup, network drop, etc.). These
+    abandoned uploads are NOT in the version listing — they live in a
+    separate "in-progress" namespace — but their existence makes
+    DeleteBucket fail with BucketNotEmpty (409). The whole reason this
+    teardown script exists is to make the bucket cleanly deletable; the
+    multipart-namespace gap was the missing piece.
+    """
+    key_marker = ""
+    upload_id_marker = ""
+    while True:
+        params = {"uploads": "", "max-uploads": "1000"}
+        if key_marker:
+            params["key-marker"] = key_marker
+        if upload_id_marker:
+            params["upload-id-marker"] = upload_id_marker
+        query = "&".join(
+            f"{urllib.parse.quote(k, safe='')}={urllib.parse.quote(v, safe='')}"
+            for k, v in sorted(params.items())
+        )
+        code, body = s3_request("GET", endpoint, region, access, secret, f"/{bucket}", query=query)
+        if code != 200:
+            fail(
+                f"List multipart uploads failed ({code}): "
+                f"{body[:300].decode('utf-8', errors='replace')}"
+            )
+        root = ET.fromstring(body)
+        for u in root.findall(f"{S3_NS}Upload"):
+            yield (
+                u.findtext(f"{S3_NS}Key"),
+                u.findtext(f"{S3_NS}UploadId"),
+            )
+        if root.findtext(f"{S3_NS}IsTruncated") != "true":
+            break
+        key_marker = root.findtext(f"{S3_NS}NextKeyMarker") or ""
+        upload_id_marker = root.findtext(f"{S3_NS}NextUploadIdMarker") or ""
+
+
+def abort_multipart_upload(endpoint, region, access, secret, bucket, key, upload_id):
+    path = f"/{bucket}/{urllib.parse.quote(key, safe='/')}"
+    query = f"uploadId={urllib.parse.quote(upload_id, safe='')}"
+    code, body = s3_request("DELETE", endpoint, region, access, secret, path, query=query)
     if code not in (200, 204):
-        fail(f"Delete bucket failed ({code}): {body[:300].decode('utf-8', errors='replace')}")
+        log(
+            f"  WARN: abort multipart {key}@{upload_id[:8]} returned {code}: "
+            f"{body[:200].decode('utf-8', errors='replace')}"
+        )
+        return False
+    return True
+
+
+def delete_bucket(endpoint, region, access, secret, bucket, listings_were_empty):
+    code, body = s3_request("DELETE", endpoint, region, access, secret, f"/{bucket}")
+    if code in (200, 204):
+        return
+    decoded = body[:300].decode("utf-8", errors="replace")
+    # 409 BucketNotEmpty is recoverable via S3 API only when our preceding
+    # listings actually found something. If the listings reported the bucket
+    # empty (zero versions, zero multipart uploads, zero flat objects) and
+    # the backend STILL refuses, this is a Hetzner-side state-reconciliation
+    # issue we cannot fix from the client. Surface the operator escape hatch.
+    if code == 409 and listings_were_empty:
+        fail(
+            f"Delete bucket failed ({code}): {decoded}\n"
+            "\n"
+            "All S3 listings reported the bucket empty (versions=0, multipart=0,\n"
+            "objects=0), so this is a Hetzner backend ghost-state issue rather\n"
+            "than missing client cleanup. Operator workarounds:\n"
+            "  - Wait 5-10 min for async reconciliation, then retry this script.\n"
+            "  - Hetzner Console > Object Storage > <bucket> > 'Delete' button.\n"
+            "    The Console can force-delete past stuck state.\n"
+            "  - Hetzner Cloud Support (rare; ticket if the Console option fails).",
+            code=4,
+        )
+    fail(f"Delete bucket failed ({code}): {decoded}")
 
 
 # ----- main -----
@@ -217,16 +291,33 @@ def main() -> None:
                 log(f"  {deleted}/{len(versions)} {tag}s removed...")
         log(f"  {deleted}/{len(versions)} entries removed.")
 
+    # Multipart uploads live in a separate namespace from object versions;
+    # they must be aborted explicitly or DeleteBucket returns 409 BucketNotEmpty
+    # even after every visible object is gone. Restic in particular leaves
+    # these around when interrupted mid-backup.
+    log("Listing in-flight multipart uploads...")
+    uploads = list(list_multipart_uploads(endpoint, region, access, secret, bucket))
+    log(f"  Found {len(uploads)} multipart upload(s).")
+    if uploads:
+        log("Aborting all multipart uploads...")
+        aborted = 0
+        for key, upload_id in uploads:
+            if abort_multipart_upload(endpoint, region, access, secret, bucket, key, upload_id):
+                aborted += 1
+        log(f"  {aborted}/{len(uploads)} multipart uploads aborted.")
+
+    listings_were_empty = (len(versions) == 0 and len(uploads) == 0)
     log(f"Deleting bucket {bucket}")
-    delete_bucket(endpoint, region, access, secret, bucket)
+    delete_bucket(endpoint, region, access, secret, bucket, listings_were_empty)
     log("Bucket deleted.")
     print()
     print("=" * 70)
     print("Bucket teardown complete")
     print("=" * 70)
-    print(f"  Bucket:    {bucket}")
-    print(f"  Endpoint:  {endpoint}")
-    print(f"  Versions:  {len(versions)} removed")
+    print(f"  Bucket:            {bucket}")
+    print(f"  Endpoint:          {endpoint}")
+    print(f"  Versions removed:  {len(versions)}")
+    print(f"  Uploads aborted:   {len(uploads)}")
     print()
     print("Next: run `make setup-backup` (with --force if a fresh password is desired)")
     print("=" * 70)

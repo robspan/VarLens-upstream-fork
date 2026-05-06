@@ -19,7 +19,7 @@
  * this file — see `.planning/web/qa-report-phase1.md` follow-ups.
  */
 
-import { closeSync, openSync, unlinkSync, writeFileSync } from 'fs'
+import { closeSync, existsSync, openSync, unlinkSync, writeFileSync } from 'fs'
 import { dirname, isAbsolute, join } from 'path'
 
 import Fastify, { type FastifyInstance } from 'fastify'
@@ -112,6 +112,42 @@ async function maybeBootstrapAdmin(
     .get() as { id: number } | undefined
 
   if (existing !== undefined) {
+    // Diagnostic 1 (F7): a recovery-key file lingering on disk after the
+    // admin row exists means a prior boot generated the key but the
+    // operator never captured-and-deleted it. The file is the only copy
+    // of an extremely sensitive secret; we surface it loudly but do NOT
+    // auto-delete (deletion is the operator's explicit confirmation that
+    // they have captured the value).
+    if (dbPath !== ':memory:' && isAbsolute(dbPath)) {
+      const recoveryKeyPath = join(dirname(dbPath), 'admin-recovery-key.txt')
+      if (existsSync(recoveryKeyPath)) {
+        log.warn(
+          {
+            event: 'admin-bootstrap',
+            action: 'stale-recovery-key-present',
+            path: recoveryKeyPath
+          },
+          `stale admin recovery-key file present at ${recoveryKeyPath} — capture its contents and delete it; the file will not be regenerated`
+        )
+      }
+    }
+
+    // Diagnostic 2 (F7): VARLENS_ADMIN_USERNAME/PASSWORD set in env after
+    // an admin already exists almost always means the operator is trying
+    // to rotate credentials by changing env vars and rebooting. That has
+    // never been supported (bootstrap is strictly first-user creation),
+    // and silently ignoring the env vars hides the failure mode. Log a
+    // WARN so the misuse is visible; rotation will eventually flow through
+    // a dedicated `varlens admin rotate` path.
+    log.warn(
+      {
+        event: 'admin-bootstrap',
+        action: 'env-rotation-ignored',
+        username: admin.username
+      },
+      'VARLENS_ADMIN_USERNAME/PASSWORD are set but an admin already exists — env-based rotation is NOT supported; the new credentials are being ignored. Use the dedicated admin rotation flow (planned: `varlens admin rotate`).'
+    )
+
     log.info({ event: 'admin-bootstrap', action: 'skipped', reason: 'admin-exists' })
     return
   }

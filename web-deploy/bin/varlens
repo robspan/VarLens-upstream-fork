@@ -465,7 +465,7 @@ def _smoke(ip: str, key: Path) -> None:
         code = 0
     check("http->https redirect", 308, code)
 
-    for path, expected in [("/", 200), ("/monitor/", 401), ("/logs/", 401)]:
+    for path, expected in [("/", 200), ("/monitor/", 401), ("/logs/", 401), ("/varlens/healthz", 200)]:
         try:
             req = urllib.request.Request(f"https://{ip}{path}")
             with urllib.request.urlopen(req, timeout=10, context=insecure_ctx) as r:
@@ -478,11 +478,11 @@ def _smoke(ip: str, key: Path) -> None:
 
     proc = ssh_run(
         ip, key,
-        "cd /mnt/data/app && docker compose ps --status running --services | grep -cE '^(caddy|uptime-kuma|dozzle)$'",
+        "cd /mnt/data/app && docker compose ps --status running --services | grep -cE '^(caddy|uptime-kuma|dozzle|varlens)$'",
         total_timeout=30,
         ephemeral_host=True,
     )
-    check("running services", "3", proc.stdout.strip())
+    check("running services", "4", proc.stdout.strip())
 
     for label, expected, got, ok in checks:
         marker = "ok  " if ok else "FAIL"

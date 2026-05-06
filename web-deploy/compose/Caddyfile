@@ -91,6 +91,16 @@ As of April 2026: application container and database are still to come.
 	redir /monitor / permanent
 	redir /monitor/* / permanent
 
+	# VarLens web app at /varlens/*. handle_path strips the prefix before
+	# forwarding so the app sees /healthz, /api/auth/login, /api/cases
+	# etc. at its own root. Kuma keeps `/` because Kuma 1.x doesn't
+	# tolerate a base path; VarLens is API-only in Stage 1, so the
+	# sub-path mount is fine. Future: when the renderer SPA ships in the
+	# web bundle, evaluate moving VarLens to / and Kuma elsewhere.
+	handle_path /varlens* {
+		reverse_proxy varlens:8080
+	}
+
 	# Dozzle at /logs/. Dozzle is base-aware (DOZZLE_BASE=/logs in compose)
 	# and emits asset URLs under /logs/... - therefore `handle` (no strip).
 	handle /logs* {

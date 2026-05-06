@@ -1,6 +1,7 @@
 # Concept Pilot Compose stack.
-# Currently: reverse proxy + monitoring tools.
-# Still to come: application container and database container.
+# Reverse proxy + monitoring tools + the VarLens app container.
+# Postgres is opt-in via the `postgres` profile (Stage 1.5+); the app
+# defaults to SQLite per §bewertung2.
 
 services:
   caddy:
@@ -66,6 +67,47 @@ services:
       # Auth layer is handled by Caddy (basic auth in Caddyfile). Dozzle's own
       # auth stays disabled because it either requires a users.yml or returns
       # 502 on default settings.
+    networks:
+      - varlens
+
+  # VarLens application container — the §infrastruktur2 application slot.
+  # Image is operator-configurable via VARLENS_IMAGE in compose/.env. Pin
+  # to the digest (`@sha256:...`) emitted by the publish-web GitHub
+  # workflow once the first image lands; the floating `:edge` tag in the
+  # default below is convenient for first-boot but reproducibility (per
+  # §vertrag2.3) requires a digest pin in production.
+  varlens:
+    image: ${VARLENS_IMAGE:-ghcr.io/robspan/varlens-web:edge}
+    container_name: varlens
+    restart: unless-stopped
+    # Bound to localhost only — external access exclusively via Caddy
+    # (`/varlens/*` route in Caddyfile).
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      # Persistent SQLite + admin recovery key file. Mount must exist on
+      # host (created by cloud-init or by `make stack-up`).
+      - /mnt/data/app:/data
+    environment:
+      VARLENS_DB_PATH: ${VARLENS_DB_PATH:-/data/varlens.db}
+      VARLENS_WEB_PORT: ${VARLENS_WEB_PORT:-8080}
+      VARLENS_LOG_LEVEL: ${VARLENS_LOG_LEVEL:-info}
+      # Optional one-shot bootstrap. If all three are set on first boot
+      # and no admin exists, the app creates an Argon2 admin and writes
+      # /data/admin-recovery-key.txt (mode 0600). Capture and delete on
+      # the host, then unset these in compose/.env to avoid leaving the
+      # plaintext password in the container env.
+      VARLENS_ADMIN_USERNAME: ${VARLENS_ADMIN_USERNAME-}
+      VARLENS_ADMIN_PASSWORD: ${VARLENS_ADMIN_PASSWORD-}
+      VARLENS_ADMIN_DISPLAY_NAME: ${VARLENS_ADMIN_DISPLAY_NAME-}
+    healthcheck:
+      # The image's own HEALTHCHECK uses the same probe; this duplicate
+      # gives Compose visibility into health state from the host side.
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
     networks:
       - varlens
 

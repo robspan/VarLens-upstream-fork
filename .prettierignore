@@ -44,3 +44,7 @@ CLAUDE.md
 
 # GitHub config files — YAML style is managed by Dependabot/Actions UI
 .github/dependabot.yml
+
+# IaC subtree — has its own formatting conventions (OpenTofu, Compose,
+# SOPS-encrypted YAML); not subject to this repo's Prettier rules.
+web-deploy/

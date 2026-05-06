@@ -1,4 +1,4 @@
-.PHONY: help rebuild dev build preview lint lint-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-reset web-gate web-gate-static web-gate-integration web-gate-parity sync-upstream install-hooks
+.PHONY: help rebuild dev build preview lint lint-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-reset web-gate web-gate-static web-gate-integration web-gate-parity sync-upstream install-hooks pilot pilot-down pilot-status pilot-smoke pilot-ssh
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -336,6 +336,38 @@ sync-upstream: ## Fetch upstream and merge upstream/main into local main + VarLe
 	git checkout VarLens-Web
 	git merge -X ours main
 	@echo "==> Done. Review with 'git log --oneline main..HEAD' then push when ready."
+
+#---------------------------------------------------------------------------
+# Concept Pilot — one-shot Hetzner deployment.
+# Delegates to web-deploy/ which carries the OpenTofu + Compose + monitoring
+# stack. Operator workflow: edit web-deploy/tofu/environments/pilot/terraform.tfvars
+# (Hetzner token + SSH pubkey), edit web-deploy/compose/.env (set VARLENS_*
+# plus POSTGRES_PASSWORD if profile=postgres), then run `make pilot`.
+#
+
+pilot: ## Concept Pilot one-shot: provision Hetzner + bring up stack + setup backup + monitoring + smoke
+	$(MAKE) -C web-deploy up
+	$(MAKE) -C web-deploy stack-up
+	$(MAKE) -C web-deploy setup-backup
+	$(MAKE) -C web-deploy setup-monitoring
+	$(MAKE) -C web-deploy smoke
+	@echo ""
+	@echo "=== Concept Pilot is live ==="
+	@echo "  https://$$($(MAKE) -s -C web-deploy ip)/                 (Uptime Kuma — login admin / varlens-konzept)"
+	@echo "  https://$$($(MAKE) -s -C web-deploy ip)/varlens/healthz  (VarLens app)"
+	@echo "  https://$$($(MAKE) -s -C web-deploy ip)/logs/            (Dozzle — same login)"
+
+pilot-down: ## Tear down the Concept Pilot Hetzner environment (interactive confirmation)
+	$(MAKE) -C web-deploy down
+
+pilot-status: ## Show Hetzner server status (running / stopped / absent)
+	$(MAKE) -C web-deploy status
+
+pilot-smoke: ## Re-run the smoke probes against the running pilot
+	$(MAKE) -C web-deploy smoke
+
+pilot-ssh: ## SSH into the pilot server as the deploy user
+	$(MAKE) -C web-deploy ssh
 
 install-hooks: ## Install repo git hooks into .git/hooks/ (currently: pre-commit)
 	@mkdir -p .git/hooks

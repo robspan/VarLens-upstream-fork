@@ -19,6 +19,15 @@
 # SOPS
 .sops.yaml.bak
 
+# SOPS-encrypted secret material. Even though SOPS encrypts the values,
+# the file metadata (key names, recipient pubkeys, AES ciphertext) is
+# regenerated on every setup-backup / setup-monitoring run and lives
+# alongside the operator's age key locally. Don't commit it for the
+# private fork. The age public key in .sops.yaml is enough for the
+# encryption side; decryption needs the private key which never moves.
+secrets/*.yaml
+!secrets/example.yaml
+
 # Editor
 .idea/
 .vscode/

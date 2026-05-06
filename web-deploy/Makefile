@@ -177,11 +177,26 @@ stack-up: deploy-stack
 	fi
 	@echo "Database profile: $(DB)"
 	@echo "TLS mode:         $(CADDY_TLS)  (host: $(CADDY_HOST))"
+	@# F4 mitigation: postgres password lives at /etc/varlens/postgres-password
+	@# (root:root, 0600) so that re-creating /mnt/data/app/.env (e.g. after a
+	@# regen or a bug that strips it) does not silently rotate the DB password
+	@# and brick the postgres profile. If the persistent file exists we read
+	@# it; otherwise we mint a new one and persist it to that path.
 	@ssh -i $(SSH_KEY) deploy@$(call IPV4) 'cd /mnt/data/app && \
 		if [ ! -f .env ]; then \
-			echo "Generating random PostgreSQL password for compose/.env"; \
+			if sudo test -f /etc/varlens/postgres-password; then \
+				echo "Reusing PostgreSQL password from /etc/varlens/postgres-password"; \
+				PGPW=$$(sudo cat /etc/varlens/postgres-password); \
+			else \
+				echo "Generating PostgreSQL password and persisting to /etc/varlens/postgres-password"; \
+				PGPW=$$(openssl rand -base64 32 | tr -d /+= | head -c 32); \
+				sudo install -d -m 0755 /etc/varlens && \
+				printf "%s" "$$PGPW" | sudo tee /etc/varlens/postgres-password >/dev/null && \
+				sudo chmod 0600 /etc/varlens/postgres-password && \
+				sudo chown root:root /etc/varlens/postgres-password; \
+			fi && \
 			cp .env.example .env && \
-			sed -i "s|REPLACE_WITH_GENERATED_PASSWORD|$$(openssl rand -base64 32 | tr -d /+= | head -c 32)|" .env; \
+			sed -i "s|REPLACE_WITH_GENERATED_PASSWORD|$$PGPW|" .env; \
 		fi && \
 		sed -i "s|^SERVER_HOST=.*|SERVER_HOST=$(CADDY_HOST)|" .env && \
 		sed -i "s|^CADDY_TLS_PROFILE=.*|CADDY_TLS_PROFILE=$(CADDY_TLS)|" .env && \

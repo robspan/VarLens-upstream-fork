@@ -476,20 +476,59 @@ def persist_restic_secret_to_sops(restic_password: str, bucket: str, endpoint: s
 
 # ----- main -----
 
+def secrets_restic_yaml_decryptable() -> bool:
+    """Return True iff secrets/restic.yaml exists AND can be decrypted locally
+    via SOPS (i.e. the operator holds the age key required to recover the
+    restic password from this checkout).
+
+    Used by --default-reuse-when-resumable to decide whether silently picking
+    `--reuse` is safe: reusing the existing on-server password is only a sound
+    resume strategy if we still have a recoverable copy of that password
+    locally. Without it, a future server-loss event would leave snapshots
+    undecryptable, and the operator should be forced to think (--force or
+    restore secrets/restic.yaml) rather than have the script paper over it.
+    """
+    target = REPO_ROOT / "secrets" / "restic.yaml"
+    if not target.exists():
+        return False
+    sops_path = shutil.which("sops")
+    if sops_path is None:
+        return False
+    age_keys = Path.home() / ".config" / "sops" / "age" / "keys.txt"
+    if not age_keys.exists():
+        return False
+    proc = subprocess.run(
+        [sops_path, "-d", str(target)],
+        capture_output=True,
+    )
+    return proc.returncode == 0
+
+
 def main() -> None:
     # Modes:
     #   --reuse  : accept existing /etc/restic/env and reuse the password
     #   --force  : overwrite everything; old repo becomes unusable (greenfield ONLY)
     #   default  : preflight checks everything, fail loud if a setup already exists
+    #
+    # --default-reuse-when-resumable upgrades the default to "smart resume":
+    # when a coherent prior setup is detected (server env + bucket repo +
+    # locally decryptable secrets/restic.yaml), the script silently behaves
+    # as if --reuse was passed. Used by `make pilot` retry flows where rerunning
+    # the orchestrator after a downstream-step failure must not abort at
+    # setup-backup. Greenfield (clean state) and mismatched states (bucket
+    # repo without local SOPS) are unaffected.
     mode = "default"
+    default_reuse_when_resumable = False
     for arg in sys.argv[1:]:
         if arg == "--reuse":
             mode = "reuse"
         elif arg == "--force":
             mode = "force"
+        elif arg == "--default-reuse-when-resumable":
+            default_reuse_when_resumable = True
         elif arg in ("-h", "--help"):
             print(__doc__)
-            print("Usage: setup-backup.py [--reuse|--force]")
+            print("Usage: setup-backup.py [--reuse|--force] [--default-reuse-when-resumable]")
             sys.exit(0)
         else:
             fail(f"Unknown argument: {arg}")
@@ -578,6 +617,19 @@ def main() -> None:
         log(f"  Restic repo in bucket: {'initialized' if repo_initialized else 'empty / not initialized'}")
     server_state = "/etc/restic/env present with password" if env_exists else "/etc/restic/env missing"
     log(f"  Server: {server_state}")
+
+    # --- Smart-resume default (opt-in via --default-reuse-when-resumable) ---
+    # Resolve mode='default' to either 'reuse' or stay 'default' (and so fail
+    # loud below) based on whether the prior state is fully resumable.
+    if mode == "default" and default_reuse_when_resumable:
+        if not env_exists and not repo_initialized:
+            log("greenfield mode: clean state, initialising (default)")
+        elif env_exists and repo_initialized and secrets_restic_yaml_decryptable():
+            log("resume mode: existing /etc/restic/env + bucket config detected, reusing (--reuse)")
+            mode = "reuse"
+        elif repo_initialized and not secrets_restic_yaml_decryptable():
+            log("mismatch: bucket has config but no local SOPS — must --force or restore secrets/restic.yaml")
+            # Fall through to the matrix below, which will exit 3 in default mode.
 
     # --- PREFLIGHT step 3: consistency decision ---
     # Matrix:

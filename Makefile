@@ -345,20 +345,11 @@ sync-upstream: ## Fetch upstream and merge upstream/main into local main + VarLe
 # plus POSTGRES_PASSWORD if profile=postgres), then run `make pilot`.
 #
 
-pilot: ## Concept Pilot one-shot: provision Hetzner + bring up stack + setup backup + monitoring + smoke
-	$(MAKE) -C web-deploy up
-	$(MAKE) -C web-deploy stack-up
-	$(MAKE) -C web-deploy setup-backup
-	$(MAKE) -C web-deploy setup-monitoring
-	$(MAKE) -C web-deploy smoke
-	@echo ""
-	@echo "=== Concept Pilot is live ==="
-	@echo "  https://$$($(MAKE) -s -C web-deploy ip)/                 (Uptime Kuma — login admin / varlens-konzept)"
-	@echo "  https://$$($(MAKE) -s -C web-deploy ip)/varlens/healthz  (VarLens app)"
-	@echo "  https://$$($(MAKE) -s -C web-deploy ip)/logs/            (Dozzle — same login)"
+pilot: ## Concept Pilot one-shot: pre-flight, provision, stack-up, backup, monitoring, smoke (with live status)
+	@web-deploy/scripts/pilot.sh
 
-pilot-down: ## Tear down the Concept Pilot Hetzner environment (interactive confirmation)
-	$(MAKE) -C web-deploy down
+pilot-down: ## Tear down the Concept Pilot Hetzner environment (banner + interactive confirmation)
+	@web-deploy/scripts/pilot-down.sh
 
 pilot-status: ## Show Hetzner server status (running / stopped / absent)
 	$(MAKE) -C web-deploy status

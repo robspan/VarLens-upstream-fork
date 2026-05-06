@@ -86,9 +86,12 @@ services:
     # external benefit. Debug from the server via `docker exec varlens
     # wget -qO- http://127.0.0.1:8080/healthz` if needed.
     volumes:
-      # Persistent SQLite + admin recovery key file. Mount must exist on
-      # host (created by cloud-init or by `make stack-up`).
-      - /mnt/data/app:/data
+      # Runtime data (SQLite + admin recovery key) goes in a sub-dir so
+      # /mnt/data/app/ itself stays owned by the deploy user (uid 1000) for
+      # rsync of compose files, while /mnt/data/app/data/ is chowned to
+      # the container's varlens user (uid 1001) for writes. Created and
+      # chowned by pilot.sh's wait_for_server_ready.
+      - /mnt/data/app/data:/data
     environment:
       VARLENS_DB_PATH: ${VARLENS_DB_PATH:-/data/varlens.db}
       VARLENS_WEB_PORT: ${VARLENS_WEB_PORT:-8080}

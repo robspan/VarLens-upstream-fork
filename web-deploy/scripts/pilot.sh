@@ -109,15 +109,18 @@ wait_for_server_ready() {
   fi
 
   # Container's varlens user is uid 1001 but the host's deploy user is uid
-  # 1000 — bind-mount permissions don't translate, so chown the app dir to
-  # match the container's runtime user before docker compose tries to
-  # write /data/varlens.db.
-  printf '  Aligning /mnt/data/app ownership for container runtime (1001:1001) ...'
+  # 1000 — bind-mount permissions don't translate. Two purposes share
+  # /mnt/data/app: (a) deploy rsyncs compose files into it, (b) varlens
+  # container writes SQLite/recovery-key to its `/data` mount. We can't
+  # have both owners. Solution: a sub-directory split. /mnt/data/app stays
+  # deploy-owned for rsync; /mnt/data/app/data is chowned to 1001:1001 for
+  # the container; compose mounts /mnt/data/app/data:/data.
+  printf '  Creating /mnt/data/app/data with container-uid ownership (1001:1001) ...'
   if ssh -i "$ssh_key" -o BatchMode=yes deploy@"$ip" \
-    'sudo chown -R 1001:1001 /mnt/data/app' 2>/dev/null; then
+    'sudo mkdir -p /mnt/data/app/data && sudo chown 1001:1001 /mnt/data/app/data' 2>/dev/null; then
     printf ' %s✓%s\n' "$GREEN" "$RESET"
   else
-    printf ' %s✗%s could not chown /mnt/data/app — does deploy have NOPASSWD sudo?\n' "$RED" "$RESET"
+    printf ' %s✗%s could not chown /mnt/data/app/data — does deploy have NOPASSWD sudo?\n' "$RED" "$RESET"
     return 1
   fi
 }

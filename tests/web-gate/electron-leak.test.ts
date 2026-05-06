@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { readFileSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
+import { resolve } from 'path'
 import { getProject, relPath } from './helpers/ts-morph-project'
 
 /**
@@ -27,6 +28,23 @@ const BANNED_RUNTIME_IDENTIFIERS = [
 const FORWARD_GLOBS = ['src/shared/**/*.ts', 'src/web/**/*.ts']
 
 describe('electron-leak gate', () => {
+  test('built web bundle does not require electron at runtime', () => {
+    const bundle = resolve(process.cwd(), 'out/web/server.cjs')
+    if (!existsSync(bundle)) {
+      // Bundle not built yet. Default `make ci` doesn't run `build:web`;
+      // the VARLENS_WEB=1 path does, so this assertion fires there.
+      return
+    }
+    const content = readFileSync(bundle, 'utf8')
+    const matches = content.match(/require\(['"]electron['"]\)/g)
+    expect(
+      matches,
+      'web bundle requires electron — Rollup hoisted a desktop import into the bundle. ' +
+        'Add the offending source file to WEB_STUBS in vite.web.config.ts. ' +
+        'The post-prune container tree has no electron, so this would crash boot.'
+    ).toBeNull()
+  })
+
   test('no runtime electron imports under src/shared/ or src/web/', () => {
     const project = getProject()
     const violations: string[] = []

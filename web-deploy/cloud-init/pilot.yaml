@@ -206,7 +206,19 @@ runcmd:
         echo "[varlens-backup] stale lock detected, calling restic unlock --remove-all"
         restic unlock --remove-all || true
     fi
-    restic backup "$${BACKUP_PATHS}" --tag auto --tag "$(date +%Y-%m-%d)"
+    # Quiesce SQLite via online-backup API. Captures a transactionally
+    # consistent copy of the DB at /mnt/data/app/data/varlens.db.snapshot
+    # regardless of in-flight writers. Cheaper than stopping the container.
+    if [ -f /mnt/data/app/data/varlens.db ]; then
+        docker exec varlens sqlite3 /data/varlens.db ".backup /data/varlens.db.snapshot" \
+            || echo "[varlens-backup] WARN: sqlite quiesce failed; continuing with raw file"
+    fi
+    # Exclude the live WAL/SHM sidecars: the .snapshot above is self-contained,
+    # and the running sidecars are inconsistent with it (and with each other
+    # mid-write). Restic will still capture varlens.db itself; on restore we
+    # prefer the .snapshot file.
+    restic backup "$${BACKUP_PATHS}" --tag auto --tag "$(date +%Y-%m-%d)" \
+        --exclude '*.db-wal' --exclude '*.db-shm'
     restic forget --keep-daily "$${RETENTION_KEEP_DAILY}" --keep-weekly "$${RETENTION_KEEP_WEEKLY}" --keep-monthly "$${RETENTION_KEEP_MONTHLY}" --prune || true
     if [ -n "$${HEARTBEAT_URL:-}" ]; then
         curl -fsS --max-time 10 --retry 3 "$${HEARTBEAT_URL}" >/dev/null || true

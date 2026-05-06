@@ -92,23 +92,20 @@ describe.skipIf(!existsSync(DEPLOY))('deploy-stack wiring gate', () => {
     // bound to 127.0.0.1 / [::1] only. Both the Makefile and the CLI
     // smoke must use this shape.
     const makefile = readFileSync(MAKEFILE, 'utf8')
-    expect(makefile, 'Makefile smoke must use ss -tlnp for bind-shape checks').toMatch(
-      /ss -tlnp/
-    )
+    expect(makefile, 'Makefile smoke must use ss -tlnp for bind-shape checks').toMatch(/ss -tlnp/)
     expect(makefile, 'Makefile smoke must probe Kuma localhost bind').toMatch(
       /Kuma bound to localhost only/
     )
     expect(makefile, 'Makefile smoke must probe Dozzle localhost bind').toMatch(
       /Dozzle bound to localhost only/
     )
-    expect(makefile, 'Makefile smoke must not retain the legacy "Direct port closed" probe').not.toMatch(
-      /Direct port \d+ closed/
-    )
+    expect(
+      makefile,
+      'Makefile smoke must not retain the legacy "Direct port closed" probe'
+    ).not.toMatch(/Direct port \d+ closed/)
     const cli = readFileSync(CLI, 'utf8')
     expect(cli, 'CLI smoke must use ss -tlnp for bind-shape checks').toMatch(/ss -tlnp/)
-    expect(cli, 'CLI smoke must probe Kuma localhost bind').toMatch(
-      /Kuma bound to localhost only/
-    )
+    expect(cli, 'CLI smoke must probe Kuma localhost bind').toMatch(/Kuma bound to localhost only/)
     expect(cli, 'CLI smoke must probe Dozzle localhost bind').toMatch(
       /Dozzle bound to localhost only/
     )

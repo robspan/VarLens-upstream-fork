@@ -187,16 +187,18 @@ preflight() {
   fi
 
   # 6. GHCR_TOKEN — required to pull a private varlens-web image. Probe
-  # the registry directly so we catch expired / scope-reduced tokens at
-  # preflight rather than at the docker pull during stack-up (which is
-  # ~5 min in).
+  # GHCR's token-exchange endpoint (the OAuth2 Bearer flow that `docker
+  # login` does internally) so we catch expired / scope-reduced tokens
+  # at preflight rather than at the docker pull during stack-up. The
+  # /v2/.../manifests/edge endpoint cannot be hit with Basic auth; GHCR
+  # always redirects there to /token first.
   if [[ -n "${GHCR_TOKEN:-}" ]]; then
     local ghcr_user="${GHCR_USER:-robspan}"
     if curl -fsS -u "$ghcr_user:$GHCR_TOKEN" -o /dev/null \
-         "https://ghcr.io/v2/$ghcr_user/varlens-web/manifests/edge" 2>/dev/null; then
-      printf '  %s✓%s GHCR_TOKEN can read ghcr.io/%s/varlens-web (manifest reachable)\n' "$GREEN" "$RESET" "$ghcr_user"
+         "https://ghcr.io/token?service=ghcr.io&scope=repository:$ghcr_user/varlens-web:pull" 2>/dev/null; then
+      printf '  %s✓%s GHCR_TOKEN can pull ghcr.io/%s/varlens-web (read:packages verified)\n' "$GREEN" "$RESET" "$ghcr_user"
     else
-      printf '  %s✗%s GHCR_TOKEN cannot read ghcr.io/%s/varlens-web manifests — expired or scope reduced\n' "$RED" "$RESET" "$ghcr_user"
+      printf '  %s✗%s GHCR_TOKEN cannot read ghcr.io/%s/varlens-web — expired or missing read:packages scope\n' "$RED" "$RESET" "$ghcr_user"
       errors=$((errors + 1))
     fi
   else

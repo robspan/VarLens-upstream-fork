@@ -56,3 +56,41 @@ elapsed=$(($(date +%s) - start))
 
 banner "✓ Tear-down complete in $(human_time "$elapsed")"
 printf '  Tofu state is now empty. Run %smake pilot%s to provision a fresh server.\n\n' "$BOLD" "$RESET"
+
+# ---- Optional bucket teardown ---------------------------------------------
+# The restic backup bucket lives independently of the Hetzner server (it is
+# Hetzner Object Storage, separate from the cpx32 + volume just destroyed).
+# Offer to tear it down as a follow-up so a full reset is one operator
+# decision rather than two separate commands. VARLENS_PILOT_DOWN_YES=1
+# means "non-interactive teardown" — extend that semantic to the bucket.
+prompt_bucket_teardown() {
+  if [[ "${VARLENS_PILOT_DOWN_YES:-0}" = "1" ]]; then
+    printf '  %sVARLENS_PILOT_DOWN_YES=1 → also destroying restic bucket.%s\n' "$YELLOW" "$RESET"
+    return 0
+  fi
+  if [[ ! -t 0 ]]; then
+    printf '  %sNon-interactive shell and VARLENS_PILOT_DOWN_YES not set — skipping bucket teardown.%s\n' "$DIM" "$RESET"
+    return 1
+  fi
+  printf '\n  %sAlso destroy the restic backup bucket?%s\n' "$BOLD" "$RESET"
+  printf '    %sBackups in the bucket will be gone for good.%s\n' "$YELLOW" "$RESET"
+  printf '    Type %syes%s to destroy, anything else to keep: ' "$BOLD" "$RESET"
+  local reply=""
+  read -r reply || true
+  [[ "$reply" = "yes" ]]
+}
+
+printf '%s─── Bucket teardown (optional) ───────────────────────────────────%s\n' "$DIM" "$RESET"
+if [[ -z "${RESTIC_S3_ACCESS_KEY:-}" || -z "${RESTIC_S3_SECRET_KEY:-}" ]]; then
+  printf '  %sRESTIC_S3_ACCESS_KEY / RESTIC_S3_SECRET_KEY not in env — skipping bucket teardown offer.%s\n' "$DIM" "$RESET"
+  printf '  %sTo destroy the bucket later:%s export RESTIC_S3_ACCESS_KEY=… RESTIC_S3_SECRET_KEY=… && make -C web-deploy destroy-bucket DESTROY_BUCKET_ARGS=--yes\n\n' "$DIM" "$RESET"
+elif prompt_bucket_teardown; then
+  printf '\n  Destroying restic bucket ...\n'
+  if make -C "$WEB_DEPLOY" destroy-bucket DESTROY_BUCKET_ARGS=--yes; then
+    printf '%s  ✓ bucket destroyed%s\n\n' "$GREEN" "$RESET"
+  else
+    printf '%s  ✗ bucket teardown failed — re-run manually: make -C web-deploy destroy-bucket DESTROY_BUCKET_ARGS=--yes%s\n\n' "$RED" "$RESET"
+  fi
+else
+  printf '  %sBucket preserved.%s\n\n' "$DIM" "$RESET"
+fi

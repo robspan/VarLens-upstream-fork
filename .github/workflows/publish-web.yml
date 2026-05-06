@@ -130,6 +130,12 @@ jobs:
 
       - name: Upload SARIF
         if: always() && hashFiles('trivy-results.sarif') != ''
+        # Best-effort: SARIF upload requires GitHub Advanced Security on
+        # private repos. This fork is private without GHAS, so the upload
+        # 403s with "Resource not accessible by integration." Trivy's
+        # CRITICAL gate above is the binding security check; SARIF is
+        # supplementary visibility only. Don't fail the workflow on it.
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@b7cec7526559c32f1616476ff32d17ba4c59b2d6 # github/codeql-action/upload-sarif@v3.25.15
         with:
           sarif_file: trivy-results.sarif

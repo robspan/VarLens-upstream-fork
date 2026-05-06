@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# Pre-commit hook for VarLens-IaC.
+#
+# Activated once per checkout via `make install-hooks`, which symlinks this
+# file into .git/hooks/pre-commit. Versioned in the repo so every adopter
+# can opt in with one command after clone.
+#
+# Behaviour:
+#   1. Determine which files are being committed (staged).
+#   2. Skip the heavy checks entirely if only docs / planning / non-code
+#      files changed - keeps commit-message-only or doc-only commits fast.
+#   3. Otherwise run `make lint` (tofu fmt, tofu validate, shellcheck,
+#      Caddyfile validate) plus python AST parse on staged .py files.
+#   4. Refuse the commit if any check fails. Bypass with `git commit
+#      --no-verify` (intended for emergency-fix-during-incident use).
+
+set -euo pipefail
+
+# Run from repository root (hook can be invoked from a sub-dir).
+cd "$(git rev-parse --show-toplevel)"
+
+CHANGED=$(git diff --cached --name-only --diff-filter=ACM)
+
+if [ -z "$CHANGED" ]; then
+    exit 0
+fi
+
+# Quick path: if only docs / .internalplanning / markdown / html / images
+# changed, skip the heavy lint. Speeds up doc-only commits to <100ms.
+HEAVY=$(echo "$CHANGED" | grep -vE '^(docs/|README\.md|\.internalplanning/|.*\.md$|.*\.html$|.*\.png$|.*\.svg$|\.gitignore$)' || true)
+if [ -z "$HEAVY" ]; then
+    exit 0
+fi
+
+echo "[pre-commit] code/config files staged - running checks..."
+echo "[pre-commit]   make lint  (tofu fmt+validate, shellcheck, Caddyfile)"
+make lint >/dev/null 2>&1 || {
+    echo ""
+    echo "[pre-commit] FAIL: make lint failed. Run \`make lint\` to see details."
+    echo "[pre-commit] Bypass (only for emergency hot-fix): git commit --no-verify"
+    exit 1
+}
+
+# Python AST sanity on staged .py files (catches obvious syntax errors).
+PY_FILES=$(echo "$CHANGED" | grep -E '\.py$' || true)
+if [ -n "$PY_FILES" ]; then
+    echo "[pre-commit]   python ast.parse on staged .py files"
+    while read -r f; do
+        [ -z "$f" ] && continue
+        python3 -c "import ast; ast.parse(open('$f').read())" || {
+            echo "[pre-commit] FAIL: $f has Python syntax errors."
+            exit 1
+        }
+    done <<< "$PY_FILES"
+fi
+
+# Bash syntax sanity on staged .sh files.
+SH_FILES=$(echo "$CHANGED" | grep -E '\.sh$' || true)
+if [ -n "$SH_FILES" ]; then
+    echo "[pre-commit]   bash -n on staged .sh files"
+    while read -r f; do
+        [ -z "$f" ] && continue
+        bash -n "$f" || {
+            echo "[pre-commit] FAIL: $f has Bash syntax errors."
+            exit 1
+        }
+    done <<< "$SH_FILES"
+fi
+
+# bin/varlens has no extension but is Python; check it explicitly if staged.
+if echo "$CHANGED" | grep -q '^bin/varlens$'; then
+    echo "[pre-commit]   python ast.parse on bin/varlens"
+    python3 -c "import ast; ast.parse(open('bin/varlens').read())" || {
+        echo "[pre-commit] FAIL: bin/varlens has Python syntax errors."
+        exit 1
+    }
+fi
+
+echo "[pre-commit] all checks green"

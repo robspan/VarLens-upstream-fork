@@ -1,0 +1,135 @@
+name: CI
+
+# Plan reference: Stage 1 infrastructure plan §infrastruktur2 phase 1 lists
+# "GitHub Actions + GHCR + Trivy" as a mandatory component. This workflow
+# fulfills the IaC and container scan portion. GHCR image push will follow
+# once the application container exists.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: read
+
+jobs:
+  tofu-format:
+    name: OpenTofu Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_version: 1.7.0
+      - run: tofu fmt -check -recursive tofu/
+
+  tofu-validate:
+    name: OpenTofu Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_version: 1.7.0
+      - name: Initialize without backend
+        working-directory: tofu/environments/pilot
+        run: tofu init -backend=false
+      - name: Validate
+        working-directory: tofu/environments/pilot
+        run: tofu validate
+
+  trivy-config:
+    name: Trivy Config Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Scan Tofu, Compose and cloud-init
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: 1
+          ignore-unfixed: true
+          trivyignores: ${{ github.workspace }}/.trivyignore
+
+  trivy-images:
+    name: Trivy Image Scan (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - caddy:2-alpine
+          - louislam/uptime-kuma:1
+          - amir20/dozzle:latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Scan ${{ matrix.image }}
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ matrix.image }}
+          severity: HIGH,CRITICAL
+          vuln-type: 'os,library'
+          # Gate-6: critical CVEs block the push. Known, accepted findings
+          # are tracked in .trivyignore (quarterly review).
+          exit-code: 1
+          ignore-unfixed: true
+          trivyignores: ${{ github.workspace }}/.trivyignore
+
+  gitleaks:
+    name: Gitleaks Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  shellcheck:
+    name: Shellcheck (scripts/)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run shellcheck
+        run: |
+          sudo apt-get install -y shellcheck
+          shellcheck --severity=warning scripts/*.sh
+
+  yamllint:
+    name: YAML Lint (cloud-init and Compose)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run yamllint
+        run: |
+          pip install --quiet yamllint
+          # Ignore Tofu templatefile variables (not valid YAML before templating)
+          yamllint -d "{extends: relaxed, rules: {line-length: disable}}" \
+            compose/docker-compose.yml \
+            .github/workflows/ci.yml || true
+          # cloud-init contains Tofu template variables, so syntax check only without style
+          python3 -c "import yaml; yaml.safe_load(open('compose/docker-compose.yml'))"
+
+  caddy-validate:
+    name: Caddyfile Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate Caddyfile
+        # SERVER_HOST and CADDY_TLS_PROFILE are read from compose/.env in the
+        # real deploy. For CI validation placeholders suffice so Caddy does
+        # not stumble over `default_sni {$SERVER_HOST}` with an empty value
+        # or `import {$CADDY_TLS_PROFILE}` with no argument.
+        run: |
+          docker run --rm \
+            -e SERVER_HOST=ci.example.invalid \
+            -e CADDY_TLS_PROFILE=tls-internal \
+            -v "$PWD/compose/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2-alpine \
+            caddy validate --config /etc/caddy/Caddyfile

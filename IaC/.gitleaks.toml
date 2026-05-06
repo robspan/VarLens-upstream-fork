@@ -1,0 +1,21 @@
+# Gitleaks configuration for VarLens-IaC.
+#
+# Extends the default ruleset and allowlists the literal string
+# `varlens-konzept`, which is the *documented* Concept Pilot default
+# basic-auth credential. It appears verbatim in the Caddyfile, the
+# README, the runbook, the smoke-test command in the Makefile, and
+# the setup-monitoring script. Adopters change it after the first
+# login per the documented procedure - it is not a real secret.
+#
+# Plan reference: §vertrag5 (Real-Data Lockout) makes the Concept
+# Pilot intranet-only with test data; the default credential is
+# acceptable in that scope.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "varlens-konzept is the documented default Concept Pilot credential, not a secret"
+regexes = [
+    '''varlens-konzept''',
+]

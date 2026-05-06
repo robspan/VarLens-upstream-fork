@@ -1,0 +1,116 @@
+# Caddy configuration for the Concept Pilot.
+#
+# TLS strategy is selected via the CADDY_TLS_PROFILE env var. Three modes
+# are supported, all with automatic renewal handled inside the container:
+#
+#   tls-internal    Self-signed certificate from Caddy's internal CA.
+#                   Browser shows a one-time warning unless the Caddy root
+#                   is imported. No external dependencies. Fallback for
+#                   offline / dev / pre-internet environments.
+#
+#   tls-le-classic  Let's Encrypt 90-day cert via ACME HTTP-01. Default
+#                   profile, requires SERVER_HOST to be a real domain
+#                   whose DNS A-record points here. Standard production.
+#
+#   tls-le-ip       Let's Encrypt 7-day cert via ACME TLS-ALPN-01 with
+#                   the `shortlived` profile. Lets you use the raw public
+#                   IP (Hetzner IPv4) as SERVER_HOST and still get a
+#                   browser-trusted certificate. Renewal every ~5 days,
+#                   handled automatically by Caddy. LE rate limit: 50
+#                   certs per IP per week, so don't spin destroy/up cycles
+#                   too often.
+#
+# Switch via the Makefile:
+#   make stack-up                                   # tls-le-ip (default if SERVER_HOST is an IP)
+#   make stack-up DOMAIN=varlens.example.de         # tls-le-classic
+#   make stack-up TLS=internal                      # tls-internal (no internet cert)
+
+{
+	# Without this, Caddy would try to enable HTTPS automatically for every
+	# site block, including ACME attempts. We do this explicitly here.
+	auto_https disable_redirects
+	# Default certificate served when a client connects without SNI.
+	default_sni {$SERVER_HOST}
+}
+
+# --- TLS profile snippets -----------------------------------------------------
+# Imported into the :443 site block via `import {$CADDY_TLS_PROFILE}`.
+# Each snippet either configures a `tls` directive or leaves it implicit so
+# Caddy's default ACME path takes over.
+
+(tls-internal) {
+	tls internal
+}
+
+(tls-le-classic) {
+	# Empty body: Caddy auto-detects SERVER_HOST as a domain and ACMEs from
+	# Let's Encrypt's default (90-day) profile via HTTP-01 challenge.
+}
+
+(tls-le-ip) {
+	tls {
+		issuer acme {
+			profile shortlived
+		}
+	}
+}
+
+# Port 80: redirect HTTP to HTTPS, except /healthz which stays plain so the
+# Docker healthcheck inside the container can probe without TLS gymnastics.
+:80 {
+	@healthz path /healthz
+	handle @healthz {
+		respond "ok" 200
+	}
+	handle {
+		redir https://{host}{uri} 308
+	}
+}
+
+# Port 443: TLS profile via snippet import.
+{$SERVER_HOST}:443 {
+	import {$CADDY_TLS_PROFILE}
+
+	# Welcome page on /welcome (open, no auth). Acts as a directory for
+	# new users who land here without knowing the URLs.
+	@welcome path /welcome
+	handle @welcome {
+		respond "VarLens Concept Pilot - running.
+
+Monitoring (login admin / varlens-konzept):
+- Uptime Kuma:   /         (root - dashboard after login)
+- Dozzle Logs:   /logs/
+
+Stage 1 - Concept (test data only, no real data per the Application Contract).
+As of April 2026: application container and database are still to come.
+" 200
+	}
+
+	# Backward-compat: anyone hitting the old /monitor/* URL gets bounced
+	# to the root, where Kuma now lives natively.
+	redir /monitor / permanent
+	redir /monitor/* / permanent
+
+	# Dozzle at /logs/. Dozzle is base-aware (DOZZLE_BASE=/logs in compose)
+	# and emits asset URLs under /logs/... - therefore `handle` (no strip).
+	handle /logs* {
+		basic_auth {
+			# Default login: admin / varlens-konzept
+			admin $2a$14$6QBIGJyJFZMJIomvheSxvOUokBVZsvz03snLpmL7auY8aBmxVfNKy
+		}
+		reverse_proxy dozzle:8080
+	}
+
+	# Everything else (including /, /dashboard, /assets, /socket.io, /api,
+	# /upload, /manifest.json, ...) goes to Uptime Kuma. Kuma 1.x has no
+	# base-path support and emits absolute paths, so it must own the root.
+	#
+	# No Caddy basic_auth here on purpose: Kuma has its own login form, and
+	# the browser PWA / manifest / favicon fetches happen without credentials
+	# by default (no `crossorigin="use-credentials"` on the link tags) - a
+	# basic_auth gate would 401 those and break the UI. Defense-in-depth via
+	# a second auth layer is overkill for the Concept Pilot intranet anyway.
+	handle {
+		reverse_proxy uptime-kuma:3001
+	}
+}

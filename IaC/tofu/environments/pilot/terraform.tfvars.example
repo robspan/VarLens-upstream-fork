@@ -1,0 +1,28 @@
+# Example configuration for the Concept Pilot.
+# Copy this file to terraform.tfvars and replace the values.
+# terraform.tfvars is excluded from commits via .gitignore.
+
+# Hetzner Cloud API token. Create it in the Hetzner Console under Security > API Tokens.
+hcloud_token = "REPLACE_WITH_HCLOUD_TOKEN"
+
+# SSH public key of the maintainer. Paste the contents of ~/.ssh/id_ed25519.pub.
+ssh_pubkey = "ssh-ed25519 AAAA... maintainer@host"
+
+# Optional overrides (defaults live in variables.tf):
+# server_name         = "varlens-pilot-fsn1"
+# server_type         = "cpx32"
+# server_location     = "fsn1"
+# data_volume_size_gb = 50
+# deploy_user         = "deploy"
+# ssh_allowlist       = ["0.0.0.0/0", "::/0"]
+
+# Backup setup is automated via `make setup-backup`. The script first tries
+# to create S3 credentials via the Hetzner Cloud API. If the API does not
+# yet provide this endpoint, it falls back to environment variables:
+#
+#   RESTIC_S3_ACCESS_KEY=... RESTIC_S3_SECRET_KEY=... make setup-backup
+#
+# In that case: generate the credentials once in the Hetzner Console >
+# Security > S3 Credentials, and pass the two values as environment
+# variables. terraform.tfvars itself intentionally contains no S3
+# credentials - they go through the backup setup script, not through Tofu.

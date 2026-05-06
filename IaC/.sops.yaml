@@ -1,0 +1,19 @@
+# SOPS configuration (see ADR-7).
+#
+# All files under secrets/ are encrypted with the age recipients listed
+# here as soon as they are edited via `sops`.
+#
+# Key rotation (add or replace recipient):
+#   1. Add the new public key to the recipients
+#   2. Re-encrypt all secret files via `sops updatekeys <file>`
+#
+# Maintainer workflow:
+#   sops secrets/<file>.yaml     - edit encrypted file
+#   sops -d secrets/<file>.yaml  - decrypt for display
+#
+# Adopters: generate your own age key via `age-keygen` and add the public key here.
+
+creation_rules:
+  - path_regex: secrets/.*\.ya?ml$
+    age: >-
+      age1pvqt8hdwslmkrkax5tl7cpdepszaj3z8smm4psgz6cn75qy77d0spfk7ht

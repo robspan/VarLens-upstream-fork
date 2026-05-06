@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><title>Infrastruktur (Betrieb)</title><style>:root { --varlens-primary: #1e3a5f; --varlens-primary-dark: #7baed4; --varlens-secondary: #455a64; --varlens-accent: #a09588; --varlens-bg: #f0f4f8; --varlens-bg-secondary: #fafbfd; --varlens-bg-tertiary: #ecf0f4; --varlens-fg: #1a1d23; --varlens-fg-dim: #6d7380; --varlens-border: rgba(0, 0, 0, 0.12); --varlens-radius: 4px; --varlens-radius-lg: 8px; --varlens-code-bg: #ecf0f4; --varlens-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; --varlens-font-mono: "Roboto Mono", "Courier New", monospace; }
+@media (prefers-color-scheme: dark) { :root { --varlens-bg: #12141a; --varlens-bg-secondary: #1a1d22; --varlens-bg-tertiary: #252a32; --varlens-fg: #e4e7ec; --varlens-fg-dim: #b0b5bf; --varlens-primary: #7baed4; --varlens-border: rgba(255, 255, 255, 0.12); --varlens-code-bg: #252a32; } }
+html { font-family: var(--varlens-font-sans); font-size: 16px; line-height: 1.55; color: var(--varlens-fg); background: var(--varlens-bg); }
+body { max-width: 980px; margin: 2rem auto; padding: 0 1.5rem; background: var(--varlens-bg-secondary); border-radius: var(--varlens-radius-lg); box-shadow: 0 1px 3px var(--varlens-border); padding-block: 2rem; }
+h1, h2, h3, h4 { color: var(--varlens-primary); font-weight: 700; line-height: 1.3; }
+h1 { font-size: 2rem; margin: 0 0 1.5rem; padding-bottom: .6rem; border-bottom: 2px solid var(--varlens-primary); }
+h2 { font-size: 1.5rem; margin: 2.4rem 0 1rem; padding-bottom: .35rem; border-bottom: 1px solid var(--varlens-border); }
+h3 { font-size: 1.2rem; margin: 1.6rem 0 .6rem; color: var(--varlens-secondary); }
+h4 { font-size: 1.05rem; margin: 1.2rem 0 .4rem; color: var(--varlens-secondary); }
+p { margin: 0 0 1rem; }
+a { color: var(--varlens-primary); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color .15s; }
+a:hover { border-bottom-color: var(--varlens-primary); }
+code { font-family: var(--varlens-font-mono); font-size: .85em; background: var(--varlens-code-bg); color: var(--varlens-fg); padding: 1px 6px; border-radius: var(--varlens-radius); border: 1px solid var(--varlens-border); }
+pre { font-family: var(--varlens-font-mono); font-size: .9em; background: var(--varlens-code-bg); padding: 1rem; border-radius: var(--varlens-radius); border: 1px solid var(--varlens-border); overflow-x: auto; line-height: 1.5; }
+pre code { background: none; border: none; padding: 0; }
+blockquote { margin: 1rem 0; padding: .8rem 1.2rem; border-left: 4px solid var(--varlens-accent); background: var(--varlens-bg-tertiary); color: var(--varlens-fg); border-radius: 0 var(--varlens-radius) var(--varlens-radius) 0; }
+blockquote p:last-child { margin-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--varlens-border); margin: 2.5rem 0; }
+table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .94em; background: var(--varlens-bg-secondary); }
+thead { background: var(--varlens-bg-tertiary); }
+th, td { padding: .55rem .85rem; text-align: left; border: 1px solid var(--varlens-border); vertical-align: top; }
+th { color: var(--varlens-primary); font-weight: 600; }
+tbody tr:hover { background: var(--varlens-bg-tertiary); }
+ul, ol { padding-left: 1.6rem; margin: 0 0 1rem; }
+li { margin-bottom: .35rem; line-height: 1.6; }
+strong, b { font-weight: 700; color: var(--varlens-fg); }</style></head><body>
+<h1>Infrastruktur</h1>
+<p>Vollversion Infrastruktur-seitig. Identity, Monitoring, Staging, Sovereign-Cloud-Migration, Produktionsreife, Härtung, Lieferketten-Sicherung. Geht über das Konzept-Pilot-Aufgabenprofil hinaus.</p>
+<p>Anker-Präfix: <code>§infrastruktur</code>. Übergreifende Leitplanken in <code>../vertrag.html</code> (<code>§vertrag*</code>), App-Strang in <code>app.html</code> (<code>§app*</code>), Vogelperspektive in <code>fahrplan.html</code> (<code>§fahrplan*</code>), Konzept-Plan in <code>../konzept/infrastruktur.html</code>, ADRs in <code>../adr.html</code>, Begriffe in <code>../glossar.html</code>.</p>
+<h2>§infrastruktur1 Voraussetzung</h2>
+<p>Stufe 2 baut auf abgeschlossenem Konzept-Stand auf. Annahme zu Beginn jedes Schritts hier:</p>
+<table>
+<thead>
+<tr>
+<th>Voraussetzung aus Konzept</th>
+<th>Quelle</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Single-Server-Container-Setup mit Caddy, Datenbank-Container, App-Container läuft</td>
+<td><code>../konzept/infrastruktur.html</code> §infrastruktur2 Gate</td>
+</tr>
+<tr>
+<td><code>tofu apply</code> ist idempotent</td>
+<td><code>../konzept/infrastruktur.html</code> §infrastruktur2</td>
+</tr>
+<tr>
+<td>restic-Backup gegen S3-API-Ziel läuft täglich, Restore-Übung protokolliert</td>
+<td><code>../konzept/infrastruktur.html</code> §infrastruktur2</td>
+</tr>
+<tr>
+<td>SOPS+age ist im Repository eingerichtet, CI verhindert Klartext-Commits</td>
+<td><code>../konzept/infrastruktur.html</code> §infrastruktur2</td>
+</tr>
+<tr>
+<td>Trivy-Scan in CI verhindert kritische CVEs</td>
+<td><code>../konzept/infrastruktur.html</code> §infrastruktur2</td>
+</tr>
+<tr>
+<td>Brücken-Klausel-Check bestanden: ENV-Indirection, S3-API-Backup, Stufe-2-Pfade frei</td>
+<td><code>../konzept/infrastruktur.html</code> §infrastruktur2</td>
+</tr>
+</tbody>
+</table>
+<p>Wenn eine Voraussetzung nicht erfüllt ist, gehört die Korrektur ins Konzept, nicht hierher.</p>
+<h2>§infrastruktur2 Vertrags-Mapping (Stufe 2)</h2>
+<p>Stufe 2 = AWS Sovereign Cloud nach Migrations-Block. Davor (Pilot-Reife auf der Stufe-1-Plattform) gilt das Mapping aus dem Konzept weiter.</p>
+<table>
+<thead>
+<tr>
+<th>Schnittstelle</th>
+<th>AWS Sovereign Cloud (validiert beim Migrations-Block)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1: Datenbank</td>
+<td>Managed PostgreSQL (RDS oder vergleichbar) mit KMS-Verschlüsselung</td>
+</tr>
+<tr>
+<td>2: OIDC</td>
+<td>Folgt Webzugriffe-Logbuch (§adr5)</td>
+</tr>
+<tr>
+<td>3: Reverse-Proxy</td>
+<td>Cloud-Load-Balancer + Cloud-Cert-Manager, oder Caddy weiterhin als interner Proxy</td>
+</tr>
+<tr>
+<td>4: Temporär-Pfad</td>
+<td>Cloud-Block-Storage oder ephemerer Container-Speicher</td>
+</tr>
+</tbody>
+</table>
+<h2>§infrastruktur3 Phasen</h2>
+<h3>§infrastruktur3.2 Phase 2 - Identity, Monitoring, Staging</h3>
+<p>Erste Stufe-2-Phase. Adressiert Logbuch-Sync-Punkt und führt Modul-Disziplin ein.</p>
+<table>
+<thead>
+<tr>
+<th>Komponente</th>
+<th>Zweck</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OIDC nach Logbuch (§adr5)</td>
+<td>Föderation oder lokaler Übergangs-Stub</td>
+</tr>
+<tr>
+<td>OpenTofu-Modul-Schnitt (<code>compute</code>/<code>network</code>/<code>storage</code>/<code>secrets</code>)</td>
+<td>§adr6 Cloud-Portabilität</td>
+</tr>
+<tr>
+<td>Netdata oder vergleichbar</td>
+<td>Single-Host-Monitoring</td>
+</tr>
+<tr>
+<td>Diun oder vergleichbar</td>
+<td>Image-Update-Beobachter (Anwendung manuell)</td>
+</tr>
+<tr>
+<td>Innen-fähiger Uptime-Check</td>
+<td>Verfügbarkeits-Beobachtung</td>
+</tr>
+<tr>
+<td>Staging-Umgebung mit anonymisierten oder synthetischen Daten</td>
+<td>Test-Plattform</td>
+</tr>
+<tr>
+<td>OpenTofu-Linter + Validator in CI</td>
+<td>IaC-Qualität</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Gate Phase 2:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Kriterium</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OIDC-Login funktioniert</td>
+</tr>
+<tr>
+<td>MFA nach Logbuch-Vorgabe konfiguriert</td>
+</tr>
+<tr>
+<td>OpenTofu-Module sind getrennt; Wurzel-Plan referenziert nur Modul-Ausgaben</td>
+</tr>
+<tr>
+<td>Monitoring liefert Live-Metriken und Mail-Alerts</td>
+</tr>
+<tr>
+<td>Image-Update-Beobachter benachrichtigt bei simulierter Update-Verfügbarkeit</td>
+</tr>
+<tr>
+<td>Staging-Umgebung steht</td>
+</tr>
+<tr>
+<td>§adr5 als Logbuch-Verweis dokumentiert</td>
+</tr>
+<tr>
+<td>§adr6 (OpenTofu-Modul-Schnitt) im Repository abgelegt</td>
+</tr>
+</tbody>
+</table>
+<h3>§infrastruktur3.3 Phase 3 - Produktionsreife (Capability)</h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Backups Append-Only</td>
+<td>Schreib- und Prune-Identität getrennt (§adr8)</td>
+</tr>
+<tr>
+<td>Object Lock</td>
+<td>Compliance-Mode 30 bis 90 Tage; muss bei Bucket-Erstellung aktiviert werden</td>
+</tr>
+<tr>
+<td>Netzwerk-Zugang final</td>
+<td>Nach §adr5</td>
+</tr>
+<tr>
+<td>TLS-Topologie</td>
+<td>Passt zum Netzwerk-Modell</td>
+</tr>
+<tr>
+<td>IaC-State remote</td>
+<td>S3-natives Locking (§adr9)</td>
+</tr>
+<tr>
+<td>Restore-Drill</td>
+<td>Produktionsähnliches Datenvolumen, RTO/RPO dokumentiert</td>
+</tr>
+</tbody>
+</table>
+<h3>§infrastruktur3.4 Phase 4 - System-Härtung und Off-Host-Logging (Capability)</h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Host-Audit</td>
+<td>auditd auf Container-Hosts + CloudTrail auf AWS</td>
+</tr>
+<tr>
+<td>Brute-Force-Schutz</td>
+<td>WAF/GuardDuty in Sovereign-Region, sonst fail2ban</td>
+</tr>
+<tr>
+<td>Off-Host-Logs</td>
+<td>Schreib-, ohne Lösch-Recht (§adr11)</td>
+</tr>
+<tr>
+<td>SBOM</td>
+<td>syft + license-checker</td>
+</tr>
+</tbody>
+</table>
+<h3>§infrastruktur3.5 Phase 5 - Lieferketten-Sicherung</h3>
+<table>
+<thead>
+<tr>
+<th>Komponente</th>
+<th>Zweck</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>cosign keyless via GitHub-Actions-OIDC</td>
+<td>Image-Signatur</td>
+</tr>
+<tr>
+<td>SLSA-Provenance</td>
+<td>Build-Herkunfts-Nachweis</td>
+</tr>
+<tr>
+<td>Base-Image-Pinning per Hash-Digest</td>
+<td>Reproduzierbarkeit</td>
+</tr>
+<tr>
+<td>Self-Hosting-Dokumentation in <code>docs/</code></td>
+<td>Adopter-Tauglichkeit</td>
+</tr>
+</tbody>
+</table>
+<h2>§infrastruktur4 Migrations-Block - Sovereign-Cloud-Wechsel</h2>
+<p>Anwendbar nur wenn Stufe-1-Plattform nicht bereits AWS Sovereign Cloud war. Verfügbarkeits-getrieben (§adr12).</p>
+<p><strong>Trigger:</strong> AWS-Sovereign-Cloud-Zugänge sind verfügbar.</p>
+<p><strong>Schritte:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Nr</th>
+<th>Schritt</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Vorbereitung: AWS-Account, Region-Service-Verfügbarkeits-Check, KMS-Strategie, DNS-TTL auf 60 s</td>
+</tr>
+<tr>
+<td>2</td>
+<td>AWS-Module schreiben (auf Basis des Stufe-2-Modul-Schnitts), auf separater AWS-Staging-Umgebung testen</td>
+</tr>
+<tr>
+<td>3</td>
+<td>App auf AWS-Staging deployen, End-to-End-Tests</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Daten-Migration probehalber: <code>pg_dump --no-owner --no-privileges</code> aus Stufe-1-Plattform, Restore in AWS-Postgres. Postgres-Extensions vorab in der Parameter-Group. RLS-Policies und Audit-Trigger nach Restore neu binden</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Read-Only-Fenster auf Quelle, finaler Daten-Sync, AWS produktiv, DNS-Switch</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Quell-Umgebung mindestens 14 Tage als Rollback-Reserve, dann protokollierter Abbau</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Was sich ändert versus nicht ändert:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Ändert sich</th>
+<th>Bleibt gleich</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OpenTofu-Module</td>
+<td>App-Container-Image</td>
+</tr>
+<tr>
+<td>Cloud-Provider</td>
+<td>App-Code</td>
+</tr>
+<tr>
+<td>Backup-Ziel mit Object Lock</td>
+<td>Compose-File-Struktur (nur ENV-Werte ändern sich)</td>
+</tr>
+<tr>
+<td>Cloud-Firewall → Security Groups</td>
+<td>OIDC-Discovery-Flow in der App</td>
+</tr>
+<tr>
+<td>LUKS → cloud-seitige Block-Encryption mit KMS</td>
+<td>Repository-Interface (SQLite/Postgres)</td>
+</tr>
+<tr>
+<td>TLS-Topologie nach Logbuch</td>
+<td></td>
+</tr>
+<tr>
+<td>IaC-State-Backend (S3-natives Locking)</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Rollback:</strong> nur möglich, solange das Read-Only-Fenster eingehalten wurde und auf AWS keine schreibenden Operationen stattgefunden haben.</p>
+<p><strong>Gate Migrations-Block:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Kriterium</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>App läuft auf AWS Sovereign Cloud, alle Vertrag-Schnittstellen erfüllt</td>
+</tr>
+<tr>
+<td>DNS-Switch vollzogen</td>
+</tr>
+<tr>
+<td>Restore-Übung auf AWS durchgeführt und protokolliert</td>
+</tr>
+<tr>
+<td>Migrations-Protokoll in der Dokumentation</td>
+</tr>
+<tr>
+<td>Quell-Plattform mindestens 14 Tage als Rollback-Reserve</td>
+</tr>
+</tbody>
+</table>
+<h2>§infrastruktur5 Dokumentations-Strang Phase 2-5</h2>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Artefakte</th>
+<th>Gate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2</td>
+<td>Identity-Provider-Setup-Dokumentation, Staging-Workflow</td>
+<td>Identity-Provider-Setup für Staging reproduzierbar</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Netzwerk-Konzept (Ergebnis §adr5), Restore-Drill-Protokoll, Migrations-Protokoll, Cloud-Portabilitäts-Dokumentation</td>
+<td>Netzwerk-Konzept Logbuch-konform; Restore-Drill mit RTO/RPO; Migrations-Protokoll vollständig</td>
+</tr>
+<tr>
+<td>4</td>
+<td>SECURITY.md, Off-Host-Logging-Anteil des Audit-Trail-Konzepts</td>
+<td>SECURITY.md mit CVE-Meldepfad</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Self-Hosting-Dokumentation, Go-Live-Selbst-Checkliste</td>
+<td>Self-Hosting-Dokumentation inklusive Adoptions-Aufwands-Hinweis</td>
+</tr>
+</tbody>
+</table>
+<p>Pentest und externe Audits sind nicht Plan-Inhalt - falls beauftragt, würde technische Zuarbeit auf Abfrage entstehen.</p>
+<h2>§infrastruktur6 Plattform-Portabilität</h2>
+<table>
+<thead>
+<tr>
+<th>Motivation</th>
+<th>Bedeutung</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Sovereign-Cloud-Migration</td>
+<td>Migrations-Block §infrastruktur4. Modul-Disziplin ab Phase 2 macht den Wechsel zum Modul-Tausch statt App-Refactor</td>
+</tr>
+<tr>
+<td>Adaptions-Tauglichkeit (MIT, Förderlogik)</td>
+<td>Andere Labore sollen adaptieren können (Helm-Chart, AWS-Alternative, On-Premises)</td>
+</tr>
+</tbody>
+</table>
+<h2>§infrastruktur7 Bedrohungsmodell (Stufe 2)</h2>
+<table>
+<thead>
+<tr>
+<th>Bedrohung</th>
+<th>Lebt am</th>
+<th>Stufe-2-Maßnahme</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Kompromittiertes Container-Image</td>
+<td>Lieferkette</td>
+<td>cosign + SLSA ab Phase 5, Digest-Pinning</td>
+</tr>
+<tr>
+<td>Root auf VM/Host</td>
+<td>System</td>
+<td>Phase 4: Off-Host-Logging</td>
+</tr>
+<tr>
+<td>Backup-Ransomware</td>
+<td>Plattform</td>
+<td>Phase 3: Append-Only-Identitäten, Object Lock</td>
+</tr>
+<tr>
+<td>Plattform-Lock-In</td>
+<td>Plattform</td>
+<td>§adr6 + §adr7: Modul-Schnitt, S3-API, SOPS+age</td>
+</tr>
+<tr>
+<td>Spuren-Löschung durch Root</td>
+<td>System</td>
+<td>Off-Host-Logs mit Schreib- ohne Lösch-Recht</td>
+</tr>
+</tbody>
+</table>
+<p>App-/Datenbank-bezogene Bedrohungen: <code>app.html</code> §app4.</p>
+<h2>§infrastruktur8 Relevante ADRs (Stufe 2)</h2>
+<table>
+<thead>
+<tr>
+<th>Nr</th>
+<th>Titel</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>5</td>
+<td>Netzwerk-Zugang und Identity Provider folgen dem Webzugriffe-Logbuch</td>
+</tr>
+<tr>
+<td>6</td>
+<td>OpenTofu-Module schneiden für Cloud-Portabilität</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Backups als Capability</td>
+</tr>
+<tr>
+<td>9</td>
+<td>IaC-State remote mit S3-nativem Locking</td>
+</tr>
+<tr>
+<td>11</td>
+<td>Off-Host-System-Logging als Capability</td>
+</tr>
+<tr>
+<td>12</td>
+<td>Migrations-Block-Position abhängig von Sovereign-Cloud-Verfügbarkeit</td>
+</tr>
+</tbody>
+</table>
+<p>Voll-Texte in <code>../adr.html</code> (§adr0 … §adr12). Übersicht im ADR-Index <code>../vertrag.html</code> §vertrag4.</p>
+<h3>Stand 2026-04-29 - Plan v2</h3>
+<ul>
+<li>Anlass: Restrukturierung in konzept/betrieb. Stufe-2-Inhalte ausgegliedert; Voraussetzung Konzept-Stand explizit.</li>
+<li>Offen / Abhängigkeiten:</li>
+<li>Logbuch-Stand (Sync-Punkt, blockiert produktiven Abschluss §infrastruktur3.2; siehe §adr5).</li>
+<li>AWS-Sovereign-Cloud-Service-Katalog (Trigger §infrastruktur4; siehe §adr12).</li>
+</ul>
+</body></html>

@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><title>Bewertungen (Konzept)</title><style>:root { --varlens-primary: #1e3a5f; --varlens-primary-dark: #7baed4; --varlens-secondary: #455a64; --varlens-accent: #a09588; --varlens-bg: #f0f4f8; --varlens-bg-secondary: #fafbfd; --varlens-bg-tertiary: #ecf0f4; --varlens-fg: #1a1d23; --varlens-fg-dim: #6d7380; --varlens-border: rgba(0, 0, 0, 0.12); --varlens-radius: 4px; --varlens-radius-lg: 8px; --varlens-code-bg: #ecf0f4; --varlens-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; --varlens-font-mono: "Roboto Mono", "Courier New", monospace; }
+@media (prefers-color-scheme: dark) { :root { --varlens-bg: #12141a; --varlens-bg-secondary: #1a1d22; --varlens-bg-tertiary: #252a32; --varlens-fg: #e4e7ec; --varlens-fg-dim: #b0b5bf; --varlens-primary: #7baed4; --varlens-border: rgba(255, 255, 255, 0.12); --varlens-code-bg: #252a32; } }
+html { font-family: var(--varlens-font-sans); font-size: 16px; line-height: 1.55; color: var(--varlens-fg); background: var(--varlens-bg); }
+body { max-width: 980px; margin: 2rem auto; padding: 0 1.5rem; background: var(--varlens-bg-secondary); border-radius: var(--varlens-radius-lg); box-shadow: 0 1px 3px var(--varlens-border); padding-block: 2rem; }
+h1, h2, h3, h4 { color: var(--varlens-primary); font-weight: 700; line-height: 1.3; }
+h1 { font-size: 2rem; margin: 0 0 1.5rem; padding-bottom: .6rem; border-bottom: 2px solid var(--varlens-primary); }
+h2 { font-size: 1.5rem; margin: 2.4rem 0 1rem; padding-bottom: .35rem; border-bottom: 1px solid var(--varlens-border); }
+h3 { font-size: 1.2rem; margin: 1.6rem 0 .6rem; color: var(--varlens-secondary); }
+h4 { font-size: 1.05rem; margin: 1.2rem 0 .4rem; color: var(--varlens-secondary); }
+p { margin: 0 0 1rem; }
+a { color: var(--varlens-primary); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color .15s; }
+a:hover { border-bottom-color: var(--varlens-primary); }
+code { font-family: var(--varlens-font-mono); font-size: .85em; background: var(--varlens-code-bg); color: var(--varlens-fg); padding: 1px 6px; border-radius: var(--varlens-radius); border: 1px solid var(--varlens-border); }
+pre { font-family: var(--varlens-font-mono); font-size: .9em; background: var(--varlens-code-bg); padding: 1rem; border-radius: var(--varlens-radius); border: 1px solid var(--varlens-border); overflow-x: auto; line-height: 1.5; }
+pre code { background: none; border: none; padding: 0; }
+blockquote { margin: 1rem 0; padding: .8rem 1.2rem; border-left: 4px solid var(--varlens-accent); background: var(--varlens-bg-tertiary); color: var(--varlens-fg); border-radius: 0 var(--varlens-radius) var(--varlens-radius) 0; }
+blockquote p:last-child { margin-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--varlens-border); margin: 2.5rem 0; }
+table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .94em; background: var(--varlens-bg-secondary); }
+thead { background: var(--varlens-bg-tertiary); }
+th, td { padding: .55rem .85rem; text-align: left; border: 1px solid var(--varlens-border); vertical-align: top; }
+th { color: var(--varlens-primary); font-weight: 600; }
+tbody tr:hover { background: var(--varlens-bg-tertiary); }
+ul, ol { padding-left: 1.6rem; margin: 0 0 1rem; }
+li { margin-bottom: .35rem; line-height: 1.6; }
+strong, b { font-weight: 700; color: var(--varlens-fg); }</style></head><body>
+<h1>Bewertungen</h1>
+<p>Erzeugnisse für Konzept-Pilot-Auftrag: konkrete Bewertungen, Inventuren und Klärungspunkte. Anker-Präfix: <code>§bewertung</code>. Plan-Stand <code>vertrag.html</code>/<code>app.html</code>/<code>infrastruktur.html</code> referenziert hierhin.</p>
+<p><strong>Stand 2026-04-29:</strong> Erstwurf. Sektionen mit <code>[stub]</code> brauchen Stakeholder-Klärung im Kickoff. Sektionen mit <code>[draft]</code> enthalten Audit-Daten aus dem VarLens-Repository, sind aber noch nicht final mit dem Erstbetreiber abgestimmt.</p>
+<h2>§bewertung1 App-Inventur <strong>[draft]</strong></h2>
+<p>Stand VarLens-App-Repository April 2026. Audit-Quelle: <code>/Users/robinspanier/Documents/GitHub/VarLens</code>.</p>
+<h3>§bewertung1.1 Inter-Prozess-Kommunikation (IPC) - Domains</h3>
+<p>30 Domain-Module unter <code>src/main/ipc/domains/</code>, ca. 190 <code>ipcMain.handle</code>/<code>on</code>-Aufrufe insgesamt.</p>
+<table>
+<thead>
+<tr>
+<th>Domain</th>
+<th style="text-align: right;">Channels (ca.)</th>
+<th>Web-Tauglichkeit</th>
+<th>Anmerkung</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>variants</td>
+<td style="text-align: right;">7</td>
+<td>direkt portierbar</td>
+<td>reine Daten-Operationen, keine Native-API</td>
+</tr>
+<tr>
+<td>auth</td>
+<td style="text-align: right;">9</td>
+<td>Adapter nötig</td>
+<td>Argon2 läuft im Backend, Session-Handling neu</td>
+</tr>
+<tr>
+<td>database</td>
+<td style="text-align: right;">11</td>
+<td>Adapter nötig</td>
+<td>open/create/backup/rekey: Dialoge raus, Multipart-Upload für Restore</td>
+</tr>
+<tr>
+<td>import</td>
+<td style="text-align: right;">8</td>
+<td>Adapter nötig</td>
+<td>File-Dialoge raus, Stream-Upload-Endpoint</td>
+</tr>
+<tr>
+<td>cases</td>
+<td style="text-align: right;">6</td>
+<td>direkt portierbar</td>
+<td>reine CRUD</td>
+</tr>
+<tr>
+<td>case-metadata</td>
+<td style="text-align: right;">23</td>
+<td>direkt portierbar</td>
+<td>reine CRUD</td>
+</tr>
+<tr>
+<td>panels</td>
+<td style="text-align: right;">17</td>
+<td>Adapter nötig (1 Channel)</td>
+<td>panel file save geht über Download statt Save-Dialog</td>
+</tr>
+<tr>
+<td>annotations</td>
+<td style="text-align: right;">8</td>
+<td>direkt portierbar</td>
+<td>reine Daten-Operationen</td>
+</tr>
+<tr>
+<td>cohort</td>
+<td style="text-align: right;">9</td>
+<td>direkt portierbar</td>
+<td>reine Computation</td>
+</tr>
+<tr>
+<td>tags</td>
+<td style="text-align: right;">9</td>
+<td>direkt portierbar</td>
+<td>reine CRUD</td>
+</tr>
+<tr>
+<td>batch-import</td>
+<td style="text-align: right;">9</td>
+<td>Adapter nötig</td>
+<td>directory scan: per Drag-Drop / Multi-Upload</td>
+</tr>
+<tr>
+<td>export</td>
+<td style="text-align: right;">2</td>
+<td>Adapter nötig</td>
+<td>Save-Dialog raus, Browser-Download</td>
+</tr>
+<tr>
+<td>audit-log</td>
+<td style="text-align: right;">2</td>
+<td>direkt portierbar</td>
+<td>reine Query</td>
+</tr>
+<tr>
+<td>shell</td>
+<td style="text-align: right;">3</td>
+<td>Web-Äquivalent</td>
+<td><code>openExternal</code> → <code>window.open</code>; <code>showItemInFolder</code> entfällt</td>
+</tr>
+<tr>
+<td>gene-ref</td>
+<td style="text-align: right;">4</td>
+<td>direkt portierbar</td>
+<td>reine Query</td>
+</tr>
+<tr>
+<td>spliceai</td>
+<td style="text-align: right;">2</td>
+<td>direkt portierbar</td>
+<td>reine API-Aufrufe</td>
+</tr>
+<tr>
+<td>vep</td>
+<td style="text-align: right;">4</td>
+<td>direkt portierbar</td>
+<td>reine API-Aufrufe</td>
+</tr>
+<tr>
+<td>protein</td>
+<td style="text-align: right;">4</td>
+<td>direkt portierbar</td>
+<td>reine API-Aufrufe</td>
+</tr>
+<tr>
+<td>hpo, gnomad, myvariant, region-files, geneListshandler, system, updater, shortlist</td>
+<td style="text-align: right;">1-4 je</td>
+<td>überwiegend direkt portierbar</td>
+<td><code>updater</code> entfällt im Web (Container-Image-Update durch Plattform)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Bilanz:</strong> ca. 70-75% der Channels sind direkt portierbar (reine Daten- und Compute-Operationen über Service-Klassen). 20-25% brauchen Adapter (File-I/O). Etwa 5% entfallen im Web (Auto-Updater, native Menüs, Tray, lokale Dateisystem-Reveal).</p>
+<h3>§bewertung1.2 Native Module</h3>
+<table>
+<thead>
+<tr>
+<th>Modul</th>
+<th>Verwendung</th>
+<th>Web-Pfad</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>better-sqlite3-multiple-ciphers</code></td>
+<td>Datenbank und Cipher-Verschlüsselung</td>
+<td>Conditional-Build: nur Electron. Im Web entweder <code>pg</code> (PostgreSQL) oder <code>node-sqlite3</code> ohne Cipher (im Container nicht nötig, weil Datenbank-Verschlüsselung Plattform-Sache wird)</td>
+</tr>
+<tr>
+<td><code>@node-rs/argon2</code></td>
+<td>Password-Hashing</td>
+<td>Native Rust-Binding. Im Web-Container weiter nutzbar (Node-Backend). Im Browser nicht relevant, weil Hash serverseitig</td>
+</tr>
+<tr>
+<td>Piscina</td>
+<td>Worker-Pool</td>
+<td>Bleibt im Container, läuft als Node-Modul</td>
+</tr>
+</tbody>
+</table>
+<h3>§bewertung1.3 Domain-Logic-Splits</h3>
+<p>60-70% der Geschäftslogik liegt in Service-Klassen (<code>src/main/database/</code>, <code>src/main/services/</code>). 30-40% liegt noch in <code>*-logic.ts</code>-Dateien neben den IPC-Handlern. Phase 1 zieht den Rest in Services nach (siehe §adr1).</p>
+<h3>§bewertung1.4 Storage-Abstraktion Stand</h3>
+<p><code>src/main/storage/session.ts</code> definiert <code>StorageSession</code>-Interface. Zwei Compatibility-Escape-Hatches: <code>getDatabaseService()</code> und <code>getDbPool()</code> für SQLite-Legacy-Pfade. PostgreSQL-Layer mit 12 Repository-Klassen unter <code>src/main/storage/postgres/</code> ist halb fertig - Vorarbeit aus dem App-Repository, die wir continuieren.</p>
+<h2>§bewertung2 Persistenz-Bewertung für Stufe 1 <strong>[stub]</strong></h2>
+<p>Aufgabenprofil-Reihenfolge: SQLite (bevorzugt), sonst PostgreSQL, alternativ MariaDB, danach MySQL.</p>
+<h3>§bewertung2.1 Bewertungs-Kriterien</h3>
+<table>
+<thead>
+<tr>
+<th>Kriterium</th>
+<th>SQLite</th>
+<th>PostgreSQL</th>
+<th>MariaDB</th>
+<th>MySQL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Mehrnutzer schreibend (gleichzeitig)</td>
+<td>⚠️ Lock-Contention bei vielen Schreibern; WAL-Mode hilft, aber begrenzt</td>
+<td>✓ ausgelegt für hohe Parallelität</td>
+<td>✓</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>Mehrnutzer lesend</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>Bestehender Code-Stand</td>
+<td>✓ aktuell Default; 27 Migrations-Versionen</td>
+<td>⚠️ PostgreSQL-Layer halb fertig (12 Repository-Klassen)</td>
+<td>✗ kein Code-Stand</td>
+<td>✗ kein Code-Stand</td>
+</tr>
+<tr>
+<td>Auftrags-Präferenz</td>
+<td>✓ erste Wahl</td>
+<td>nachrangig</td>
+<td>weiter nachrangig</td>
+<td>weiter nachrangig</td>
+</tr>
+<tr>
+<td>Stufe-2-Brücke (RLS, Audit-Append-Only)</td>
+<td>✗ kein RLS, App-Layer-Workaround</td>
+<td>✓ nativ</td>
+<td>⚠️ kein RLS</td>
+<td>⚠️ kein RLS</td>
+</tr>
+<tr>
+<td>Betriebs-Aufwand</td>
+<td>minimal (eine Datei)</td>
+<td>Container, Tuning</td>
+<td>Container, Tuning</td>
+<td>Container, Tuning</td>
+</tr>
+</tbody>
+</table>
+<h3>§bewertung2.2 Klärungs-Fragen für Kickoff</h3>
+<ol>
+<li><strong>Erwartete Anzahl gleichzeitig schreibender Nutzer?</strong> Wenn ≤ 5, ist SQLite mit WAL-Mode tragfähig. Wenn deutlich höher, lohnt PostgreSQL direkt.</li>
+<li><strong>Datenvolumen pro Nutzer pro Tag?</strong> SQLite skaliert bis ca. 100-200 GB pro Datei sinnvoll. VCF-Daten in der Datenbank können das überschreiten.</li>
+<li><strong>Lebt der Pilot 6+ Monate, bevor Stufe 2 kommt?</strong> Wenn ja, lohnt sich SQLite. Bei kurzem Pilot direkt PostgreSQL.</li>
+</ol>
+<h3>§bewertung2.3 Empfehlung (vorläufig, abhängig von Klärung)</h3>
+<p><strong>Default: SQLite für Stufe 1, sofern Mehrnutzer-Last &lt; 5 schreibend.</strong> Begründung: Auftrags-Präferenz, minimaler Betriebs-Aufwand, Kernfunktion (Variant-Daten Import/Filter/Analyse) ist read-heavy. Stufe-2-Brücke über Repository-Interface gesichert.</p>
+<p><strong>Falls Stakeholder PostgreSQL-direkt bevorzugt:</strong> Begründbar mit „bestehender PostgreSQL-Layer im Code, vermeidet Engine-Wechsel später". Dann §adr0-Default kippen auf PostgreSQL ab Stufe 1.</p>
+<p>MariaDB/MySQL: nicht empfohlen, weil sie weder den SQLite-Vorteil (eingebettet, kein Server) noch den PostgreSQL-Vorteil (RLS, JSON, Trigger) liefern.</p>
+
+<h3>§bewertung2.4 Implementations-Stand</h3>
+<p>Beide Engines sind im Compose-Stack vorbereitet, damit die Stakeholder-Entscheidung im Kickoff sofort umsetzbar ist:</p>
+<table>
+<thead>
+<tr>
+<th>Engine</th>
+<th>Aktivierung</th>
+<th>Wo dokumentiert</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SQLite (Default)</td>
+<td><code>make stack-up</code></td>
+<td><code>docs/database.md</code></td>
+</tr>
+<tr>
+<td>PostgreSQL</td>
+<td><code>make stack-up DB=postgres</code></td>
+<td><code>docs/database.md</code></td>
+</tr>
+</tbody>
+</table>
+<p>Wechsel zwischen Engines ist über das Repository-Interface der Anwendung transparent (siehe <code>app.html</code> §app2.1, <code>adr.html</code> §adr0). Daten-Migration ist beim Wechsel manuell.</p>
+<h2>§bewertung3 Electron-API-Mapping <strong>[draft]</strong></h2>
+<p>Konkrete Liste der Electron-spezifischen API-Aufrufe und ihre Web-Alternativen.</p>
+<table>
+<thead>
+<tr>
+<th>Aufruf</th>
+<th>Datei (App-Repository)</th>
+<th>Heute</th>
+<th>Web-Alternative</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dialog.showOpenDialog</code></td>
+<td><code>src/main/ipc/handlers/database.ts</code> (Datenbank load)</td>
+<td>Nutzer wählt SQLite-Datei vom Dateisystem</td>
+<td>Im Web entfällt: Datenbank läuft serverseitig, kein „Datenbank öffnen" pro Nutzer mehr</td>
+</tr>
+<tr>
+<td><code>dialog.showOpenDialog</code></td>
+<td><code>src/main/ipc/handlers/import.ts</code> (VCF-Import)</td>
+<td>Nutzer wählt VCF-Datei</td>
+<td>Multipart-Upload-Endpoint <code>/api/imports</code>, Stream nach Datenbank</td>
+</tr>
+<tr>
+<td><code>dialog.showSaveDialog</code></td>
+<td><code>src/main/ipc/handlers/export.ts</code> (Excel/CSV-Export)</td>
+<td>Nutzer wählt Speicherort</td>
+<td>Browser-Download via <code>Content-Disposition: attachment</code></td>
+</tr>
+<tr>
+<td><code>dialog.showSaveDialog</code></td>
+<td><code>src/main/ipc/handlers/panels.ts</code> (Panel-File-Save)</td>
+<td>Speicherort wählen</td>
+<td>Browser-Download</td>
+</tr>
+<tr>
+<td><code>app.getPath('userData')</code></td>
+<td><code>src/main/database/index.ts</code></td>
+<td>Datenbank-Pfad, Settings-JSON</td>
+<td>ENV-Variable <code>DATA_DIR</code> aus dem Vertrag (Schnittstelle 4)</td>
+</tr>
+<tr>
+<td><code>shell.openExternal</code></td>
+<td><code>src/main/ipc/handlers/shell.ts</code></td>
+<td>URL im Browser öffnen</td>
+<td>Im Web entfällt: ist schon ein Browser; <code>&lt;a href target="_blank"&gt;</code> reicht</td>
+</tr>
+<tr>
+<td><code>shell.showItemInFolder</code></td>
+<td><code>src/main/ipc/handlers/shell.ts</code></td>
+<td>Datei im Datei-Explorer zeigen</td>
+<td>Entfällt im Web ohne Ersatz; gegebenenfalls Download-History im UI</td>
+</tr>
+<tr>
+<td><code>app.requestSingleInstanceLock</code></td>
+<td><code>src/main/index.ts</code></td>
+<td>Single-Instance-Lock</td>
+<td>Entfällt im Web (kein Single-Instance-Konzept)</td>
+</tr>
+<tr>
+<td><code>nativeImage.createFromPath</code></td>
+<td>Icon-Loading</td>
+<td>Plattform-spezifisches Icon</td>
+<td>Web nutzt SVG/PNG aus Static-Assets</td>
+</tr>
+<tr>
+<td><code>BrowserWindow</code> Konfig</td>
+<td><code>src/main/index.ts</code></td>
+<td>Preload + Sandbox</td>
+<td>Entfällt im Web; Vue-SPA wird über Fastify ausgeliefert</td>
+</tr>
+<tr>
+<td><code>electron-updater</code></td>
+<td><code>src/main/services/AutoUpdater.ts</code></td>
+<td>Auto-Update via GitHub Releases</td>
+<td>Entfällt im Web; Container-Image-Updates über Plattform</td>
+</tr>
+<tr>
+<td><code>app.disableHardwareAcceleration</code></td>
+<td><code>src/main/index.ts</code></td>
+<td>GPU-Toggle</td>
+<td>Entfällt im Web (Browser-Sache des Nutzers)</td>
+</tr>
+<tr>
+<td><code>@electron/fuses</code></td>
+<td><code>scripts/configure-fuses.mjs</code></td>
+<td>Build-Time-Härtung</td>
+<td>Entfällt im Web</td>
+</tr>
+<tr>
+<td><code>worker_threads</code> Verwendung (Stats, Import, Export)</td>
+<td><code>src/main/statistics/</code>, <code>src/main/import/</code></td>
+<td>Worker-Pool für CPU-Last</td>
+<td>Bleibt unverändert: läuft im Node-Container</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Adapter-Pattern:</strong> Pro Aufruf-Stelle eine Schnittstelle einführen mit zwei Implementationen (<code>src/io/file-picker.electron.ts</code>, <code>src/io/file-picker.web.ts</code>). Service-Code spricht nur die Schnittstelle.</p>
+<h2>§bewertung4 Lastannahmen <strong>[stub]</strong></h2>
+<p>Werte sind Annahmen für Plan-Dimensionierung. Müssen im Kickoff bestätigt werden.</p>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>Annahme</th>
+<th>Quelle</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Gleichzeitig aktive Nutzer</td>
+<td>&lt; 10</td>
+<td>Kickoff</td>
+</tr>
+<tr>
+<td>Schreibend gleichzeitig</td>
+<td>&lt; 5</td>
+<td>Kickoff</td>
+</tr>
+<tr>
+<td>VCF-Dateien pro Tag</td>
+<td>0 bis 50</td>
+<td>Kickoff</td>
+</tr>
+<tr>
+<td>Größte VCF-Datei</td>
+<td>&lt; 500 MB komprimiert</td>
+<td>Kickoff</td>
+</tr>
+<tr>
+<td>Datenwachstum Datenbank pro Monat</td>
+<td>&lt; 20 GB</td>
+<td>Kickoff</td>
+</tr>
+<tr>
+<td>Aufbewahrungsdauer Datenbank</td>
+<td>dauerhaft</td>
+<td>Kickoff</td>
+</tr>
+<tr>
+<td>Single-Server tragfähig</td>
+<td>ja, bis Werte deutlich überschritten</td>
+<td>Folge aus den Annahmen</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Single-Server-Antwort (vorläufig):</strong> Bei Bestätigung der Annahmen reicht ein Single-Server (4-8 vCPU, 16-32 GB RAM, 500 GB SSD-Volume) für Stufe 1 und Stufe 2. Horizontale Skalierung ist nicht beauftragt und nicht geplant.</p>
+<p><strong>Klärungs-Fragen für Kickoff:</strong></p>
+<ol>
+<li>Maximale Nutzerzahl, die je gleichzeitig erwartet wird?</li>
+<li>Größenwachstum der Datenbank über 24 Monate?</li>
+<li>Soll der Server geografisch redundant sein (zwei Standorte)? Für Stufe 1: nein. Für Stufe 2: nach Stakeholder.</li>
+</ol>
+<h2>§bewertung5 Sicherheits-Minimum für Erstversion <strong>[stub]</strong></h2>
+<p>Was muss in Stufe 1 zwingend sein, was ist Stufe-2-Erweiterung. Dieser Block bindet das Bedrohungsmodell §app4 + §infrastruktur6 in eine Mindest-Liste.</p>
+<h3>§bewertung5.1 Stufe-1-Mindest</h3>
+<table>
+<thead>
+<tr>
+<th>Schutzziel</th>
+<th>Maßnahme</th>
+<th>Stufe</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Vertraulichkeit Transport</td>
+<td>TLS via Caddy, kein HTTP</td>
+<td>Mindest</td>
+</tr>
+<tr>
+<td>Authentifizierung</td>
+<td>Argon2id mit Lockout-Logic (existiert in VarLens)</td>
+<td>Mindest</td>
+</tr>
+<tr>
+<td>Autorisierung</td>
+<td>Rolle pro User (User vs. Admin); App-Layer-Filter falls SQLite</td>
+<td>Mindest</td>
+</tr>
+<tr>
+<td>Vertraulichkeit Speicher</td>
+<td>Wenn Echt-Daten: LUKS auf Datenvolume (Echt-Daten erst Stufe 2)</td>
+<td>bedingt Mindest</td>
+</tr>
+<tr>
+<td>Lieferketten-Sicherung</td>
+<td>Trivy-Scan in CI (kein Image mit kritischen CVEs)</td>
+<td>Mindest</td>
+</tr>
+<tr>
+<td>Secrets im Repository</td>
+<td>SOPS+age (§adr7)</td>
+<td>Mindest</td>
+</tr>
+<tr>
+<td>Backup</td>
+<td>Tägliches restic-Backup, Restore-Übung protokolliert</td>
+<td>Mindest</td>
+</tr>
+<tr>
+<td>Audit-Trail</td>
+<td>App-Datenbank-Audit-Tabelle existiert ab Tag 1 (existiert in VarLens v7+)</td>
+<td>Mindest</td>
+</tr>
+<tr>
+<td>Session-Hardening</td>
+<td>Cookie <code>Secure; HttpOnly; SameSite=Strict</code>, Session-Timeout konfigurierbar</td>
+<td>Mindest</td>
+</tr>
+<tr>
+<td>CSP-Header</td>
+<td>Standard-CSP gegen XSS</td>
+<td>Mindest</td>
+</tr>
+</tbody>
+</table>
+<h3>§bewertung5.2 Stufe-2-Erweiterung (nicht zwingend in Stufe 1)</h3>
+<table>
+<thead>
+<tr>
+<th>Schutzziel</th>
+<th>Stufe-2-Maßnahme</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Föderation und MFA</td>
+<td>OIDC nach Logbuch, MFA durch Identity Provider</td>
+</tr>
+<tr>
+<td>Zeilen-Isolation</td>
+<td>PostgreSQL RLS</td>
+</tr>
+<tr>
+<td>Audit-Manipulationsschutz</td>
+<td>Append-Only-Constraints, separate INSERT-Rolle</td>
+</tr>
+<tr>
+<td>Spuren-Schutz</td>
+<td>Off-Host-Logging</td>
+</tr>
+<tr>
+<td>Backup-Ransomware</td>
+<td>Object Lock 30-90 Tage</td>
+</tr>
+<tr>
+<td>Lieferketten-Provenance</td>
+<td>cosign + SLSA</td>
+</tr>
+<tr>
+<td>Host-Audit</td>
+<td>auditd, CloudTrail, GuardDuty</td>
+</tr>
+<tr>
+<td>Brute-Force</td>
+<td>WAF / fail2ban</td>
+</tr>
+</tbody>
+</table>
+<h3>§bewertung5.3 Klärungs-Fragen für Kickoff</h3>
+<ol>
+<li>Gibt es bereits Stakeholder-Sicherheits-Mindest-Anforderungen (zum Beispiel ISO 27001, B3S)?</li>
+<li>Soll Stufe 1 Echt-Daten verarbeiten oder strikt Fake-Daten?</li>
+<li>Brute-Force-Schutz auch in Stufe 1 (fail2ban) oder reicht Lockout in App?</li>
+</ol>
+<h2>§bewertung6 Verantwortungsabgrenzung <strong>[stub]</strong></h2>
+<p>Wer macht was im Pilot-Betrieb. Werte sind Vorschlag, müssen mit Stakeholder bestätigt werden.</p>
+<table>
+<thead>
+<tr>
+<th>Aufgabe</th>
+<th>Stufe 1</th>
+<th>Stufe 2</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>App-Code (Web-Build, Migrations)</td>
+<td>App-Entwicklung (Robin Spanier)</td>
+<td>App-Entwicklung</td>
+</tr>
+<tr>
+<td>Container-Image-Build</td>
+<td>App-Entwicklung (CI)</td>
+<td>App-Entwicklung (CI)</td>
+</tr>
+<tr>
+<td>VM-Provisioning, OpenTofu, cloud-init</td>
+<td>Robin Spanier</td>
+<td>Plattform-Team Stakeholder</td>
+</tr>
+<tr>
+<td>Backup-Heartbeat, Restore-Drill</td>
+<td>Robin Spanier</td>
+<td>Plattform-Team Stakeholder</td>
+</tr>
+<tr>
+<td>OIDC-Konfiguration</td>
+<td>n/a (Stufe 2)</td>
+<td>Identity-Provider-Team Stakeholder + Robin Spanier</td>
+</tr>
+<tr>
+<td>Echt-Daten-Aufnahme</td>
+<td>n/a (verboten in Stufe 1)</td>
+<td>Stakeholder-Routine</td>
+</tr>
+<tr>
+<td>Compliance-Dokumentation (DSFA, AVV, TOM)</td>
+<td>n/a</td>
+<td>Stakeholder-Routine</td>
+</tr>
+<tr>
+<td>MDR-/IVDR-Klärung</td>
+<td>Stakeholder</td>
+<td>Stakeholder</td>
+</tr>
+<tr>
+<td>Incident-Response</td>
+<td>gemeinsam, Robin Spanier informiert</td>
+<td>Plattform-Team Stakeholder</td>
+</tr>
+<tr>
+<td>CVE-Monitoring</td>
+<td>Robin Spanier (CVE-Advisory-Prozess in Stufe 2)</td>
+<td>Robin Spanier</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Klärungs-Fragen für Kickoff:</strong></p>
+<ol>
+<li>Existiert ein zentrales Plattform-Team beim Stakeholder, das den Pilot mitbetreibt?</li>
+<li>Wer ist Erstbetreiber und Verantwortlicher im Sinne der DSGVO?</li>
+<li>Wer entscheidet über Echt-Daten-Freigabe nach Migrations-Block?</li>
+</ol>
+<h3>Stand 2026-04-29 - Erstwurf Iteration 0</h3>
+<ul>
+<li>Anlass: Erzeugnisse für Konzept-Pilot-Auftrag aufgestellt; §bewertung1 und §bewertung3 mit VarLens-Audit-Daten gefüllt; §bewertung2/4/5/6 als Stubs für Kickoff-Klärung.</li>
+<li>Entschieden: Stufen-Modell, Brücken-Klausel, Default-Empfehlung SQLite für Stufe 1.</li>
+<li>In Arbeit: Audit-Daten verfeinern, Stakeholder-Termin für Klärungs-Fragen ansetzen.</li>
+<li>Offen / Abhängigkeiten:</li>
+<li>6 Klärungs-Fragen-Cluster (siehe Sektionen).</li>
+<li>Repository-Wohnort: aktuell IaC-Repository, Inventur könnte später ins App-Repository wandern.</li>
+<li>Plan-Folge: §adr0 (Datenbank-Engine), §app2.1 (Datenbank-Anbindung), §infrastruktur2.1 (Datenbank-Container).</li>
+</ul>
+</body></html>

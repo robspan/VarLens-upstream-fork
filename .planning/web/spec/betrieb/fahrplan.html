@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><title>Fahrplan (Betrieb)</title><style>:root { --varlens-primary: #1e3a5f; --varlens-primary-dark: #7baed4; --varlens-secondary: #455a64; --varlens-accent: #a09588; --varlens-bg: #f0f4f8; --varlens-bg-secondary: #fafbfd; --varlens-bg-tertiary: #ecf0f4; --varlens-fg: #1a1d23; --varlens-fg-dim: #6d7380; --varlens-border: rgba(0, 0, 0, 0.12); --varlens-radius: 4px; --varlens-radius-lg: 8px; --varlens-code-bg: #ecf0f4; --varlens-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; --varlens-font-mono: "Roboto Mono", "Courier New", monospace; }
+@media (prefers-color-scheme: dark) { :root { --varlens-bg: #12141a; --varlens-bg-secondary: #1a1d22; --varlens-bg-tertiary: #252a32; --varlens-fg: #e4e7ec; --varlens-fg-dim: #b0b5bf; --varlens-primary: #7baed4; --varlens-border: rgba(255, 255, 255, 0.12); --varlens-code-bg: #252a32; } }
+html { font-family: var(--varlens-font-sans); font-size: 16px; line-height: 1.55; color: var(--varlens-fg); background: var(--varlens-bg); }
+body { max-width: 980px; margin: 2rem auto; padding: 0 1.5rem; background: var(--varlens-bg-secondary); border-radius: var(--varlens-radius-lg); box-shadow: 0 1px 3px var(--varlens-border); padding-block: 2rem; }
+h1, h2, h3, h4 { color: var(--varlens-primary); font-weight: 700; line-height: 1.3; }
+h1 { font-size: 2rem; margin: 0 0 1.5rem; padding-bottom: .6rem; border-bottom: 2px solid var(--varlens-primary); }
+h2 { font-size: 1.5rem; margin: 2.4rem 0 1rem; padding-bottom: .35rem; border-bottom: 1px solid var(--varlens-border); }
+h3 { font-size: 1.2rem; margin: 1.6rem 0 .6rem; color: var(--varlens-secondary); }
+h4 { font-size: 1.05rem; margin: 1.2rem 0 .4rem; color: var(--varlens-secondary); }
+p { margin: 0 0 1rem; }
+a { color: var(--varlens-primary); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color .15s; }
+a:hover { border-bottom-color: var(--varlens-primary); }
+code { font-family: var(--varlens-font-mono); font-size: .85em; background: var(--varlens-code-bg); color: var(--varlens-fg); padding: 1px 6px; border-radius: var(--varlens-radius); border: 1px solid var(--varlens-border); }
+pre { font-family: var(--varlens-font-mono); font-size: .9em; background: var(--varlens-code-bg); padding: 1rem; border-radius: var(--varlens-radius); border: 1px solid var(--varlens-border); overflow-x: auto; line-height: 1.5; }
+pre code { background: none; border: none; padding: 0; }
+blockquote { margin: 1rem 0; padding: .8rem 1.2rem; border-left: 4px solid var(--varlens-accent); background: var(--varlens-bg-tertiary); color: var(--varlens-fg); border-radius: 0 var(--varlens-radius) var(--varlens-radius) 0; }
+blockquote p:last-child { margin-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--varlens-border); margin: 2.5rem 0; }
+table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .94em; background: var(--varlens-bg-secondary); }
+thead { background: var(--varlens-bg-tertiary); }
+th, td { padding: .55rem .85rem; text-align: left; border: 1px solid var(--varlens-border); vertical-align: top; }
+th { color: var(--varlens-primary); font-weight: 600; }
+tbody tr:hover { background: var(--varlens-bg-tertiary); }
+ul, ol { padding-left: 1.6rem; margin: 0 0 1rem; }
+li { margin-bottom: .35rem; line-height: 1.6; }
+strong, b { font-weight: 700; color: var(--varlens-fg); }</style></head><body>
+<h1>Fahrplan</h1>
+<blockquote>
+<p><strong>Was dieser Plan ist - und was er noch nicht ist.</strong></p>
+<p><strong>Erster Wurf, kein Liefer-Plan.</strong> Dieses Buch beschreibt den Stufe-2-Pfad bewusst auf hohem Niveau. Die Hauptaufgabe ist es nicht, Iteration 2 bis 4 fertig durchzuplanen, sondern die <strong>Constraints für das Konzept</strong> zu setzen: was muss die Konzept-Umsetzung offenhalten, damit ein Betrieb später vereinnahmbar bleibt? Diese Constraints stehen in der Brücken-Klausel (<code>../vertrag.html</code> §vertrag1) und in den Brücke-Tabellen pro Stufe-1-Phase.</p>
+<p><strong>Daher: Reihenfolge und Tiefe pro Phase sind hier vorläufig.</strong> Sobald das Konzept steht und der Stakeholder weiterträgt, wird dieser Fahrplan iterativ verfeinert - gegebenenfalls mit anderer Reihenfolge, anderem Detailgrad, oder selektivem Vorziehen einzelner Bausteine ins Konzept (siehe <code>../konzept/fahrplan.html</code> §fahrplan7).</p>
+<p><strong>Echt-Daten sind erst hier zulässig</strong>, weil die dafür nötigen Bausteine (Audit-Trail-Härtung, Off-Host-Logging, OIDC, Object-Lock-Backups) erst in Stufe 2 dranhängen. Im Konzept sind Echt-Daten ausgeschlossen.</p>
+</blockquote>
+<p><strong>Confluence-Spiegel</strong> - dieser Fahrplan ist die Lese-Seite für die Vollversion.</p>
+<table>
+<thead>
+<tr>
+<th>Dokument</th>
+<th>Confluence-Seite</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Roadmap (Wurzel)</td>
+<td><a href="https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/991002629">https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/991002629</a></td>
+</tr>
+<tr>
+<td>Vertrag</td>
+<td><a href="https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996245535">https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996245535</a></td>
+</tr>
+<tr>
+<td>Fahrplan</td>
+<td><a href="https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996605986">https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996605986</a></td>
+</tr>
+<tr>
+<td>Anwendung</td>
+<td><a href="https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/997064713">https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/997064713</a></td>
+</tr>
+<tr>
+<td>Infrastruktur</td>
+<td><a href="https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996540474">https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996540474</a></td>
+</tr>
+<tr>
+<td>Architecture Decision Records</td>
+<td><a href="https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996114486">https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996114486</a></td>
+</tr>
+<tr>
+<td>Glossar</td>
+<td><a href="https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/995950626">https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/995950626</a></td>
+</tr>
+</tbody></table>
+<p>Chronologische Schritt-Liste für Stufe 2 (Vollversion über das Aufgabenprofil hinaus). Anker-Präfix: <code>§fahrplan</code>. Stufe-1-Inhalte stehen in <code>../konzept/fahrplan.html</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Quelle</th>
+<th>Inhalt</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>../vertrag.html</code> (<code>§vertrag*</code>)</td>
+<td>Vertrag, Iterations-Mapping, ADR-Index</td>
+</tr>
+<tr>
+<td><code>infrastruktur.html</code> (<code>§infrastruktur*</code>)</td>
+<td>Phasen 2-5, Migrations-Block, Infrastruktur-Dokumentation</td>
+</tr>
+<tr>
+<td><code>app.html</code> (<code>§app*</code>)</td>
+<td>Phasen 2-5, App-Dokumentation</td>
+</tr>
+<tr>
+<td><code>../adr.html</code> (<code>§adr*</code>)</td>
+<td>ADR-Voll-Texte</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Voraussetzung.</strong> Iteration 1 im Konzept (<code>../konzept/fahrplan.html</code> §fahrplan1) ist abgeschlossen, Brücken-Klausel-Checks bestanden. Wenn nicht, dort weiterarbeiten - nicht hier.</p>
+<h2>§fahrplan2 Iteration 2 - Pilot-Reife</h2>
+<p>Erste Stufe-2-Iteration. OIDC-Anbindung, Mehrnutzer-Isolation per RLS, Monitoring, Staging.</p>
+<h3>§fahrplan2.1 App-Strang</h3>
+<table>
+<thead>
+<tr>
+<th>✓</th>
+<th>Schritt</th>
+<th>Ref</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>☐</td>
+<td>App-Phase 2 - OIDC + Mehrnutzer-Isolation (oidc-client-ts, Router Guards, Pinia, RLS, Audit Login/Logout); gegebenenfalls SQLite-zu-Postgres-Migration</td>
+<td>§app2.2</td>
+</tr>
+<tr>
+<td>☐</td>
+<td>Gate Phase 2 abnehmen (Sync-Punkt Logbuch)</td>
+<td>§app2.2</td>
+</tr>
+</tbody>
+</table>
+<h3>§fahrplan2.2 Infrastruktur-Strang</h3>
+<table>
+<thead>
+<tr>
+<th>✓</th>
+<th>Schritt</th>
+<th>Ref</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>☐</td>
+<td>Infrastruktur-Phase 2 - Identity, Monitoring, Staging (OIDC nach Logbuch, OpenTofu-Modul-Schnitt, Netdata, Diun, Uptime-Check, Staging, OpenTofu-Linter)</td>
+<td>§infrastruktur3.2</td>
+</tr>
+<tr>
+<td>☐</td>
+<td>Gate Phase 2 abnehmen</td>
+<td>§infrastruktur3.2</td>
+</tr>
+</tbody>
+</table>
+<h3>§fahrplan2.3 Dokumentations-Strang</h3>
+<table>
+<thead>
+<tr>
+<th>✓</th>
+<th>Schritt</th>
+<th>Ref</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>☐</td>
+<td>Dokumentations-Phase 2: Identity-Provider-Setup, Staging-Workflow, SemVer-Schema, Selbstbindung „keine Echt-Daten in Stufe 1"</td>
+<td>§infrastruktur5 + §app3</td>
+</tr>
+</tbody>
+</table>
+<h2>§fahrplan3 Migrations-Block - Sovereign-Cloud-Wechsel</h2>
+<p><strong>Trigger:</strong> AWS-Sovereign-Cloud-Zugänge sind verfügbar (verfügbarkeits-getrieben, §adr12). Anwendbar nur wenn Stufe-1-Plattform nicht bereits AWS Sovereign Cloud war.</p>
+<table>
+<thead>
+<tr>
+<th>✓</th>
+<th>Schritt</th>
+<th>Ref</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>☐</td>
+<td>Vorbereitung: AWS-Account, Region-Service-Check, KMS-Strategie, DNS-TTL auf 60 s</td>
+<td>§infrastruktur4 Schritt 1</td>
+</tr>
+<tr>
+<td>☐</td>
+<td>AWS-Module schreiben, auf AWS-Staging testen</td>
+<td>§infrastruktur4 Schritt 2</td>
+</tr>
+<tr>
+<td>☐</td>
+<td>App auf AWS-Staging deployen, E2E-Tests</td>
+<td>§infrastruktur4 Schritt 3</td>
+</tr>
+<tr>
+<td>☐</td>
+<td>Daten-Migration probehalber (<code>pg_dump</code> nach AWS-Postgres, RLS-Policies + Audit-Trigger neu binden)</td>
+<td>§infrastruktur4 Schritt 4</td>
+</tr>
+<tr>
+<td>☐</td>
+<td>Read-Only-Fenster, finaler Sync, AWS produktiv, DNS-Switch</td>
+<td>§infrastruktur4 Schritt 5</td>
+</tr>
+<tr>
+<td>☐</td>
+<td>Quell-Plattform mindestens 14 Tage als Rollback-Reserve halten, dann Abbau</td>
+<td>§infrastruktur4 Schritt 6</td>
+</tr>
+<tr>
+<td>☐</td>
+<td>Gate abnehmen (Restore-Übung auf AWS, Migrations-Protokoll)</td>
+<td>§infrastruktur4</td>
+</tr>
+</tbody>
+</table>
+<h2>§fahrplan4 Iteration 3 - Audit-Tauglichkeit</h2>
+<p>Plattform: AWS Sovereign Cloud. Gate-Bündel: App-Phase 4 und Infrastruktur-Phase 4 und Dokumentations-Phase 4.</p>
+<h3>§fahrplan4.1 App-Strang</h3>
+<table>
+<thead>
+<tr>
+<th>✓</th>
+<th>Schritt</th>
+<th>Ref</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>☐</td>
+<td>App-Phase 3 - DSGVO-Endpunkte (Export Art. 15, Löschung Art. 17, Re-Auth, Session-Timeout, Action-Types)</td>
+<td>§app2.3</td>
+</tr>
+<tr>
+<td>☐</td>
+<td>Gate Phase 3 abnehmen</td>
+<td>§app2.3</td>
+</tr>
+<tr>
+<td>☐</td>
+<td>App-Phase 4 - Audit-Tauglichkeit (Append-Only, separate Audit-Rolle, erweiterte Action-Types, Pre-/Post-State, MIME-Sniffing)</td>
+<td>§app2.4</td>
+</tr>
+<tr>
+<td>☐</td>
+<td>Gate Phase 4 abnehmen</td>
+<td>§app2.4</td>
+</tr>
+</tbody>
+</table>
+<h3>§fahrplan4.2 Infrastruktur-Strang</h3>
+<table>
+<thead>
+<tr>
+<th>✓</th>
+<th>Schritt</th>
+<th>Ref</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>☐</td>
+<td>Infrastruktur-Phase 3 - Produktionsreife (Backups Append-Only, Object Lock, Netzwerk final, TLS, IaC-State remote, Restore-Drill mit RTO/RPO)</td>
+<td>§infrastruktur3.3</td>
+</tr>
+<tr>
+<td>☐</td>
+<td>Infrastruktur-Phase 4 - Härtung + Off-Host-Logging (auditd + CloudTrail, WAF/GuardDuty oder fail2ban, Off-Host-Logs, SBOM)</td>
+<td>§infrastruktur3.4</td>
+</tr>
+</tbody>
+</table>
+<h3>§fahrplan4.3 Dokumentations-Strang</h3>
+<table>
+<thead>
+<tr>
+<th>✓</th>
+<th>Schritt</th>
+<th>Ref</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>☐</td>
+<td>Dokumentations-Phase 3: Bedrohungsmodell, Netzwerk-Konzept, Restore-Drill-Protokoll, Migrations-Protokoll, Cloud-Portabilitäts-Dokumentation, Datenfluss-Beschreibung</td>
+<td>§infrastruktur5 + §app3</td>
+</tr>
+<tr>
+<td>☐</td>
+<td>Dokumentations-Phase 4: SECURITY.md, Audit-Trail-Konzept (App + Off-Host zusammen)</td>
+<td>§infrastruktur5 + §app3</td>
+</tr>
+</tbody>
+</table>
+<h2>§fahrplan5 Iteration 4 - Release-Reife</h2>
+<p>Plattform: AWS Sovereign Cloud. Gate-Bündel: App-Phase 5 und Infrastruktur-Phase 5 und Dokumentations-Phase 5.</p>
+<table>
+<thead>
+<tr>
+<th>✓</th>
+<th>Schritt</th>
+<th>Ref</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>☐</td>
+<td>App-Phase 5: API-Versionierung <code>/api/v1/</code>, Playwright-E2E in CI grün</td>
+<td>§app2.5</td>
+</tr>
+<tr>
+<td>☐</td>
+<td>Infrastruktur-Phase 5: cosign keyless, SLSA-Provenance, Base-Image-Pinning per Hash-Digest, Self-Hosting-Dokumentation in <code>docs/</code></td>
+<td>§infrastruktur3.5</td>
+</tr>
+<tr>
+<td>☐</td>
+<td>Dokumentations-Phase 5: Supported-Version-Policy, CVE-Advisory-Prozess, Self-Hosting-Dokumentation, Go-Live-Selbst-Checkliste</td>
+<td>§infrastruktur5 + §app3</td>
+</tr>
+</tbody>
+</table>
+<h2>§fahrplan6 Lese-Hinweise</h2>
+<ul>
+<li><strong>Hauptzweck dieses Plans:</strong> Constraints setzen, die in <code>../konzept/</code> als Brücken-Klausel umgesetzt werden müssen. Liefer-Tiefe und Reihenfolge sind vorläufig.</li>
+<li>Plan-Änderungen: erst die Detail-Datei (<code>app.html</code>, <code>infrastruktur.html</code>) anpassen, dann Fahrplan-Eintrag nachziehen.</li>
+<li>Sync-Punkte zwischen den Strängen: <code>../vertrag.html</code> §vertrag3.</li>
+<li>Stand-Block je Plan: am Ende von <code>app.html</code> und <code>infrastruktur.html</code>.</li>
+<li>Voraussetzung Iteration 1 abgeschlossen: siehe <code>../konzept/fahrplan.html</code> §fahrplan1.</li>
+<li>Selektives Vorziehen einzelner Bausteine ins Konzept: siehe <code>../konzept/fahrplan.html</code> §fahrplan7. Damit lässt sich „minimal aber prod-tauglich" realisieren, ohne den vollen Stufe-2-Pfad durchzuziehen.</li>
+</ul>
+</body></html>

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Overview</title><style>:root { --varlens-primary: #1e3a5f; --varlens-primary-dark: #7baed4; --varlens-secondary: #455a64; --varlens-accent: #a09588; --varlens-bg: #f0f4f8; --varlens-bg-secondary: #fafbfd; --varlens-bg-tertiary: #ecf0f4; --varlens-fg: #1a1d23; --varlens-fg-dim: #6d7380; --varlens-border: rgba(0, 0, 0, 0.12); --varlens-radius: 4px; --varlens-radius-lg: 8px; --varlens-code-bg: #ecf0f4; --varlens-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; --varlens-font-mono: "Roboto Mono", "Courier New", monospace; }
+@media (prefers-color-scheme: dark) { :root { --varlens-bg: #12141a; --varlens-bg-secondary: #1a1d22; --varlens-bg-tertiary: #252a32; --varlens-fg: #e4e7ec; --varlens-fg-dim: #b0b5bf; --varlens-primary: #7baed4; --varlens-border: rgba(255, 255, 255, 0.12); --varlens-code-bg: #252a32; } }
+html { font-family: var(--varlens-font-sans); font-size: 16px; line-height: 1.55; color: var(--varlens-fg); background: var(--varlens-bg); }
+body { max-width: 980px; margin: 2rem auto; padding: 0 1.5rem; background: var(--varlens-bg-secondary); border-radius: var(--varlens-radius-lg); box-shadow: 0 1px 3px var(--varlens-border); padding-block: 2rem; }
+h1, h2, h3, h4 { color: var(--varlens-primary); font-weight: 700; line-height: 1.3; }
+h1 { font-size: 2rem; margin: 0 0 1.5rem; padding-bottom: .6rem; border-bottom: 2px solid var(--varlens-primary); }
+h2 { font-size: 1.5rem; margin: 2.4rem 0 1rem; padding-bottom: .35rem; border-bottom: 1px solid var(--varlens-border); }
+h3 { font-size: 1.2rem; margin: 1.6rem 0 .6rem; color: var(--varlens-secondary); }
+p { margin: 0 0 1rem; }
+a { color: var(--varlens-primary); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color .15s; }
+a:hover { border-bottom-color: var(--varlens-primary); }
+table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .94em; background: var(--varlens-bg-secondary); }
+thead { background: var(--varlens-bg-tertiary); }
+th, td { padding: .55rem .85rem; text-align: left; border: 1px solid var(--varlens-border); vertical-align: top; }
+th { color: var(--varlens-primary); font-weight: 600; }
+tbody tr:hover { background: var(--varlens-bg-tertiary); }
+strong, b { font-weight: 700; color: var(--varlens-fg); }</style></head><body>
+<h1>Overview</h1>
+<p>Plan documentation for the VarLens web port. Two stages: <strong>Concept</strong> (Stage 1, minimum scope, runnable concept with test data) and <strong>Operations</strong> (Stage 2, pilot and production operation, builds on a completed concept state). Cross-cutting decisions live in the Contract, Architecture Decision Records, and Glossary.</p>
+
+<h2>Cross-cutting</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>Confluence page</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Contract</td>
+<td><a href="https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996245535">https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996245535</a></td>
+</tr>
+<tr>
+<td>Architecture Decision Records</td>
+<td><a href="https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996114486">https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996114486</a></td>
+</tr>
+<tr>
+<td>Glossary</td>
+<td><a href="https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/995950626">https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/995950626</a></td>
+</tr>
+</tbody></table>
+
+<h2>Concept (Stage 1: Concept)</h2>
+<p>Minimum scope per the Task Profile. Runnable concept with test and fake data; real data is not permitted. The Bridge Clause guarantees that every Concept decision keeps the path to Stage 2 open.</p>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>Confluence page</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Roadmap</td>
+<td><a href="https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996016150">https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996016150</a></td>
+</tr>
+<tr>
+<td>Application</td>
+<td><a href="https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996376602">https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996376602</a></td>
+</tr>
+<tr>
+<td>Infrastructure</td>
+<td><a href="https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996409400">https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996409400</a></td>
+</tr>
+<tr>
+<td>Assessments</td>
+<td><a href="https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996147237">https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996147237</a></td>
+</tr>
+</tbody></table>
+
+<h2>Operations (Stage 2: Operations)</h2>
+<p>First draft, intended to set constraints. Describes the path beyond a completed Concept state: OIDC, multi-user isolation, audit suitability, Sovereign Cloud migration, supply-chain assurance, release maturity.</p>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>Confluence page</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Roadmap</td>
+<td><a href="https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996605986">https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996605986</a></td>
+</tr>
+<tr>
+<td>Application</td>
+<td><a href="https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/997064713">https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/997064713</a></td>
+</tr>
+<tr>
+<td>Infrastructure</td>
+<td><a href="https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996540474">https://laborberlin.atlassian.net/wiki/spaces/ITGM/pages/996540474</a></td>
+</tr>
+</tbody></table>
+
+</body></html>

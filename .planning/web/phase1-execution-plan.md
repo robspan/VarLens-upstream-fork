@@ -2,7 +2,7 @@
 
 Status: live (2026-05-04)
 Branch: `VarLens-Web`
-Source: `VarLens-IaC/.internalplanning/konzept/app.html` §app2.1 (canonical criteria)
+Source: `.planning/web/spec/konzept/app.html` §app2.1 (canonical criteria)
 Companion: [`testing/`](testing/) (test vehicles), [`decision-postgres-as-web-backend.md`](decision-postgres-as-web-backend.md) (backend choice)
 
 The 12 §app2.1 criteria, mapped to: blocking dependencies · test vehicle · current status. **No criterion text restated** — read the konzept for the spec.

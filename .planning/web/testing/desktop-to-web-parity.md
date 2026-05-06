@@ -2,7 +2,7 @@
 
 Status: live (2026-05-04)
 Branch target: `VarLens-Web`
-Source plan: `VarLens-IaC/.internalplanning/konzept/app.html` §app2.1
+Source plan: `.planning/web/spec/konzept/app.html` §app2.1
 Companion: [`desktop-preservation.md`](desktop-preservation.md) · [`README.md`](README.md)
 
 Adds an executable gate for the 12 §app2.1 criteria under `tests/web-gate/`. Opt-in (`make web-gate-*`); excluded from default `make ci`.

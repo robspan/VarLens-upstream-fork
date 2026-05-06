@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><title>Infrastruktur (Konzept)</title><style>:root { --varlens-primary: #1e3a5f; --varlens-primary-dark: #7baed4; --varlens-secondary: #455a64; --varlens-accent: #a09588; --varlens-bg: #f0f4f8; --varlens-bg-secondary: #fafbfd; --varlens-bg-tertiary: #ecf0f4; --varlens-fg: #1a1d23; --varlens-fg-dim: #6d7380; --varlens-border: rgba(0, 0, 0, 0.12); --varlens-radius: 4px; --varlens-radius-lg: 8px; --varlens-code-bg: #ecf0f4; --varlens-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; --varlens-font-mono: "Roboto Mono", "Courier New", monospace; }
+@media (prefers-color-scheme: dark) { :root { --varlens-bg: #12141a; --varlens-bg-secondary: #1a1d22; --varlens-bg-tertiary: #252a32; --varlens-fg: #e4e7ec; --varlens-fg-dim: #b0b5bf; --varlens-primary: #7baed4; --varlens-border: rgba(255, 255, 255, 0.12); --varlens-code-bg: #252a32; } }
+html { font-family: var(--varlens-font-sans); font-size: 16px; line-height: 1.55; color: var(--varlens-fg); background: var(--varlens-bg); }
+body { max-width: 980px; margin: 2rem auto; padding: 0 1.5rem; background: var(--varlens-bg-secondary); border-radius: var(--varlens-radius-lg); box-shadow: 0 1px 3px var(--varlens-border); padding-block: 2rem; }
+h1, h2, h3, h4 { color: var(--varlens-primary); font-weight: 700; line-height: 1.3; }
+h1 { font-size: 2rem; margin: 0 0 1.5rem; padding-bottom: .6rem; border-bottom: 2px solid var(--varlens-primary); }
+h2 { font-size: 1.5rem; margin: 2.4rem 0 1rem; padding-bottom: .35rem; border-bottom: 1px solid var(--varlens-border); }
+h3 { font-size: 1.2rem; margin: 1.6rem 0 .6rem; color: var(--varlens-secondary); }
+h4 { font-size: 1.05rem; margin: 1.2rem 0 .4rem; color: var(--varlens-secondary); }
+p { margin: 0 0 1rem; }
+a { color: var(--varlens-primary); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color .15s; }
+a:hover { border-bottom-color: var(--varlens-primary); }
+code { font-family: var(--varlens-font-mono); font-size: .85em; background: var(--varlens-code-bg); color: var(--varlens-fg); padding: 1px 6px; border-radius: var(--varlens-radius); border: 1px solid var(--varlens-border); }
+pre { font-family: var(--varlens-font-mono); font-size: .9em; background: var(--varlens-code-bg); padding: 1rem; border-radius: var(--varlens-radius); border: 1px solid var(--varlens-border); overflow-x: auto; line-height: 1.5; }
+pre code { background: none; border: none; padding: 0; }
+blockquote { margin: 1rem 0; padding: .8rem 1.2rem; border-left: 4px solid var(--varlens-accent); background: var(--varlens-bg-tertiary); color: var(--varlens-fg); border-radius: 0 var(--varlens-radius) var(--varlens-radius) 0; }
+blockquote p:last-child { margin-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--varlens-border); margin: 2.5rem 0; }
+table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .94em; background: var(--varlens-bg-secondary); }
+thead { background: var(--varlens-bg-tertiary); }
+th, td { padding: .55rem .85rem; text-align: left; border: 1px solid var(--varlens-border); vertical-align: top; }
+th { color: var(--varlens-primary); font-weight: 600; }
+tbody tr:hover { background: var(--varlens-bg-tertiary); }
+ul, ol { padding-left: 1.6rem; margin: 0 0 1rem; }
+li { margin-bottom: .35rem; line-height: 1.6; }
+strong, b { font-weight: 700; color: var(--varlens-fg); }</style></head><body>
+<h1>Infrastruktur</h1>
+<p>Mindestumsetzung auf der Infrastruktur-Seite. Single-Server-Container-Setup, plattform-agnostisch, ohne Cloud-spezifische Capabilities.</p>
+<p>Anker-Präfix: <code>§infrastruktur</code>. Übergreifende Leitplanken in <code>../vertrag.html</code> (<code>§vertrag*</code>), Anwendungs-Strang in <code>app.html</code> (<code>§app*</code>), Vogelperspektive in <code>fahrplan.html</code> (<code>§fahrplan*</code>), Erzeugnisse in <code>bewertungen.html</code> (<code>§bewertung*</code>), Architecture Decision Records in <code>../adr.html</code>, Begriffe in <code>../glossar.html</code>.</p>
+<p><strong>Stufe-2-Anschluss:</strong> Alle Phase-1-Entscheidungen halten den Pfad nach Stufe 2 offen (Brücken-Klausel in <code>../vertrag.html</code> §vertrag1). Die Stufe-2-Phasen und der Migrations-Block liegen in <code>../betrieb/infrastruktur.html</code>.</p>
+<h2>§infrastruktur1 Vertrags-Mapping (Stufe 1)</h2>
+<p>Die Infrastruktur erfüllt die vier Schnittstellen aus <code>../vertrag.html</code> §vertrag2.2 in Single-Server-Form. Die Plattform-Wahl (Hetzner, AWS direkt, On-Prem) richtet sich nach Stakeholder-Vorgabe und ist nicht Bestandteil dieses Plans.</p>
+<table>
+<thead>
+<tr>
+<th>Schnittstelle</th>
+<th>Stufe 1 (Single-Server)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1: Datenbank</td>
+<td>SQLite-Datei oder Postgres-Container im Compose-Stack (je nach §bewertung2). Bei Echt-Daten LUKS2 auf dem Volume - Echt-Daten sind allerdings erst Stufe 2</td>
+</tr>
+<tr>
+<td>2: OIDC</td>
+<td>Out-of-Scope in Stufe 1 (Argon2-Authentifizierung in der Anwendung reicht); gegebenenfalls lokaler Stub, falls das Logbuch früh entscheidet</td>
+</tr>
+<tr>
+<td>3: Reverse-Proxy</td>
+<td>Caddy; bei zentralem Stakeholder-Reverse-Proxy nur interner Service-Proxy dahinter</td>
+</tr>
+<tr>
+<td>4: Temp-Pfad</td>
+<td>Volume-Mount auf der virtuellen Maschine</td>
+</tr>
+</tbody>
+</table>
+<h2>§infrastruktur2 Phase 1 - Single-Server-Grundbetrieb</h2>
+<p>Container-basiert, plattform-agnostisch, ohne Cloud-spezifische Capabilities. Keine OpenTofu-Modul-Disziplin nötig (kommt in Stufe 2).</p>
+<table>
+<thead>
+<tr>
+<th>Komponente</th>
+<th>Zweck</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OpenTofu, monolithisch reicht für Stufe 1 (modulare Aufteilung optional)</td>
+<td>Provisionierung der virtuellen Maschine</td>
+</tr>
+<tr>
+<td>cloud-init, Ubuntu LTS</td>
+<td>First-Boot</td>
+</tr>
+<tr>
+<td>Docker Engine + Compose v2</td>
+<td>Laufzeit für Anwendung, Caddy, Datenbank</td>
+</tr>
+<tr>
+<td>Caddy</td>
+<td>Reverse-Proxy, TLS-Terminierung (Schnittstelle 3)</td>
+</tr>
+<tr>
+<td>SQLite-Volume oder PostgreSQL-Container (je §bewertung2)</td>
+<td>Schnittstelle 1</td>
+</tr>
+<tr>
+<td>restic gegen S3-API-Ziel</td>
+<td>Backup</td>
+</tr>
+<tr>
+<td>Cloud-Firewall (provider-spezifisch) oder UFW</td>
+<td>Grund-Härtung</td>
+</tr>
+<tr>
+<td>key-only SSH, unattended-upgrades</td>
+<td>Grund-Härtung</td>
+</tr>
+<tr>
+<td>Backup-Heartbeat</td>
+<td>Erfolgs-Überwachung</td>
+</tr>
+<tr>
+<td>GitHub Actions + GHCR + Trivy</td>
+<td>CI, Image-Registry, CVE-Scan</td>
+</tr>
+<tr>
+<td>SOPS + age (auch in Stufe 1, weil Lock-in-Vermeidung im Auftrag)</td>
+<td>Secrets im Repository (§adr7)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Bewusst nicht in Phase 1 (kommt in Stufe 2):</strong> auditd, fail2ban, Off-Host-Logging, Object-Lock-Backups, OpenTofu-Modul-Schnitt mit Cross-Cloud-Disziplin.</p>
+
+<h4>Validierung und Testing</h4>
+<p>Auch in der Konzept-Stufe gehört Testing zum Lieferumfang. Ohne Testing keine Verlässlichkeit, ohne Verlässlichkeit kein nutzbares Konzept.</p>
+<table>
+<thead>
+<tr>
+<th>Schicht</th>
+<th>Werkzeug</th>
+<th>Was getestet wird</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tofu-Code</td>
+<td><code>tofu fmt -check</code>, <code>tofu validate</code></td>
+<td>Format und Syntax-Korrektheit</td>
+</tr>
+<tr>
+<td>Shell-Skripte</td>
+<td>shellcheck</td>
+<td>Bash-Best-Practices, Quoting, undefinierte Variablen</td>
+</tr>
+<tr>
+<td>Caddyfile</td>
+<td><code>caddy validate</code></td>
+<td>Konfig-Syntax und Logik (gegen lokales Caddy oder Server-Container)</td>
+</tr>
+<tr>
+<td>Container-Images</td>
+<td>Trivy</td>
+<td>CVE-Scan auf High/Critical (in CI)</td>
+</tr>
+<tr>
+<td>Secrets im Repo</td>
+<td>gitleaks</td>
+<td>Verhindert versehentliche Klartext-Commits</td>
+</tr>
+<tr>
+<td>Live-System</td>
+<td><code>make smoke</code></td>
+<td>HTTP-Routing, Basic-Auth, Port-Schließung, Compose-Stack-Status</td>
+</tr>
+<tr>
+<td>Backup-Pfad</td>
+<td>Restore-Übung (siehe Gate)</td>
+<td>End-to-End: Snapshot, Wiederherstellung, Verifikation gegen Test-Daten</td>
+</tr>
+</tbody>
+</table>
+<p>Lokal: <code>make lint</code> für Code-Qualität, <code>make smoke</code> nach Deploy für Live-System. CI führt alle Linter plus Trivy- und Gitleaks-Scans bei jedem Push aus. Anwendungs-Tests (Vitest, Playwright im Anwendungs-Repository) sind Sache des Anwendungs-Strangs (siehe <code>app.html</code>).</p>
+<p><strong>Brücke nach Stufe 2:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Stufe-1-Setup</th>
+<th>Stufe-2-Anschluss</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OpenTofu monolithisch</td>
+<td>Refaktorierung zu <code>compute</code>/<code>network</code>/<code>storage</code>/<code>secrets</code> möglich, weil restic + S3-API + ENV-Konfiguration bereits plattform-agnostisch sind</td>
+</tr>
+<tr>
+<td>restic gegen S3-API</td>
+<td>Append-Only-Identitäten und Object Lock werden bei neuem Bucket aktiviert (nicht nachrüstbar - Bucket muss neu)</td>
+</tr>
+<tr>
+<td>Compose-Stack auf der virtuellen Maschine</td>
+<td>App-Container ist plattform-agnostisch; nur ENV-Werte ändern sich beim Cloud-Switch</td>
+</tr>
+<tr>
+<td>Caddy auf der virtuellen Maschine</td>
+<td>Bleibt als interner Proxy, oder Cloud-Loadbalancer davor</td>
+</tr>
+<tr>
+<td>Single-Plattform</td>
+<td>Migrations-Block ist Modul-Tausch, kein App-Refactor</td>
+</tr>
+<tr>
+<td>SQLite (falls gewählt)</td>
+<td><code>pg_dump</code>-Migration in Stufe-2-Phase 2 oder im Migrations-Block, weil das Repository-Interface den DB-Engine-Wechsel kapselt</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Verboten in Stufe 1</strong> (würde den Stufe-2-Pfad verbauen):
+- S3-Bucket ohne Object-Lock-Vorbereitung anlegen (sonst Bucket-Wegwerf in Stufe 2)
+- Provider-spezifische Hardcodes ohne ENV-Indirection
+- Plattform-spezifische Backup-Werkzeuge wählen, die nicht S3-API sprechen
+- TLS-Topologie wählen, die den OIDC-Flow brechen würde</p>
+<p><strong>Gate Phase 1:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Kriterium</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tofu apply</code> ist idempotent</td>
+</tr>
+<tr>
+<td>Compose-Stack startet alle Services ohne manuellen Eingriff</td>
+</tr>
+<tr>
+<td>HTTPS-Aufruf der App-Domain erreicht den App-Container über Caddy</td>
+</tr>
+<tr>
+<td>restic-Backup läuft täglich, Heartbeat überwacht den Erfolg</td>
+</tr>
+<tr>
+<td>Mindestens eine Restore-Übung mit Test-Daten ist protokolliert (per <code>make restore-drill</code>; Protokoll in <code>docs/restore-protokoll.md</code>)</td>
+</tr>
+<tr>
+<td>Trivy-Scan in CI verhindert das Pushen von Images mit kritischen CVEs</td>
+</tr>
+<tr>
+<td>§adr7 (SOPS+age) im Repository abgelegt</td>
+</tr>
+<tr>
+<td><code>make lint</code> grün (tofu fmt, validate, shellcheck, Caddyfile)</td>
+</tr>
+<tr>
+<td><code>make smoke</code> grün gegen frisch provisionierten Server</td>
+</tr>
+<tr>
+<td>CI-Workflow grün auf main: Trivy-Image-Scan, gitleaks, Linter</td>
+</tr>
+<tr>
+<td>Echt-Daten-Sperre dokumentiert (siehe <code>../vertrag.html</code> §vertrag5)</td>
+</tr>
+<tr>
+<td>Brücken-Klausel-Check: ENV-Indirection vollständig, S3-API-Backup, Stufe-2-Pfade verbauen nichts</td>
+</tr>
+</tbody>
+</table>
+<h2>§infrastruktur4 Dokumentations-Strang Phase 1</h2>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Artefakte</th>
+<th>Gate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Deploy-Anleitung, Runbook v1 (Update/Restore/Rollback), Restore-Test-Protokoll, ADR-Sammlung in <code>../adr.html</code></td>
+<td>Deploy-Anleitung erlaubt den Phase-1-Aufbau ohne Rückfragen</td>
+</tr>
+</tbody>
+</table>
+<p>Pentest und externe Audits sind nicht Plan-Inhalt - falls beauftragt, würde technische Zuarbeit auf Abfrage entstehen.</p>
+<h2>§infrastruktur6 Bedrohungsmodell (Stufe 1)</h2>
+<table>
+<thead>
+<tr>
+<th>Bedrohung</th>
+<th>Lebt am</th>
+<th>Stufe-1-Maßnahme</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Kompromittiertes Container-Image</td>
+<td>Lieferkette</td>
+<td>Trivy ab Phase 1; cosign + SLSA kommen in Stufe 2</td>
+</tr>
+<tr>
+<td>Root auf virtueller Maschine bzw. Host</td>
+<td>System</td>
+<td>key-only SSH, unattended-upgrades; Off-Host-Logging kommt in Stufe 2</td>
+</tr>
+<tr>
+<td>Secrets im Repository</td>
+<td>Repository / CI</td>
+<td>SOPS+age ab Phase 1; CI verhindert Klartext-Commits</td>
+</tr>
+<tr>
+<td>Plattform-Lock-In</td>
+<td>Plattform</td>
+<td>§adr7 SOPS+age, S3-API-kompatibles Backup-Ziel; Modul-Schnitt kommt in Stufe 2</td>
+</tr>
+</tbody>
+</table>
+<p>Anwendungs- und datenbankbezogene Bedrohungen: <code>app.html</code> §app4.</p>
+<p>Backup-Ransomware ist eine Stufe-2-Bedrohung (Object Lock).</p>
+<h2>§infrastruktur7 Relevante Architecture Decision Records (Stufe 1)</h2>
+<table>
+<thead>
+<tr>
+<th>Nr</th>
+<th>Titel</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>5</td>
+<td>Netzwerk-Zugang und Identity Provider folgen dem Webzugriffe-Logbuch (relevant ab Stufe 2 produktiv, in Stufe 1 nur als Stub)</td>
+</tr>
+<tr>
+<td>7</td>
+<td>SOPS+age für Secrets</td>
+</tr>
+</tbody>
+</table>
+<p>Voll-Texte in <code>../adr.html</code> (§adr0 … §adr12). Übersicht im ADR-Index <code>../vertrag.html</code> §vertrag4.</p>
+<h3>Stand 2026-04-29 - Plan v2</h3>
+<ul>
+<li>Anlass: Restrukturierung in konzept/betrieb. Stufe-1-Inhalte ausgegliedert; Hetzner-Brücke-Framing entschärft (jetzt: plattform-agnostisches Single-Server-Setup).</li>
+<li>Offen / Abhängigkeiten:</li>
+<li>§bewertung4 (Lastannahmen) und §bewertung5 (Sicherheits-Minimum) noch zu schreiben.</li>
+<li>Plattform-Wahl für Stufe 1 ist eine Stakeholder-Entscheidung außerhalb dieses Plans.</li>
+</ul>
+
+<h3>Stand 2026-04-29 - IaC-Skelett angelegt</h3>
+<ul>
+<li>Anlass: Implementations-Start des Konzept-Pilots auf Hetzner Cloud.</li>
+<li>Entschieden: Plattform Hetzner Cloud (Standort fsn1, Falkenstein). OpenTofu monolithisch in <code>tofu/environments/pilot/</code>, kein Modul-Schnitt (Plan §infrastruktur2 erlaubt das in Stufe 1).</li>
+<li>Geliefert: Tofu-Konfiguration für SSH-Key, Daten-Volume, Firewall, Server. Cloud-init-Bootstrap unter <code>cloud-init/pilot.yaml</code> (Docker, ufw, unattended-upgrades, restic, sops, Deploy-User mit Sudo, Root-Login disabled, Passwort-Auth disabled).</li>
+<li>Server-Spezifikation: cpx32 (4 vCPU, 8 GB RAM, 160 GB Disk), Ubuntu 24.04 LTS, 50 GB Daten-Volume gemountet nach <code>/mnt/data</code>.</li>
+</ul>
+
+<h3>Stand 2026-04-29 - Backup-Bootstrap prozedural</h3>
+<ul>
+<li>Anlass: <code>make setup-backup</code> erzeugt prozedural S3-Zugangsdaten, Bucket und <code>/etc/restic/env</code> ohne manuelle Console-Klicks - solange Hetzner Cloud API den Endpoint <code>POST /v1/object_storage/credentials</code> liefert.</li>
+<li>Geliefert: <code>scripts/setup-backup.py</code> (Python-Stdlib, keine externen Abhängigkeiten, AWS-V4-Signing inline für Bucket-Anlage), Make-Target <code>setup-backup</code>, README-Schritt 5 ergänzt.</li>
+<li>Gegenwärtige Realität: Hetzner Cloud API liefert für den S3-Credentials-Endpoint Stand April 2026 noch 404. Skript fängt das ab und gibt klare Anweisung: einmalig in der Console anlegen (Hetzner Console &gt; Sicherheit &gt; S3-Zugangsdaten), dann <code>RESTIC_S3_ACCESS_KEY=... RESTIC_S3_SECRET_KEY=... make setup-backup</code>. Sobald die Hetzner-API freigeschaltet wird, läuft alles ohne Console-Schritt.</li>
+<li>Adopter-Auswirkung: Setup-Procedure bleibt vier Befehle - <code>make up &amp;&amp; make stack-up &amp;&amp; make setup-backup &amp;&amp; make restore-drill</code>. Bei Hetzner-Adoptern aktuell ein einmaliger Console-Klick zwischen Schritt 2 und 3 (S3-Zugangsdaten generieren); Adopter mit anderen S3-API-Backends geben Access/Secret per Umgebungsvariable mit.</li>
+</ul>
+
+<h3>Stand 2026-04-29 - Compose-Stack mit Monitoring</h3>
+<ul>
+<li>Anlass: Konzept-Pilot läuft mit produktionstauglich aussehendem Stack-Skelett, damit Folge-Schritte (Anwendungs-Container, Datenbank) auf bestehende Compose-Infrastruktur draufsetzen können.</li>
+<li>Geliefert: Compose-Stack mit Caddy-Reverse-Proxy, Uptime Kuma (Service-Status-Dashboard) und Dozzle (Live-Container-Logs). Beide Monitoring-Werkzeuge hinter Caddy mit Basic-Auth-Schutz; direkte Ports nicht extern erreichbar.</li>
+<li>Vorgezogene Bausteine: §fahrplan7 erweitert um Tabelle „Bereits vorgezogene Bausteine" — Caddy, Uptime Kuma und Dozzle sind explizite Stufe-1-Vorzieher mit Hinweis was für Stufe 2 offen bleibt (Netdata-Metriken, Mail-Alerts, persistente Log-Aggregation).</li>
+<li>Lifecycle: Makefile mit <code>make up/stop/start/down</code> für Server, <code>make stack-up/down/logs</code> für Compose, <code>make ssh/status/ip/logs</code> für Operations.</li>
+<li>Sicherheits-Hardening: SSH key-only, Root disabled, Passwort-Auth disabled, ufw aktiv (22/80/443), Hetzner Cloud Firewall identisch konfiguriert. Container-Images per Digest gepinnt.</li>
+<li>Bekannte Konzept-Schwächen (bewusst): kein TLS bis Domain gesetzt, kein restic-Backup-Job konfiguriert (Binary installiert), kein Continuous-Integration-Workflow, kein S3-Bucket. Stehen auf der Liste für die kommenden Schritte.</li>
+<li>Offen: Domain-Name für Caddy-TLS, Datenbank-Wahl SQLite versus PostgreSQL für Pilot (siehe <code>bewertungen.html</code> §bewertung2), restic-Backup-Job mit Heartbeat, Restore-Übung, Continuous-Integration-Pipeline.</li>
+</ul>
+</body></html>

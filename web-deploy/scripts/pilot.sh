@@ -186,9 +186,19 @@ preflight() {
     errors=$((errors + 1))
   fi
 
-  # 6. GHCR_TOKEN — required to pull a private varlens-web image
+  # 6. GHCR_TOKEN — required to pull a private varlens-web image. Probe
+  # the registry directly so we catch expired / scope-reduced tokens at
+  # preflight rather than at the docker pull during stack-up (which is
+  # ~5 min in).
   if [[ -n "${GHCR_TOKEN:-}" ]]; then
-    printf '  %s✓%s GHCR_TOKEN present (docker login will run during stack-up)\n' "$GREEN" "$RESET"
+    local ghcr_user="${GHCR_USER:-robspan}"
+    if curl -fsS -u "$ghcr_user:$GHCR_TOKEN" -o /dev/null \
+         "https://ghcr.io/v2/$ghcr_user/varlens-web/manifests/edge" 2>/dev/null; then
+      printf '  %s✓%s GHCR_TOKEN can read ghcr.io/%s/varlens-web (manifest reachable)\n' "$GREEN" "$RESET" "$ghcr_user"
+    else
+      printf '  %s✗%s GHCR_TOKEN cannot read ghcr.io/%s/varlens-web manifests — expired or scope reduced\n' "$RED" "$RESET" "$ghcr_user"
+      errors=$((errors + 1))
+    fi
   else
     printf '  %s⚠%s  GHCR_TOKEN not set — stack-up will fail if VARLENS_IMAGE points at a private GHCR package\n' "$YELLOW" "$RESET"
     printf '    %sExport before running:%s export GHCR_TOKEN=ghp_...\n' "$DIM" "$RESET"

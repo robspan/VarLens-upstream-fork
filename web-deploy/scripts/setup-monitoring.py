@@ -361,14 +361,27 @@ def main() -> None:
 
     # ----- 4. Update /etc/restic/env -----
     log("Writing HEARTBEAT_URL to /etc/restic/env")
+    # Preflight: refuse to write a half-baked /etc/restic/env. If the file is
+    # missing, or it exists without RESTIC_REPOSITORY=, then setup-backup has
+    # not run (or has not run successfully) on this server. Writing
+    # HEARTBEAT_URL alone would satisfy the systemd unit's
+    # ConditionPathExists=/etc/restic/env and let restic-backup.service start,
+    # only to fail inside on missing repo/password env — masking the real
+    # problem (no backup configured) behind a confusing per-run failure.
+    rc, preflight_body, _ = ssh_stdout_only(
+        ip, ssh_key, "sudo cat /etc/restic/env", check=False,
+    )
+    if rc != 0 or "RESTIC_REPOSITORY=" not in (preflight_body or ""):
+        fail("/etc/restic/env not initialised — run `make setup-backup` first.")
     # sed would be fragile because & in sed's replacement is interpreted as a
     # match back-reference. We read the file, replace the entry in Python,
     # and atomically write it back via `sudo tee`.
     #
     # Important: read stdout/stderr separately — otherwise a possible
-    # `cat: ... No such file or directory` message ends up in the body. ENOENT
-    # (fresh machine without /etc/restic/env) is tolerable: we treat that as
-    # an empty file and create it via tee.
+    # `cat: ... No such file or directory` message ends up in the body. The
+    # preflight above guarantees the file exists with RESTIC_REPOSITORY, so
+    # any non-zero rc here is a transient SSH/sudo error worth logging rather
+    # than tolerating silently.
     rc, current, _ = ssh_stdout_only(ip, ssh_key, "sudo cat /etc/restic/env", check=False)
     if rc != 0:
         current = ""

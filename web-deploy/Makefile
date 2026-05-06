@@ -145,6 +145,18 @@ endif
 
 stack-up: deploy-stack
 	@if [ -z "$(call IPV4)" ]; then echo "No server present."; exit 1; fi
+	@# If GHCR_TOKEN is set in the operator's env, docker-login on the
+	@# server before pulling. Required for private GHCR images such as
+	@# the default ghcr.io/robspan/varlens-web. Token is piped via stdin
+	@# so it never appears in process listings.
+	@if [ -n "$${GHCR_TOKEN:-}" ]; then \
+		GHCR_USER="$${GHCR_USER:-robspan}"; \
+		echo "==> GHCR auth: docker login as $$GHCR_USER"; \
+		printf '%s' "$$GHCR_TOKEN" | ssh -i $(SSH_KEY) deploy@$(call IPV4) "docker login ghcr.io -u $$GHCR_USER --password-stdin" >/dev/null && \
+		echo "==> Login Succeeded"; \
+	else \
+		echo "==> GHCR_TOKEN not set — skipping docker login (pull will fail if image is private)"; \
+	fi
 	@echo "Database profile: $(DB)"
 	@echo "TLS mode:         $(CADDY_TLS)  (host: $(CADDY_HOST))"
 	@ssh -i $(SSH_KEY) deploy@$(call IPV4) 'cd /mnt/data/app && \

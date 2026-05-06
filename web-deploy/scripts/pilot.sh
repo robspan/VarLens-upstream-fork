@@ -69,6 +69,59 @@ human_time() {
   fi
 }
 
+# Wait for cloud-init to finish ALL phases (not just SSH). The first live
+# cycle exposed two race-condition failures: (a) `tofu apply` returns the
+# moment the server is provisioned but cloud-init's runcmd is still
+# running (creates /mnt/data/app + chowns); (b) Hetzner sometimes reuses a
+# just-released IPv4, making our cached known_hosts entry mismatch and
+# breaking SSH with strict host-key checking. This step handles both.
+wait_for_server_ready() {
+  local ip="$1"
+  local ssh_key="${SSH_KEY:-$HOME/.ssh/varlens-tofu}"
+
+  # Clear stale known_hosts in case Hetzner reused the IP.
+  ssh-keygen -R "$ip" >/dev/null 2>&1 || true
+
+  printf '  Waiting for SSH on %s ...' "$ip"
+  local attempts=0
+  until ssh -i "$ssh_key" \
+    -o BatchMode=yes \
+    -o ConnectTimeout=5 \
+    -o StrictHostKeyChecking=accept-new \
+    deploy@"$ip" 'true' 2>/dev/null; do
+    if (( attempts > 36 )); then
+      printf ' %s✗%s timed out after 3 min\n' "$RED" "$RESET"
+      return 1
+    fi
+    printf '.'
+    sleep 5
+    attempts=$((attempts + 1))
+  done
+  printf ' %s✓%s SSH ready\n' "$GREEN" "$RESET"
+
+  printf '  Waiting for cloud-init to finish (runcmd creates /mnt/data/app, chowns) ...'
+  if ssh -i "$ssh_key" -o BatchMode=yes deploy@"$ip" \
+    'cloud-init status --wait' >/dev/null 2>&1; then
+    printf ' %s✓%s cloud-init done\n' "$GREEN" "$RESET"
+  else
+    printf ' %s✗%s cloud-init failed — investigate /var/log/cloud-init-output.log\n' "$RED" "$RESET"
+    return 1
+  fi
+
+  # Container's varlens user is uid 1001 but the host's deploy user is uid
+  # 1000 — bind-mount permissions don't translate, so chown the app dir to
+  # match the container's runtime user before docker compose tries to
+  # write /data/varlens.db.
+  printf '  Aligning /mnt/data/app ownership for container runtime (1001:1001) ...'
+  if ssh -i "$ssh_key" -o BatchMode=yes deploy@"$ip" \
+    'sudo chown -R 1001:1001 /mnt/data/app' 2>/dev/null; then
+    printf ' %s✓%s\n' "$GREEN" "$RESET"
+  else
+    printf ' %s✗%s could not chown /mnt/data/app — does deploy have NOPASSWD sudo?\n' "$RED" "$RESET"
+    return 1
+  fi
+}
+
 # ---- Pre-flight ------------------------------------------------------------
 
 preflight() {
@@ -125,6 +178,23 @@ preflight() {
     errors=$((errors + 1))
   fi
 
+  # 6. GHCR_TOKEN — required to pull a private varlens-web image
+  if [[ -n "${GHCR_TOKEN:-}" ]]; then
+    printf '  %s✓%s GHCR_TOKEN present (docker login will run during stack-up)\n' "$GREEN" "$RESET"
+  else
+    printf '  %s⚠%s  GHCR_TOKEN not set — stack-up will fail if VARLENS_IMAGE points at a private GHCR package\n' "$YELLOW" "$RESET"
+    printf '    %sExport before running:%s export GHCR_TOKEN=ghp_...\n' "$DIM" "$RESET"
+  fi
+
+  # 7. Hetzner S3 creds — required by setup-backup (Hetzner does not yet
+  # automate S3-credential generation via API; they must come from env)
+  if [[ -n "${RESTIC_S3_ACCESS_KEY:-}" && -n "${RESTIC_S3_SECRET_KEY:-}" ]]; then
+    printf '  %s✓%s RESTIC_S3_ACCESS_KEY + RESTIC_S3_SECRET_KEY present\n' "$GREEN" "$RESET"
+  else
+    printf '  %s⚠%s  RESTIC_S3_* not set — setup-backup will print Console-click instructions and fail\n' "$YELLOW" "$RESET"
+    printf '    %sGenerate at:%s Hetzner Console > Security > S3 Credentials\n' "$DIM" "$RESET"
+  fi
+
   if (( errors > 0 )); then
     printf '\n%sPre-flight failed (%d issue(s)). Fix above and retry.%s\n\n' "$RED$BOLD" "$errors" "$RESET"
     exit 1
@@ -175,6 +245,21 @@ main() {
     "Provisioning Hetzner server (cpx32 + 50 GB volume + IPv4) [~3 min, watch tofu output below]" \
     "make -C web-deploy up" \
     make up
+
+  # Bridge step between provisioning and stack-up. NOT counted as a numbered
+  # step — operators conceptually think "provision then bring up the stack"
+  # and this is just plumbing between those two intentions.
+  printf '\n%s    waiting for server to finish booting ...%s\n' "$DIM" "$RESET"
+  local ip
+  ip="$(cd "$WEB_DEPLOY" && make -s ip 2>/dev/null | grep -oE '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' || echo "")"
+  if [[ -z "$ip" ]]; then
+    printf '%s    ✗ no IPv4 in tofu output — is the server actually provisioned?%s\n' "$RED" "$RESET"
+    exit 1
+  fi
+  if ! wait_for_server_ready "$ip"; then
+    printf '\n%s  Step 2 prerequisites failed. The server is up but not ready.%s\n' "$RED$BOLD" "$RESET"
+    exit 1
+  fi
 
   run_step 2 5 \
     "Bringing up Compose stack (Caddy + Kuma + Dozzle + VarLens) [~1 min]" \

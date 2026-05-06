@@ -145,6 +145,13 @@ endif
 
 stack-up: deploy-stack
 	@if [ -z "$(call IPV4)" ]; then echo "No server present."; exit 1; fi
+	@# Create + chown the runtime data directory AFTER rsync. The source
+	@# compose/ tree doesn't contain a data/ subdir, so rsync --delete in
+	@# deploy-stack would strip a pre-created /mnt/data/app/data. Doing it
+	@# here ensures the directory exists with uid 1001:1001 (varlens
+	@# container's runtime user) right before docker compose mounts it.
+	@ssh -i $(SSH_KEY) deploy@$(call IPV4) \
+		'sudo mkdir -p /mnt/data/app/data && sudo chown 1001:1001 /mnt/data/app/data'
 	@# If GHCR_TOKEN is set in the operator's env, docker-login on the
 	@# server before pulling. Required for private GHCR images such as
 	@# the default ghcr.io/robspan/varlens-web. Token is piped via stdin

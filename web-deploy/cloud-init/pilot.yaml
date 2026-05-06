@@ -103,11 +103,15 @@ write_files:
     permissions: "0644"
     content: |
       [Unit]
-      Description=Daily restic backup at 02:30
+      Description=Daily restic backup at 01:30
       Requires=restic-backup.service
 
       [Timer]
-      OnCalendar=*-*-* 02:30:00
+      # Run at 01:30 to leave 2h of headroom before the 03:30
+      # unattended-upgrades automatic-reboot window (see audit F10):
+      # a backup that ran at 02:30 could be killed mid-snapshot when
+      # the machine reboots, leaving a stale restic lock behind.
+      OnCalendar=*-*-* 01:30:00
       Persistent=true
       RandomizedDelaySec=15min
 
@@ -194,6 +198,13 @@ runcmd:
     : "$${RETENTION_KEEP_MONTHLY:=6}"
     if ! restic snapshots --no-lock --json >/dev/null 2>&1; then
         restic init
+    fi
+    # Stale-lock heuristic: if a lock exists when this script runs, the previous
+    # backup was interrupted (likely by 03:30 reboot before the F10 fix). We're
+    # the only writer, so removing all locks is safe.
+    if restic list locks --no-lock 2>/dev/null | grep -q .; then
+        echo "[varlens-backup] stale lock detected, calling restic unlock --remove-all"
+        restic unlock --remove-all || true
     fi
     restic backup "$${BACKUP_PATHS}" --tag auto --tag "$(date +%Y-%m-%d)"
     restic forget --keep-daily "$${RETENTION_KEEP_DAILY}" --keep-weekly "$${RETENTION_KEEP_WEEKLY}" --keep-monthly "$${RETENTION_KEEP_MONTHLY}" --prune || true

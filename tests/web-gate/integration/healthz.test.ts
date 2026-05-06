@@ -3,8 +3,11 @@ import { existsSync } from 'fs'
 import { resolve } from 'path'
 
 /**
- * Phase 1 gate — `/healthz` returns 200 with `{ status, version, db }` on
- * a healthy server, 503 when the database is unreachable.
+ * §app2.1 Phase 1 gate — `/healthz` returns 200 with `{ status, version, db }`
+ * on a healthy server. The boot path is fail-loud (see fail-loud.test.ts):
+ * an unreachable DB rejects buildApp instead of producing a 503-serving
+ * half-server, so the runtime 503 path is exercised by code-level checks
+ * only (kept as defensive coverage for post-boot DB failures).
  *
  * SKIPPED until the web build target lands (`out/web/server.cjs`). At
  * that point this test activates automatically. Imports are dynamic so
@@ -33,14 +36,10 @@ describe.skipIf(!isWebBuilt)('healthz integration', () => {
     }
   })
 
-  test('GET /healthz returns 503 when DB is unreachable', async () => {
+  test('buildApp rejects when DB path is unreachable (fail-loud contract)', async () => {
     const { buildApp } = await import('../../../src/web/server')
-    const app = await buildApp({ db: '/nonexistent/path/that/cannot/be/created' })
-    try {
-      const res = await app.inject({ method: 'GET', url: '/healthz' })
-      expect(res.statusCode).toBe(503)
-    } finally {
-      await app.close().catch(() => {})
-    }
+    await expect(
+      buildApp({ db: '/nonexistent/path/that/cannot/be/created/varlens.db' })
+    ).rejects.toThrow()
   })
 })

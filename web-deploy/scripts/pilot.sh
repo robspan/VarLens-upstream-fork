@@ -299,6 +299,24 @@ main() {
     "make -C web-deploy smoke" \
     make smoke
 
+  # Post-smoke TLS trust probe. The smoke test uses `curl -k`; this probe
+  # is strict so we surface Let's Encrypt rate-limit fallbacks (self-signed)
+  # that would render the site browser-untrusted. Non-fatal — operators may
+  # legitimately be on the staging issuer or hit a temporary LE limit.
+  local probe_ip
+  probe_ip="$(cd "$WEB_DEPLOY" && make -s ip 2>/dev/null | grep -oE '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' || echo "")"
+  if [[ -n "$probe_ip" ]]; then
+    printf '\n%s    TLS trust probe: curl --fail https://%s/welcome ...%s\n' "$DIM" "$probe_ip" "$RESET"
+    if curl --fail --silent --show-error --max-time 10 -o /dev/null \
+         "https://$probe_ip/welcome" 2>/dev/null; then
+      printf '%s    ✓ TLS cert is browser-trusted%s\n' "$GREEN" "$RESET"
+    else
+      printf '%s    ⚠ WARN: TLS cert at https://%s/welcome is not browser-trusted%s\n' "$YELLOW$BOLD" "$probe_ip" "$RESET"
+      printf '%s      Likely cause: Let'\''s Encrypt rate limit → Caddy fell back to a self-signed cert.%s\n' "$YELLOW" "$RESET"
+      printf '%s      Browsers will show a warning. Check Caddy logs and re-issue when the limit resets.%s\n' "$DIM" "$RESET"
+    fi
+  fi
+
   local total=$(($(date +%s) - OVERALL_START))
   local ip
   ip="$(cd "$WEB_DEPLOY" && make -s ip 2>/dev/null || echo "unknown")"

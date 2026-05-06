@@ -80,10 +80,11 @@ services:
     image: ${VARLENS_IMAGE:-ghcr.io/robspan/varlens-web:edge}
     container_name: varlens
     restart: unless-stopped
-    # Bound to localhost only — external access exclusively via Caddy
-    # (`/varlens/*` route in Caddyfile).
-    ports:
-      - "127.0.0.1:8080:8080"
+    # No host port mapping: Caddy reaches the app on the internal `varlens`
+    # network as `varlens:8080`. Exposing a host port here would conflict
+    # with dozzle (also 127.0.0.1:8080) and adds attack surface for no
+    # external benefit. Debug from the server via `docker exec varlens
+    # wget -qO- http://127.0.0.1:8080/healthz` if needed.
     volumes:
       # Persistent SQLite + admin recovery key file. Mount must exist on
       # host (created by cloud-init or by `make stack-up`).

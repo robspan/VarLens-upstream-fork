@@ -108,6 +108,22 @@ wait_for_server_ready() {
     return 1
   fi
 
+  # Assert the bootstrap success marker that cloud-init emits on the happy
+  # path. cloud-init's own exit code does NOT distinguish "all runcmd steps
+  # succeeded" from "runcmd ran but a step printed BOOTSTRAP_FAIL and we
+  # tolerated it". The marker is the contract: present == bootstrap OK.
+  printf '  Checking bootstrap success marker ...'
+  if ssh -i "$ssh_key" -o BatchMode=yes deploy@"$ip" \
+    'test -f /var/lib/cloud/instance/varlens-bootstrap.ok' 2>/dev/null; then
+    printf ' %s✓%s bootstrap marker present\n' "$GREEN" "$RESET"
+  else
+    printf ' %s✗%s bootstrap marker missing — dumping cloud-init failure context:\n' "$RED" "$RESET"
+    ssh -i "$ssh_key" -o BatchMode=yes deploy@"$ip" \
+      'sudo grep -E "BOOTSTRAP_FAIL" /var/log/cloud-init-output.log || sudo tail -40 /var/log/cloud-init-output.log' \
+      2>/dev/null || true
+    return 1
+  fi
+
   # Note: creating /mnt/data/app/data and chowning it to 1001:1001 is now
   # the responsibility of `make stack-up` (between rsync and docker compose
   # pull/up) — not this function. Doing it here would race with rsync

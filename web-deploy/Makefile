@@ -254,7 +254,7 @@ smoke:
 	check "Kuma /manifest.json 200"  "200" "$$(curl -ks -o /dev/null -w '%{http_code}' https://$$IP/manifest.json)"; \
 	check "Old /monitor redirects"   "301" "$$(curl -ks -o /dev/null -w '%{http_code}' https://$$IP/monitor/)"; \
 	check "Logs without auth 401"    "401" "$$(curl -ks -o /dev/null -w '%{http_code}' https://$$IP/logs/)"; \
-	check "Logs with auth ok"        "200" "$$(curl -ks -o /dev/null -w '%{http_code}' -u admin https://$$IP/logs/)"; \
+	check "Logs with auth ok"        "200" "$$(curl -ks -o /dev/null -w '%{http_code}' -u <configured credentials> https://$$IP/logs/)"; \
 	check "Direct port 3001 closed"  "000" "$$(curl --max-time 3 -s -o /dev/null -w '%{http_code}' http://$$IP:3001/ 2>/dev/null)"; \
 	check "Direct port 8080 closed"  "000" "$$(curl --max-time 3 -s -o /dev/null -w '%{http_code}' http://$$IP:8080/ 2>/dev/null)"; \
 	check "Compose stack: Caddy/Kuma/Dozzle running" "3"   "$$(ssh -i $(SSH_KEY) -o BatchMode=yes deploy@$$IP 'cd /mnt/data/app && docker compose ps --status running --services | grep -cE "^(caddy|uptime-kuma|dozzle)$$"' 2>/dev/null | tr -d ' ')"; \

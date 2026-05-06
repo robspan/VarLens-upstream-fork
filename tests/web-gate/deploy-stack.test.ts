@@ -32,7 +32,12 @@ describe.skipIf(!existsSync(DEPLOY))('deploy-stack wiring gate', () => {
     expect(yaml, 'varlens must join the existing varlens network').toMatch(
       /varlens:[\s\S]+?networks:[\s\S]+?-\s*varlens/
     )
-    expect(yaml, 'varlens must mount /data persistent volume').toMatch(/\/mnt\/data\/app:\/data/)
+    // Volume mount uses the data subdir specifically (see d2f2c829): the
+    // parent /mnt/data/app stays deploy-owned for rsync, /mnt/data/app/data
+    // is chowned to the container's varlens uid (1001) for SQLite writes.
+    expect(yaml, 'varlens must mount /mnt/data/app/data:/data subdir').toMatch(
+      /\/mnt\/data\/app\/data:\/data/
+    )
     expect(yaml, 'varlens must declare a healthcheck against /healthz').toMatch(
       /varlens:[\s\S]+?healthcheck:[\s\S]+?\/healthz/
     )
@@ -76,5 +81,17 @@ describe.skipIf(!existsSync(DEPLOY))('deploy-stack wiring gate', () => {
     expect(cli, 'CLI services check must include varlens').toMatch(
       /\(caddy\|uptime-kuma\|dozzle\|varlens\)/
     )
+  })
+
+  test('deploy-stack rsync --delete preserves runtime data/ and operator .env', () => {
+    // Regression gate for the F1 critical finding from the 2026-05-06
+    // orchestrator audit: rsync --delete in the deploy-stack target
+    // strips /mnt/data/app/data (SQLite DB + admin-recovery-key) and
+    // /mnt/data/app/.env (server-generated POSTGRES_PASSWORD) on every
+    // re-run unless explicitly excluded. Image rotation, config update,
+    // or any subsequent `make stack-up` would silently delete user data.
+    const makefile = readFileSync(MAKEFILE, 'utf8')
+    expect(makefile, 'rsync invocation must --exclude data').toMatch(/--exclude\s+data\b/)
+    expect(makefile, 'rsync invocation must --exclude .env').toMatch(/--exclude\s+\.env\b/)
   })
 })

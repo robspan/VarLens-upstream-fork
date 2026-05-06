@@ -32,11 +32,11 @@ GHCR at stack-up).
 
 ## Three credentials you'll need
 
-| Credential | Where to generate | Scope / role | Where it goes locally |
-|---|---|---|---|
-| Hetzner Cloud API token | Hetzner Console → Security → API Tokens | Read **& Write** | `web-deploy/tofu/environments/pilot/terraform.tfvars`, key `hcloud_token` |
-| Hetzner Object Storage S3 access key + secret | Hetzner Console → Security → S3 Credentials | (single keypair) | exported as `RESTIC_S3_ACCESS_KEY` and `RESTIC_S3_SECRET_KEY` in your shell |
-| GitHub PAT (classic) | GitHub → Settings → Developer settings → Personal access tokens | `read:packages` | exported as `GHCR_TOKEN` in your shell |
+| Credential                                    | Where to generate                                               | Scope / role     | Where it goes locally                                                       |
+| --------------------------------------------- | --------------------------------------------------------------- | ---------------- | --------------------------------------------------------------------------- |
+| Hetzner Cloud API token                       | Hetzner Console → Security → API Tokens                         | Read **& Write** | `web-deploy/tofu/environments/pilot/terraform.tfvars`, key `hcloud_token`   |
+| Hetzner Object Storage S3 access key + secret | Hetzner Console → Security → S3 Credentials                     | (single keypair) | exported as `RESTIC_S3_ACCESS_KEY` and `RESTIC_S3_SECRET_KEY` in your shell |
+| GitHub PAT (classic)                          | GitHub → Settings → Developer settings → Personal access tokens | `read:packages`  | exported as `GHCR_TOKEN` in your shell                                      |
 
 S3 credentials are **not** in tfvars on purpose — Tofu does not manage the
 backup bucket, the `setup-backup` step does, via the S3 API.
@@ -118,12 +118,12 @@ If a step fails, the banner prints the exact retry command (e.g.
 The success banner prints four URLs. Replace `<ip>` with the IPv4 shown
 (or `make pilot-status` / `make -C web-deploy ip`).
 
-| URL | What |
-|---|---|
-| `https://<ip>/welcome` | Operator landing page |
-| `https://<ip>/varlens/healthz` | VarLens app health probe |
-| `https://<ip>/` | Uptime Kuma (redirects to `/dashboard`) |
-| `https://<ip>/logs/` | Dozzle (container logs, basic auth) |
+| URL                            | What                                    |
+| ------------------------------ | --------------------------------------- |
+| `https://<ip>/welcome`         | Operator landing page                   |
+| `https://<ip>/varlens/healthz` | VarLens app health probe                |
+| `https://<ip>/`                | Uptime Kuma (redirects to `/dashboard`) |
+| `https://<ip>/logs/`           | Dozzle (container logs, basic auth)     |
 
 Default Kuma / Dozzle credentials: **admin / varlens-konzept**. Change
 both before handing the URL to anyone outside operations.
@@ -202,13 +202,18 @@ incident recovery, database notes) see:
   command-by-command operations reference
 - [`web-deploy/docs/runbook.md`](web-deploy/docs/runbook.md) — incident
   scenarios (image updates, restore, rollback)
+- [`web-deploy/docs/smoke-remediation.md`](web-deploy/docs/smoke-remediation.md) —
+  per-check failure causes and fixes for the 13-probe smoke gate
 - [`web-deploy/docs/backup.md`](web-deploy/docs/backup.md)
 - [`web-deploy/docs/sops.md`](web-deploy/docs/sops.md)
 
 ## When something goes wrong
 
 **Smoke probe fails.** The smoke output names the failing probe (e.g.
-`FAIL VarLens /varlens/healthz expected 200, got 502`). Triage:
+`FAIL VarLens /varlens/healthz expected 200, got 502`). For the per-check
+diagnosis + remedy, see
+[`web-deploy/docs/smoke-remediation.md`](web-deploy/docs/smoke-remediation.md).
+Quick triage:
 
 ```bash
 make pilot-status                              # is the server even running?
@@ -268,11 +273,11 @@ managed, which is why teardown is a separate step.
 
 From `web-deploy/Makefile` `help`:
 
-| Resource | Cost | When |
-|---|---|---|
-| cpx32 server | ~0.02 EUR/hour | only while running; 0 EUR when stopped |
-| 50 GB volume | ~2 EUR/month | fixed, also when the server is stopped |
-| IPv4 address | ~0.60 EUR/month | fixed |
+| Resource     | Cost            | When                                   |
+| ------------ | --------------- | -------------------------------------- |
+| cpx32 server | ~0.02 EUR/hour  | only while running; 0 EUR when stopped |
+| 50 GB volume | ~2 EUR/month    | fixed, also when the server is stopped |
+| IPv4 address | ~0.60 EUR/month | fixed                                  |
 
 `make -C web-deploy stop` saves the server hours but keeps volume + IP
 billed. Full cost savings only via `make pilot-down`.

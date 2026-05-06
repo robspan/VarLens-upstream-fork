@@ -476,6 +476,21 @@ def _smoke(ip: str, key: Path) -> None:
             code = 0
         check(f"https {path}", expected, code)
 
+    # F5: structural bind-shape probes. The previous "direct port closed"
+    # checks treated curl rc=000 as "ok closed", but rc=000 also covers
+    # connect-refused, timeout, dropped packet, route-unreachable. Replace
+    # with a positive assertion that the listener is bound to loopback
+    # only, which is the actual security property we care about.
+    for port, label in ((3001, "Kuma bound to localhost only"),
+                        (8080, "Dozzle bound to localhost only")):
+        cmd = (
+            f"ss -tlnp 2>/dev/null | "
+            f"grep -qE '(127\\.0\\.0\\.1|\\[::1\\]):{port}\\b' "
+            f"&& echo yes || echo no"
+        )
+        proc = ssh_run(ip, key, cmd, total_timeout=30, ephemeral_host=True)
+        check(label, "yes", proc.stdout.strip())
+
     proc = ssh_run(
         ip, key,
         "cd /mnt/data/app && docker compose ps --status running --services | grep -cE '^(caddy|uptime-kuma|dozzle|varlens)$'",

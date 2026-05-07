@@ -17,8 +17,6 @@
  * has documented exceptions for places without IPC; the web bundle is one.
  */
 
-/* eslint-disable no-console */
-
 class WebLogger {
   getLogFilePath(): string {
     return ''

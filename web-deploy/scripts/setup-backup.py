@@ -698,11 +698,20 @@ def main() -> None:
     else:
         log(f"WARNING: bucket versioning could not be enabled (HTTP {vcode}): {vbody[:200]}")
 
-    # --- restic password: reuse existing, otherwise generate new ---
+    # --- restic password: operator override > existing > generate ---
+    operator_password = os.environ.get("RESTIC_PASSWORD", "").strip()
     newly_generated = False
     if existing_password and mode in ("default", "reuse"):
         restic_password = existing_password
         log("Reusing existing restic password")
+    elif operator_password:
+        # Operator typed a password into web-deploy/.env. Treat as
+        # newly_generated for SOPS persistence so the next bring-up on a
+        # fresh server (without /etc/restic/env) can still decrypt the
+        # bucket. Skip generation entirely.
+        restic_password = operator_password
+        newly_generated = True
+        log("Using operator-supplied RESTIC_PASSWORD")
     else:
         restic_password = base64.b64encode(secrets.token_bytes(24)).decode("ascii")
         newly_generated = True

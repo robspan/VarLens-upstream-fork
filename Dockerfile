@@ -87,6 +87,16 @@ RUN groupadd --system --gid 1001 varlens \
 COPY --from=builder --chown=varlens:varlens /app/out/web ./out/web
 COPY --from=builder --chown=varlens:varlens /app/node_modules ./node_modules
 COPY --from=builder --chown=varlens:varlens /app/package.json ./package.json
+# Postgres migration SQL files are read at runtime by
+# src/main/storage/postgres/migrations/definitions.ts. Vite bundles only
+# JS, so the .sql files have to ride along separately. The migration
+# resolver walks three candidate dirs; PACKAGED_SQL_DIR is
+# `<resourcesPath>/postgres-migrations` and `resourcesPath` falls back
+# to `process.cwd()` (= /app) outside Electron, so this lands at the
+# expected `/app/postgres-migrations/` path.
+COPY --from=builder --chown=varlens:varlens \
+    /app/src/main/storage/postgres/migrations/sql \
+    ./postgres-migrations
 
 USER varlens
 

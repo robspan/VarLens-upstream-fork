@@ -191,13 +191,25 @@ stack-up: deploy-stack
 	@# with arbitrary password characters. server.ts ignores these vars
 	@# post-bootstrap with a WARN, so re-injecting on re-runs would only
 	@# extend plaintext exposure with no functional benefit.
-	@printf '%s\n%s\n%s\n' \
+	@printf '%s\n%s\n%s\n%s\n' \
 		"$${VARLENS_ADMIN_USERNAME:-}" \
 		"$${VARLENS_ADMIN_PASSWORD:-}" \
-		"$${VARLENS_ADMIN_DISPLAY_NAME:-}" | \
+		"$${VARLENS_ADMIN_DISPLAY_NAME:-}" \
+		"$${POSTGRES_PASSWORD:-}" | \
 	ssh -i $(SSH_KEY) deploy@$(call IPV4) 'cd /mnt/data/app && \
+		read -r ADMIN_USER; \
+		read -r ADMIN_PASS; \
+		read -r ADMIN_DISP; \
+		read -r OPERATOR_PGPW; \
 		if [ ! -f .env ]; then \
-			if sudo test -f /etc/varlens/postgres-password; then \
+			if [ -n "$$OPERATOR_PGPW" ]; then \
+				echo "Using operator-supplied POSTGRES_PASSWORD; persisting to /etc/varlens/postgres-password"; \
+				PGPW="$$OPERATOR_PGPW"; \
+				sudo install -d -m 0755 /etc/varlens && \
+				printf "%s" "$$PGPW" | sudo tee /etc/varlens/postgres-password >/dev/null && \
+				sudo chmod 0600 /etc/varlens/postgres-password && \
+				sudo chown root:root /etc/varlens/postgres-password; \
+			elif sudo test -f /etc/varlens/postgres-password; then \
 				echo "Reusing PostgreSQL password from /etc/varlens/postgres-password"; \
 				PGPW=$$(sudo cat /etc/varlens/postgres-password); \
 			else \
@@ -210,9 +222,6 @@ stack-up: deploy-stack
 			fi && \
 			cp .env.example .env && \
 			sed -i "s|REPLACE_WITH_GENERATED_PASSWORD|$$PGPW|" .env && \
-			read -r ADMIN_USER && \
-			read -r ADMIN_PASS && \
-			read -r ADMIN_DISP && \
 			if [ -n "$$ADMIN_USER" ] && [ -n "$$ADMIN_PASS" ]; then \
 				sed -i "/^VARLENS_ADMIN_/d" .env && \
 				{ printf "VARLENS_ADMIN_USERNAME=%s\n" "$$ADMIN_USER"; \

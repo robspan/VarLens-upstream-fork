@@ -115,12 +115,9 @@ describe('parity (auth): multi-user isolation — user A cannot see user B data'
     expect(new Set(USER_ROLES)).toEqual(new Set(['admin', 'user']))
   })
 
-  test.skip(
-    'Stage 3: row-level isolation against per-tenant schemas (deferred to user-id-schema gate)',
-    () => {
-      // Activate when tests/web-gate/user-id-schema.test.ts flips green.
-    }
-  )
+  test.skip('Stage 3: row-level isolation against per-tenant schemas (deferred to user-id-schema gate)', () => {
+    // Activate when tests/web-gate/user-id-schema.test.ts flips green.
+  })
 })
 
 describe('parity (auth): session expiry / refresh token behavior', () => {

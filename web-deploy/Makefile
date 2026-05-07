@@ -7,17 +7,13 @@ TOFU_DIR := tofu/environments/pilot
 SSH_KEY ?= ~/.ssh/varlens-tofu
 
 # Database selection. Default SQLite (no container, just a file) per
-# task profile preference and §bewertung2. Postgres via:
-#   make stack-up DB=postgres
-DB ?= sqlite
-
-# Derive Compose profiles from DB: postgres -> "postgres" profile active,
-# sqlite -> no profile (no DB container).
-ifeq ($(DB),postgres)
-  COMPOSE_PROFILES_FLAG = COMPOSE_PROFILES=postgres
-else
-  COMPOSE_PROFILES_FLAG =
-endif
+# Phase 2: web mode is Postgres-only. The DB var is retained for
+# legacy invocations but the postgres profile is always active because
+# the varlens service `depends_on` it. `DB=sqlite` is no longer a
+# supported web shape — src/web/server.ts refuses to boot without
+# VARLENS_PG_URL. See .planning/web/phase2-execution-plan.md.
+DB ?= postgres
+COMPOSE_PROFILES_FLAG = COMPOSE_PROFILES=postgres
 
 # Helper macros for the Make targets that do not yet go through the CLI
 # (stack-up/down/logs, ssh, smoke, restore-drill, setup-backup).

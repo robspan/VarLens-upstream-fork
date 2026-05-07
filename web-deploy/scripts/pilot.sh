@@ -271,7 +271,18 @@ preflight() {
     errors=$((errors + 1))
   fi
 
-  # 8. VarLens admin bootstrap creds — non-fatal but loud. Without them
+  # 8. Backend mode — informational. Phase 2: web mode is Postgres-only;
+  # the postgres compose profile is unconditionally active and the
+  # varlens service auto-derives VARLENS_PG_URL from POSTGRES_PASSWORD
+  # (generated/persisted on the server during stack-up). Operators only
+  # need to override VARLENS_PG_URL when pointing at an external Postgres.
+  if [[ -n "${VARLENS_PG_URL:-}" ]]; then
+    printf '  %sℹ%s  VARLENS_PG_URL set in operator env — overrides the in-stack postgres default\n' "$DIM" "$RESET"
+  else
+    printf '  %s✓%s Postgres backend (default: in-stack postgres service, auto-derived URL)\n' "$GREEN" "$RESET"
+  fi
+
+  # 9. VarLens admin bootstrap creds — non-fatal but loud. Without them
   # the app boots fine, but no admin exists, so /api/auth/login has no
   # user to log in as. Operators frequently miss this on first run; the
   # warn here makes it visible at preflight rather than at first-login.

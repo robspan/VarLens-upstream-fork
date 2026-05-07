@@ -55,9 +55,12 @@ describe.skipIf(!existsSync(DEPLOY))('deploy-stack wiring gate', () => {
 
   test('.env.example documents the operator-configurable web envvars', () => {
     const env = readFileSync(ENV_EXAMPLE, 'utf8')
+    // Phase 2: VARLENS_DB_PATH dropped (web is Postgres-only);
+    // VARLENS_RECOVERY_KEY_DIR replaces dirname(VARLENS_DB_PATH) as
+    // the recovery-key location.
     for (const required of [
       'VARLENS_IMAGE=',
-      'VARLENS_DB_PATH=',
+      'VARLENS_RECOVERY_KEY_DIR=',
       'VARLENS_LOG_LEVEL=',
       'VARLENS_ADMIN_USERNAME=',
       'VARLENS_ADMIN_PASSWORD=',
@@ -109,6 +112,40 @@ describe.skipIf(!existsSync(DEPLOY))('deploy-stack wiring gate', () => {
     expect(cli, 'CLI smoke must probe Dozzle localhost bind').toMatch(
       /Dozzle bound to localhost only/
     )
+  })
+
+  test('Phase 2: varlens service receives VARLENS_PG_URL + depends_on postgres', () => {
+    // Phase 2 deliverable #5: web mode is Postgres-only. The varlens
+    // service must wire VARLENS_PG_URL into its env (sourced from
+    // POSTGRES_* with sane defaults so a fresh stack-up auto-resolves)
+    // and depend on the postgres service so compose orchestrates them
+    // in the right order.
+    const yaml = readFileSync(COMPOSE, 'utf8')
+    expect(yaml, 'varlens.environment must include VARLENS_PG_URL').toMatch(
+      /varlens:[\s\S]+?environment:[\s\S]+?VARLENS_PG_URL/
+    )
+    expect(yaml, 'VARLENS_PG_URL default must point at the postgres service hostname').toMatch(
+      /VARLENS_PG_URL:[^\n]+postgres:5432/
+    )
+    expect(yaml, 'varlens must depend_on postgres health').toMatch(
+      /varlens:[\s\S]+?depends_on:[\s\S]+?postgres:[\s\S]+?service_healthy/
+    )
+    expect(yaml, 'VARLENS_RECOVERY_KEY_DIR must be wired (Phase 2 path moved)').toMatch(
+      /VARLENS_RECOVERY_KEY_DIR/
+    )
+  })
+
+  test('Phase 2: Makefile activates the postgres profile unconditionally', () => {
+    // The DB=sqlite escape hatch is gone; the postgres profile is
+    // always on for web deploys.
+    const makefile = readFileSync(MAKEFILE, 'utf8')
+    expect(makefile, 'COMPOSE_PROFILES=postgres must be unconditional').toMatch(
+      /^COMPOSE_PROFILES_FLAG\s*=\s*COMPOSE_PROFILES=postgres/m
+    )
+    expect(
+      makefile,
+      'no `ifeq ($(DB),postgres)` branching for COMPOSE_PROFILES — pg is mandatory'
+    ).not.toMatch(/ifeq\s*\(\$\(DB\),postgres\)\s*\n\s*COMPOSE_PROFILES_FLAG/)
   })
 
   test('deploy-stack rsync --delete preserves runtime data/ and operator .env', () => {

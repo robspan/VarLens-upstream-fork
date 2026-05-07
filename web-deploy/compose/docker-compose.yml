@@ -93,7 +93,14 @@ services:
       # chowned by pilot.sh's wait_for_server_ready.
       - /mnt/data/app/data:/data
     environment:
-      VARLENS_DB_PATH: ${VARLENS_DB_PATH:-/data/varlens.db}
+      # Phase 2: web mode is Postgres-only. The app refuses to boot
+      # without VARLENS_PG_URL — see src/web/server.ts. The default
+      # below points at the local postgres service that activates with
+      # `COMPOSE_PROFILES=postgres`. Operators can override to point
+      # at an external Postgres if needed.
+      VARLENS_PG_URL: ${VARLENS_PG_URL:-postgres://${POSTGRES_USER:-varlens}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-varlens}}
+      VARLENS_PG_SCHEMA: ${VARLENS_PG_SCHEMA:-public}
+      VARLENS_RECOVERY_KEY_DIR: ${VARLENS_RECOVERY_KEY_DIR:-/data}
       VARLENS_WEB_PORT: ${VARLENS_WEB_PORT:-8080}
       VARLENS_LOG_LEVEL: ${VARLENS_LOG_LEVEL:-info}
       # Optional one-shot bootstrap. If all three are set on first boot
@@ -104,6 +111,9 @@ services:
       VARLENS_ADMIN_USERNAME: ${VARLENS_ADMIN_USERNAME-}
       VARLENS_ADMIN_PASSWORD: ${VARLENS_ADMIN_PASSWORD-}
       VARLENS_ADMIN_DISPLAY_NAME: ${VARLENS_ADMIN_DISPLAY_NAME-}
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       # The image's own HEALTHCHECK uses the same probe; this duplicate
       # gives Compose visibility into health state from the host side.

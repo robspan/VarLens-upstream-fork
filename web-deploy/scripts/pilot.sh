@@ -271,15 +271,25 @@ preflight() {
     errors=$((errors + 1))
   fi
 
-  # 8. Backend mode — informational. Phase 2: web mode is Postgres-only;
-  # the postgres compose profile is unconditionally active and the
-  # varlens service auto-derives VARLENS_PG_URL from POSTGRES_PASSWORD
-  # (generated/persisted on the server during stack-up). Operators only
-  # need to override VARLENS_PG_URL when pointing at an external Postgres.
+  # 8. Backend mode + Postgres credentials. Phase 2: web mode is
+  # Postgres-only; the varlens service auto-derives VARLENS_PG_URL
+  # from POSTGRES_PASSWORD on the server. The compose `:?` guard on
+  # POSTGRES_PASSWORD will fail loud at `docker compose up`, but
+  # surfacing it at preflight is faster diagnostic feedback.
   if [[ -n "${VARLENS_PG_URL:-}" ]]; then
     printf '  %sℹ%s  VARLENS_PG_URL set in operator env — overrides the in-stack postgres default\n' "$DIM" "$RESET"
   else
-    printf '  %s✓%s Postgres backend (default: in-stack postgres service, auto-derived URL)\n' "$GREEN" "$RESET"
+    # When using the in-stack default, POSTGRES_PASSWORD must be set
+    # somewhere visible to compose. The Makefile generates one if
+    # /etc/varlens/postgres-password exists or it can be set by
+    # the operator in compose/.env. The persistent file path is the
+    # most reliable signal — but it lives on the server, not on the
+    # operator's laptop, so we can only check what's locally visible.
+    if [[ -n "${POSTGRES_PASSWORD:-}" ]]; then
+      printf '  %s✓%s Postgres backend (POSTGRES_PASSWORD present in operator env)\n' "$GREEN" "$RESET"
+    else
+      printf '  %sℹ%s  Postgres backend (POSTGRES_PASSWORD will be auto-generated server-side on first stack-up)\n' "$DIM" "$RESET"
+    fi
   fi
 
   # 9. VarLens admin bootstrap creds — non-fatal but loud. Without them

@@ -7,13 +7,17 @@ TOFU_DIR := tofu/environments/pilot
 SSH_KEY ?= ~/.ssh/varlens-tofu
 
 # Database selection. Default SQLite (no container, just a file) per
-# Phase 2: web mode is Postgres-only. The DB var is retained for
-# legacy invocations but the postgres profile is always active because
-# the varlens service `depends_on` it. `DB=sqlite` is no longer a
-# supported web shape — src/web/server.ts refuses to boot without
-# VARLENS_PG_URL. See .planning/web/phase2-execution-plan.md.
-DB ?= postgres
-COMPOSE_PROFILES_FLAG = COMPOSE_PROFILES=postgres
+# Phase 2: web mode is Postgres-only. The postgres compose profile
+# was dropped (varlens depends_on postgres directly), so
+# COMPOSE_PROFILES is no longer needed for routing. The DB var is
+# retained as a fail-loud trap for stale runbooks: `DB=sqlite`
+# explicitly errors instead of silently bringing up Postgres.
+ifneq ($(DB),)
+ifneq ($(DB),postgres)
+$(error DB=$(DB) is not supported in Phase 2; web mode is Postgres-only. Drop the DB= flag or set DB=postgres.)
+endif
+endif
+COMPOSE_PROFILES_FLAG =
 
 # Helper macros for the Make targets that do not yet go through the CLI
 # (stack-up/down/logs, ssh, smoke, restore-drill, setup-backup).
@@ -51,10 +55,9 @@ help:
 	@echo "  make ip          Show current IPv4"
 	@echo "  make logs        Show cloud-init bootstrap log"
 	@echo ""
-	@echo "Compose stack (Caddy, Uptime Kuma, Dozzle, optional PostgreSQL):"
+	@echo "Compose stack (Caddy, Uptime Kuma, Dozzle, PostgreSQL):"
 	@echo "  make deploy-stack            Copy compose/ files to the server"
-	@echo "  make stack-up                Stack with SQLite (default)"
-	@echo "  make stack-up DB=postgres    Stack with PostgreSQL container"
+	@echo "  make stack-up                Bring up the stack (Postgres-only, Phase 2)"
 	@echo "  make stack-down              Stop the Compose stack"
 	@echo "  make stack-logs              Show live logs of all containers"
 	@echo ""

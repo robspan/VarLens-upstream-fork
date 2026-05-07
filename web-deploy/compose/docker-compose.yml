@@ -1,7 +1,8 @@
 # Concept Pilot Compose stack.
 # Reverse proxy + monitoring tools + the VarLens app container.
-# Postgres is opt-in via the `postgres` profile (Stage 1.5+); the app
-# defaults to SQLite per §bewertung2.
+# Phase 2: Postgres is the only supported web backend. The varlens
+# service depends_on the postgres service; both are unconditional.
+# (See .planning/web/phase2-execution-plan.md.)
 
 services:
   caddy:
@@ -98,7 +99,7 @@ services:
       # below points at the local postgres service that activates with
       # `COMPOSE_PROFILES=postgres`. Operators can override to point
       # at an external Postgres if needed.
-      VARLENS_PG_URL: ${VARLENS_PG_URL:-postgres://${POSTGRES_USER:-varlens}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-varlens}}
+      VARLENS_PG_URL: ${VARLENS_PG_URL:-postgres://${POSTGRES_USER:-varlens}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in compose/.env (or override VARLENS_PG_URL for an external Postgres)}@postgres:5432/${POSTGRES_DB:-varlens}}
       VARLENS_PG_SCHEMA: ${VARLENS_PG_SCHEMA:-public}
       VARLENS_RECOVERY_KEY_DIR: ${VARLENS_RECOVERY_KEY_DIR:-/data}
       VARLENS_WEB_PORT: ${VARLENS_WEB_PORT:-8080}
@@ -125,16 +126,15 @@ services:
     networks:
       - varlens
 
-  # PostgreSQL as an optional service behind the "postgres" profile.
-  # Enable with `COMPOSE_PROFILES=postgres docker compose up -d` or via Makefile:
-  #   make stack-up DB=postgres
-  # The default DB is SQLite - in that case no DB container is started and the
-  # application opens a SQLite file under /mnt/data/app/ instead.
+  # PostgreSQL — mandatory backend for the web variant (Phase 2).
+  # The `profiles: [postgres]` gate from Stage 1.5 was dropped: the
+  # service is now part of the default profile so `docker compose up`
+  # without operator env vars works, and the varlens depends_on is
+  # well-formed without requiring COMPOSE_PROFILES=postgres.
   postgres:
     image: postgres:16-alpine@sha256:4e6e670bb069649261c9c18031f0aded7bb249a5b6664ddec29c013a89310d50
     container_name: postgres
     restart: unless-stopped
-    profiles: [postgres]
     # Bound to localhost only - the application container connects via the
     # internal varlens network, no external access.
     ports:

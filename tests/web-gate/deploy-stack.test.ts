@@ -115,37 +115,74 @@ describe.skipIf(!existsSync(DEPLOY))('deploy-stack wiring gate', () => {
   })
 
   test('Phase 2: varlens service receives VARLENS_PG_URL + depends_on postgres', () => {
-    // Phase 2 deliverable #5: web mode is Postgres-only. The varlens
-    // service must wire VARLENS_PG_URL into its env (sourced from
-    // POSTGRES_* with sane defaults so a fresh stack-up auto-resolves)
-    // and depend on the postgres service so compose orchestrates them
-    // in the right order.
+    // Phase 2 deliverable #5: web mode is Postgres-only. Anchor every
+    // assertion on the varlens service block specifically (extracted
+    // by header) so a future refactor that moves env or depends_on to
+    // a different service is caught.
     const yaml = readFileSync(COMPOSE, 'utf8')
-    expect(yaml, 'varlens.environment must include VARLENS_PG_URL').toMatch(
-      /varlens:[\s\S]+?environment:[\s\S]+?VARLENS_PG_URL/
+
+    // Extract the varlens service block: from `^  varlens:` through
+    // the start of the next top-level key (`^  \w+:` or end of file).
+    const varlensMatch = yaml.match(/^ {2}varlens:[\s\S]+?(?=^ {2}\w[\w-]*:|^\w|$(?![\r\n]))/m)
+    expect(varlensMatch, 'compose must declare a varlens service block').not.toBeNull()
+    const varlensBlock = varlensMatch![0]
+
+    expect(varlensBlock, 'varlens must declare VARLENS_PG_URL').toContain('VARLENS_PG_URL')
+    expect(varlensBlock, 'VARLENS_PG_URL default must use postgres:// scheme').toMatch(
+      /VARLENS_PG_URL:[\s\S]*?postgres:\/\//
     )
-    expect(yaml, 'VARLENS_PG_URL default must point at the postgres service hostname').toMatch(
-      /VARLENS_PG_URL:[^\n]+postgres:5432/
+    expect(varlensBlock, 'VARLENS_PG_URL default must interpolate POSTGRES_PASSWORD').toMatch(
+      /VARLENS_PG_URL:[\s\S]*?\$\{POSTGRES_PASSWORD/
     )
-    expect(yaml, 'varlens must depend_on postgres health').toMatch(
-      /varlens:[\s\S]+?depends_on:[\s\S]+?postgres:[\s\S]+?service_healthy/
+    expect(
+      varlensBlock,
+      'POSTGRES_PASSWORD interpolation must use the `:?` fail-fast guard'
+    ).toMatch(/\$\{POSTGRES_PASSWORD:\?/)
+    expect(varlensBlock, 'VARLENS_PG_URL default must target the in-stack postgres host').toMatch(
+      /@postgres:5432\//
     )
-    expect(yaml, 'VARLENS_RECOVERY_KEY_DIR must be wired (Phase 2 path moved)').toMatch(
-      /VARLENS_RECOVERY_KEY_DIR/
+    expect(varlensBlock, 'varlens must depend_on postgres health').toMatch(
+      /depends_on:[\s\S]*?postgres:[\s\S]*?condition:\s*service_healthy/
     )
+    expect(varlensBlock, 'VARLENS_RECOVERY_KEY_DIR must be wired (Phase 2 path moved)').toContain(
+      'VARLENS_RECOVERY_KEY_DIR'
+    )
+    expect(
+      varlensBlock,
+      'VARLENS_DB_PATH must NOT survive on the varlens service (Phase 2 dropped SQLite)'
+    ).not.toMatch(/VARLENS_DB_PATH/)
   })
 
-  test('Phase 2: Makefile activates the postgres profile unconditionally', () => {
-    // The DB=sqlite escape hatch is gone; the postgres profile is
-    // always on for web deploys.
+  test('Phase 2: postgres service is unconditional (no profile gate)', () => {
+    // The `profiles: [postgres]` gate from Stage 1.5 was dropped:
+    // postgres is mandatory in Phase 2 and varlens depends_on it
+    // directly. A regression that re-introduces the profile would
+    // make `docker compose up` fail when COMPOSE_PROFILES is unset.
+    const yaml = readFileSync(COMPOSE, 'utf8')
+    const postgresMatch = yaml.match(/^ {2}postgres:[\s\S]+?(?=^ {2}\w[\w-]*:|^\w|$(?![\r\n]))/m)
+    expect(postgresMatch, 'compose must declare a postgres service block').not.toBeNull()
+    expect(
+      postgresMatch![0],
+      'postgres service must NOT carry a profiles: [postgres] gate'
+    ).not.toMatch(/^\s+profiles:\s*\[\s*postgres\s*\]/m)
+    expect(
+      postgresMatch![0],
+      'postgres service must declare a healthcheck (depends_on service_healthy needs it)'
+    ).toMatch(/healthcheck:[\s\S]+?pg_isready/)
+  })
+
+  test('Phase 2: Makefile drops conditional postgres-profile branching', () => {
+    // The DB=sqlite escape hatch is gone. Makefile must not branch on
+    // `ifeq ($(DB),postgres)` for COMPOSE_PROFILES (postgres is on
+    // unconditionally) and must hard-error on `DB=sqlite`.
     const makefile = readFileSync(MAKEFILE, 'utf8')
-    expect(makefile, 'COMPOSE_PROFILES=postgres must be unconditional').toMatch(
-      /^COMPOSE_PROFILES_FLAG\s*=\s*COMPOSE_PROFILES=postgres/m
+    expect(makefile, 'no `ifeq ($(DB),postgres)` branching for COMPOSE_PROFILES_FLAG').not.toMatch(
+      /ifeq\s*\(\$\(DB\),postgres\)\s*\n\s*COMPOSE_PROFILES_FLAG/
     )
     expect(
       makefile,
-      'no `ifeq ($(DB),postgres)` branching for COMPOSE_PROFILES — pg is mandatory'
-    ).not.toMatch(/ifeq\s*\(\$\(DB\),postgres\)\s*\n\s*COMPOSE_PROFILES_FLAG/)
+      'DB=sqlite must hard-error (silent fall-through to Postgres is the trap)'
+    ).toMatch(/\$\(error[^)]*DB=\$\(DB\)[^)]*not supported/)
   })
 
   test('deploy-stack rsync --delete preserves runtime data/ and operator .env', () => {

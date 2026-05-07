@@ -30,16 +30,24 @@ restic backups to Hetzner Object Storage. Bring-up is one command:
 `ghcr.io/robspan/varlens-web` (the private VarLens image is pulled from
 GHCR at stack-up).
 
-## Three credentials you'll need
+## Credentials you'll need
 
-| Credential                                    | Where to generate                                               | Scope / role     | Where it goes locally                                                       |
-| --------------------------------------------- | --------------------------------------------------------------- | ---------------- | --------------------------------------------------------------------------- |
-| Hetzner Cloud API token                       | Hetzner Console → Security → API Tokens                         | Read **& Write** | `web-deploy/tofu/environments/pilot/terraform.tfvars`, key `hcloud_token`   |
-| Hetzner Object Storage S3 access key + secret | Hetzner Console → Security → S3 Credentials                     | (single keypair) | exported as `RESTIC_S3_ACCESS_KEY` and `RESTIC_S3_SECRET_KEY` in your shell |
-| GitHub PAT (classic)                          | GitHub → Settings → Developer settings → Personal access tokens | `read:packages`  | exported as `GHCR_TOKEN` in your shell                                      |
+Two layers, two files. Hetzner API + SSH pubkey go into Tofu (different
+lifecycle). Everything else lives in `web-deploy/.env` so an operator
+fills in **one file** instead of re-exporting shell vars per session.
+
+| Credential                                    | Where to generate                                               | Scope / role         | Where it goes locally                                                                                                                                                                     |
+| --------------------------------------------- | --------------------------------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hetzner Cloud API token                       | Hetzner Console → Security → API Tokens                         | Read **& Write**     | `web-deploy/tofu/environments/pilot/terraform.tfvars`, key `hcloud_token`                                                                                                                 |
+| GitHub PAT (classic)                          | GitHub → Settings → Developer settings → Personal access tokens | `read:packages`      | `web-deploy/.env`, key `GHCR_TOKEN`                                                                                                                                                       |
+| Hetzner Object Storage S3 access key + secret | (auto-generated)                                                | (single keypair)     | **Not operator-typed.** `setup-backup.py` mints them via the Hetzner API using `hcloud_token`. `web-deploy/.env` keys `RESTIC_S3_*` exist only as a BYO override (non-Hetzner S3 target). |
+| VarLens admin username + password             | You choose. Strong password, ≥16 chars                          | First-boot bootstrap | `web-deploy/.env`, keys `VARLENS_ADMIN_USERNAME` / `_PASSWORD`                                                                                                                            |
 
 S3 credentials are **not** in tfvars on purpose — Tofu does not manage the
 backup bucket, the `setup-backup` step does, via the S3 API.
+
+Shell exports still work and override `web-deploy/.env` values, so CI /
+one-off invocations don't need to write to disk.
 
 ## First-time setup
 
@@ -63,6 +71,14 @@ $EDITOR web-deploy/tofu/environments/pilot/terraform.tfvars
 
 # 4. Initialize Tofu providers (one-time per clone)
 tofu -chdir=web-deploy/tofu/environments/pilot init
+
+# 5. Populate operator secrets (Layer 2)
+cp web-deploy/.env.example web-deploy/.env
+chmod 600 web-deploy/.env
+$EDITOR web-deploy/.env
+#   set GHCR_TOKEN  (PAT with read:packages)
+#   set VARLENS_ADMIN_USERNAME + VARLENS_ADMIN_PASSWORD (one-shot bootstrap)
+#   leave RESTIC_S3_* blank — auto-generated via Hetzner API by setup-backup
 ```
 
 The example tfvars file lists the optional overrides
@@ -71,19 +87,21 @@ defaults unless told otherwise.
 
 ## The bring-up
 
-From the repo root:
+From the repo root, after `web-deploy/.env` is populated:
 
 ```bash
-export GHCR_TOKEN=ghp_...
-export RESTIC_S3_ACCESS_KEY=...
-export RESTIC_S3_SECRET_KEY=...
 make pilot
 ```
 
-`make pilot` runs pre-flight checks first. If anything is missing
-(tfvars placeholder, missing SSH key, `tofu` not on PATH, env vars not
-set) it fails loudly and tells you what to fix before any Hetzner
-resource is touched.
+`pilot.sh` sources `web-deploy/.env` before any preflight check; shell
+exports for the same vars override the file. If anything is missing
+(tfvars placeholder, missing SSH key, `tofu` not on PATH, GHCR token
+unreadable, S3 / admin creds blank) it warns or fails loudly with the
+exact remedy before any Hetzner resource is touched.
+
+After capturing the admin recovery key (the success banner walks you
+through it), blank `VARLENS_ADMIN_PASSWORD` in `web-deploy/.env` so the
+plaintext doesn't linger in `docker inspect` output.
 
 ## What to expect during the run
 

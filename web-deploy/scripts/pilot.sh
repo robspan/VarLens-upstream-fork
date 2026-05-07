@@ -21,6 +21,27 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WEB_DEPLOY="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Layer-2 operator-secret file: gitignored, 0600, single source for
+# GHCR_TOKEN / RESTIC_S3_* / VARLENS_ADMIN_*. Sourced BEFORE preflight so
+# its values feed every downstream check. Shell exports still override —
+# `set -a` exports each assignment but only if the variable wasn't already
+# in the environment, because `set -a` only marks subsequent assignments
+# for export; a shell `export FOO=bar` before invocation already lives in
+# the environment and takes precedence over the file's `FOO=...` line via
+# our explicit guard below.
+if [[ -f "$WEB_DEPLOY/.env" ]]; then
+  # Read the file line-by-line, skip comments/blanks, and only set vars
+  # that are not already set in the shell. This preserves CI/one-off
+  # behavior where operators export ad-hoc creds without touching the file.
+  while IFS='=' read -r key value; do
+    [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
+    key="${key// /}"
+    [[ -z "$key" || -n "${!key:-}" ]] && continue
+    value="${value%$'\r'}"
+    export "$key=$value"
+  done < "$WEB_DEPLOY/.env"
+fi
+
 # ---- Output helpers --------------------------------------------------------
 
 if [[ -t 1 ]]; then
@@ -134,9 +155,18 @@ wait_for_server_ready() {
 
 preflight() {
   local tfvars="$WEB_DEPLOY/tofu/environments/pilot/terraform.tfvars"
+  local env_file="$WEB_DEPLOY/.env"
   local errors=0
 
   printf '%sPre-flight checks:%s\n' "$BOLD" "$RESET"
+
+  # 0. Operator env file (Layer 2 secrets — see web-deploy/.env.example).
+  # Informational only: shell exports work too, the file is just convenience.
+  if [[ -f "$env_file" ]]; then
+    printf '  %s✓%s sourcing %s\n' "$GREEN" "$RESET" "$env_file"
+  else
+    printf '  %sℹ%s  no web-deploy/.env (using shell env only — see .env.example for the convenience template)\n' "$DIM" "$RESET"
+  fi
 
   # 1. tfvars present
   if [[ -f "$tfvars" ]]; then
@@ -186,20 +216,39 @@ preflight() {
     errors=$((errors + 1))
   fi
 
-  # 6. GHCR_TOKEN — required to pull a private varlens-web image. Probe
-  # GHCR's token-exchange endpoint (the OAuth2 Bearer flow that `docker
-  # login` does internally) so we catch expired / scope-reduced tokens
-  # at preflight rather than at the docker pull during stack-up. The
-  # /v2/.../manifests/edge endpoint cannot be hit with Basic auth; GHCR
-  # always redirects there to /token first.
+  # 6. GHCR_TOKEN — required to pull a private varlens-web image. Two-step
+  # probe so we catch tokens that PASS the OAuth2 token-exchange but FAIL
+  # the actual manifest-level ACL check (cold-start 2026-05-07 found this
+  # false-positive: `gh auth token` returns a `gho_` lacking read:packages,
+  # yet /token still returned 200; the real failure was at docker pull
+  # 2 minutes later, after a Hetzner server had already been provisioned).
+  #   step 1: /token?...:pull → 200 means "the credential is recognised"
+  #   step 2: HEAD /v2/.../manifests/edge → 200 means "and can actually pull"
+  # A 401/403 on step 2 with 200 on step 1 is exactly the false-positive
+  # case; surface it as the preflight failure instead of letting it fire
+  # mid-bring-up.
   if [[ -n "${GHCR_TOKEN:-}" ]]; then
     local ghcr_user="${GHCR_USER:-robspan}"
-    if curl -fsS -u "$ghcr_user:$GHCR_TOKEN" -o /dev/null \
-         "https://ghcr.io/token?service=ghcr.io&scope=repository:$ghcr_user/varlens-web:pull" 2>/dev/null; then
-      printf '  %s✓%s GHCR_TOKEN can pull ghcr.io/%s/varlens-web (read:packages verified)\n' "$GREEN" "$RESET" "$ghcr_user"
-    else
-      printf '  %s✗%s GHCR_TOKEN cannot read ghcr.io/%s/varlens-web — expired or missing read:packages scope\n' "$RED" "$RESET" "$ghcr_user"
+    local bearer
+    bearer="$(curl -fsS -u "$ghcr_user:$GHCR_TOKEN" \
+      "https://ghcr.io/token?service=ghcr.io&scope=repository:$ghcr_user/varlens-web:pull" 2>/dev/null \
+      | python3 -c 'import sys,json;print(json.load(sys.stdin).get("token",""))' 2>/dev/null)"
+    if [[ -z "$bearer" ]]; then
+      printf '  %s✗%s GHCR_TOKEN rejected at /token — invalid or expired credential for %s\n' "$RED" "$RESET" "$ghcr_user"
       errors=$((errors + 1))
+    else
+      local manifest_code
+      manifest_code="$(curl -s -o /dev/null -w '%{http_code}' -I \
+        -H "Authorization: Bearer $bearer" \
+        -H "Accept: application/vnd.oci.image.manifest.v1+json,application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.v2+json,application/vnd.docker.distribution.manifest.list.v2+json" \
+        "https://ghcr.io/v2/$ghcr_user/varlens-web/manifests/edge" 2>/dev/null)"
+      if [[ "$manifest_code" == "200" ]]; then
+        printf '  %s✓%s GHCR_TOKEN can pull ghcr.io/%s/varlens-web:edge (manifest HEAD 200)\n' "$GREEN" "$RESET" "$ghcr_user"
+      else
+        printf '  %s✗%s GHCR_TOKEN passed token-exchange but cannot fetch manifest (HTTP %s) — token likely lacks read:packages scope\n' "$RED" "$RESET" "$manifest_code"
+        printf '    %sFix:%s create a PAT with read:packages, or `gh auth refresh -h github.com -s read:packages`\n' "$DIM" "$RESET"
+        errors=$((errors + 1))
+      fi
     fi
   else
     printf '  %s⚠%s  GHCR_TOKEN not set — stack-up will fail if VARLENS_IMAGE points at a private GHCR package\n' "$YELLOW" "$RESET"
@@ -213,6 +262,18 @@ preflight() {
   else
     printf '  %s⚠%s  RESTIC_S3_* not set — setup-backup will print Console-click instructions and fail\n' "$YELLOW" "$RESET"
     printf '    %sGenerate at:%s Hetzner Console > Security > S3 Credentials\n' "$DIM" "$RESET"
+  fi
+
+  # 8. VarLens admin bootstrap creds — non-fatal but loud. Without them
+  # the app boots fine, but no admin exists, so /api/auth/login has no
+  # user to log in as. Operators frequently miss this on first run; the
+  # warn here makes it visible at preflight rather than at first-login.
+  if [[ -n "${VARLENS_ADMIN_USERNAME:-}" && -n "${VARLENS_ADMIN_PASSWORD:-}" ]]; then
+    printf '  %s✓%s VARLENS_ADMIN_USERNAME + VARLENS_ADMIN_PASSWORD present (one-shot bootstrap)\n' "$GREEN" "$RESET"
+  else
+    printf '  %s⚠%s  VARLENS_ADMIN_* not set — the app will boot without an admin user\n' "$YELLOW" "$RESET"
+    printf '    %sFix:%s set VARLENS_ADMIN_USERNAME and VARLENS_ADMIN_PASSWORD in web-deploy/.env (or shell env) before continuing\n' "$DIM" "$RESET"
+    printf '    %sIf you continue, you will need to set them on the server post-boot and recreate the varlens container.%s\n' "$DIM" "$RESET"
   fi
 
   if (( errors > 0 )); then
@@ -329,6 +390,21 @@ main() {
   printf '    VarLens app: https://%s/varlens/healthz\n' "$ip"
   printf '    Monitoring:  https://%s/  %s(admin / varlens-konzept)%s\n' "$ip" "$DIM" "$RESET"
   printf '    Logs:        https://%s/logs/\n\n' "$ip"
+
+  # Admin bootstrap follow-up. The recovery key file is the only copy of
+  # an extremely sensitive secret; point operators at it loudly so the
+  # capture-and-delete step doesn't get skipped.
+  if [[ -n "${VARLENS_ADMIN_USERNAME:-}" && -n "${VARLENS_ADMIN_PASSWORD:-}" ]]; then
+    printf '  %sAdmin bootstrap:%s\n' "$BOLD" "$RESET"
+    printf '    User:        %s%s%s (Argon2 password from VARLENS_ADMIN_PASSWORD)\n' "$BOLD" "${VARLENS_ADMIN_USERNAME}" "$RESET"
+    printf '    %sCapture the one-time recovery key NOW:%s\n' "$YELLOW" "$RESET"
+    printf '      make pilot-ssh\n'
+    printf '      sudo cat /mnt/data/app/data/admin-recovery-key.txt    # copy somewhere safe\n'
+    printf '      sudo rm  /mnt/data/app/data/admin-recovery-key.txt    # then delete\n'
+    printf '    %sAfter capture, blank VARLENS_ADMIN_PASSWORD in web-deploy/.env%s\n' "$DIM" "$RESET"
+    printf '    %s(env-based rotation is not supported; future: varlens admin rotate)%s\n\n' "$DIM" "$RESET"
+  fi
+
   printf '  %sOperator commands:%s\n' "$BOLD" "$RESET"
   printf '    make pilot-ssh      # SSH as deploy user\n'
   printf '    make pilot-smoke    # re-run smoke probes\n'

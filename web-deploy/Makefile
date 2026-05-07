@@ -182,7 +182,21 @@ stack-up: deploy-stack
 	@# regen or a bug that strips it) does not silently rotate the DB password
 	@# and brick the postgres profile. If the persistent file exists we read
 	@# it; otherwise we mint a new one and persist it to that path.
-	@ssh -i $(SSH_KEY) deploy@$(call IPV4) 'cd /mnt/data/app && \
+	@#
+	@# Admin bootstrap: when VARLENS_ADMIN_USERNAME + VARLENS_ADMIN_PASSWORD
+	@# are present in the operator's shell (typically sourced from
+	@# web-deploy/.env by pilot.sh), they are injected into the server's
+	@# /mnt/data/app/.env on FIRST boot only — never on re-runs. The values
+	@# travel via SSH stdin (not via the command line) so they don't appear
+	@# in `ps` listings on either side, and stdin avoids sed-escape issues
+	@# with arbitrary password characters. server.ts ignores these vars
+	@# post-bootstrap with a WARN, so re-injecting on re-runs would only
+	@# extend plaintext exposure with no functional benefit.
+	@printf '%s\n%s\n%s\n' \
+		"$${VARLENS_ADMIN_USERNAME:-}" \
+		"$${VARLENS_ADMIN_PASSWORD:-}" \
+		"$${VARLENS_ADMIN_DISPLAY_NAME:-}" | \
+	ssh -i $(SSH_KEY) deploy@$(call IPV4) 'cd /mnt/data/app && \
 		if [ ! -f .env ]; then \
 			if sudo test -f /etc/varlens/postgres-password; then \
 				echo "Reusing PostgreSQL password from /etc/varlens/postgres-password"; \
@@ -196,7 +210,20 @@ stack-up: deploy-stack
 				sudo chown root:root /etc/varlens/postgres-password; \
 			fi && \
 			cp .env.example .env && \
-			sed -i "s|REPLACE_WITH_GENERATED_PASSWORD|$$PGPW|" .env; \
+			sed -i "s|REPLACE_WITH_GENERATED_PASSWORD|$$PGPW|" .env && \
+			read -r ADMIN_USER && \
+			read -r ADMIN_PASS && \
+			read -r ADMIN_DISP && \
+			if [ -n "$$ADMIN_USER" ] && [ -n "$$ADMIN_PASS" ]; then \
+				sed -i "/^VARLENS_ADMIN_/d" .env && \
+				{ printf "VARLENS_ADMIN_USERNAME=%s\n" "$$ADMIN_USER"; \
+				  printf "VARLENS_ADMIN_PASSWORD=%s\n" "$$ADMIN_PASS"; \
+				  printf "VARLENS_ADMIN_DISPLAY_NAME=%s\n" "$$ADMIN_DISP"; } >> .env && \
+				chmod 600 .env && \
+				echo "Admin bootstrap injected (user: $$ADMIN_USER); recovery key will be at /mnt/data/app/data/admin-recovery-key.txt"; \
+			else \
+				echo "VARLENS_ADMIN_USERNAME/PASSWORD not set on operator shell — app will boot without an admin"; \
+			fi; \
 		fi && \
 		sed -i "s|^SERVER_HOST=.*|SERVER_HOST=$(CADDY_HOST)|" .env && \
 		sed -i "s|^CADDY_TLS_PROFILE=.*|CADDY_TLS_PROFILE=$(CADDY_TLS)|" .env && \

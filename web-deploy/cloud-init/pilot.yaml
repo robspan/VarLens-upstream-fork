@@ -208,27 +208,27 @@ runcmd:
     # Raw /mnt/data/postgres (PGDATA) is excluded from restic — file-
     # system snapshots of a live cluster are torn. The dump file is
     # the consistent snapshot restic backs up.
-    mkdir -p "$$PG_DUMP_DIR"
-    PG_DUMP_FILE="$$PG_DUMP_DIR/varlens-$(date -u +%Y%m%dT%H%M%SZ).dump"
-    if docker ps --format '{{.Names}}' | grep -q '^postgres$$'; then
+    mkdir -p "$${PG_DUMP_DIR}"
+    PG_DUMP_FILE="$${PG_DUMP_DIR}/varlens-$(date -u +%Y%m%dT%H%M%SZ).dump"
+    if docker ps --format '{{.Names}}' | grep -q '^postgres$'; then
         if ! docker exec postgres pg_dump \
             --format=custom --no-owner --no-acl --compress=6 \
-            -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" > "$$PG_DUMP_FILE"; then
+            -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" > "$${PG_DUMP_FILE}"; then
             echo "[varlens-backup] ERROR: pg_dump failed"
-            rm -f "$$PG_DUMP_FILE"
+            rm -f "$${PG_DUMP_FILE}"
             exit 4
         fi
-        DUMP_BYTES="$(stat -c%s "$$PG_DUMP_FILE" 2>/dev/null || echo 0)"
-        if [ "$$DUMP_BYTES" -lt 100 ]; then
-            echo "[varlens-backup] ERROR: pg_dump produced suspiciously small file ($$DUMP_BYTES bytes)"
-            rm -f "$$PG_DUMP_FILE"
+        DUMP_BYTES="$(stat -c%s "$${PG_DUMP_FILE}" 2>/dev/null || echo 0)"
+        if [ "$${DUMP_BYTES}" -lt 100 ]; then
+            echo "[varlens-backup] ERROR: pg_dump produced suspiciously small file ($${DUMP_BYTES} bytes)"
+            rm -f "$${PG_DUMP_FILE}"
             exit 5
         fi
     else
         echo "[varlens-backup] ERROR: postgres container not running — refusing to back up without quiesce"
         exit 6
     fi
-    find "$$PG_DUMP_DIR" -name 'varlens-*.dump' -type f -mtime +"$$PG_DUMP_LOCAL_RETENTION_DAYS" -delete 2>/dev/null || true
+    find "$${PG_DUMP_DIR}" -name 'varlens-*.dump' -type f -mtime +"$${PG_DUMP_LOCAL_RETENTION_DAYS}" -delete 2>/dev/null || true
     restic backup "$${BACKUP_PATHS}" --tag auto --tag "$(date +%Y-%m-%d)" \
         --exclude '/mnt/data/postgres' \
         --exclude '/mnt/data/postgres/**'
@@ -276,5 +276,5 @@ runcmd:
     echo "[cloud-init] varlens-bootstrap.ok written; all prerequisites verified"
 
 # Machine-readable bootstrap-done signal.
-# $$UPTIME (double dollar) escapes Tofu templatefile so cloud-init resolves it at runtime.
-final_message: "cloud-init bootstrap finished after $$UPTIME seconds. Log in as ${deploy_user}."
+# $${UPTIME} (double dollar) escapes Tofu templatefile so cloud-init resolves it at runtime.
+final_message: "cloud-init bootstrap finished after $${UPTIME} seconds. Log in as ${deploy_user}."

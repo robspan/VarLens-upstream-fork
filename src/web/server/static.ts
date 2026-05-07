@@ -12,7 +12,9 @@ import { resolve } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import fastifyStatic from '@fastify/static'
 
-const DEFAULT_PUBLIC_DIR = resolve(__dirname, '..', 'public')
+// At runtime the bundle lives at `/app/out/web/server.cjs`, so __dirname is
+// `/app/out/web/` and the renderer build lands beside it at `./public/`.
+const DEFAULT_PUBLIC_DIR = resolve(__dirname, 'public')
 
 export function getPublicDir(): string {
   const env = process.env.VARLENS_WEB_PUBLIC_DIR

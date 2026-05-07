@@ -18,7 +18,10 @@ import pkg from './package.json'
 
 export default defineConfig({
   root: resolve(__dirname, 'src/web'),
-  base: '/',
+  // Caddy mounts the app at /varlens/* and handle_paths strips the prefix.
+  // The browser still loads index.html from /varlens/, so asset URLs and
+  // API calls must include the prefix to hit Caddy correctly.
+  base: '/varlens/',
   publicDir: resolve(__dirname, 'src/renderer/src/assets'),
   resolve: {
     alias: {

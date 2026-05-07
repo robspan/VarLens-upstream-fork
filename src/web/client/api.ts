@@ -25,9 +25,14 @@ interface InvokeBody {
   args: unknown[]
 }
 
+// Vite's `base` config materialises here at build time. The browser
+// loads the SPA from BASE_URL (e.g. `/varlens/`), so API calls have to
+// share that prefix or Caddy's path-based routing won't match.
+const API_BASE = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/api`
+
 async function httpInvoke(domain: string, method: string, args: unknown[]): Promise<unknown> {
   const body: InvokeBody = { args }
-  const res = await fetch(`/api/${domain}/${method}`, {
+  const res = await fetch(`${API_BASE}/${domain}/${method}`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'content-type': 'application/json' },

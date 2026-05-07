@@ -119,19 +119,16 @@ export const WRITE_TASK_TYPES = [
   'audit:append'
 ] as const satisfies readonly StorageWriteTask['type'][]
 
-export const READ_TASK_TYPE_SET: ReadonlySet<string> = new Set(READ_TASK_TYPES)
-export const WRITE_TASK_TYPE_SET: ReadonlySet<string> = new Set(WRITE_TASK_TYPES)
+export const READ_TASK_TYPE_SET: ReadonlySet<StorageReadTask['type']> = new Set(READ_TASK_TYPES)
+export const WRITE_TASK_TYPE_SET: ReadonlySet<StorageWriteTask['type']> = new Set(WRITE_TASK_TYPES)
 
-/**
- * Task types whose `params` is a single value rather than a tuple.
- * The dispatcher uses this to decide whether to pass `args` (whole
- * array) or `args[0]` as the task's `params` field.
- *
- * Today there is exactly one — `cases:query`. Keeping it as an
- * explicit set rather than guessing keeps the dispatcher honest if
- * another non-tuple shape sneaks in.
- */
-export const NON_TUPLE_PARAM_TASKS: ReadonlySet<string> = new Set(['cases:query'])
+export function isReadTaskType(s: string): s is StorageReadTask['type'] {
+  return (READ_TASK_TYPE_SET as ReadonlySet<string>).has(s)
+}
+
+export function isWriteTaskType(s: string): s is StorageWriteTask['type'] {
+  return (WRITE_TASK_TYPE_SET as ReadonlySet<string>).has(s)
+}
 
 /**
  * Map from camelCase domain (as used in `window.api.<domain>`) to

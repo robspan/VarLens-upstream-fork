@@ -10,7 +10,7 @@ export type { AvailableBuild } from '../../shared/types/database'
 export type StorageReadTask =
   | {
       type: 'cases:query'
-      params: ValidatedCaseSearchParams
+      params: [params: ValidatedCaseSearchParams]
     }
   | {
       type: 'cases:availableBuilds'

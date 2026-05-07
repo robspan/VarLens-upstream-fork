@@ -226,11 +226,13 @@ describe('PostgresStorageSession', () => {
     await expect(
       session.getReadExecutor().execute({
         type: 'cases:query',
-        params: {
-          limit: 25,
-          offset: 0,
-          sort_order: 'desc'
-        }
+        params: [
+          {
+            limit: 25,
+            offset: 0,
+            sort_order: 'desc'
+          }
+        ]
       })
     ).resolves.toMatchObject({
       data: [

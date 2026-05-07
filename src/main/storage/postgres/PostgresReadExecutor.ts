@@ -86,7 +86,7 @@ export class PostgresReadExecutor implements StorageReadExecutor {
   async execute(task: StorageReadTask): Promise<unknown> {
     switch (task.type) {
       case 'cases:query':
-        return await this.repositories.casesQuery.queryCases(task.params)
+        return await this.repositories.casesQuery.queryCases(task.params[0])
 
       case 'cases:availableBuilds':
         return await this.repositories.availableBuilds.getAvailableGenomeBuilds()

@@ -39,7 +39,9 @@ describe('PostgresReadExecutor', () => {
       caseMetadata: {} as never
     })
 
-    await expect(executor.execute({ type: 'cases:query', params })).resolves.toBe(expected)
+    await expect(executor.execute({ type: 'cases:query', params: [params] })).resolves.toBe(
+      expected
+    )
     expect(casesQuery.queryCases).toHaveBeenCalledWith(params)
     expect(availableBuilds.getAvailableGenomeBuilds).not.toHaveBeenCalled()
   })

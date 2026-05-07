@@ -25,15 +25,10 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 
 import type { StorageSession } from '../../main/storage/session'
-import type { StorageReadTask, StorageReadExecutor } from '../../main/storage/read-executor'
-import type { StorageWriteTask, StorageWriteExecutor } from '../../main/storage/write-executor'
+import type { StorageReadTask } from '../../main/storage/read-executor'
+import type { StorageWriteTask } from '../../main/storage/write-executor'
 import type { PostgresWebAuthService } from '../auth/PostgresWebAuthService'
-import {
-  NON_TUPLE_PARAM_TASKS,
-  READ_TASK_TYPE_SET,
-  WRITE_TASK_TYPE_SET,
-  toTaskDomain
-} from './task-types'
+import { isReadTaskType, isWriteTaskType, toTaskDomain } from './task-types'
 
 export interface DispatcherDeps {
   session: StorageSession
@@ -73,9 +68,9 @@ function buildOverrides(): Record<string, OverrideHandler> {
           return { error: 'username and password (string) required' }
         }
         const result = await authService.authenticate(username, password)
-        if (result.success && result.user !== null && result.user !== undefined) {
-          const u = result.user as { id: number; username: string; role: string }
-          request.session.user = { id: u.id, username: u.username, role: u.role }
+        if (result.success && result.user !== null) {
+          const { id, username: name, role } = result.user
+          request.session.user = { id, username: name, role }
         }
         return result
       }
@@ -164,16 +159,14 @@ export function registerDispatcher(
       return await override.handle(args, request, reply, deps)
     }
 
-    if (READ_TASK_TYPE_SET.has(key)) {
-      const params = NON_TUPLE_PARAM_TASKS.has(key) ? args[0] : args
-      const task = { type: key, params } as unknown as StorageReadTask
-      return await (deps.session.getReadExecutor() as StorageReadExecutor).execute(task)
+    if (isReadTaskType(key)) {
+      const task = { type: key, params: args } as StorageReadTask
+      return await deps.session.getReadExecutor().execute(task)
     }
 
-    if (WRITE_TASK_TYPE_SET.has(key)) {
-      const params = NON_TUPLE_PARAM_TASKS.has(key) ? args[0] : args
-      const task = { type: key, params } as unknown as StorageWriteTask
-      return await (deps.session.getWriteExecutor() as StorageWriteExecutor).execute(task)
+    if (isWriteTaskType(key)) {
+      const task = { type: key, params: args } as StorageWriteTask
+      return await deps.session.getWriteExecutor().execute(task)
     }
 
     reply.code(404)

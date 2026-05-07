@@ -14,11 +14,11 @@ export class SqliteReadExecutor implements StorageReadExecutor {
         if (this.dbPool !== null) {
           return await this.dbPool.run({
             type: 'cases:query',
-            params: [task.params]
+            params: task.params
           })
         }
 
-        return this.databaseService.cases.queryCases(task.params)
+        return this.databaseService.cases.queryCases(task.params[0])
 
       case 'cases:availableBuilds':
         if (this.dbPool !== null) {

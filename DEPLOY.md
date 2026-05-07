@@ -189,6 +189,16 @@ If a step fails, the banner prints the exact retry command (e.g.
 `make -C web-deploy stack-up`) and a full-reset hint
 (`make pilot-down && make pilot`). Underlying errors are not swallowed.
 
+**Resumability.** `make pilot` is safe to interrupt and re-run. Ctrl+C
+during any step prints a "Local state is safe" message and exits without
+partial cleanup. A subsequent `make pilot` detects the existing tofu state,
+prints a "resuming partial bring-up" banner, and re-executes every step —
+each one is idempotent (tofu reports "0 to add, 0 to change", docker pull
+is a no-op for images already present, setup-backup reuses the bucket
+under `--default-reuse-when-resumable`, setup-monitoring skips an admin
+that already exists, smoke is read-only). A killed `tofu apply` leaves
+a state lock that the next `make pilot` auto-releases on entry.
+
 ## After the run
 
 The success banner prints four URLs. Replace `<ip>` with the IPv4 shown

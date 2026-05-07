@@ -21,6 +21,73 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WEB_DEPLOY="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# ---- Resumability ----------------------------------------------------------
+#
+# Goal: a Ctrl+C, a flapping internet, a closed laptop lid mid-pull, or any
+# other interrupt during pilot bring-up must NOT corrupt local state. The
+# operator should be able to re-run `make pilot` and have it pick up from
+# wherever the previous attempt stopped.
+#
+# What we do here:
+#
+#   1. Trap SIGINT / SIGTERM. Print a friendly message, do NOT do partial
+#      cleanup of cloud resources (a half-provisioned server costs money;
+#      letting tofu's state file remain authoritative is the safer call).
+#      The operator's next `make pilot` re-runs each step, all of which are
+#      idempotent (tofu apply, docker compose up, setup-backup --reuse,
+#      setup-monitoring's check-then-create, smoke).
+#
+#   2. Detect and release stale tofu state locks at the top of `main`.
+#      A killed `tofu apply` leaves a `.terraform.tfstate.lock.info` file
+#      that blocks the next `tofu apply` indefinitely. Auto-release on
+#      re-entry — safe because we know nobody else is operating on this
+#      single-tenant pilot state. Skipped if the lock file looks recent
+#      (<60s old) or belongs to a still-running process.
+#
+#   3. Print a "resuming" banner if existing tofu state is detected, so
+#      the operator knows we are continuing rather than starting fresh.
+#
+# Each step's retry hint already names the make target to re-run on its
+# own. Re-running `make pilot` from cold is the catch-all path.
+
+on_interrupt() {
+  local signal="$1"
+  printf '\n\n%s━━━ Interrupted (%s) ━━━%s\n' "$YELLOW$BOLD" "$signal" "$RESET"
+  printf '  Local state is safe. Cloud resources stay as-is — partial cleanup\n'
+  printf '  would risk billing for a half-provisioned server you cannot reach.\n\n'
+  printf '  Resume from where you left off:\n'
+  printf '    %smake pilot%s    # idempotent — re-runs each step, skips what is already done\n' "$BOLD" "$RESET"
+  printf '  Start over from scratch (destroys cloud resources):\n'
+  printf '    %smake pilot-down && make pilot%s\n\n' "$BOLD" "$RESET"
+  exit 130
+}
+trap 'on_interrupt SIGINT' INT
+trap 'on_interrupt SIGTERM' TERM
+
+# Detect and clear a stale tofu lock left by a killed apply. Single-tenant
+# pilot state, so there is no other operator we could be racing.
+release_stale_tofu_lock() {
+  local lock="$WEB_DEPLOY/tofu/environments/pilot/.terraform.tfstate.lock.info"
+  [[ -f "$lock" ]] || return 0
+  # Locks younger than 60s might belong to a tofu still in-flight in a
+  # parallel shell — leave those alone. Older locks are almost certainly
+  # stale from a prior interrupt.
+  local age_s
+  age_s=$(( $(date +%s) - $(stat -f %m "$lock" 2>/dev/null || stat -c %Y "$lock" 2>/dev/null || echo 0) ))
+  if (( age_s < 60 )); then
+    printf '%s  ⚠ tofu state lock present (%ds old) — leaving alone in case a parallel run is active%s\n' "$YELLOW" "$age_s" "$RESET"
+    return 0
+  fi
+  printf '%s  ⚠ stale tofu state lock (%ds old) from a prior interrupted run — releasing%s\n' "$YELLOW" "$age_s" "$RESET"
+  local lock_id
+  lock_id=$(grep -oE '"ID":"[^"]+"' "$lock" 2>/dev/null | head -1 | sed 's/.*"ID":"\([^"]*\)".*/\1/')
+  if [[ -n "$lock_id" ]]; then
+    ( cd "$WEB_DEPLOY/tofu/environments/pilot" && tofu force-unlock -force "$lock_id" ) >/dev/null 2>&1 || true
+  else
+    rm -f "$lock"
+  fi
+}
+
 # Layer-2 operator-secret file: gitignored, 0600, single source for
 # GHCR_TOKEN / RESTIC_S3_* / VARLENS_ADMIN_*. Sourced BEFORE preflight so
 # its values feed every downstream check. Shell exports still override —
@@ -353,17 +420,52 @@ main() {
   local branch
   branch="$(git -C "$WEB_DEPLOY" branch --show-current 2>/dev/null || echo "(no git)")"
 
-  banner "VarLens Concept Pilot — bringing up from cold"
+  # Resume detection: existing tofu state with resources = a prior run got
+  # at least through Step 1. Adjust the banner accordingly so the operator
+  # knows we are continuing, not starting over.
+  local tfstate="$WEB_DEPLOY/tofu/environments/pilot/terraform.tfstate"
+  local resuming=0
+  if [[ -f "$tfstate" ]] && ! grep -q '"resources":\[\]' "$tfstate" 2>/dev/null; then
+    resuming=1
+  fi
+
+  release_stale_tofu_lock
+
+  if (( resuming == 1 )); then
+    banner "VarLens Concept Pilot — resuming partial bring-up"
+    printf '  %sExisting Hetzner resources detected in local tofu state.%s This run will\n' "$YELLOW" "$RESET"
+    printf '  re-execute every step; each one is idempotent and will skip work that is\n'
+    printf '  already done (tofu reports "0 to add, 0 to change", docker pull is a no-op\n'
+    printf '  if images are present, setup-backup with --default-reuse-when-resumable\n'
+    printf '  reuses the existing bucket + password). If you want a fully fresh start\n'
+    printf '  instead, abort with Ctrl+C and run %smake pilot-down && make pilot%s.\n\n' "$BOLD" "$RESET"
+  else
+    banner "VarLens Concept Pilot — bringing up from cold"
+  fi
+  # The "what this does" intro below applies to both fresh + resume paths.
+  printf '  %sWhat this does:%s in roughly 5 minutes you will have a working,\n' "$BOLD" "$RESET"
+  printf '  TLS-terminated VarLens deployment on a fresh Hetzner cpx32 server, with\n'
+  printf '  PostgreSQL backed up nightly to Hetzner Object Storage and basic monitoring.\n'
+  printf '  Five numbered steps run end-to-end; each prints what it is doing, how long\n'
+  printf '  it normally takes, and the exact retry command if it fails.\n\n'
   printf '  %sRepo:%s     %s\n' "$DIM" "$RESET" "$repo"
   printf '  %sBranch:%s   %s\n' "$DIM" "$RESET" "$branch"
   printf '  %sImage:%s    %s\n' "$DIM" "$RESET" "${VARLENS_IMAGE:-ghcr.io/robspan/varlens-web:edge (compose default)}"
-  printf '  %sTarget:%s   Hetzner cpx32 + 50 GB volume + IPv4\n' "$DIM" "$RESET"
+  printf '  %sTarget:%s   Hetzner cpx32 + 50 GB volume + IPv4 (~0.02 EUR/h while running)\n' "$DIM" "$RESET"
   printf '  %sStarted:%s  %s\n\n' "$DIM" "$RESET" "$(date '+%Y-%m-%d %H:%M:%S %Z')"
 
+  printf '  %sPre-flight checks%s — verifying credentials, tools, and config %sBEFORE%s\n' "$BOLD" "$RESET" "$BOLD" "$RESET"
+  printf '  any cloud resource is touched. A failure here costs nothing; it is far\n'
+  printf '  cheaper than failing mid-provision after a server has been billed for.\n'
   preflight
 
   # Each step: number, total, label, retry-command, then the make target.
   # Underlying tool output streams through to stdout — no swallowing.
+  printf '\n%s  Step 1 talks to the Hetzner Cloud API to create the actual VM,%s\n' "$DIM" "$RESET"
+  printf '%s  attach a 50 GB persistent data volume, pin a public IPv4, and apply%s\n' "$DIM" "$RESET"
+  printf '%s  the firewall rules. Cloud-init then runs on first boot to install%s\n' "$DIM" "$RESET"
+  printf '%s  Docker, restic, and the deploy user. You will see Tofu naming each%s\n' "$DIM" "$RESET"
+  printf '%s  resource as it gets created — that is normal progress, not an error.%s\n' "$DIM" "$RESET"
   run_step 1 5 \
     "Provisioning Hetzner server (cpx32 + 50 GB volume + IPv4) [~3 min, watch tofu output below]" \
     "make -C web-deploy up" \
@@ -372,7 +474,9 @@ main() {
   # Bridge step between provisioning and stack-up. NOT counted as a numbered
   # step — operators conceptually think "provision then bring up the stack"
   # and this is just plumbing between those two intentions.
-  printf '\n%s    waiting for server to finish booting ...%s\n' "$DIM" "$RESET"
+  printf '\n%s    Server is created, but cloud-init is still running its first-boot%s\n' "$DIM" "$RESET"
+  printf '%s    tasks (~1-2 min: apt update, restic install, app dirs). The next%s\n' "$DIM" "$RESET"
+  printf '%s    dots are just SSH retries while the host comes online — normal.%s\n' "$DIM" "$RESET"
   local ip
   ip="$(cd "$WEB_DEPLOY" && make -s ip 2>/dev/null | grep -oE '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' || echo "")"
   if [[ -z "$ip" ]]; then
@@ -384,21 +488,40 @@ main() {
     exit 1
   fi
 
+  printf '\n%s  Step 2 rsyncs the compose/ tree to /mnt/data/app on the server,%s\n' "$DIM" "$RESET"
+  printf '%s  logs in to ghcr.io with the operator GHCR_TOKEN, pulls the five%s\n' "$DIM" "$RESET"
+  printf '%s  container images (Caddy reverse proxy, Postgres, the VarLens app,%s\n' "$DIM" "$RESET"
+  printf '%s  Uptime Kuma for monitoring, Dozzle for log viewing) and starts them.%s\n' "$DIM" "$RESET"
+  printf '%s  Caddy is what gives you the HTTPS URL the operator hits.%s\n' "$DIM" "$RESET"
   run_step 2 5 \
     "Bringing up Compose stack (Caddy + Kuma + Dozzle + VarLens) [~1 min]" \
     "make -C web-deploy stack-up" \
     make stack-up
 
+  printf '\n%s  Step 3 creates the restic-encrypted backup target in Hetzner Object%s\n' "$DIM" "$RESET"
+  printf '%s  Storage (or reuses an existing one), writes /etc/restic/env on the%s\n' "$DIM" "$RESET"
+  printf '%s  server, and runs the FIRST snapshot. From now on a systemd timer fires%s\n' "$DIM" "$RESET"
+  printf '%s  the backup nightly. Postgres is dumped with pg_dump first, then restic%s\n' "$DIM" "$RESET"
+  printf '%s  snapshots /mnt/data — so the dump is the consistent recovery point.%s\n' "$DIM" "$RESET"
   run_step 3 5 \
     "Configuring restic backup (Hetzner Object Storage)" \
     "make -C web-deploy setup-backup SETUP_BACKUP_ARGS=--default-reuse-when-resumable" \
     make setup-backup SETUP_BACKUP_ARGS=--default-reuse-when-resumable
 
+  printf '\n%s  Step 4 sets up Uptime Kuma — the small monitoring dashboard you reach%s\n' "$DIM" "$RESET"
+  printf '%s  at https://<ip>/ . Creates the admin user, then registers a heartbeat%s\n' "$DIM" "$RESET"
+  printf '%s  push monitor that the nightly backup script pings on success. If the%s\n' "$DIM" "$RESET"
+  printf '%s  backup ever fails, Kuma flips that monitor red and you see it.%s\n' "$DIM" "$RESET"
   run_step 4 5 \
     "Configuring monitoring (Uptime Kuma admin + heartbeat)" \
     "make -C web-deploy setup-monitoring" \
     make setup-monitoring
 
+  printf '\n%s  Step 5 is a 12-probe end-to-end check: SSH reachability, HTTP→HTTPS%s\n' "$DIM" "$RESET"
+  printf '%s  redirect, the welcome page, all Kuma routes, the auth gate on the logs%s\n' "$DIM" "$RESET"
+  printf '%s  endpoint, the VarLens /healthz, and that internal-only ports (Kuma,%s\n' "$DIM" "$RESET"
+  printf '%s  Dozzle, Postgres) are bound to localhost only. If anything is wrong%s\n' "$DIM" "$RESET"
+  printf '%s  with the deploy, this is where you find out — see smoke-remediation.md.%s\n' "$DIM" "$RESET"
   run_step 5 5 \
     "Smoke test (12 probes — SSH, HTTPS routes, ports, services)" \
     "make -C web-deploy smoke" \
@@ -427,11 +550,16 @@ main() {
   ip="$(cd "$WEB_DEPLOY" && make -s ip 2>/dev/null || echo "unknown")"
 
   banner "✓ Concept Pilot is live in $(human_time "$total")"
-  printf '  %sURLs:%s\n' "$BOLD" "$RESET"
-  printf '    Welcome:     https://%s/welcome\n' "$ip"
-  printf '    VarLens app: https://%s/varlens/healthz\n' "$ip"
-  printf '    Monitoring:  https://%s/  %s(admin / varlens-konzept)%s\n' "$ip" "$DIM" "$RESET"
-  printf '    Logs:        https://%s/logs/\n\n' "$ip"
+  printf '  %sFour URLs you can hit right now (replace <ip> if copy-pasting):%s\n\n' "$BOLD" "$RESET"
+  printf '    Welcome page:       https://%s/welcome\n' "$ip"
+  printf '    %s↳ a static "the pilot is running" landing page%s\n\n' "$DIM" "$RESET"
+  printf '    VarLens app:        https://%s/varlens/\n' "$ip"
+  printf '    %s↳ login screen for the actual VarLens web app%s\n' "$DIM" "$RESET"
+  printf '    %s  /varlens/healthz returns {"status":"ok"} for liveness probes%s\n\n' "$DIM" "$RESET"
+  printf '    Monitoring:         https://%s/   %s(admin / varlens-konzept)%s\n' "$ip" "$DIM" "$RESET"
+  printf '    %s↳ Uptime Kuma — see backup heartbeat + uptime history%s\n\n' "$DIM" "$RESET"
+  printf '    Logs:               https://%s/logs/\n' "$ip"
+  printf '    %s↳ Dozzle — live container logs in the browser, basic-auth gated%s\n\n' "$DIM" "$RESET"
 
   # Admin bootstrap follow-up. The recovery key file is the only copy of
   # an extremely sensitive secret; point operators at it loudly so the

@@ -141,10 +141,17 @@ Step 6 is the bring-up itself, repeated per environment.
 
 ## The bring-up
 
-From the repo root, after `web-deploy/.env` is populated. The deploy CLI is gated on the `VARLENS_WEB=1` mode toggle (web mode is opt-in by design — see [`AGENTS.md`](AGENTS.md) > Mode toggle); export it once per shell, or prefix every command:
+From the repo root, after `web-deploy/.env` is populated. The deploy CLI is gated on the `VARLENS_WEB=1` mode toggle (web mode is opt-in by design — see [`AGENTS.md`](AGENTS.md) > Mode toggle). Three ways to enable it:
 
 ```bash
-export VARLENS_WEB=1
+VARLENS_WEB=1 make pilot     # one-off
+export VARLENS_WEB=1         # whole shell session
+touch .varlens-web-mode      # persistent for this checkout (gitignored)
+```
+
+If this checkout is going to be web-primary (e.g. the `VarLens-Web` fork), `touch .varlens-web-mode` once and forget about the env var. To temporarily fall back to desktop mode even with the sentinel present, set `VARLENS_WEB=0` explicitly.
+
+```bash
 make pilot
 ```
 

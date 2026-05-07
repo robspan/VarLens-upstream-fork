@@ -23,7 +23,29 @@ endef
 # web-only invocations.
 #---------------------------------------------------------------------------
 
-VARLENS_WEB ?= 0
+# Web mode is opt-in (AGENTS.md > Mode toggle). Three ways to enable
+# it for this checkout, in increasing persistence:
+#
+#   one-off:        VARLENS_WEB=1 make <target>
+#   per-shell:      export VARLENS_WEB=1
+#   per-clone:      touch .varlens-web-mode  (gitignored sentinel file;
+#                   read at the bottom of this block)
+#
+# The sentinel is the canonical "this checkout is the web fork" marker
+# — once present, every `make` invocation in this repo defaults to
+# web mode without the operator having to remember the env var. To
+# turn web mode off temporarily even when the sentinel exists, set
+# VARLENS_WEB=0 explicitly.
+ifeq ($(wildcard .varlens-web-mode),.varlens-web-mode)
+    VARLENS_WEB ?= 1
+else
+    VARLENS_WEB ?= 0
+endif
+
+# Export so it propagates to sub-makes and child processes — the deploy
+# CLI (web-deploy/bin/varlens) reads VARLENS_WEB from os.environ to gate
+# itself, and make doesn't export variables by default.
+export VARLENS_WEB
 
 ifeq ($(VARLENS_WEB),1)
     VITEST_EXTRA_ARGS := -- --project web-gate

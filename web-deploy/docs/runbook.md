@@ -1,12 +1,14 @@
 # Runbook — Concept Pilot
 
-Day-to-day. All commands run from the repo root and require `VARLENS_WEB=1` (export it once per shell, or prefix every invocation):
+Day-to-day. All commands run from the repo root and require web mode enabled. Three ways, in increasing persistence:
 
 ```bash
-export VARLENS_WEB=1
+VARLENS_WEB=1 make pilot-status     # one-off
+export VARLENS_WEB=1                # whole shell session
+touch .varlens-web-mode             # persistent for this checkout (gitignored)
 ```
 
-Without it the deploy CLI refuses to run — web mode is opt-in by design (see [`AGENTS.md`](../../AGENTS.md) > Mode toggle).
+The deploy CLI is opt-in by design — see [`AGENTS.md`](../../AGENTS.md) > Mode toggle.
 
 | Need                          | Command                                                       |
 | ----------------------------- | ------------------------------------------------------------- |

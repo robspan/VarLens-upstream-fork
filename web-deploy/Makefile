@@ -279,7 +279,16 @@ lint:
 
 setup-backup:
 	@if [ -z "$(call IPV4)" ]; then echo "No server present."; exit 1; fi
-	@SERVER_IP=$(call IPV4) SSH_KEY=$(SSH_KEY) HCLOUD_TOKEN=$(call HCLOUD_TOKEN) \
+	@# Source web-deploy/.env if present so manual retries (after pilot.sh's
+	@# step 3 fails and the retry banner suggests re-running this target)
+	@# see RESTIC_S3_*. Without this, the operator would have to remember
+	@# to source the file themselves — and the failure message wouldn't
+	@# tell them why their second run also fails. Variables already set in
+	@# the calling shell (CI overrides, etc.) take precedence.
+	@if [ -f .env ]; then \
+		set -a; . ./.env; set +a; \
+	fi; \
+	SERVER_IP=$(call IPV4) SSH_KEY=$(SSH_KEY) HCLOUD_TOKEN=$(call HCLOUD_TOKEN) \
 		./scripts/setup-backup.py $(SETUP_BACKUP_ARGS)
 
 setup-monitoring:

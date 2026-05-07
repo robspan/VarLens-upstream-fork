@@ -448,11 +448,49 @@ def secrets_restic_yaml_decryptable() -> bool:
     age_keys = Path.home() / ".config" / "sops" / "age" / "keys.txt"
     if not age_keys.exists():
         return False
+    # SOPS_AGE_KEY_FILE must be set explicitly: sops only auto-discovers keys
+    # at SOPS_AGE_KEY (single key as stdin-style) or hard-coded SSH paths,
+    # not at the standard ~/.config/sops/age/keys.txt location. Without this,
+    # decryption silently fails on macOS even when the operator has the key.
     proc = subprocess.run(
         [sops_path, "-d", str(target)],
         capture_output=True,
+        env={**os.environ, "SOPS_AGE_KEY_FILE": str(age_keys)},
     )
     return proc.returncode == 0
+
+
+def read_restic_password_from_sops() -> str | None:
+    """Decrypt secrets/restic.yaml and return the `restic_password` value, or None
+    if the file is missing, undecryptable, or doesn't carry that field.
+
+    Used by smart-resume to recover the password on a fresh server when the
+    bucket already holds an initialized repo from a prior cold-start cycle.
+    The bucket's repo expects the OLD password; the new server's
+    /etc/restic/env doesn't exist yet; the operator's local SOPS is the
+    authoritative source for that password. This bridges the two.
+    """
+    target = REPO_ROOT / "secrets" / "restic.yaml"
+    if not target.exists():
+        return None
+    sops_path = shutil.which("sops")
+    if sops_path is None:
+        return None
+    age_keys = Path.home() / ".config" / "sops" / "age" / "keys.txt"
+    if not age_keys.exists():
+        return None
+    env = {**os.environ, "SOPS_AGE_KEY_FILE": str(age_keys)}
+    proc = subprocess.run(
+        [sops_path, "-d", str(target)],
+        capture_output=True, text=True, env=env,
+    )
+    if proc.returncode != 0:
+        return None
+    for line in proc.stdout.splitlines():
+        if line.startswith("restic_password:"):
+            value = line.split(":", 1)[1].strip()
+            return value.strip('"').strip("'")
+    return None
 
 
 def main() -> None:
@@ -565,24 +603,53 @@ def main() -> None:
     # --- Smart-resume default (opt-in via --default-reuse-when-resumable) ---
     # Resolve mode='default' to either 'reuse' or stay 'default' (and so fail
     # loud below) based on whether the prior state is fully resumable.
+    #
+    # Three resumable shapes exist:
+    #   A. greenfield  — env not set, repo not init, anything goes
+    #   B. continuous  — server has env, bucket has repo, local SOPS readable
+    #                    (this is the standard "rerun after downstream failure" case)
+    #   C. fresh-server-existing-bucket — env not set, repo initialised, local
+    #                    SOPS readable. Standard for repeat-cold-start cycles
+    #                    where teardown nukes the server but the bucket persists
+    #                    (or the bucket gets recreated on the same name). The
+    #                    server-side env is rebuilt from the SOPS-stored password.
+    #
+    # Anything outside these three falls through to the consistency matrix
+    # below and exits 3 in default mode — those are the cases where silent
+    # progress would be unsafe (mismatched local/bucket state, missing SOPS
+    # for an initialised bucket, etc).
     if mode == "default" and default_reuse_when_resumable:
         if not env_exists and not repo_initialized:
             log("greenfield mode: clean state, initialising (default)")
         elif env_exists and repo_initialized and secrets_restic_yaml_decryptable():
             log("resume mode: existing /etc/restic/env + bucket config detected, reusing (--reuse)")
             mode = "reuse"
+        elif (not env_exists) and repo_initialized and secrets_restic_yaml_decryptable():
+            sops_password = read_restic_password_from_sops()
+            if sops_password:
+                log("resume from local SOPS: fresh server + bucket has repo + local restic.yaml decryptable")
+                log("  recovering restic_password from secrets/restic.yaml; will rewrite /etc/restic/env on server")
+                existing_password = sops_password
+                mode = "reuse"
+            else:
+                log("mismatch: SOPS file decryptable but contains no restic_password — manual recovery required")
         elif repo_initialized and not secrets_restic_yaml_decryptable():
             log("mismatch: bucket has config but no local SOPS — must --force or restore secrets/restic.yaml")
             # Fall through to the matrix below, which will exit 3 in default mode.
 
     # --- PREFLIGHT step 3: consistency decision ---
-    # Matrix:
+    # Matrix (after smart-resume has had a chance to upgrade default → reuse):
     #  env_exists | repo_init | default     | --reuse                     | --force
     #  -----------+-----------+-------------+-----------------------------+--------
     #  False      | False     | proceed     | proceed                     | proceed
     #  True       | False     | FAIL        | reuse pw, init at backup    | overwrite
-    #  False      | True      | FAIL        | FAIL (no pw to reuse)       | overwrite (= old snaps lost)
+    #  False      | True      | FAIL        | reuse pw from SOPS (*)      | overwrite (= old snaps lost)
     #  True       | True      | FAIL        | reuse pw                    | overwrite (= old snaps lost)
+    #
+    # (*) When --reuse was chosen via --default-reuse-when-resumable on the
+    #     "fresh-server-existing-bucket" branch, existing_password has been
+    #     populated from secrets/restic.yaml above, bypassing the historical
+    #     "no pw to reuse" failure mode.
     if env_exists or repo_initialized:
         print("\n" + "=" * 70)
         print("Preflight detect: existing backup artifacts found")

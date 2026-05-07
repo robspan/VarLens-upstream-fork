@@ -356,8 +356,8 @@ main() {
 
   run_step 3 5 \
     "Configuring restic backup (Hetzner Object Storage)" \
-    "make -C web-deploy setup-backup" \
-    make setup-backup
+    "make -C web-deploy setup-backup SETUP_BACKUP_ARGS=--default-reuse-when-resumable" \
+    make setup-backup SETUP_BACKUP_ARGS=--default-reuse-when-resumable
 
   run_step 4 5 \
     "Configuring monitoring (Uptime Kuma admin + heartbeat)" \

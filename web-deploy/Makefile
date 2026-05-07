@@ -350,10 +350,15 @@ restore-drill:
 # require a live server. Used to inform "should I run pilot-recover?"
 # when the existing-backups guard fires.
 restore-list:
-	@if [ -z "$(RESTIC_S3_ACCESS_KEY)" ] || [ -z "$(RESTIC_S3_SECRET_KEY)" ]; then \
-		echo "Set RESTIC_S3_ACCESS_KEY and RESTIC_S3_SECRET_KEY first (or source web-deploy/.env)."; \
+	@# Auto-source .env so the operator does not have to remember to export
+	@# RESTIC_S3_* themselves. Shell exports still win (set -a + . is a no-op
+	@# for already-set vars in bash if they are read-only, but here they are
+	@# regular env vars so this just imports any missing keys).
+	@if [ -f .env ] && [ -z "$$RESTIC_S3_ACCESS_KEY" ]; then set -a; . ./.env; set +a; fi; \
+	if [ -z "$$RESTIC_S3_ACCESS_KEY" ] || [ -z "$$RESTIC_S3_SECRET_KEY" ]; then \
+		echo "Set RESTIC_S3_ACCESS_KEY and RESTIC_S3_SECRET_KEY first (or populate web-deploy/.env)."; \
 		exit 1; \
-	fi
+	fi; \
 	./scripts/restore-list.sh
 
 # Recover a fresh server from the latest restic snapshot. Provisions a

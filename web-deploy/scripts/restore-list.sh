@@ -35,6 +35,13 @@ if ! command -v restic >/dev/null 2>&1; then
   exit 1
 fi
 
+# sops 3.x doesn't auto-discover ~/.config/sops/age/keys.txt the way the
+# Go SDK does — it requires SOPS_AGE_KEY_FILE explicitly. Set it if the
+# operator hasn't.
+if [[ -z "${SOPS_AGE_KEY_FILE:-}" ]] && [[ -f "$HOME/.config/sops/age/keys.txt" ]]; then
+  export SOPS_AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt"
+fi
+
 RESTIC_PASSWORD="$(sops -d --extract '["restic_password"]' "$SOPS_FILE")"
 export RESTIC_PASSWORD
 export RESTIC_REPOSITORY="s3:$ENDPOINT/$BUCKET"

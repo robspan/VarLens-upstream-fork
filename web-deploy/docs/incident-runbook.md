@@ -449,67 +449,56 @@ If the rate limit kicks in: temporarily switch to `tls internal` (self-signed) u
 
 **Trigger:** The server resource has been deleted (accidental `make down`, Hetzner account incident, region outage). The data volume is also gone; only the restic snapshots in object storage remain.
 
-### Steps
+### Steps — automated path (preferred)
 
-1. Provision a new server:
+```sh
+VARLENS_WEB=1 make pilot-recover
+```
 
+This single command does everything: provisions a fresh cpx32, stages `/etc/restic/env` (decrypts the password from `secrets/restic.yaml` via SOPS), `restic restore latest --target /` repopulates `/mnt/data`, brings up the Compose stack, runs `pg_restore` of the embedded `varlens-*.dump` into the fresh PostgreSQL container, then runs the smoke test + a parity check (compares the restored table set against the dump's manifest).
+
+End state: a new server functionally equivalent to the lost one, minus any writes that happened after the most recent backup ran (≤24h on the default nightly timer).
+
+Inspect what's recoverable before deciding:
+
+```sh
+VARLENS_WEB=1 make pilot-restore-list
+```
+
+Read-only `restic snapshots` listing using the SOPS-decrypted password — no SSH, no live server needed.
+
+### Steps — manual path (if pilot-recover fails for some reason)
+
+1. Provision a new server: `make up`
+2. Roll out the compose stack: `make stack-up`
+3. Retrieve the restic password from SOPS: `make sops-decrypt FILE=secrets/restic.yaml`
+4. SSH in (`make ssh`) and write `/etc/restic/env`:
    ```sh
-   make up
-   ```
-
-   Expected: 5 resources created (SSH key, volume, firewall, server, volume attachment), with `/mnt/data` mounted empty.
-
-2. Roll out the compose stack:
-
-   ```sh
-   make stack-up
-   ```
-
-3. Retrieve the restic password and S3 credentials from the SOPS file:
-
-   ```sh
-   make sops-decrypt FILE=secrets/restic.yaml
-   ```
-
-   Expected: `RESTIC_PASSWORD`, `RESTIC_S3_ACCESS_KEY`, `RESTIC_S3_SECRET_KEY`, `RESTIC_REPOSITORY` in plaintext.
-
-4. Write `/etc/restic/env` on the new server:
-
-   ```sh
-   make ssh
    sudo tee /etc/restic/env >/dev/null <<'EOF'
-   RESTIC_REPOSITORY=s3:https://fsn1.your-objectstorage.com/varlens-pilot-backups
+   RESTIC_REPOSITORY=s3:fsn1.your-objectstorage.com/varlens-pilot-backup
    RESTIC_PASSWORD=<from SOPS>
-   AWS_ACCESS_KEY_ID=<from SOPS>
-   AWS_SECRET_ACCESS_KEY=<from SOPS>
+   AWS_ACCESS_KEY_ID=<from .env>
+   AWS_SECRET_ACCESS_KEY=<from .env>
    BACKUP_PATHS=/mnt/data
-   HEARTBEAT_URL=<from setup-monitoring, optional - can be added later>
    EOF
    sudo chmod 600 /etc/restic/env
    ```
-
-5. Check the snapshot list, then restore the latest snapshot:
-
+5. Restore the snapshot to its original path:
    ```sh
-   sudo bash -c 'set -a; source /etc/restic/env; restic snapshots'
-   sudo bash -c 'set -a; source /etc/restic/env; restic restore latest --target /mnt/data --include /mnt/data'
+   sudo bash -c 'set -a; . /etc/restic/env; restic restore latest --target /'
    ```
-
-   restic writes the data under `/mnt/data/mnt/data/...` if `--include` does not take effect - in that case, flatten with `sudo rsync -av --delete /mnt/data/mnt/data/ /mnt/data/` and delete the helper directory.
-
-6. Stack restart and verification via restore drill:
-
+6. Restore PostgreSQL from the embedded dump (latest one in `/mnt/data/postgres-dumps/`):
    ```sh
-   exit
-   make stack-down && make stack-up
-   make restore-drill
-   make smoke
+   DUMP=$(sudo ls -1 /mnt/data/postgres-dumps/varlens-*.dump | tail -1)
+   sudo docker exec -i postgres pg_restore --clean --if-exists --no-owner --no-acl --dbname=varlens --username=varlens < "$DUMP"
    ```
+   `pg_restore` exits non-zero on harmless `DROP IF EXISTS` warnings; ignore.
+7. Smoke + restore drill: `make stack-up && make smoke && make restore-drill`
 
 ### Escalation
 
-- Snapshots missing or repo not decryptable: check the SOPS file state, possibly retrieve an older state from Git. **The restic password cannot be "reset" - without the password, the snapshots are lost.**
-- S3 credentials expired: in the Hetzner Console > Object Storage > Credentials, generate new ones, update them in the SOPS file and on the server in `/etc/restic/env`.
+- Snapshots missing or repo not decryptable: check the SOPS file state, possibly retrieve an older state from Git. **The restic password cannot be "reset" — without the password, the snapshots are lost.**
+- S3 credentials expired: in the Hetzner Console > Object Storage > Credentials, generate new ones, update them in `web-deploy/.env` and (on the server) `/etc/restic/env`.
 
 ---
 
@@ -664,6 +653,45 @@ If after (a) `tofu plan` suddenly shows drift: the token has the wrong scope (re
 
 ---
 
+## Scenario 14: Backups Exist But You Want a Fresh Server
+
+**Trigger:** You run `VARLENS_WEB=1 make pilot` against a configured deployment whose restic bucket already contains snapshots. The script refuses with a yellow `EXISTING BACKUPS DETECTED — fresh provision blocked` banner.
+
+### Why this fires
+
+Provisioning a fresh server while backups exist would orphan the snapshots and let the operator do real writes against an empty database without realising prior data is recoverable. The block forces a deliberate decision before any cloud resource is touched.
+
+### Steps — choose one
+
+1. **Recover** (safest — actually use the backups):
+   ```sh
+   VARLENS_WEB=1 make pilot-recover
+   ```
+
+2. **Inspect first**, then decide:
+   ```sh
+   VARLENS_WEB=1 make pilot-restore-list   # read-only
+   ```
+
+3. **Discard backups deliberately** (irreversible — see ⚠ Destructive operations in operations.md):
+   ```sh
+   make -C web-deploy destroy-bucket DESTROY_BUCKET_ARGS=--yes
+   VARLENS_WEB=1 make pilot
+   ```
+
+4. **Override** (only if you know the snapshots are safe to leave as orphans):
+   ```sh
+   VARLENS_IGNORE_EXISTING_BACKUPS=1 VARLENS_WEB=1 make pilot
+   ```
+
+### Escalation
+
+If `pilot-recover` itself fails: fall back to the manual path under Scenario 11.
+
+If the bucket exists but `check-backups.py` says "no" (no `config` object), the bucket is empty — likely the previous repo was wiped via `destroy-bucket` or `--force` — and you can `make pilot` directly without the override.
+
+---
+
 ## Appendix A: Log
 
 Whenever a runbook step is performed: a brief entry in `docs/operations-log.md` with date, scenario, duration, result. Helps next time.
@@ -716,7 +744,8 @@ Status legend: **PASS** = mechanism works as documented · **PASS-WITH-DRIFT** =
 | 8. Compose Stack Hangs                      | B    | 2026-05-07 (KW 19)  | PASS              | `cd /mnt/data/app && docker compose ps` returns the 5 expected services (caddy / dozzle / postgres / uptime-kuma / app→varlens-dev). `docker compose logs --tail=200 <service>` works as deploy user. |
 | 9. Disk Filling Up                          | B    | 2026-05-07 (KW 19)  | PASS              | `df -h /mnt/data` reports 1% used (47 GB free) on a fresh deploy. `restic stats` works (2 snapshots, 2.667 MiB) — the runbook's "list snapshots, check sizes" diagnostic is grounded. |
 | 10. Certificate Renewal Issues              | B    | 2026-05-07 (KW 19)  | PASS              | `docker logs caddy` shows the certificate-obtain log lines the scenario references. The pilot is currently on `tls-internal` (Caddy local CA, 12-hour cert) due to LE rate limit on the recycled IP — verified via `openssl s_client | openssl x509`: issuer = `Caddy Local Authority - ECC Intermediate`. The LE-IP renewal path will be exercised once the IP's rate window resets; documented in DEPLOY.md "When something goes wrong" with the `TLS=internal` fallback. |
-| 11. Server Loss - Recovery from Backup      | C    | 2026-05-07 (KW 19)  | PASS              | Mechanism identical to Routine: Restore Drill, which is the automated proof. Full server-loss exercise (provision a fresh server, restore /mnt/data from restic, restart compose) is the same primitive, not separately exercised. |
+| 11. Server Loss - Recovery from Backup      | C    | 2026-05-07 (KW 19)  | PASS (exercised end-to-end) | Full automated `make pilot-recover` cycle exercised: torn down live server (`pilot-down`), confirmed `make pilot` was correctly blocked by the existing-backups guard, ran `make pilot-recover`. Result: fresh server provisioned at the same IP (Hetzner reused), `/mnt/data` restored from snapshot `6b51c963`, `pg_restore` loaded the embedded dump (`varlens-20260507T173242Z.dump`) — `users` 1 row / `filter_presets` 11 / `metric_definitions` 128 / `schema_migrations` 7, identical to the original deployment. Login round-trip via curl with the original admin credentials succeeds (`{"id":1,"username":"admin","role":"admin"}`). One real bug found and fixed during exercise: `pg_restore --clean --if-exists` exits non-zero on harmless DROP-IF-EXISTS warnings; pilot-recover.sh now wraps it with `set +e` and relies on the parity check as the gate. |
+| 14. Backups Exist But You Want a Fresh Server | C  | 2026-05-07 (KW 19)  | PASS (exercised end-to-end) | After tearing down the server but leaving the bucket intact, ran `make pilot` and verified the existing-backups guard fired with all four labelled options (recover / inspect / discard / override). Also exercised `make pilot-restore-list` against the live bucket: returned 2 snapshots with timestamps, hostnames, and sizes. SOPS decrypt path hardened: `SOPS_AGE_KEY_FILE` is now auto-set when `~/.config/sops/age/keys.txt` exists (sops 3.x doesn't auto-discover the way the Go SDK does). |
 | 12. SSH Key Lost - Hetzner Rescue Mode      | A    | 2026-05-07 (KW 19)  | PASS-WITH-DRIFT   | Tier A only — exercising would brick the current SSH key path. Documented procedure (Hetzner Console > Rescue, boot rescue ISO, mount `/dev/sda1`, reset authorized_keys) is standard hetzner mechanics; not project-specific so unlikely to drift. Bare-`make` references at the top assume `web-deploy/` CWD. |
 | 13. Token Rotation                          | B    | 2026-05-07 (KW 19)  | PASS              | (a) Hetzner API token: `tofu plan` against current `terraform.tfvars` returns "No changes" — token reads through to the IaC stack cleanly. (b) GitHub PAT: drift — runbook references `~/.config/varlens/github_token`, but the env-layering refactor moved this into `web-deploy/.env` as `GHCR_TOKEN`. (c) Caddy basic-auth: `docker exec caddy caddy hash-password` works on the deployed image (returns valid bcrypt `$2a$14$...`). (d) Uptime Kuma: UI-only flow, can't automate. |
 

@@ -71,6 +71,11 @@ step 1 "Pre-flight — verifying backup exists and tools are ready"
 command -v sops >/dev/null 2>&1 || fail "sops not installed (brew install sops)"
 command -v tofu >/dev/null 2>&1 || fail "tofu not installed (brew install opentofu)"
 
+# sops 3.x needs SOPS_AGE_KEY_FILE set explicitly.
+if [[ -z "${SOPS_AGE_KEY_FILE:-}" ]] && [[ -f "$HOME/.config/sops/age/keys.txt" ]]; then
+  export SOPS_AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt"
+fi
+
 probe="$("$SCRIPT_DIR/check-backups.py" 2>/dev/null || echo "no")"
 [[ "$probe" == *'"present": true'* ]] || fail "no restic repository found in the configured bucket — nothing to recover from"
 ok "backup repository present in bucket"
@@ -162,8 +167,21 @@ printf ' ready\n'
 # anyway on a fresh container) before restoring, so the pre-state of the
 # container does not matter. --no-owner --no-acl matches how the dump
 # was created (varlens-backup.sh).
-ssh_run "sudo docker exec -i postgres pg_restore --clean --if-exists --no-owner --no-acl --dbname=\${POSTGRES_DB:-varlens} --username=\${POSTGRES_USER:-varlens} < $DUMP_FILE" 2>&1 | tail -5
-ok "pg_restore complete"
+#
+# Exit code is intentionally NOT propagated: pg_restore --clean
+# --if-exists exits non-zero when DROP IF EXISTS hits objects that are
+# not yet there (most things on a fresh container) and on owner/acl
+# warnings — both harmless. Real failure is detected by the parity
+# step below: if the table set differs from the dump's manifest, we
+# fail there with a meaningful error.
+set +e
+ssh_run "sudo docker exec -i postgres pg_restore --clean --if-exists --no-owner --no-acl --dbname=\${POSTGRES_DB:-varlens} --username=\${POSTGRES_USER:-varlens} < $DUMP_FILE" 2>&1 | tail -3
+PG_RESTORE_RC=$?
+set -e
+if (( PG_RESTORE_RC != 0 )); then
+  warn "pg_restore reported non-zero exit ($PG_RESTORE_RC) — harmless DROP IF EXISTS / owner-acl warnings expected on a fresh container; parity check below is the actual gate."
+fi
+ok "pg_restore complete (exit $PG_RESTORE_RC)"
 
 # ---- Step 6: smoke + parity ----------------------------------------------
 

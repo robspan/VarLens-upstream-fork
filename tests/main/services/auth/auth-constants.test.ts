@@ -12,7 +12,7 @@ import {
   ROLE_USER,
   USER_ROLES,
   type UserRole
-} from '../../../../src/main/services/auth/auth-constants'
+} from '../../../../src/shared/auth/auth-constants'
 
 /**
  * Phase 2 #2: cross-backend auth policy lives in one module.
@@ -120,8 +120,8 @@ describe('AuthService.ts uses the constants module (no role literals)', () => {
       resolve(REPO_ROOT, 'src/main/services/auth/AuthService.ts'),
       'AuthService.ts'
     )
-    expect(src, 'AuthService must import named role constants').toMatch(
-      /import\s*\{[\s\S]*?ROLE_ADMIN[\s\S]*?\}\s*from\s*['"]\.\/auth-constants['"]/
+    expect(src, 'AuthService must import named role constants from the shared module').toMatch(
+      /import\s*\{[\s\S]*?ROLE_ADMIN[\s\S]*?\}\s*from\s*['"][^'"]*shared\/auth\/auth-constants['"]/
     )
     expect(src, 'AuthService must import ROLE_USER').toMatch(/ROLE_USER/)
     expect(src, 'AuthService must import the UserRole type').toMatch(/type UserRole/)

@@ -13,8 +13,8 @@
  * regressed by web-specific concerns.
  *
  * Cross-backend policy values (USER_ROLES, MAX_FAILED_ATTEMPTS,
- * LOCKOUT_DURATION_MINUTES) come from src/main/services/auth/auth-constants
- * — the constants module is process-agnostic and the only thing the two
+ * LOCKOUT_DURATION_MINUTES) come from src/shared/auth/auth-constants —
+ * the constants module is process-agnostic and the only thing the two
  * implementations share.
  */
 import { nanoid } from 'nanoid'
@@ -30,7 +30,7 @@ import {
   ROLE_ADMIN,
   ROLE_USER,
   type UserRole
-} from '../../main/services/auth/auth-constants'
+} from '../../shared/auth/auth-constants'
 
 /**
  * Cross-backend User shape. Storage representation differs (Postgres
@@ -79,12 +79,29 @@ function mapPgRowToUser(raw: Record<string, unknown>): User {
   const toIso = (v: unknown): string | null => {
     if (v === null || v === undefined) return null
     if (v instanceof Date) return v.toISOString()
-    return String(v)
+    // The migration declares TIMESTAMPTZ; node-postgres returns Date by
+    // default. If we get a non-Date, non-null value here, a custom type
+    // parser was installed and it's emitting raw PG strings — the User
+    // contract advertises ISO 8601, so refuse rather than silently
+    // pass through a non-ISO format.
+    if (typeof v === 'string') {
+      const parsed = new Date(v)
+      if (isNaN(parsed.getTime())) {
+        throw new Error(`mapPgRowToUser: cannot parse timestamp value: ${v}`)
+      }
+      return parsed.toISOString()
+    }
+    throw new Error(
+      `mapPgRowToUser: unexpected timestamp type ${typeof v} (${String(v).slice(0, 40)})`
+    )
   }
   const toBoolNumber = (v: unknown): number => {
     if (typeof v === 'boolean') return v ? 1 : 0
-    if (typeof v === 'number') return v
-    if (v === 't' || v === 'true' || v === '1' || v === 1) return 1
+    if (typeof v === 'number') return v === 0 ? 0 : 1
+    // Postgres BOOLEAN under custom type parsers can arrive as 't'/'f'
+    // or 'true'/'false'. Whitelist the known truthy strings; treat
+    // anything else as false (parity with SQLite which stores 0/1 INT).
+    if (v === 't' || v === 'true' || v === '1') return 1
     return 0
   }
   const toNumberOrNull = (v: unknown): number | null => {
@@ -135,18 +152,17 @@ export class PostgresWebAuthService {
     password: string
   ): Promise<{ id: number; username: string; role: UserRole; recoveryKey: string }> {
     const sch = this.schemaQuoted
-    const existing = await this.pool.query(
-      `SELECT id FROM ${sch}."users" WHERE role = $1 LIMIT 1`,
-      [ROLE_ADMIN]
-    )
-    if ((existing.rowCount ?? 0) > 0) {
-      throw new Error('Admin user already exists')
-    }
-
     const passwordHash = await this.passwordProvider.hashPassword(password)
     const recoveryKey = nanoid(32)
     const recoveryKeyHash = await this.passwordProvider.hashPassword(recoveryKey)
 
+    // Race-safety: the SELECT-outside-transaction pattern in earlier
+    // revisions of this method allowed two concurrent first-user calls
+    // to both observe "no admin" and both proceed. The partial unique
+    // index `users_only_one_admin` (migration 0007) guarantees at most
+    // one admin row per schema; the second concurrent INSERT trips
+    // unique_violation (SQLSTATE 23505) and we translate it into the
+    // same friendly error a serial caller would see.
     const client = await this.pool.connect()
     try {
       await client.query('BEGIN')
@@ -177,6 +193,11 @@ export class PostgresWebAuthService {
       } catch {
         // ignore rollback failures; original error wins
       }
+      // Translate unique-violation on the partial admin index into the
+      // same error the SQLite-parity SELECT-then-throw path emits.
+      if (typeof err === 'object' && err !== null && 'code' in err && err.code === '23505') {
+        throw new Error('Admin user already exists', { cause: err })
+      }
       throw err
     } finally {
       client.release()
@@ -205,19 +226,23 @@ export class PostgresWebAuthService {
     const valid = await this.passwordProvider.verifyPassword(user.password_hash, password)
 
     if (!valid) {
-      const newCount = user.failed_login_count + 1
-      if (newCount >= MAX_FAILED_ATTEMPTS) {
-        const lockUntil = new Date(Date.now() + LOCKOUT_DURATION_MINUTES * 60 * 1000)
-        await this.pool.query(
-          `UPDATE ${sch}."users" SET failed_login_count = $1, locked_until = $2 WHERE id = $3`,
-          [newCount, lockUntil, user.id]
-        )
-      } else {
-        await this.pool.query(`UPDATE ${sch}."users" SET failed_login_count = $1 WHERE id = $2`, [
-          newCount,
-          user.id
-        ])
-      }
+      // Atomic increment + conditional lockout, single round trip. The
+      // previous SELECT-then-UPDATE pattern was racy under pg's
+      // concurrency model: two concurrent failed logins could both read
+      // failed_login_count = N-1 and both write N, defeating the
+      // MAX_FAILED_ATTEMPTS gate. SQLite's single-writer model hid the
+      // race on desktop; the web path needs DB-level atomicity.
+      const lockUntil = new Date(Date.now() + LOCKOUT_DURATION_MINUTES * 60 * 1000)
+      await this.pool.query(
+        `UPDATE ${sch}."users"
+            SET failed_login_count = failed_login_count + 1,
+                locked_until = CASE
+                  WHEN failed_login_count + 1 >= $1 THEN $2
+                  ELSE locked_until
+                END
+          WHERE id = $3`,
+        [MAX_FAILED_ATTEMPTS, lockUntil, user.id]
+      )
       return { success: false, user: null }
     }
 

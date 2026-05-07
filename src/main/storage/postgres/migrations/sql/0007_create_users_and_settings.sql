@@ -31,6 +31,18 @@ CREATE TABLE IF NOT EXISTS "__schema__"."users" (
 CREATE INDEX IF NOT EXISTS idx_users_username
   ON "__schema__"."users"(username);
 
+-- Concurrency guard for createFirstUser: at most one admin row may exist
+-- in this schema. Without this index, two concurrent web bootstrap calls
+-- can both observe "no admin" via SELECT outside their respective
+-- transactions and both succeed at INSERT. The partial unique index
+-- forces the second INSERT to fail with a unique-violation, which the
+-- service catches and turns into a clean error. SQLite's single-writer
+-- model masks this race in the desktop AuthService; the web variant
+-- needs explicit DB-level enforcement.
+CREATE UNIQUE INDEX IF NOT EXISTS users_only_one_admin
+  ON "__schema__"."users"(role)
+  WHERE role = 'admin';
+
 CREATE TABLE IF NOT EXISTS "__schema__"."database_settings" (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL

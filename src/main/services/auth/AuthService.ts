@@ -18,7 +18,7 @@ import {
   ROLE_ADMIN,
   ROLE_USER,
   type UserRole
-} from './auth-constants'
+} from '../../../shared/auth/auth-constants'
 
 interface User {
   id: number

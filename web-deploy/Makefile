@@ -191,16 +191,22 @@ stack-up: deploy-stack
 	@# with arbitrary password characters. server.ts ignores these vars
 	@# post-bootstrap with a WARN, so re-injecting on re-runs would only
 	@# extend plaintext exposure with no functional benefit.
-	@printf '%s\n%s\n%s\n%s\n' \
+	@printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
 		"$${VARLENS_ADMIN_USERNAME:-}" \
 		"$${VARLENS_ADMIN_PASSWORD:-}" \
 		"$${VARLENS_ADMIN_DISPLAY_NAME:-}" \
-		"$${POSTGRES_PASSWORD:-}" | \
+		"$${POSTGRES_PASSWORD:-}" \
+		"$${APP_NAME:-}" \
+		"$${APP_PATH_PREFIX:-}" \
+		"$${APP_PORT:-}" | \
 	ssh -i $(SSH_KEY) deploy@$(call IPV4) 'cd /mnt/data/app && \
 		read -r ADMIN_USER; \
 		read -r ADMIN_PASS; \
 		read -r ADMIN_DISP; \
 		read -r OPERATOR_PGPW; \
+		read -r OPERATOR_APP_NAME; \
+		read -r OPERATOR_APP_PATH_PREFIX; \
+		read -r OPERATOR_APP_PORT; \
 		if [ ! -f .env ]; then \
 			if [ -n "$$OPERATOR_PGPW" ]; then \
 				echo "Using operator-supplied POSTGRES_PASSWORD; persisting to /etc/varlens/postgres-password"; \
@@ -235,6 +241,18 @@ stack-up: deploy-stack
 		fi && \
 		sed -i "s|^SERVER_HOST=.*|SERVER_HOST=$(CADDY_HOST)|" .env && \
 		sed -i "s|^CADDY_TLS_PROFILE=.*|CADDY_TLS_PROFILE=$(CADDY_TLS)|" .env && \
+		if [ -n "$$OPERATOR_APP_NAME" ]; then \
+			sed -i "s|^APP_NAME=.*|APP_NAME=$$OPERATOR_APP_NAME|" .env && \
+			echo "APP_NAME set to $$OPERATOR_APP_NAME"; \
+		fi && \
+		if [ -n "$$OPERATOR_APP_PATH_PREFIX" ]; then \
+			sed -i "s|^APP_PATH_PREFIX=.*|APP_PATH_PREFIX=$$OPERATOR_APP_PATH_PREFIX|" .env && \
+			echo "APP_PATH_PREFIX set to $$OPERATOR_APP_PATH_PREFIX"; \
+		fi && \
+		if [ -n "$$OPERATOR_APP_PORT" ]; then \
+			sed -i "s|^APP_PORT=.*|APP_PORT=$$OPERATOR_APP_PORT|" .env && \
+			echo "APP_PORT set to $$OPERATOR_APP_PORT"; \
+		fi && \
 		$(COMPOSE_PROFILES_FLAG) docker compose pull && \
 		$(COMPOSE_PROFILES_FLAG) docker compose up -d --force-recreate caddy && \
 		$(COMPOSE_PROFILES_FLAG) docker compose up -d'

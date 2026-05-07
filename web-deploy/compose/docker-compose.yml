@@ -27,8 +27,14 @@ services:
       #   tls-le-classic  Let's Encrypt 90-day cert (requires real domain)
       #   tls-le-ip       Let's Encrypt 7-day shortlived cert for raw IPs
       CADDY_TLS_PROFILE: ${CADDY_TLS_PROFILE-tls-le-ip}
+      # App-mount knobs — read by the Caddyfile's handle_path /
+      # reverse_proxy directives so prod and dev can share this file
+      # with different APP_NAME / APP_PATH_PREFIX / APP_PORT.
+      APP_NAME: ${APP_NAME:-varlens}
+      APP_PATH_PREFIX: ${APP_PATH_PREFIX:-/varlens}
+      APP_PORT: ${APP_PORT:-8080}
     networks:
-      - varlens
+      - app
     healthcheck:
       # /healthz is a redirect-exempt 200 endpoint defined in the Caddyfile
       # specifically for this probe. BusyBox wget in caddy:2-alpine has no
@@ -49,7 +55,7 @@ services:
     volumes:
       - /mnt/data/uptime-kuma:/app/data
     networks:
-      - varlens
+      - app
 
   dozzle:
     image: amir20/dozzle:latest@sha256:bb7df69b177814466e01397f5d44baabb56dc2fe9c6f7f18b61ce137428452d2
@@ -69,23 +75,23 @@ services:
       # auth stays disabled because it either requires a users.yml or returns
       # 502 on default settings.
     networks:
-      - varlens
+      - app
 
-  # VarLens application container — the §infrastruktur2 application slot.
-  # Image is operator-configurable via VARLENS_IMAGE in compose/.env. Pin
-  # to the digest (`@sha256:...`) emitted by the publish-web GitHub
-  # workflow once the first image lands; the floating `:edge` tag in the
-  # default below is convenient for first-boot but reproducibility (per
-  # §vertrag2.3) requires a digest pin in production.
-  varlens:
+  # Application container — the §infrastruktur2 application slot.
+  # Service+container name is parameterised on APP_NAME (default
+  # `varlens`) to keep this stack reusable for sibling deployments
+  # (varlens-staging, future tools) without forking the compose file.
+  # Caddy upstream uses the same APP_NAME so the service-name change
+  # cascades through the proxy automatically.
+  app:
     image: ${VARLENS_IMAGE:-ghcr.io/robspan/varlens-web:edge}
-    container_name: varlens
+    container_name: ${APP_NAME:-varlens}
     restart: unless-stopped
-    # No host port mapping: Caddy reaches the app on the internal `varlens`
-    # network as `varlens:8080`. Exposing a host port here would conflict
-    # with dozzle (also 127.0.0.1:8080) and adds attack surface for no
-    # external benefit. Debug from the server via `docker exec varlens
-    # wget -qO- http://127.0.0.1:8080/healthz` if needed.
+    # No host port mapping: Caddy reaches the app on the internal network
+    # as `${APP_NAME}:${APP_PORT}`. Exposing a host port here would
+    # conflict with dozzle (also 127.0.0.1:8080) and adds attack surface
+    # for no external benefit. Debug from the server via `docker exec
+    # ${APP_NAME} wget -qO- http://127.0.0.1:${APP_PORT}/healthz`.
     volumes:
       # Runtime data (SQLite + admin recovery key) goes in a sub-dir so
       # /mnt/data/app/ itself stays owned by the deploy user (uid 1000) for
@@ -102,7 +108,7 @@ services:
       VARLENS_PG_URL: ${VARLENS_PG_URL:-postgres://${POSTGRES_USER:-varlens}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in compose/.env (or override VARLENS_PG_URL for an external Postgres)}@postgres:5432/${POSTGRES_DB:-varlens}}
       VARLENS_PG_SCHEMA: ${VARLENS_PG_SCHEMA:-public}
       VARLENS_RECOVERY_KEY_DIR: ${VARLENS_RECOVERY_KEY_DIR:-/data}
-      VARLENS_WEB_PORT: ${VARLENS_WEB_PORT:-8080}
+      VARLENS_WEB_PORT: ${APP_PORT:-8080}
       VARLENS_LOG_LEVEL: ${VARLENS_LOG_LEVEL:-info}
       # Optional one-shot bootstrap. If all three are set on first boot
       # and no admin exists, the app creates an Argon2 admin and writes
@@ -118,13 +124,13 @@ services:
     healthcheck:
       # The image's own HEALTHCHECK uses the same probe; this duplicate
       # gives Compose visibility into health state from the host side.
-      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:8080/healthz"]
+      test: ["CMD-SHELL", "wget --quiet --spider http://localhost:${APP_PORT:-8080}/healthz"]
       interval: 30s
       timeout: 3s
       retries: 3
       start_period: 10s
     networks:
-      - varlens
+      - app
 
   # PostgreSQL — mandatory backend for the web variant (Phase 2).
   # The `profiles: [postgres]` gate from Stage 1.5 was dropped: the
@@ -151,8 +157,8 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - varlens
+      - app
 
 networks:
-  varlens:
-    name: varlens
+  app:
+    name: ${APP_NAME:-varlens}

@@ -91,14 +91,20 @@ As of April 2026: application container and database are still to come.
 	redir /monitor / permanent
 	redir /monitor/* / permanent
 
-	# VarLens web app at /varlens/*. handle_path strips the prefix before
-	# forwarding so the app sees /healthz, /api/auth/login, /api/cases
-	# etc. at its own root. Kuma keeps `/` because Kuma 1.x doesn't
-	# tolerate a base path; VarLens is API-only in Stage 1, so the
-	# sub-path mount is fine. Future: when the renderer SPA ships in the
-	# web bundle, evaluate moving VarLens to / and Kuma elsewhere.
-	handle_path /varlens* {
-		reverse_proxy varlens:8080
+	# Application mounted at {$APP_PATH_PREFIX} (default `/varlens`).
+	# handle_path strips the prefix before forwarding so the app sees
+	# /healthz, /api/..., etc. at its own root. Kuma keeps `/` because
+	# Kuma 1.x doesn't tolerate a base path; the app cooperates by
+	# emitting its SPA assets under the prefix (vite.web-renderer
+	# `base` reads from the same env layer).
+	#
+	# Two values are parameterised so prod and dev (or future sibling
+	# tools) can run the same Caddyfile with different envs:
+	#   APP_NAME          docker service+container name (default varlens)
+	#   APP_PATH_PREFIX   URL prefix incl. leading slash (default /varlens)
+	#   APP_PORT          internal HTTP port (default 8080)
+	handle_path {$APP_PATH_PREFIX:-/varlens}* {
+		reverse_proxy {$APP_NAME:-varlens}:{$APP_PORT:-8080}
 	}
 
 	# Dozzle at /logs/. Dozzle is base-aware (DOZZLE_BASE=/logs in compose)

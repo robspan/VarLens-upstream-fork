@@ -49,6 +49,20 @@ backup bucket, the `setup-backup` step does, via the S3 API.
 Shell exports still work and override `web-deploy/.env` values, so CI /
 one-off invocations don't need to write to disk.
 
+### Optional `.env` overrides
+
+Leave blank to inherit defaults. Useful for sibling deployments
+(prod alongside dev) or restoring against a known password.
+
+| Key                | Default                  | When to set                                                                                                   |
+| ------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `POSTGRES_PASSWORD` | auto-generated, persisted to `/etc/varlens/postgres-password` | Restoring from a backup that used a known password, or staging a value before bring-up. First-boot only.     |
+| `RESTIC_PASSWORD`  | auto-generated, SOPS-persisted on creation | Operator-controlled bucket password. Must match the prior value if the bucket already has snapshots — otherwise old snapshots become undecryptable. |
+| `BUCKET_NAME`      | `varlens-pilot-backup`   | Distinct bucket per instance (`varlens-prod-backup` / `varlens-dev-backup`), or sidestepping a Hetzner ghost-state bucket that won't delete. |
+| `APP_NAME`         | `varlens`                | Distinct container/network name per instance. The Caddy upstream tracks this automatically.                   |
+| `APP_PATH_PREFIX`  | `/varlens`               | URL prefix the app is mounted under. Note: the SPA bundle bakes `/varlens/` into its asset URLs at image-build time — separate-server prod/dev is fine, but co-located instances with distinct prefixes need a build-time templating story (not yet wired). |
+| `APP_PORT`         | `8080`                   | Internal HTTP port the app listens on inside the container.                                                   |
+
 ## First-time setup
 
 The full path from "no Hetzner account" to "ready to run `make pilot`".
@@ -294,6 +308,25 @@ orchestrator, run that command yourself.
 
 **Stack-up fails on `docker login`.** `GHCR_TOKEN` is wrong, expired, or
 missing the `read:packages` scope. Regenerate, re-export, retry.
+
+**TLS handshake fails on a recycled IP / smoke probes return `000`.** Caddy
+hit the Let's Encrypt rate limit (5 certs per IP per 168h) — typical when
+recycling an IP across teardown/bring-up cycles. Drop to self-signed for
+the duration:
+
+```bash
+make -C web-deploy stack-up TLS=internal
+```
+
+Browsers will show a one-time cert warning. Re-run `stack-up` without
+`TLS=internal` once the rate window resets (the Caddy log line names the
+exact retry-after timestamp).
+
+**Bucket teardown reports `BucketNotEmpty` on an empty bucket.** Hetzner's
+async-reconciliation ghost state. Either wait 5–10 min and retry, or
+sidestep it for the next bring-up by setting
+`BUCKET_NAME=varlens-pilot-backup-v2` in `web-deploy/.env`. Clean the old
+bucket via the Hetzner Console when convenient.
 
 **`cloud-init` failed.** Inspect the bootstrap log on the server:
 

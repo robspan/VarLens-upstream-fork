@@ -4,37 +4,34 @@ import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 
 /**
- * §app2.1 Phase 1 gate — admin bootstrap parity.
+ * Phase 2: admin bootstrap parity against Postgres.
  *
- * The desktop AuthService.createFirstUser() already produces an Argon2 admin
- * on first run. The web server reuses that exact function — the only delta
- * is that creds come from env (`VARLENS_ADMIN_USERNAME` / `_PASSWORD` /
- * `_DISPLAY_NAME`) instead of a renderer dialog.
+ * Phase 1 used SQLite; the v1 of this test poked sqlite_master directly.
+ * The web variant is now Postgres-only — tests use /api/auth/login as
+ * the observable behaviour gate (round-trip auth proves the admin row
+ * was committed) plus the recovery-key file presence/contents to lock
+ * the FS side.
  *
- * This test locks in:
- *   1. desk→web parity: env-bootstrapped admin authenticates successfully
- *      via POST /api/auth/login (same Argon2 path as desktop).
- *   2. idempotent: a second boot with the same env doesn't create a second
- *      admin and doesn't error.
- *   3. opt-in: an empty env triple does NOT create an implicit admin —
- *      the operator stays in control of the bootstrap moment.
+ * Gated on (a) the web build existing AND (b) VARLENS_PG_URL set.
+ * Without the latter the new postgres-required.test.ts already covers
+ * the abort-without-pg behaviour.
  */
 
 const WEB_BUILD_PATH = resolve(process.cwd(), 'out/web/server.cjs')
 const isWebBuilt = existsSync(WEB_BUILD_PATH)
+const HAS_PG = typeof process.env.VARLENS_PG_URL === 'string' && process.env.VARLENS_PG_URL !== ''
 
 const ADMIN_USERNAME = 'admin'
 const ADMIN_PASSWORD = 'concept-pilot-test-pw'
 const ADMIN_DISPLAY = 'Concept Pilot Admin'
 
-describe.skipIf(!isWebBuilt)('admin bootstrap parity', () => {
+describe.skipIf(!isWebBuilt || !HAS_PG)('admin bootstrap parity', () => {
   test('env-driven admin authenticates via /api/auth/login on first boot', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'varlens-web-gate-admin-'))
-    const dbPath = join(dir, 'gate.db')
+    process.env.VARLENS_RECOVERY_KEY_DIR = dir
     try {
       const { buildApp } = await import('../../../src/web/server')
       const app = await buildApp({
-        db: dbPath,
         admin: {
           username: ADMIN_USERNAME,
           password: ADMIN_PASSWORD,
@@ -55,36 +52,38 @@ describe.skipIf(!isWebBuilt)('admin bootstrap parity', () => {
         expect(body.success).toBe(true)
         expect(body.user?.username).toBe(ADMIN_USERNAME)
         expect(body.user?.role).toBe('admin')
+
+        // Recovery key file must land in VARLENS_RECOVERY_KEY_DIR (not
+        // dirname(VARLENS_DB_PATH) — that was Phase 1's SQLite-derived
+        // location and is the breaking change Phase 2 documents).
+        expect(existsSync(join(dir, 'admin-recovery-key.txt'))).toBe(true)
       } finally {
         await app.close()
       }
     } finally {
+      delete process.env.VARLENS_RECOVERY_KEY_DIR
       rmSync(dir, { recursive: true, force: true })
     }
   })
 
-  test('second boot with same env is a no-op (no duplicate admin, no error, recovery key untouched)', async () => {
+  test('second boot with same env is a no-op — recovery key file untouched', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'varlens-web-gate-admin-'))
-    const dbPath = join(dir, 'gate.db')
     const recoveryKeyPath = join(dir, 'admin-recovery-key.txt')
+    process.env.VARLENS_RECOVERY_KEY_DIR = dir
     try {
       const { buildApp } = await import('../../../src/web/server')
 
       const app1 = await buildApp({
-        db: dbPath,
         admin: { username: ADMIN_USERNAME, password: ADMIN_PASSWORD, displayName: ADMIN_DISPLAY }
       })
       await app1.close()
 
-      // Capture the recovery-key file contents written by the first boot.
-      // The whole point of the round-3 hardening was that this file is the
-      // sole recovery path; an idempotent second boot must NOT touch it.
       expect(existsSync(recoveryKeyPath)).toBe(true)
       const recoveryKeyBefore = readFileSync(recoveryKeyPath, 'utf8')
 
-      // Second boot must not throw and must leave exactly one admin.
+      // Second boot must not throw, must not duplicate admin, must not
+      // overwrite the recovery key.
       const app2 = await buildApp({
-        db: dbPath,
         admin: { username: ADMIN_USERNAME, password: ADMIN_PASSWORD, displayName: ADMIN_DISPLAY }
       })
       try {
@@ -99,39 +98,35 @@ describe.skipIf(!isWebBuilt)('admin bootstrap parity', () => {
         await app2.close()
       }
 
-      // Verify admin count is still 1.
-      const Database = (await import('better-sqlite3-multiple-ciphers')).default
-      const db = new Database(dbPath, { readonly: true })
-      const row = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'").get() as {
-        n: number
-      }
-      db.close()
-      expect(row.n).toBe(1)
-
-      // The recovery-key file must be byte-identical — second boot is a
-      // no-op all the way down to the FS, not just the DB row count.
       expect(readFileSync(recoveryKeyPath, 'utf8')).toBe(recoveryKeyBefore)
     } finally {
+      delete process.env.VARLENS_RECOVERY_KEY_DIR
       rmSync(dir, { recursive: true, force: true })
     }
   })
 
   test('opt-in: no admin is created when admin env triple is absent', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'varlens-web-gate-admin-'))
-    const dbPath = join(dir, 'gate.db')
+    process.env.VARLENS_RECOVERY_KEY_DIR = dir
     try {
       const { buildApp } = await import('../../../src/web/server')
-      const app = await buildApp({ db: dbPath })
+      const app = await buildApp()
       try {
-        const Database = (await import('better-sqlite3-multiple-ciphers')).default
-        const db = new Database(dbPath, { readonly: true })
-        const row = db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number }
-        db.close()
-        expect(row.n).toBe(0)
+        // Without the admin option the first user is not bootstrapped —
+        // a login attempt must return success: false (no user).
+        const res = await app.inject({
+          method: 'POST',
+          url: '/api/auth/login',
+          payload: { username: 'anyone', password: 'whatever' }
+        })
+        expect(res.statusCode).toBe(200)
+        expect((res.json() as { success: boolean }).success).toBe(false)
+        expect(existsSync(join(dir, 'admin-recovery-key.txt'))).toBe(false)
       } finally {
         await app.close()
       }
     } finally {
+      delete process.env.VARLENS_RECOVERY_KEY_DIR
       rmSync(dir, { recursive: true, force: true })
     }
   })

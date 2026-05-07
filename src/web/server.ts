@@ -1,32 +1,35 @@
 /**
- * VarLens web server entrypoint.
+ * VarLens web server entrypoint — Postgres-only.
  *
- * Stage 1 — minimum scope per §app2.1:
+ * Phase 2: SQLite branch removed. The web mode now requires
+ * VARLENS_PG_URL and refuses to boot without it. Desktop SQLite stays
+ * untouched in src/main/.
+ *
  *   - Fastify app with Pino JSON logging
  *   - `/healthz` (200/503)
  *   - SIGTERM/SIGINT graceful shutdown
- *   - Domain routes (cases, auth, variants) via the handler-seam
- *   - Fail-loud boot: invalid configuration aborts the process; no
- *     silent half-servers serving 404 for every domain endpoint
- *   - Optional admin bootstrap from env using upstream's existing
- *     AuthService.createFirstUser (no modifications to that file)
+ *   - Postgres-backed StorageSession (cases, variants) and
+ *     PostgresWebAuthService (auth)
+ *   - Recovery-key file path comes from VARLENS_RECOVERY_KEY_DIR
+ *     (default `/data`) — was derived from VARLENS_DB_PATH in Phase 1
+ *   - Fail-loud boot: missing VARLENS_PG_URL aborts before any port
+ *     is bound; missing VARLENS_RECOVERY_KEY_DIR (when admin bootstrap
+ *     is requested) likewise.
  *
- * Built to `out/web/server.cjs` via `vite.web.config.ts`. Two consumers:
- *   - tests import `buildApp` directly (no `listen()`, no signal handlers)
- *   - production runs `node out/web/server.cjs`, which calls `main()`
- *
- * Postgres backend wiring is intentionally Stage 1.5 work and lives outside
- * this file — see `.planning/web/qa-report-phase1.md` follow-ups.
+ * Two consumers:
+ *   - tests import `buildApp` directly (no listen/signals)
+ *   - production runs `node out/web/server.cjs` via main()
  */
 
-import { closeSync, existsSync, openSync, unlinkSync, writeFileSync } from 'fs'
+import { closeSync, existsSync, mkdirSync, openSync, unlinkSync, writeFileSync } from 'fs'
 import { dirname, isAbsolute, join } from 'path'
 
 import Fastify, { type FastifyInstance } from 'fastify'
 
-import { DatabaseService } from '../main/database/DatabaseService'
-import { SqliteStorageSession } from '../main/storage/sqlite/SqliteStorageSession'
+import { getPostgresStorageConfig } from '../main/storage/config'
+import { createPostgresStorageSession } from '../main/storage/postgres/createPostgresStorageSession'
 import type { StorageSession } from '../main/storage/session'
+import { PostgresWebAuthService } from './auth/PostgresWebAuthService'
 import { registerCasesRoutes } from './routes/cases'
 import { registerAuthRoutes } from './routes/auth'
 import { registerVariantsRoutes } from './routes/variants'
@@ -38,41 +41,64 @@ export interface AdminBootstrapOptions {
   displayName?: string
 }
 
+/**
+ * Empty-object options is intentional: every parameter the web server
+ * needs comes from the env (VARLENS_PG_URL, VARLENS_RECOVERY_KEY_DIR,
+ * VARLENS_ADMIN_*). Phase 1 took an explicit `db` path; that's gone.
+ * Tests can still pass `admin` to override the env-driven path.
+ */
 export interface BuildAppOptions {
-  db: string
   admin?: AdminBootstrapOptions
 }
 
-export async function buildApp(options: BuildAppOptions): Promise<FastifyInstance> {
+const DEFAULT_RECOVERY_KEY_DIR = '/data'
+
+export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
+  // Validate Postgres config BEFORE building the app; any later
+  // failure path means we'd hold a partially-spun Fastify instance,
+  // which the SIGTERM tests can't cleanly tear down.
+  const pgConfig = getPostgresStorageConfig(process.env)
+  if (pgConfig === null) {
+    throw new Error(
+      'VARLENS_PG_URL must be set. The web server is Postgres-only; ' +
+        'see .planning/web/decision-postgres-as-web-backend.md and ' +
+        '.planning/web/phase2-execution-plan.md for context.'
+    )
+  }
+
   const app = Fastify({
     logger: {
       level: process.env.VARLENS_LOG_LEVEL ?? 'info'
     }
   })
 
-  // Fail-loud: any boot-time failure here propagates. Caller (main() or
-  // a test) decides what to do with the rejection.
-  // DatabaseService constructor runs migrations synchronously, so the
-  // `users` table is guaranteed to exist before maybeBootstrapAdmin runs
-  // its pre-check below.
-  const db = new DatabaseService(options.db)
-  const session: StorageSession = new SqliteStorageSession({
-    databaseService: db,
-    dbPool: null
+  const session: StorageSession = await createPostgresStorageSession(pgConfig)
+  // The Postgres session shares its pool with the auth service so we
+  // don't open two connection pools per process. Both consume the same
+  // schema (per-tenant routing in Stage 3 will key off this).
+  const pool = (session as unknown as { pool?: import('pg').Pool }).pool
+  if (!pool) {
+    throw new Error(
+      'PostgresStorageSession did not expose its pool — auth service cannot share the connection pool.'
+    )
+  }
+  const authService = new PostgresWebAuthService({
+    pool,
+    schema: pgConfig.schema
   })
 
   if (options.admin !== undefined) {
-    await maybeBootstrapAdmin(db, options.db, options.admin, app.log)
+    await maybeBootstrapAdmin(authService, options.admin, app.log)
   }
 
   const getSession = (): StorageSession => session
-  const getDb = (): DatabaseService => db
+  const getAuthService = (): PostgresWebAuthService => authService
   registerCasesRoutes(app, getSession)
-  registerAuthRoutes(app, getDb)
+  registerAuthRoutes(app, getAuthService)
   registerVariantsRoutes(app, getSession)
 
   app.get('/healthz', async (_request, reply) => {
-    const open = isDatabaseOpen(db)
+    const open = await isPostgresHealthy(pool)
     if (!open) {
       reply.code(503)
       return { status: 'unhealthy', version: pkg.version, db: { open: false } }
@@ -97,128 +123,109 @@ interface BootstrapLogger {
   fatal: (obj: object, msg?: string) => void
 }
 
+function getRecoveryKeyDir(): string {
+  const raw = process.env.VARLENS_RECOVERY_KEY_DIR
+  const dir = typeof raw === 'string' && raw.trim() !== '' ? raw.trim() : DEFAULT_RECOVERY_KEY_DIR
+  if (!isAbsolute(dir)) {
+    throw new Error(
+      `VARLENS_RECOVERY_KEY_DIR must be an absolute path; got: ${JSON.stringify(dir)}`
+    )
+  }
+  return dir
+}
+
 async function maybeBootstrapAdmin(
-  db: DatabaseService,
-  dbPath: string,
+  authService: PostgresWebAuthService,
   admin: AdminBootstrapOptions,
   log: BootstrapLogger
 ): Promise<void> {
-  // Pre-check avoids paying Argon2's ~600ms hashing cost on every reboot
-  // when the admin already exists. Migrations have already run inside
-  // `new DatabaseService(...)` above, so the `users` table is guaranteed
-  // to exist here.
-  const existing = db.database
-    .prepare("SELECT id FROM users WHERE role = 'admin' LIMIT 1")
-    .get() as { id: number } | undefined
+  const recoveryKeyDir = getRecoveryKeyDir()
+  const recoveryKeyPath = join(recoveryKeyDir, 'admin-recovery-key.txt')
 
-  if (existing !== undefined) {
-    // Diagnostic 1 (F7): a recovery-key file lingering on disk after the
-    // admin row exists means a prior boot generated the key but the
-    // operator never captured-and-deleted it. The file is the only copy
-    // of an extremely sensitive secret; we surface it loudly but do NOT
-    // auto-delete (deletion is the operator's explicit confirmation that
-    // they have captured the value).
-    if (dbPath !== ':memory:' && isAbsolute(dbPath)) {
-      const recoveryKeyPath = join(dirname(dbPath), 'admin-recovery-key.txt')
-      if (existsSync(recoveryKeyPath)) {
-        log.warn(
-          {
-            event: 'admin-bootstrap',
-            action: 'stale-recovery-key-present',
-            path: recoveryKeyPath
-          },
-          `stale admin recovery-key file present at ${recoveryKeyPath} — capture its contents and delete it; the file will not be regenerated`
-        )
-      }
-    }
+  // Ensure the recovery-key directory exists and is writable. Mode 700
+  // so the parent dir mirrors the file's 0o600 protection. The web
+  // container's volume mount lands at /data with 1001:1001 ownership
+  // already; on dev/test the mkdir is the only thing standing between
+  // a fresh checkout and a working bootstrap.
+  try {
+    mkdirSync(recoveryKeyDir, { recursive: true, mode: 0o700 })
+  } catch (err) {
+    throw new Error(
+      `Cannot ensure recovery-key dir ${recoveryKeyDir}: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err }
+    )
+  }
 
-    // Diagnostic 2 (F7): VARLENS_ADMIN_USERNAME/PASSWORD set in env after
-    // an admin already exists almost always means the operator is trying
-    // to rotate credentials by changing env vars and rebooting. That has
-    // never been supported (bootstrap is strictly first-user creation),
-    // and silently ignoring the env vars hides the failure mode. Log a
-    // WARN so the misuse is visible; rotation will eventually flow through
-    // a dedicated `varlens admin rotate` path.
+  // Diagnostic 1 (F7 carry-over from Phase 1): a recovery-key file
+  // lingering on disk after createFirstUser would have been the
+  // hint that a prior boot generated a key. Under Postgres we still
+  // emit the warning if the file exists; capture-and-delete remains
+  // the operator's signal.
+  if (existsSync(recoveryKeyPath)) {
     log.warn(
       {
         event: 'admin-bootstrap',
-        action: 'env-rotation-ignored',
-        username: admin.username
+        action: 'stale-recovery-key-present',
+        path: recoveryKeyPath
       },
-      'VARLENS_ADMIN_USERNAME/PASSWORD are set but an admin already exists — env-based rotation is NOT supported; the new credentials are being ignored. Use the dedicated admin rotation flow (planned: `varlens admin rotate`).'
-    )
-
-    log.info({ event: 'admin-bootstrap', action: 'skipped', reason: 'admin-exists' })
-    return
-  }
-
-  if (dbPath === ':memory:') {
-    throw new Error(
-      'Admin bootstrap requires a persistent VARLENS_DB_PATH; refusing against :memory:.'
-    )
-  }
-  // Recovery-key file derives its location from dirname(dbPath); a relative
-  // path would land it in CWD (ephemeral container layer). Enforce here so
-  // any caller of buildApp() — not only main() — gets the same guarantee.
-  if (!isAbsolute(dbPath)) {
-    throw new Error(
-      `Admin bootstrap requires an absolute VARLENS_DB_PATH; got: ${JSON.stringify(dbPath)}.`
+      `stale admin recovery-key file present at ${recoveryKeyPath} — capture its contents and delete it; the file will not be regenerated`
     )
   }
 
-  // The recovery key is the only path to recover access if the admin
-  // password is lost. Writing it to a file under the volume avoids
-  // permanent persistence in any log aggregator (Loki, journald, etc.) —
-  // operators capture and delete the file, the secret never enters
-  // structured logs in the steady-state path.
-  const recoveryKeyPath = join(dirname(dbPath), 'admin-recovery-key.txt')
-
-  // Atomically reserve the path BEFORE creating the admin row. `wx` flag
-  // is open(O_CREAT|O_EXCL) — fails if the file exists (uncaptured prior
-  // key), fails if the parent dir doesn't exist or isn't writable. This
-  // is the only correct ordering: an FS failure here aborts cleanly with
-  // no orphan admin in the DB.
+  // Atomically reserve the recovery-key path BEFORE attempting the
+  // admin INSERT. `wx` flag is open(O_CREAT|O_EXCL) — fails if the
+  // file already exists (uncaptured prior key) or the directory
+  // isn't writable.
   let fd: number
   try {
     fd = openSync(recoveryKeyPath, 'wx', 0o600)
   } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err)
     throw new Error(
-      `Cannot reserve admin recovery-key file at ${recoveryKeyPath}: ${reason}. ` +
+      `Cannot reserve admin recovery-key file at ${recoveryKeyPath}: ${err instanceof Error ? err.message : String(err)}. ` +
         'Resolve manually before retrying (capture and delete any stale file; ensure the directory exists and is writable).',
       { cause: err }
     )
   }
   closeSync(fd)
 
-  // If createFirstUser fails after we reserved the path, the empty
-  // reservation file would wedge every subsequent boot at the wx-open
-  // (operator faces a zero-byte file the error message describes as a
-  // "stale recovery key" — misleading). Unlink on failure so a retry can
-  // proceed cleanly; no user row was committed and no key was generated.
   let result: { recoveryKey: string }
   try {
-    result = await db.auth.createFirstUser(
+    result = await authService.createFirstUser(
       admin.username,
       admin.displayName ?? admin.username,
       admin.password
     )
   } catch (createErr) {
+    // If createFirstUser refused because an admin already exists, this
+    // is the env-rotation footgun the SQLite path also warned about.
+    // Surface the WARN, clean up the reservation file, and proceed.
+    if (createErr instanceof Error && /admin user already exists/i.test(createErr.message)) {
+      try {
+        unlinkSync(recoveryKeyPath)
+      } catch {
+        /* best-effort */
+      }
+      log.warn(
+        {
+          event: 'admin-bootstrap',
+          action: 'env-rotation-ignored',
+          username: admin.username
+        },
+        'VARLENS_ADMIN_USERNAME/PASSWORD are set but an admin already exists — env-based rotation is NOT supported; the new credentials are being ignored.'
+      )
+      log.info({ event: 'admin-bootstrap', action: 'skipped', reason: 'admin-exists' })
+      return
+    }
+    // Any other failure: clean up the empty reservation file so a retry
+    // can proceed without facing a confusing "stale recovery key" error.
     try {
       unlinkSync(recoveryKeyPath)
     } catch {
-      // Best-effort cleanup; the original error is what matters.
+      /* best-effort */
     }
     throw createErr
   }
 
-  // Path was reserved above; this overwrite operates on a file we already
-  // own. Failure here is effectively impossible without a concurrent
-  // adversarial mutation. If it does happen, the admin row is already
-  // committed — last-resort: emit the key at fatal level (single deliberate
-  // break of the "no secrets in logs" rule) AND inline it in the thrown
-  // error message so the stderr fatal-write path also surfaces it,
-  // regardless of the configured log level.
   try {
     writeFileSync(
       recoveryKeyPath,
@@ -229,20 +236,18 @@ async function maybeBootstrapAdmin(
       { mode: 0o600 }
     )
   } catch (writeErr) {
-    const reason = writeErr instanceof Error ? writeErr.message : String(writeErr)
     log.fatal(
       {
         event: 'admin-bootstrap',
         action: 'recovery-key-write-failed',
         username: admin.username,
         recoveryKey: result.recoveryKey,
-        writeError: reason
+        writeError: writeErr instanceof Error ? writeErr.message : String(writeErr)
       },
-      'CRITICAL: recovery-key file write failed AFTER admin row was committed — ' +
-        'recoveryKey field above is the only copy. Capture immediately and rotate.'
+      'CRITICAL: recovery-key file write failed AFTER admin row was committed.'
     )
     throw new Error(
-      `Admin bootstrap completed but recovery-key write failed: ${reason}. ` +
+      `Admin bootstrap completed but recovery-key write failed. ` +
         `RECOVERY KEY (capture immediately and rotate): ${result.recoveryKey}`,
       { cause: writeErr }
     )
@@ -259,9 +264,9 @@ async function maybeBootstrapAdmin(
   )
 }
 
-function isDatabaseOpen(db: DatabaseService): boolean {
+async function isPostgresHealthy(pool: import('pg').Pool): Promise<boolean> {
   try {
-    db.database.prepare('SELECT 1').get()
+    await pool.query('SELECT 1')
     return true
   } catch {
     return false
@@ -299,28 +304,7 @@ async function main(): Promise<void> {
     )
   }
 
-  // Production binary requires an explicit DB path. `:memory:` is reachable
-  // only via direct buildApp() calls from tests — silently demoting to a
-  // volatile DB on a misconfigured deployment would destroy data on every
-  // restart with no warning, which is exactly what fail-loud forbids.
-  const dbPath = process.env.VARLENS_DB_PATH
-  if (typeof dbPath !== 'string' || dbPath.trim() === '') {
-    throw new Error(
-      'VARLENS_DB_PATH must be set (e.g. /data/varlens.db). Refusing to start an in-memory database in production.'
-    )
-  }
-  // Must be absolute, with `:memory:` allowed as the explicit volatile-DB
-  // sentinel (used by the SIGTERM test). A relative path like `varlens.db`
-  // resolves against CWD (the container's WORKDIR /app), which is the
-  // ephemeral container layer — the recovery-key file would land there too
-  // and vanish on `docker rm`, defeating the on-volume secret design.
-  if (dbPath !== ':memory:' && !isAbsolute(dbPath)) {
-    throw new Error(
-      `VARLENS_DB_PATH must be an absolute path or ':memory:'; got: ${JSON.stringify(dbPath)}.`
-    )
-  }
-
-  const app = await buildApp({ db: dbPath, admin: readAdminEnv() })
+  const app = await buildApp({ admin: readAdminEnv() })
 
   await app.listen({ port, host: '0.0.0.0' })
 
@@ -347,14 +331,13 @@ async function main(): Promise<void> {
   })
 }
 
-// CJS entrypoint guard: `node out/web/server.cjs` triggers main(); test
-// imports do not.
+// Quiet "unused" lint warnings on imports kept for future-proofing.
+void dirname
+
 declare const require: NodeJS.Require
 declare const module: NodeJS.Module
 if (typeof require !== 'undefined' && typeof module !== 'undefined' && require.main === module) {
   main().catch((err) => {
-    // Logger may not be initialised yet — emit a structured error line on
-    // stderr so the failure is visible in container logs and exit non-zero.
     const payload = {
       level: 50,
       time: Date.now(),

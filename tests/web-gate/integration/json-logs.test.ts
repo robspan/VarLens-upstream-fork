@@ -13,8 +13,9 @@ import { resolve } from 'path'
 
 const WEB_BUILD_PATH = resolve(process.cwd(), 'out/web/server.cjs')
 const isWebBuilt = existsSync(WEB_BUILD_PATH)
+const HAS_PG = typeof process.env.VARLENS_PG_URL === 'string' && process.env.VARLENS_PG_URL !== ''
 
-describe.skipIf(!isWebBuilt)('JSON logs to stdout', () => {
+describe.skipIf(!isWebBuilt || !HAS_PG)('JSON logs to stdout', () => {
   test('every log line during a normal request is valid JSON with level/time/msg', async () => {
     const { buildApp } = await import('../../../src/web/server')
 
@@ -30,7 +31,7 @@ describe.skipIf(!isWebBuilt)('JSON logs to stdout', () => {
     }) as typeof process.stdout.write
 
     try {
-      const app = await buildApp({ db: ':memory:' })
+      const app = await buildApp()
       await app.inject({ method: 'GET', url: '/healthz' })
       await app.close()
     } finally {

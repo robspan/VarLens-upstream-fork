@@ -345,6 +345,23 @@ restore-drill:
 	@if [ -z "$(call IPV4)" ]; then echo "No server present."; exit 1; fi
 	IP=$(call IPV4) SSH_KEY=$(SSH_KEY) ./scripts/restore-drill.sh
 
+# Read-only snapshot listing — uses operator's RESTIC_S3_* and the
+# SOPS-stored restic password to query the bucket directly. Does not
+# require a live server. Used to inform "should I run pilot-recover?"
+# when the existing-backups guard fires.
+restore-list:
+	@if [ -z "$(RESTIC_S3_ACCESS_KEY)" ] || [ -z "$(RESTIC_S3_SECRET_KEY)" ]; then \
+		echo "Set RESTIC_S3_ACCESS_KEY and RESTIC_S3_SECRET_KEY first (or source web-deploy/.env)."; \
+		exit 1; \
+	fi
+	./scripts/restore-list.sh
+
+# Recover a fresh server from the latest restic snapshot. Provisions a
+# new cpx32, restores /mnt/data, restores PostgreSQL from the dump,
+# brings up the stack, runs smoke + parity check.
+pilot-recover:
+	./scripts/pilot-recover.sh
+
 smoke:
 	@if [ -z "$(call IPV4)" ]; then echo "No server present."; exit 1; fi
 	@IP=$(call IPV4); \

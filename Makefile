@@ -391,6 +391,14 @@ pilot-ssh: ## SSH into the pilot server as the deploy user
 	$(require_web_mode)
 	$(MAKE) -C web-deploy ssh
 
+pilot-recover: ## Recover from latest restic snapshot onto a freshly-provisioned server
+	$(require_web_mode)
+	$(MAKE) -C web-deploy pilot-recover
+
+pilot-restore-list: ## List restic snapshots in the configured bucket (read-only)
+	$(require_web_mode)
+	$(MAKE) -C web-deploy restore-list
+
 install-hooks: ## Install repo git hooks into .git/hooks/ (currently: pre-commit)
 	@mkdir -p .git/hooks
 	@ln -sf ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit

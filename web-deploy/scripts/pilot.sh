@@ -687,6 +687,58 @@ main() {
   printf '  cheaper than failing mid-provision after a server has been billed for.\n'
   preflight
 
+  # ---- Backup-protection guard --------------------------------------------
+  # If a restic repository is already initialised in the configured bucket
+  # AND we are NOT resuming an in-progress bring-up, refuse to provision a
+  # fresh server. Reason: a fresh `make pilot` against pre-existing
+  # backups means the operator either (a) wants to RESTORE those backups
+  # onto a new server (use pilot-recover), or (b) genuinely wants a clean
+  # slate and accepts that the snapshots stay in the bucket as orphans
+  # (set VARLENS_IGNORE_EXISTING_BACKUPS=1).
+  #
+  # Without this guard, an operator who tore down their last server and
+  # absent-mindedly re-ran `make pilot` would get a fresh empty server
+  # with no automatic offer of recovery — they would only realise their
+  # backups still exist when they go looking, and may have already done
+  # writes against the empty server. The block forces a deliberate
+  # decision before any cloud resource is touched.
+  if (( resuming == 0 )) && [[ -n "${RESTIC_S3_ACCESS_KEY:-}" && -n "${RESTIC_S3_SECRET_KEY:-}" ]]; then
+    local backup_probe
+    backup_probe="$("$WEB_DEPLOY/scripts/check-backups.py" 2>/dev/null || echo "no")"
+    if [[ "$backup_probe" != "no" ]] && [[ "$backup_probe" == *'"present": true'* ]]; then
+      if [[ "${VARLENS_IGNORE_EXISTING_BACKUPS:-0}" != "1" ]]; then
+        local bucket_name
+        bucket_name="$(printf '%s' "$backup_probe" | sed -n 's/.*"bucket":[[:space:]]*"\([^"]*\)".*/\1/p')"
+        printf '\n%s═══════════════════════════════════════════════════════════════════%s\n' "$YELLOW" "$RESET"
+        printf '%s  ⚠  EXISTING BACKUPS DETECTED — fresh provision blocked  ⚠%s\n' "$YELLOW$BOLD" "$RESET"
+        printf '%s═══════════════════════════════════════════════════════════════════%s\n\n' "$YELLOW" "$RESET"
+        printf '  An initialised restic repository exists in the configured bucket:\n'
+        printf '    %sBucket:%s   %s\n\n' "$BOLD" "$RESET" "$bucket_name"
+        printf '  Provisioning a fresh server now would leave those snapshots orphaned\n'
+        printf '  and let the operator do real writes against an empty database without\n'
+        printf '  realising prior data is recoverable.\n\n'
+        printf '  %sChoose explicitly:%s\n\n' "$BOLD" "$RESET"
+        printf '  %s1. Restore the existing backups onto a new server%s  %s(safest)%s\n' "$GREEN$BOLD" "$RESET" "$DIM" "$RESET"
+        printf '       %smake pilot-recover%s\n' "$BOLD" "$RESET"
+        printf '       Provisions a fresh cpx32, restores /mnt/data from the latest\n'
+        printf '       restic snapshot, restores PostgreSQL from the embedded pg_dump,\n'
+        printf '       brings up the stack, runs smoke + parity check.\n\n'
+        printf '  %s2. List the snapshots before deciding%s\n' "$BOLD" "$RESET"
+        printf '       %smake -C web-deploy restore-list%s    %s(read-only; needs SOPS)%s\n\n' "$BOLD" "$RESET" "$DIM" "$RESET"
+        printf '  %s3. Discard the backups deliberately%s — destroy them first, then provision:\n' "$RED$BOLD" "$RESET"
+        printf '       %smake -C web-deploy destroy-bucket DESTROY_BUCKET_ARGS=--yes && make pilot%s\n\n' "$BOLD" "$RESET"
+        printf '  %s4. Override (only if you understand the consequences):%s\n' "$RED" "$RESET"
+        printf '       %sVARLENS_IGNORE_EXISTING_BACKUPS=1 make pilot%s\n' "$BOLD" "$RESET"
+        printf '       This provisions a fresh server and leaves the existing\n'
+        printf '       snapshots in the bucket as orphans (still restoreable later\n'
+        printf '       via the SOPS-stored password). Use only when you are sure the\n'
+        printf '       data on the snapshots is not needed by this new deployment.\n\n'
+        exit 2
+      fi
+      printf '%s  ⚠ VARLENS_IGNORE_EXISTING_BACKUPS=1 — provisioning despite existing snapshots in bucket%s\n\n' "$YELLOW" "$RESET"
+    fi
+  fi
+
   # Each step: number, total, label, retry-command, then the make target.
   # Underlying tool output streams through to stdout — no swallowing.
   printf '\n%s  Step 1 talks to the Hetzner Cloud API to create the actual VM,%s\n' "$DIM" "$RESET"

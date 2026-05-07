@@ -353,6 +353,60 @@ make -C web-deploy logs       # tails /var/log/cloud-init-output.log
 For deeper scenario-driven recovery, see
 [`web-deploy/docs/incident-runbook.md`](web-deploy/docs/incident-runbook.md).
 
+## Recovery — restoring a server from backup
+
+The backup story is the actual fallback we tell people: if everything
+goes wrong, the restic snapshots in Hetzner Object Storage can rebuild
+a working deployment. Two flows:
+
+**Inspect what's in the bucket** (read-only, needs `RESTIC_S3_*` env +
+local SOPS):
+
+```bash
+make pilot-restore-list
+```
+
+Lists every snapshot with timestamp, hostname, size. Use this to confirm
+backups exist before deciding to recover.
+
+**Recover onto a fresh server** (provisions + restores end-to-end):
+
+```bash
+make pilot-recover
+```
+
+This:
+
+1. Pre-flights and verifies a restic repository exists in the bucket.
+2. Provisions a new Hetzner cpx32 (same as `make pilot`).
+3. Stages `/etc/restic/env` on the new server (decrypts the password
+   from `secrets/restic.yaml` via SOPS).
+4. `restic restore latest --target /` — pulls `/mnt/data` back from
+   the most recent snapshot.
+5. Brings up the Compose stack against the restored data.
+6. `pg_restore` the embedded `varlens-<ts>.dump` into a fresh
+   PostgreSQL container (the dump is the consistent recovery point;
+   raw PGDATA is excluded from snapshots on purpose).
+7. Smoke test + parity check (compares restored table set against the
+   dump's manifest).
+
+End state: a new server functionally equivalent to the old one, minus
+any writes that happened after the most recent backup ran (i.e. since
+the last `restic-backup.service` run — at most 24h on the default
+nightly timer).
+
+**Safety guard.** `make pilot` refuses to provision a fresh server when
+the bucket already contains a restic repository. You'll see:
+
+> ⚠ EXISTING BACKUPS DETECTED — fresh provision blocked
+
+with four explicit options: recover, list, deliberately discard
+(separate command), or override (`VARLENS_IGNORE_EXISTING_BACKUPS=1
+make pilot`). Without this, an operator who tore down their last
+server and absent-mindedly re-ran `make pilot` would get a fresh
+empty server with no offer of recovery — and might do real writes
+against the empty database before realising prior data was reachable.
+
 ## Tearing down
 
 ```bash

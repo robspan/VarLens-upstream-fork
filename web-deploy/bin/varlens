@@ -686,7 +686,27 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+_WEB_MODE_GATE_MSG = (
+    "varlens deploy CLI requires VARLENS_WEB=1.\n"
+    "Web mode is opt-in by design (see AGENTS.md > Mode toggle): the project's\n"
+    "default operation is the desktop Electron app, and managing the web pilot\n"
+    "infrastructure (Hetzner servers, restic backups, GHCR images) is a\n"
+    "separate, deliberate context.\n\n"
+    "Re-run with the toggle set:\n"
+    "    VARLENS_WEB=1 ./bin/varlens <args>\n"
+    "or, from the repo root:\n"
+    "    VARLENS_WEB=1 make pilot-status   # etc.\n"
+)
+
+
+def _enforce_web_mode_gate() -> None:
+    if os.environ.get("VARLENS_WEB") != "1":
+        sys.stderr.write(_WEB_MODE_GATE_MSG)
+        sys.exit(2)
+
+
 def main(argv: list[str] | None = None) -> None:
+    _enforce_web_mode_gate()
     args = build_parser().parse_args(argv)
     args.func(args.env, args)
 

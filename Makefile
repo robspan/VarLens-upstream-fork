@@ -345,19 +345,31 @@ sync-upstream: ## Fetch upstream and merge upstream/main into local main + VarLe
 # plus POSTGRES_PASSWORD if profile=postgres), then run `make pilot`.
 #
 
+# Web-mode gate for the pilot-* targets. The deploy CLI manages live
+# Hetzner / restic / GHCR resources; treating it as available in
+# desktop-default mode would let a typo fire a real cloud action.
+# Operators have to opt in with VARLENS_WEB=1 — same toggle that
+# extends `dev` / `test` / `ci` to include the web layer.
+require_web_mode = @if [ "$(VARLENS_WEB)" != "1" ]; then printf '\033[31mvarlens deploy CLI requires VARLENS_WEB=1.\033[0m\nWeb mode is opt-in (see AGENTS.md > Mode toggle). Re-run as:\n    VARLENS_WEB=1 make $@\n' >&2; exit 2; fi
+
 pilot: ## Concept Pilot one-shot: pre-flight, provision, stack-up, backup, monitoring, smoke (with live status)
+	$(require_web_mode)
 	@web-deploy/scripts/pilot.sh
 
 pilot-down: ## Tear down the Concept Pilot Hetzner environment (banner + interactive confirmation)
+	$(require_web_mode)
 	@web-deploy/scripts/pilot-down.sh
 
 pilot-status: ## Show Hetzner server status (running / stopped / absent)
+	$(require_web_mode)
 	$(MAKE) -C web-deploy status
 
 pilot-smoke: ## Re-run the smoke probes against the running pilot
+	$(require_web_mode)
 	$(MAKE) -C web-deploy smoke
 
 pilot-ssh: ## SSH into the pilot server as the deploy user
+	$(require_web_mode)
 	$(MAKE) -C web-deploy ssh
 
 install-hooks: ## Install repo git hooks into .git/hooks/ (currently: pre-commit)

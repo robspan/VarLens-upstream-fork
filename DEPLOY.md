@@ -141,9 +141,10 @@ Step 6 is the bring-up itself, repeated per environment.
 
 ## The bring-up
 
-From the repo root, after `web-deploy/.env` is populated:
+From the repo root, after `web-deploy/.env` is populated. The deploy CLI is gated on the `VARLENS_WEB=1` mode toggle (web mode is opt-in by design — see [`AGENTS.md`](AGENTS.md) > Mode toggle); export it once per shell, or prefix every command:
 
 ```bash
+export VARLENS_WEB=1
 make pilot
 ```
 

@@ -1,6 +1,12 @@
 # Runbook — Concept Pilot
 
-Day-to-day. All commands run from the repo root.
+Day-to-day. All commands run from the repo root and require `VARLENS_WEB=1` (export it once per shell, or prefix every invocation):
+
+```bash
+export VARLENS_WEB=1
+```
+
+Without it the deploy CLI refuses to run — web mode is opt-in by design (see [`AGENTS.md`](../../AGENTS.md) > Mode toggle).
 
 | Need                          | Command                                                       |
 | ----------------------------- | ------------------------------------------------------------- |

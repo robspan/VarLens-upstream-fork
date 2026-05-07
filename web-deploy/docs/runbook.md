@@ -6,19 +6,27 @@ Plan reference: Stage 1 infrastructure plan §infrastruktur4 Phase 1 requires Ru
 
 ## Quick Reference
 
+The repo-root `Makefile` exposes pilot operations as `pilot-*` targets. The lower-level scoped targets (`stack-up`, `stack-down`, `setup-backup`, …) live in `web-deploy/Makefile` and are reached either by `make -C web-deploy <target>` or by running `make` from inside `web-deploy/`.
+
+From repo root:
+
 | Action | Command |
 |---|---|
-| Show stack status | `make status && ssh -i ~/.ssh/varlens-tofu deploy@$(make ip) 'cd /mnt/data/app && docker compose ps'` |
-| Live logs of all containers | `make stack-logs` |
-| SSH into the server | `make ssh` |
-| Restart the stack | `make stack-up` |
-| Stop the stack | `make stack-down` |
-| Stop the server (volume preserved) | `make stop` |
-| Start the server | `make start` |
-| Smoke test against the live system | `make smoke` |
-| Run the code linter locally | `make lint` |
-| Tear everything down (server + volume + all) | `make down` |
-| cloud-init log on the server | `make logs` |
+| One-shot fresh bring-up | `make pilot` |
+| Server status (running / stopped / absent) | `make pilot-status` |
+| Server IP (machine-friendly) | `make pilot-status \| awk '/IPv4:/ {print $2}'` |
+| SSH into the server | `make pilot-ssh` |
+| Re-run smoke probes | `make pilot-smoke` |
+| Tear everything down (server + volume + all) | `make pilot-down` |
+| Container ps on the server | `IP=$(make pilot-status \| awk '/IPv4:/ {print $2}') && ssh -i ~/.ssh/varlens-tofu deploy@$IP 'cd /mnt/data/app && docker compose ps'` |
+| Live logs of all containers | `make -C web-deploy stack-logs` |
+| Restart the stack | `make -C web-deploy stack-up` |
+| Restart with self-signed TLS | `make -C web-deploy stack-up TLS=internal` |
+| Stop the stack | `make -C web-deploy stack-down` |
+| Stop the server (volume preserved) | `make -C web-deploy stop` |
+| Start the server (volume preserved) | `make -C web-deploy start` |
+| cloud-init log on the server | `make -C web-deploy logs` |
+| Re-run backup setup | `make -C web-deploy setup-backup SETUP_BACKUP_ARGS=--default-reuse-when-resumable` |
 
 ## Scenario 0: Fresh Bring-up (Cold-start Cycle)
 

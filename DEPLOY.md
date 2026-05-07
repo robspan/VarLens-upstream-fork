@@ -51,43 +51,79 @@ one-off invocations don't need to write to disk.
 
 ## First-time setup
 
+The full path from "no Hetzner account" to "ready to run `make pilot`".
+Browser tabs first (one-time per account), then terminal.
+
+### A. In the browser (one-time per account)
+
+1. **Create a Hetzner Cloud account** at https://accounts.hetzner.com
+   and add a verified billing address.
+
+2. **Hetzner Cloud API token** —
+   Hetzner Console → Project → Security → API Tokens →
+   _Generate API Token_. Permission: **Read & Write**. Copy the token;
+   it's shown only at generation.
+
+3. **Hetzner Object Storage S3 keypair** —
+   Hetzner Console → Security → S3 Credentials → _Generate Credentials_.
+   Copy both `access_key` and `secret_key` immediately; the secret is
+   shown only at generation. (Hetzner does not expose an API for this
+   step — see `setup-backup.py` for why.)
+
+4. **GitHub Personal Access Token** —
+   GitHub → Settings → Developer settings → Personal access tokens →
+   _Tokens (classic)_ → _Generate new token (classic)_. Scope:
+   `read:packages`. Copy the `ghp_...` token.
+
+### B. In the terminal (per clone)
+
 ```bash
-# 1. Clone and check out the web branch
+# 5. Clone and check out the web branch
 git clone https://github.com/robspan/VarLens.git
 cd VarLens
 git checkout VarLens-Web
 
-# 2. Generate the SSH key the pilot uses to reach the server
+# 6. Generate the SSH key the pilot uses to reach the server
 ssh-keygen -t ed25519 -f ~/.ssh/varlens-tofu -C varlens-tofu -N ""
 
-# 3. Populate Tofu variables
+# 7. Populate Tofu variables (uses the API token from step 2)
 cp web-deploy/tofu/environments/pilot/terraform.tfvars.example \
    web-deploy/tofu/environments/pilot/terraform.tfvars
 chmod 600 web-deploy/tofu/environments/pilot/terraform.tfvars
 $EDITOR web-deploy/tofu/environments/pilot/terraform.tfvars
-#   set hcloud_token = "..."
-#   set ssh_pubkey   = "ssh-ed25519 AAAA... varlens-tofu"
-#   (the pubkey is the contents of ~/.ssh/varlens-tofu.pub)
+#   set hcloud_token = "<token from step 2>"
+#   set ssh_pubkey   = contents of ~/.ssh/varlens-tofu.pub
 
-# 4. Initialize Tofu providers (one-time per clone)
+# 8. Initialize Tofu providers (one-time per clone)
 tofu -chdir=web-deploy/tofu/environments/pilot init
 
-# 5. Generate Hetzner S3 keypair (one-time, per account)
-#    Hetzner Console → Security → S3 Credentials → Generate
-#    Copy both keys before closing — the secret is shown only at generation.
-
-# 6. Populate operator secrets (Layer 2)
+# 9. Populate operator secrets (uses tokens from steps 3 + 4)
 cp web-deploy/.env.example web-deploy/.env
 chmod 600 web-deploy/.env
 $EDITOR web-deploy/.env
-#   set GHCR_TOKEN  (PAT with read:packages)
-#   set RESTIC_S3_ACCESS_KEY + RESTIC_S3_SECRET_KEY  (from step 5)
-#   set VARLENS_ADMIN_USERNAME + VARLENS_ADMIN_PASSWORD (one-shot bootstrap)
+#   GHCR_TOKEN              = <PAT from step 4>
+#   RESTIC_S3_ACCESS_KEY    = <access_key from step 3>
+#   RESTIC_S3_SECRET_KEY    = <secret_key from step 3>
+#   VARLENS_ADMIN_USERNAME  = admin (or what you prefer)
+#   VARLENS_ADMIN_PASSWORD  = a strong password (≥16 chars)
 ```
 
-The example tfvars file lists the optional overrides
-(`server_type`, `server_location`, `data_volume_size_gb`, …); leave the
+The example tfvars file lists optional overrides
+(`server_type`, `server_location`, `data_volume_size_gb`, …); leave
 defaults unless told otherwise.
+
+### Summary: what the operator does, end to end
+
+1. Hetzner account + billing
+2. Hetzner API token → tfvars
+3. Hetzner S3 keypair → `web-deploy/.env`
+4. GitHub PAT (read:packages) → `web-deploy/.env`
+5. Local clone, ssh-keygen, tofu init, fill `web-deploy/.env`
+6. `make pilot`
+
+Steps 1–4 are once per Hetzner+GitHub account pair.
+Step 5 is once per clone of the repo.
+Step 6 is the bring-up itself, repeated per environment.
 
 ## The bring-up
 

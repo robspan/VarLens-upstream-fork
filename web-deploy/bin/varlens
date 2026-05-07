@@ -256,7 +256,34 @@ def action_up(env: str, args) -> None:
 def action_down(env: str, args) -> None:
     if env == "pilot":
         confirm_typed("pilot", args.yes)
-    tofu(env, "destroy", "-auto-approve")
+    # tofu destroy -auto-approve dumps the full plan with every
+    # attribute's `attr = "x" -> null` diff before the operations —
+    # noise we don't want once the operator already typed "pilot" to
+    # confirm. Filter to the per-resource progress lines + summary.
+    # Set VARLENS_TOFU_VERBOSE=1 to see the raw output instead.
+    if os.environ.get("VARLENS_TOFU_VERBOSE") == "1":
+        tofu(env, "destroy", "-auto-approve")
+        return
+    cmd = ["tofu", f"-chdir={env_dir(env)}", "destroy", "-auto-approve"]
+    proc = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
+    )
+    keep = re.compile(
+        r"^("
+        r"hcloud_\S+: (?:Destroying|Destruction complete|Still destroying)"
+        r"|Plan: \d"
+        r"|Destroy complete!"
+        r"|Error:|Warning:"
+        r")"
+    )
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        if keep.match(line):
+            sys.stdout.write(line)
+            sys.stdout.flush()
+    rc = proc.wait()
+    if rc != 0:
+        fail(f"tofu destroy exited {rc} (re-run with VARLENS_TOFU_VERBOSE=1 for full output)")
 
 
 def action_stop(env: str, args) -> None:

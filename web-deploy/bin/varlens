@@ -436,10 +436,21 @@ def _stack_up(ip: str, key: Path) -> None:
 
 
 def _smoke(ip: str, key: Path) -> None:
-    checks: list[tuple[str, object, object, bool]] = []
+    # Tuple shape: (label, expected, got, ok, tls_warn).
+    # tls_warn signals an HTTPS probe that returned 0 (unreachable) — the
+    # smoke run treats this as a soft warning rather than a hard failure
+    # because the dominant cause is "Caddy hasn't issued a usable cert
+    # yet" (LE rate limit on a recycled Hetzner IPv4, ACME still in flight,
+    # self-signed fallback). Ports + bind-shape probes are unaffected.
+    checks: list[tuple[str, object, object, bool, bool]] = []
 
     def check(label: str, expected, got):
-        checks.append((label, expected, got, got == expected))
+        checks.append((label, expected, got, got == expected, False))
+
+    def check_tls(label: str, expected, got):
+        ok = got == expected
+        tls_warn = (not ok) and got == 0
+        checks.append((label, expected, got, ok, tls_warn))
 
     proc = ssh_run(ip, key, "echo yes", total_timeout=30, ephemeral_host=True)
     check("ssh", "yes", proc.stdout.strip())
@@ -474,7 +485,7 @@ def _smoke(ip: str, key: Path) -> None:
             code = exc.code
         except Exception:
             code = 0
-        check(f"https {path}", expected, code)
+        check_tls(f"https {path}", expected, code)
 
     # F5: structural bind-shape probes. The previous "direct port closed"
     # checks treated curl rc=000 as "ok closed", but rc=000 also covers
@@ -499,12 +510,21 @@ def _smoke(ip: str, key: Path) -> None:
     )
     check("running services", "4", proc.stdout.strip())
 
-    for label, expected, got, ok in checks:
-        marker = "ok  " if ok else "FAIL"
+    for label, expected, got, ok, tls_warn in checks:
+        if ok:
+            marker = "ok  "
+        elif tls_warn:
+            marker = "WARN"
+        else:
+            marker = "FAIL"
         print(f"  {marker} {label}: expected {expected!r}, got {got!r}")
-    failed = [c for c in checks if not c[3]]
-    if failed:
-        raise RuntimeError(f"{len(failed)} smoke check(s) failed")
+    hard_failed = [c for c in checks if not c[3] and not c[4]]
+    tls_warned = [c for c in checks if c[4]]
+    if hard_failed:
+        raise RuntimeError(f"{len(hard_failed)} smoke check(s) failed")
+    if tls_warned:
+        print(f"  ({len(tls_warned)} HTTPS probe(s) WARNed — TLS not ready; "
+              f"check `docker compose logs caddy` if cert state is unexpected)")
 
 
 def _run_setup_backup(env: str, ip: str) -> bool:

@@ -409,10 +409,180 @@ preflight() {
 }
 
 # ---- Step runner -----------------------------------------------------------
+#
+# Atomic step contract: each numbered step is a (check, run, verify) triplet.
+#
+#   check  — precondition test. Returns 0 if the step is already done and
+#            correct on the live system; 1 if work is needed. The
+#            orchestrator skips run + verify when check returns 0, so
+#            re-runs of `make pilot` against a partial deploy converge
+#            without redoing finished work.
+#
+#   run    — the action. Called only when check returned 1. Must fail loudly
+#            (non-zero exit) on any error; the orchestrator translates that
+#            into a step_fail with the named retry command.
+#
+#   verify — postcondition test. Run after `run` returns 0; asserts the
+#            action actually took effect on the live system. Catches the
+#            case where a tool exits 0 but didn't do what we asked (silent
+#            partial success — Caddy started but cert ACME failed, etc.).
+#
+# Why this shape: re-runs are first-class. The status the orchestrator
+# prints next to each step is one of: "skipped (already done)", "did the
+# work, verified", or "failed at <phase>" — operators can read the run
+# log and know exactly what changed.
 
 declare -i OVERALL_START
 OVERALL_START=$(date +%s)
 
+# Run a step against the (check, run, verify) contract above.
+#   $1: step number, $2: total, $3: label, $4: retry-hint command
+#   $5: check_fn, $6: run_fn, $7: verify_fn
+run_atomic_step() {
+  local n="$1" total="$2" label="$3" retry="$4"
+  local check_fn="$5" run_fn="$6" verify_fn="$7"
+  step_begin "$n" "$total" "$label"
+  local step_start
+  step_start=$(date +%s)
+
+  # Precondition: skip if check passes.
+  if "$check_fn" 2>/dev/null; then
+    local elapsed=$(($(date +%s) - step_start))
+    printf '%s  ✓ already done — skipped (%s)%s\n' "$GREEN" "$(human_time "$elapsed")" "$RESET"
+    return 0
+  fi
+
+  # Action.
+  if ! "$run_fn"; then
+    local elapsed=$(($(date +%s) - step_start))
+    step_fail "$label" "$elapsed" "$retry"
+    printf '%s     Failure phase: run%s\n' "$DIM" "$RESET"
+    exit 1
+  fi
+
+  # Postcondition: did the action actually take effect?
+  if ! "$verify_fn"; then
+    local elapsed=$(($(date +%s) - step_start))
+    step_fail "$label" "$elapsed" "$retry"
+    printf '%s     Failure phase: verify (action ran but the postcondition is not%s\n' "$DIM" "$RESET"
+    printf '%s     satisfied — the tool exited 0 but did not actually do what we asked).%s\n' "$DIM" "$RESET"
+    exit 1
+  fi
+
+  local elapsed=$(($(date +%s) - step_start))
+  step_ok "$elapsed"
+}
+
+# ---- Per-step (check, run, verify) implementations -------------------------
+
+# Helper: SSH as deploy and run a command, returning its exit code.
+_ssh() {
+  local ip="$1"; shift
+  local key="${SSH_KEY:-$HOME/.ssh/varlens-tofu}"
+  ssh -i "$key" -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new \
+    deploy@"$ip" "$@"
+}
+
+# Helper: extract the IPv4 from tfstate (avoids the slow `tofu output` path).
+_pilot_ipv4() {
+  local tfstate="$WEB_DEPLOY/tofu/environments/pilot/terraform.tfstate"
+  [[ -f "$tfstate" ]] || return 1
+  grep -oE '"ipv4":\{"value":"[0-9.]+"' "$tfstate" 2>/dev/null \
+    | head -1 | grep -oE '[0-9]{1,3}(\.[0-9]{1,3}){3}'
+}
+
+# Step 1: Provision Hetzner server.
+step1_check() {
+  # Done iff: tofu state has resources AND we can SSH AND cloud-init bootstrap marker exists.
+  local tfstate="$WEB_DEPLOY/tofu/environments/pilot/terraform.tfstate"
+  [[ -f "$tfstate" ]] || return 1
+  grep -q '"resources":\[\]' "$tfstate" 2>/dev/null && return 1
+  local ip; ip="$(_pilot_ipv4)" || return 1
+  [[ -n "$ip" ]] || return 1
+  _ssh "$ip" 'test -f /var/lib/cloud/instance/varlens-bootstrap.ok' >/dev/null 2>&1
+}
+step1_run() {
+  ( cd "$WEB_DEPLOY" && make up ) || return 1
+  local ip; ip="$(_pilot_ipv4)"
+  [[ -z "$ip" ]] && { printf '%s    ✗ no IPv4 in tofu output%s\n' "$RED" "$RESET" >&2; return 1; }
+  wait_for_server_ready "$ip"
+}
+step1_verify() {
+  local ip; ip="$(_pilot_ipv4)" || return 1
+  _ssh "$ip" 'test -f /var/lib/cloud/instance/varlens-bootstrap.ok' >/dev/null 2>&1
+}
+
+# Step 2: Compose stack up.
+step2_check() {
+  # Done iff: all 5 services are running healthy AND /healthz returns 200.
+  local ip; ip="$(_pilot_ipv4)" || return 1
+  local count
+  count=$(_ssh "$ip" 'cd /mnt/data/app 2>/dev/null && sudo docker compose ps --status running --services 2>/dev/null | grep -cE "^(caddy|uptime-kuma|dozzle|app|postgres)$"' 2>/dev/null || echo 0)
+  [[ "$count" = "5" ]] || return 1
+  curl -kfsS --max-time 5 -o /dev/null "https://$ip/varlens/healthz" 2>/dev/null
+}
+step2_run() {
+  ( cd "$WEB_DEPLOY" && make stack-up )
+}
+step2_verify() {
+  local ip; ip="$(_pilot_ipv4)" || return 1
+  # Allow up to 30s for healthz to come up post-recreate.
+  local attempts=0
+  while (( attempts < 6 )); do
+    if curl -kfsS --max-time 5 -o /dev/null "https://$ip/varlens/healthz" 2>/dev/null; then
+      return 0
+    fi
+    sleep 5
+    attempts=$((attempts + 1))
+  done
+  return 1
+}
+
+# Step 3: Restic backup configured + first snapshot taken.
+step3_check() {
+  # Done iff: /etc/restic/env exists with RESTIC_PASSWORD AND ≥1 snapshot.
+  local ip; ip="$(_pilot_ipv4)" || return 1
+  _ssh "$ip" 'sudo grep -q "^RESTIC_PASSWORD=." /etc/restic/env 2>/dev/null && \
+              sudo bash -c "set -a; . /etc/restic/env; restic snapshots --no-lock --json 2>/dev/null | head -c 5 | grep -q ^\\["' \
+    >/dev/null 2>&1
+}
+step3_run() {
+  ( cd "$WEB_DEPLOY" && make setup-backup SETUP_BACKUP_ARGS=--default-reuse-when-resumable )
+}
+step3_verify() {
+  step3_check
+}
+
+# Step 4: Uptime Kuma admin + heartbeat monitor configured.
+step4_check() {
+  # Done iff: Kuma DB has an admin user AND the varlens-backup push monitor exists.
+  # Kuma persists to /mnt/data/uptime-kuma/kuma.db; query it directly via sqlite3.
+  local ip; ip="$(_pilot_ipv4)" || return 1
+  _ssh "$ip" '
+    sudo docker exec uptime-kuma sqlite3 /app/data/kuma.db \
+      "SELECT (SELECT COUNT(*) FROM user) || \" \" || (SELECT COUNT(*) FROM monitor WHERE name=\"varlens-backup\");" 2>/dev/null
+  ' 2>/dev/null | grep -qE '^[1-9][0-9]* [1-9]'
+}
+step4_run() {
+  ( cd "$WEB_DEPLOY" && make setup-monitoring )
+}
+step4_verify() {
+  step4_check
+}
+
+# Step 5: Smoke test — atomic by definition (it IS the verification).
+step5_check() { return 1; }   # always run — it's the test, not a thing to skip
+step5_run() {
+  ( cd "$WEB_DEPLOY" && make smoke )
+}
+step5_verify() {
+  # `make smoke` exits non-zero on any probe fail; reaching here means
+  # all 12 probes passed. No additional postcondition beyond that.
+  return 0
+}
+
+# Legacy wrapper — kept so anything that still calls run_step keeps working
+# without atomic semantics. New steps should use run_atomic_step.
 run_step() {
   local n="$1" total="$2" label="$3" retry="$4"
   shift 4
@@ -454,7 +624,7 @@ main() {
   # to use a targeted command, not `make pilot` again.
   if (( resuming == 1 )); then
     local existing_ip
-    existing_ip="$(cd "$WEB_DEPLOY" && make -s ip 2>/dev/null | grep -oE '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' || echo "")"
+    existing_ip="$(_pilot_ipv4 || echo "")"
     if [[ -n "$existing_ip" ]] && detect_healthy_pilot "$existing_ip"; then
       banner "✓ Concept Pilot is already live and healthy"
       printf '  Detected at %shttps://%s%s — refusing to re-run.\n\n' "$BOLD" "$existing_ip" "$RESET"
@@ -524,66 +694,49 @@ main() {
   printf '%s  the firewall rules. Cloud-init then runs on first boot to install%s\n' "$DIM" "$RESET"
   printf '%s  Docker, restic, and the deploy user. You will see Tofu naming each%s\n' "$DIM" "$RESET"
   printf '%s  resource as it gets created — that is normal progress, not an error.%s\n' "$DIM" "$RESET"
-  run_step 1 5 \
+  run_atomic_step 1 5 \
     "Provisioning Hetzner server (cpx32 + 50 GB volume + IPv4) [~3 min, watch tofu output below]" \
     "make -C web-deploy up" \
-    make up
-
-  # Bridge step between provisioning and stack-up. NOT counted as a numbered
-  # step — operators conceptually think "provision then bring up the stack"
-  # and this is just plumbing between those two intentions.
-  printf '\n%s    Server is created, but cloud-init is still running its first-boot%s\n' "$DIM" "$RESET"
-  printf '%s    tasks (~1-2 min: apt update, restic install, app dirs). The next%s\n' "$DIM" "$RESET"
-  printf '%s    dots are just SSH retries while the host comes online — normal.%s\n' "$DIM" "$RESET"
-  local ip
-  ip="$(cd "$WEB_DEPLOY" && make -s ip 2>/dev/null | grep -oE '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' || echo "")"
-  if [[ -z "$ip" ]]; then
-    printf '%s    ✗ no IPv4 in tofu output — is the server actually provisioned?%s\n' "$RED" "$RESET"
-    exit 1
-  fi
-  if ! wait_for_server_ready "$ip"; then
-    printf '\n%s  Step 2 prerequisites failed. The server is up but not ready.%s\n' "$RED$BOLD" "$RESET"
-    exit 1
-  fi
+    step1_check step1_run step1_verify
 
   printf '\n%s  Step 2 rsyncs the compose/ tree to /mnt/data/app on the server,%s\n' "$DIM" "$RESET"
   printf '%s  logs in to ghcr.io with the operator GHCR_TOKEN, pulls the five%s\n' "$DIM" "$RESET"
   printf '%s  container images (Caddy reverse proxy, Postgres, the VarLens app,%s\n' "$DIM" "$RESET"
   printf '%s  Uptime Kuma for monitoring, Dozzle for log viewing) and starts them.%s\n' "$DIM" "$RESET"
   printf '%s  Caddy is what gives you the HTTPS URL the operator hits.%s\n' "$DIM" "$RESET"
-  run_step 2 5 \
+  run_atomic_step 2 5 \
     "Bringing up Compose stack (Caddy + Kuma + Dozzle + VarLens) [~1 min]" \
     "make -C web-deploy stack-up" \
-    make stack-up
+    step2_check step2_run step2_verify
 
   printf '\n%s  Step 3 creates the restic-encrypted backup target in Hetzner Object%s\n' "$DIM" "$RESET"
   printf '%s  Storage (or reuses an existing one), writes /etc/restic/env on the%s\n' "$DIM" "$RESET"
   printf '%s  server, and runs the FIRST snapshot. From now on a systemd timer fires%s\n' "$DIM" "$RESET"
   printf '%s  the backup nightly. Postgres is dumped with pg_dump first, then restic%s\n' "$DIM" "$RESET"
   printf '%s  snapshots /mnt/data — so the dump is the consistent recovery point.%s\n' "$DIM" "$RESET"
-  run_step 3 5 \
+  run_atomic_step 3 5 \
     "Configuring restic backup (Hetzner Object Storage)" \
     "make -C web-deploy setup-backup SETUP_BACKUP_ARGS=--default-reuse-when-resumable" \
-    make setup-backup SETUP_BACKUP_ARGS=--default-reuse-when-resumable
+    step3_check step3_run step3_verify
 
   printf '\n%s  Step 4 sets up Uptime Kuma — the small monitoring dashboard you reach%s\n' "$DIM" "$RESET"
   printf '%s  at https://<ip>/ . Creates the admin user, then registers a heartbeat%s\n' "$DIM" "$RESET"
   printf '%s  push monitor that the nightly backup script pings on success. If the%s\n' "$DIM" "$RESET"
   printf '%s  backup ever fails, Kuma flips that monitor red and you see it.%s\n' "$DIM" "$RESET"
-  run_step 4 5 \
+  run_atomic_step 4 5 \
     "Configuring monitoring (Uptime Kuma admin + heartbeat)" \
     "make -C web-deploy setup-monitoring" \
-    make setup-monitoring
+    step4_check step4_run step4_verify
 
   printf '\n%s  Step 5 is a 12-probe end-to-end check: SSH reachability, HTTP→HTTPS%s\n' "$DIM" "$RESET"
   printf '%s  redirect, the welcome page, all Kuma routes, the auth gate on the logs%s\n' "$DIM" "$RESET"
   printf '%s  endpoint, the VarLens /healthz, and that internal-only ports (Kuma,%s\n' "$DIM" "$RESET"
   printf '%s  Dozzle, Postgres) are bound to localhost only. If anything is wrong%s\n' "$DIM" "$RESET"
   printf '%s  with the deploy, this is where you find out — see smoke-remediation.md.%s\n' "$DIM" "$RESET"
-  run_step 5 5 \
+  run_atomic_step 5 5 \
     "Smoke test (12 probes — SSH, HTTPS routes, ports, services)" \
     "make -C web-deploy smoke" \
-    make smoke
+    step5_check step5_run step5_verify
 
   # Post-smoke TLS trust probe. The smoke test uses `curl -k`; this probe
   # is strict so we surface Let's Encrypt rate-limit fallbacks (self-signed)
@@ -592,7 +745,7 @@ main() {
   # Also extract the actual issuer string so the warning explicitly names
   # whether we are on Caddy's local CA, the LE staging CA, or a real cert.
   local probe_ip
-  probe_ip="$(cd "$WEB_DEPLOY" && make -s ip 2>/dev/null | grep -oE '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' || echo "")"
+  probe_ip="$(_pilot_ipv4 || echo "")"
   local cert_issuer=""
   if [[ -n "$probe_ip" ]]; then
     cert_issuer="$(echo | openssl s_client -servername "$probe_ip" -connect "$probe_ip:443" 2>/dev/null \
@@ -636,7 +789,7 @@ main() {
 
   local total=$(($(date +%s) - OVERALL_START))
   local ip
-  ip="$(cd "$WEB_DEPLOY" && make -s ip 2>/dev/null || echo "unknown")"
+  ip="$(_pilot_ipv4 || echo "unknown")"
 
   banner "✓ Concept Pilot is live in $(human_time "$total")"
   printf '  %sFour URLs you can hit right now (replace <ip> if copy-pasting):%s\n\n' "$BOLD" "$RESET"

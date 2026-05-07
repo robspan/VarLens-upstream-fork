@@ -12,12 +12,7 @@ import {
   defaultPasswordProvider,
   type PasswordProvider
 } from '../../auth/providers/argon2-provider'
-
-/** Max failed login attempts before lockout */
-const MAX_FAILED_ATTEMPTS = 5
-
-/** Lockout duration in minutes */
-const LOCKOUT_DURATION_MINUTES = 15
+import { LOCKOUT_DURATION_MINUTES, MAX_FAILED_ATTEMPTS } from './auth-constants'
 
 interface User {
   id: number

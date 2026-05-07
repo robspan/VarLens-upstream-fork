@@ -127,11 +127,24 @@ def tofu_filtered(env: str, *args: str) -> None:
 
 
 def tofu_output(env: str, key: str) -> str | None:
-    # `tofu output -raw <key>` writes its "Warning: No outputs found"
-    # message to STDOUT (not stderr) and still exits 0 when state has no
-    # outputs — e.g. immediately after `tofu destroy`. -no-color strips
-    # the ANSI escape so the sniff for "No outputs found" is reliable
-    # across colour modes.
+    # Fast path: read the tfstate file directly. `tofu output -raw <key>`
+    # can take seconds on some setups (state-lock contention, provider
+    # plugin checks) which makes empty-state detection feel like a hang.
+    # Reading the JSON state is sub-millisecond.
+    import json
+    tfstate = env_dir(env) / "terraform.tfstate"
+    if tfstate.is_file():
+        try:
+            with tfstate.open() as f:
+                data = json.load(f)
+            outputs = data.get("outputs") or {}
+            value = outputs.get(key, {}).get("value") if isinstance(outputs, dict) else None
+            return str(value) if value not in (None, "") else None
+        except (OSError, json.JSONDecodeError):
+            pass  # fall through to tofu invocation
+
+    # Fallback: invoke tofu. Same warning-on-stdout sentinel-sniff as
+    # before to handle the empty-state case gracefully.
     proc = subprocess.run(
         ["tofu", f"-chdir={env_dir(env)}", "output", "-no-color", "-raw", key],
         capture_output=True, text=True,

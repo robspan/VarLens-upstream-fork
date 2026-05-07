@@ -32,7 +32,22 @@ human_time() {
 # Show what's about to be destroyed.
 banner "VarLens Concept Pilot — TEAR DOWN"
 
-current_ip="$(cd "$WEB_DEPLOY" && make -s ip 2>/dev/null | grep -oE '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' || true)"
+# Empty-state detection reads the tfstate directly instead of invoking
+# tofu — `tofu output -raw` against an empty state can take seconds on
+# some setups (state lock contention, plugin checks), and we want this
+# script to feel instant when there's nothing to destroy. Falls back to
+# the (slower) make-ip-grep path if the tfstate isn't where we expect.
+TFSTATE="$WEB_DEPLOY/tofu/environments/pilot/terraform.tfstate"
+current_ip=""
+if [[ -f "$TFSTATE" ]]; then
+  if grep -q '"resources":\[\]' "$TFSTATE" 2>/dev/null; then
+    current_ip=""
+  else
+    current_ip="$(grep -oE '"value":[[:space:]]*"[0-9]{1,3}(\.[0-9]{1,3}){3}"' "$TFSTATE" | head -1 | grep -oE '[0-9]{1,3}(\.[0-9]{1,3}){3}' || true)"
+  fi
+else
+  current_ip="$(cd "$WEB_DEPLOY" && make -s ip 2>/dev/null | grep -oE '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' || true)"
+fi
 if [[ -z "$current_ip" ]]; then
   printf '  %sNo server in local Tofu state.%s Nothing to destroy locally.\n' "$YELLOW" "$RESET"
   printf '  %sNote:%s if a server exists on Hetzner outside this state (e.g. wiped local state),\n' "$DIM" "$RESET"

@@ -3,28 +3,28 @@
 Procedural backup setup for the Concept Pilot.
 
 Steps:
-1. Read hcloud_token from terraform.tfvars (or HCLOUD_TOKEN env).
-2. Get-or-create S3 credentials for the Hetzner project via Cloud API.
-   Falls back to RESTIC_S3_ACCESS_KEY/SECRET env vars if API not supported.
-3. Create the Object Storage Bucket via S3 API (PUT with AWS V4 signature).
-4. Generate a strong restic password (32 bytes from os.urandom, base64).
-5. SSH to the server and write /etc/restic/env with all values.
-6. Trigger initial backup, wait for completion.
-7. Print summary, suggest `make restore-drill` for verification.
+1. Read RESTIC_S3_ACCESS_KEY + RESTIC_S3_SECRET_KEY from env. These must
+   be generated ONCE per Hetzner account at Console > Security > S3
+   Credentials and pasted into web-deploy/.env. Hetzner does NOT expose
+   an API for S3 credential creation (we probed live 2026-05-07; both
+   /v1/object_storage/credentials POST and GET return 404). The earlier
+   speculative API path was removed once that was confirmed.
+2. Create the Object Storage Bucket via S3 API (PUT with AWS V4 signature).
+3. Generate a strong restic password (32 bytes from os.urandom, base64).
+4. SSH to the server and write /etc/restic/env with all values.
+5. Trigger initial backup, wait for completion.
+6. Print summary, suggest `make restore-drill` for verification.
 
 Stdlib only - no external dependencies. Adopter-friendly: one command brings
 the Concept Pilot from "infra deployed" to "backups running and verified".
 
 Usage:
-    HCLOUD_TOKEN=...       (or via terraform.tfvars)
-    SERVER_IP=...          (or via tofu output)
-    SSH_KEY=~/.ssh/...     (default ~/.ssh/varlens-tofu)
+    RESTIC_S3_ACCESS_KEY=...   (required; from Hetzner Console)
+    RESTIC_S3_SECRET_KEY=...   (required; shown once at generation)
+    SERVER_IP=...              (or via tofu output)
+    SSH_KEY=~/.ssh/...         (default ~/.ssh/varlens-tofu)
 
     ./scripts/setup-backup.py
-
-Optional override (skip auto S3-credential creation):
-    RESTIC_S3_ACCESS_KEY=...
-    RESTIC_S3_SECRET_KEY=...
 """
 from __future__ import annotations
 
@@ -32,27 +32,22 @@ import base64
 import datetime
 import hashlib
 import hmac
-import json
 import os
-import re
 import secrets
 import shutil
 import subprocess
 import sys
 import tempfile
 import urllib.error
-import urllib.parse
 import urllib.request
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TFVARS = REPO_ROOT / "tofu" / "environments" / "pilot" / "terraform.tfvars"
 TOFU_DIR = REPO_ROOT / "tofu" / "environments" / "pilot"
 
 DEFAULT_REGION = "fsn1"
 DEFAULT_ENDPOINT = "fsn1.your-objectstorage.com"
 DEFAULT_BUCKET = "varlens-pilot-backup"
-DEFAULT_CRED_NAME = "varlens-pilot-restic"
 DEFAULT_SSH_KEY = Path.home() / ".ssh" / "varlens-tofu"
 
 
@@ -63,58 +58,6 @@ def log(msg: str) -> None:
 def fail(msg: str, code: int = 1) -> "None":
     print(f"[setup-backup] ERROR: {msg}", file=sys.stderr, flush=True)
     sys.exit(code)
-
-
-def read_tfvar(key: str) -> str | None:
-    if not TFVARS.exists():
-        return None
-    pattern = re.compile(rf'^\s*{re.escape(key)}\s*=\s*"([^"]+)"\s*$', re.MULTILINE)
-    match = pattern.search(TFVARS.read_text())
-    return match.group(1) if match else None
-
-
-def hcloud_request(token: str, method: str, path: str, body: dict | None = None) -> tuple[int, dict]:
-    url = f"https://api.hetzner.cloud{path}"
-    data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(
-        url,
-        method=method,
-        data=data,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "User-Agent": "varlens-setup-backup/1.0",
-        },
-    )
-    try:
-        with urllib.request.urlopen(req) as resp:
-            return resp.status, json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        body = e.read()
-        try:
-            return e.code, json.loads(body)
-        except json.JSONDecodeError:
-            return e.code, {"raw": body.decode("utf-8", errors="replace")}
-
-
-def hcloud_create_s3_credentials(token: str, name: str) -> dict | None:
-    """Create S3 credentials via Hetzner Cloud API. Returns None if API not supported."""
-    log(f"Creating S3 credentials via Hetzner Cloud API ({name})")
-    code, body = hcloud_request(token, "POST", "/v1/object_storage/credentials", {"name": name})
-    if code == 404:
-        log("Hetzner Cloud API has not yet exposed the /v1/object_storage/credentials endpoint.")
-        return None
-    if code in (200, 201):
-        return body
-    log(f"  Response {code}: {body}")
-    return None
-
-
-def hcloud_list_s3_credentials(token: str) -> list[dict]:
-    code, body = hcloud_request(token, "GET", "/v1/object_storage/credentials")
-    if code in (200, 201) and isinstance(body, dict):
-        return body.get("object_storage_credentials", []) or body.get("credentials", [])
-    return []
 
 
 # ----- AWS V4 signing (stdlib only) -----
@@ -533,10 +476,6 @@ def main() -> None:
         else:
             fail(f"Unknown argument: {arg}")
 
-    token = os.environ.get("HCLOUD_TOKEN") or read_tfvar("hcloud_token")
-    if not token:
-        fail("HCLOUD_TOKEN not set and not found in terraform.tfvars")
-
     ip = os.environ.get("SERVER_IP")
     if not ip:
         try:
@@ -569,32 +508,29 @@ def main() -> None:
     env_exists = bool(existing_password)
 
     # --- S3 credentials ---
+    # Hetzner does not expose an API for S3 credential creation; the keypair
+    # is generated once per account in Console > Security > S3 Credentials
+    # and pasted into web-deploy/.env. pilot.sh's preflight gate aborts
+    # before provisioning when these are missing, so reaching this script
+    # without them is an unusual direct invocation. Fail-loud here so
+    # the operator gets the same console-click instructions either way.
     access = os.environ.get("RESTIC_S3_ACCESS_KEY")
     secret = os.environ.get("RESTIC_S3_SECRET_KEY")
-
-    if access and secret:
-        log("Using S3 credentials from environment variables (skipping Cloud API creation)")
-    else:
-        creds = hcloud_create_s3_credentials(token, DEFAULT_CRED_NAME)
-        if creds is not None:
-            access = (creds.get("object_storage_credential") or creds).get("access_key")
-            secret = (creds.get("object_storage_credential") or creds).get("secret_key")
-            if access and secret:
-                log(f"  S3 credentials created, access key {access[:8]}...")
-            else:
-                fail(f"Hetzner API response contains no access key: {creds}")
-        else:
-            print("\n" + "=" * 70)
-            print("Manual step required: the Hetzner Cloud API has not yet exposed the")
-            print("S3 credentials endpoint. Please do this once in the console:")
-            print()
-            print("  Hetzner Console > Security > S3 Credentials > Generate")
-            print()
-            print("Then rerun:")
-            print()
-            print("  RESTIC_S3_ACCESS_KEY=... RESTIC_S3_SECRET_KEY=... make setup-backup")
-            print("=" * 70)
-            sys.exit(2)
+    if not (access and secret):
+        print("\n" + "=" * 70)
+        print("RESTIC_S3_ACCESS_KEY / RESTIC_S3_SECRET_KEY required.")
+        print()
+        print("Hetzner does not expose an API for S3 credential creation.")
+        print("Generate ONCE per account:")
+        print()
+        print("  Hetzner Console > Security > S3 Credentials > Generate")
+        print()
+        print("Paste both values into web-deploy/.env, then rerun:")
+        print()
+        print("  make pilot   # or: make -C web-deploy setup-backup")
+        print("=" * 70)
+        sys.exit(2)
+    log(f"Using S3 credentials from environment (access key {access[:8]}...)")
 
     # --- PREFLIGHT step 2: bucket and repo status ---
     log(f"Checking bucket {bucket} on {endpoint}")

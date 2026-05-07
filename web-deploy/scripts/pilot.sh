@@ -255,13 +255,20 @@ preflight() {
     printf '    %sExport before running:%s export GHCR_TOKEN=ghp_...\n' "$DIM" "$RESET"
   fi
 
-  # 7. Hetzner S3 creds — required by setup-backup (Hetzner does not yet
-  # automate S3-credential generation via API; they must come from env)
+  # 7. Hetzner S3 creds — REQUIRED. Hetzner does not expose an API for
+  # S3 credential creation (probed live 2026-05-07: /v1/object_storage/
+  # credentials returns 404 for both POST and GET). The keypair has to
+  # be generated once per account in the console; everything downstream
+  # (bucket creation, restic repo) is then automated. Failing here at
+  # preflight saves a 3-minute Hetzner provisioning + admin-bootstrap
+  # cycle that would otherwise abort at step 3.
   if [[ -n "${RESTIC_S3_ACCESS_KEY:-}" && -n "${RESTIC_S3_SECRET_KEY:-}" ]]; then
     printf '  %s✓%s RESTIC_S3_ACCESS_KEY + RESTIC_S3_SECRET_KEY present\n' "$GREEN" "$RESET"
   else
-    printf '  %s⚠%s  RESTIC_S3_* not set — setup-backup will print Console-click instructions and fail\n' "$YELLOW" "$RESET"
-    printf '    %sGenerate at:%s Hetzner Console > Security > S3 Credentials\n' "$DIM" "$RESET"
+    printf '  %s✗%s RESTIC_S3_ACCESS_KEY / RESTIC_S3_SECRET_KEY required (setup-backup needs them)\n' "$RED" "$RESET"
+    printf '    %sGenerate ONCE at:%s Hetzner Console > Security > S3 Credentials > Generate\n' "$DIM" "$RESET"
+    printf '    %sPaste both into:%s web-deploy/.env\n' "$DIM" "$RESET"
+    errors=$((errors + 1))
   fi
 
   # 8. VarLens admin bootstrap creds — non-fatal but loud. Without them

@@ -36,12 +36,12 @@ Two layers, two files. Hetzner API + SSH pubkey go into Tofu (different
 lifecycle). Everything else lives in `web-deploy/.env` so an operator
 fills in **one file** instead of re-exporting shell vars per session.
 
-| Credential                                    | Where to generate                                               | Scope / role         | Where it goes locally                                                                                                                                                                     |
-| --------------------------------------------- | --------------------------------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Hetzner Cloud API token                       | Hetzner Console → Security → API Tokens                         | Read **& Write**     | `web-deploy/tofu/environments/pilot/terraform.tfvars`, key `hcloud_token`                                                                                                                 |
-| GitHub PAT (classic)                          | GitHub → Settings → Developer settings → Personal access tokens | `read:packages`      | `web-deploy/.env`, key `GHCR_TOKEN`                                                                                                                                                       |
-| Hetzner Object Storage S3 access key + secret | (auto-generated)                                                | (single keypair)     | **Not operator-typed.** `setup-backup.py` mints them via the Hetzner API using `hcloud_token`. `web-deploy/.env` keys `RESTIC_S3_*` exist only as a BYO override (non-Hetzner S3 target). |
-| VarLens admin username + password             | You choose. Strong password, ≥16 chars                          | First-boot bootstrap | `web-deploy/.env`, keys `VARLENS_ADMIN_USERNAME` / `_PASSWORD`                                                                                                                            |
+| Credential                                    | Where to generate                                               | Scope / role         | Where it goes locally                                                                                                                                                                                       |
+| --------------------------------------------- | --------------------------------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hetzner Cloud API token                       | Hetzner Console → Security → API Tokens                         | Read **& Write**     | `web-deploy/tofu/environments/pilot/terraform.tfvars`, key `hcloud_token`                                                                                                                                   |
+| GitHub PAT (classic)                          | GitHub → Settings → Developer settings → Personal access tokens | `read:packages`      | `web-deploy/.env`, key `GHCR_TOKEN`                                                                                                                                                                         |
+| Hetzner Object Storage S3 access key + secret | Hetzner Console → Security → S3 Credentials → Generate          | (single keypair)     | `web-deploy/.env`, keys `RESTIC_S3_ACCESS_KEY` / `RESTIC_S3_SECRET_KEY`. **Generated once per account** — Hetzner doesn't expose an API for this; everything downstream (bucket, restic repo) is automated. |
+| VarLens admin username + password             | You choose. Strong password, ≥16 chars                          | First-boot bootstrap | `web-deploy/.env`, keys `VARLENS_ADMIN_USERNAME` / `_PASSWORD`                                                                                                                                              |
 
 S3 credentials are **not** in tfvars on purpose — Tofu does not manage the
 backup bucket, the `setup-backup` step does, via the S3 API.
@@ -72,13 +72,17 @@ $EDITOR web-deploy/tofu/environments/pilot/terraform.tfvars
 # 4. Initialize Tofu providers (one-time per clone)
 tofu -chdir=web-deploy/tofu/environments/pilot init
 
-# 5. Populate operator secrets (Layer 2)
+# 5. Generate Hetzner S3 keypair (one-time, per account)
+#    Hetzner Console → Security → S3 Credentials → Generate
+#    Copy both keys before closing — the secret is shown only at generation.
+
+# 6. Populate operator secrets (Layer 2)
 cp web-deploy/.env.example web-deploy/.env
 chmod 600 web-deploy/.env
 $EDITOR web-deploy/.env
 #   set GHCR_TOKEN  (PAT with read:packages)
+#   set RESTIC_S3_ACCESS_KEY + RESTIC_S3_SECRET_KEY  (from step 5)
 #   set VARLENS_ADMIN_USERNAME + VARLENS_ADMIN_PASSWORD (one-shot bootstrap)
-#   leave RESTIC_S3_* blank — auto-generated via Hetzner API by setup-backup
 ```
 
 The example tfvars file lists the optional overrides

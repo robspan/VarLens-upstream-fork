@@ -232,10 +232,10 @@ stack-up: deploy-stack
 
 stack-down:
 	@if [ -z "$(call IPV4)" ]; then echo "No server present."; exit 1; fi
-	# On down, always include all profiles so any running postgres container
-	# is also stopped (compose ignores profile services on "up" when the
-	# profile is not active, but "down" with the profile cleans them up).
-	ssh -i $(SSH_KEY) deploy@$(call IPV4) 'cd /mnt/data/app && COMPOSE_PROFILES=postgres docker compose down'
+	# Phase 2: postgres is part of the default profile (the `postgres`
+	# profile gate was dropped). `docker compose down` brings down the
+	# whole stack without any COMPOSE_PROFILES dance.
+	ssh -i $(SSH_KEY) deploy@$(call IPV4) 'cd /mnt/data/app && docker compose down'
 
 stack-logs:
 	@if [ -z "$(call IPV4)" ]; then echo "No server present."; exit 1; fi
@@ -342,7 +342,7 @@ smoke:
 	check_tls "VarLens /varlens/healthz" "200" "$$(curl -ks -o /dev/null -w '%{http_code}' https://$$IP/varlens/healthz)"; \
 	check     "Kuma bound to localhost only"   "yes" "$$(ssh -i $(SSH_KEY) -o BatchMode=yes deploy@$$IP 'ss -tlnp 2>/dev/null | grep -qE "(127\\.0\\.0\\.1|\\[::1\\]):3001\\b" && echo yes || echo no' 2>/dev/null)"; \
 	check     "Dozzle bound to localhost only" "yes" "$$(ssh -i $(SSH_KEY) -o BatchMode=yes deploy@$$IP 'ss -tlnp 2>/dev/null | grep -qE "(127\\.0\\.0\\.1|\\[::1\\]):8080\\b" && echo yes || echo no' 2>/dev/null)"; \
-	check     "Compose stack: 4 services running" "4" "$$(ssh -i $(SSH_KEY) -o BatchMode=yes deploy@$$IP 'cd /mnt/data/app && docker compose ps --status running --services | grep -cE "^(caddy|uptime-kuma|dozzle|varlens)$$"' 2>/dev/null | tr -d ' ')"; \
+	check     "Compose stack: 5 services running" "5" "$$(ssh -i $(SSH_KEY) -o BatchMode=yes deploy@$$IP 'cd /mnt/data/app && docker compose ps --status running --services | grep -cE "^(caddy|uptime-kuma|dozzle|varlens|postgres)$$"' 2>/dev/null | tr -d ' ')"; \
 	if [ $$FAILED -eq 1 ]; then echo "=== Smoke tests failed ==="; exit 1; \
 	elif [ $$WARNED -eq 1 ]; then echo "=== Smoke tests passed with TLS warnings (HTTPS probes returned 000 — verify cert state via 'docker compose logs caddy') ==="; \
 	else echo "=== all smoke tests green ==="; fi

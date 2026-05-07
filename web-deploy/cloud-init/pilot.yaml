@@ -178,17 +178,14 @@ runcmd:
   - chown -R ${deploy_user}:${deploy_user} /mnt/data
 
   # Install the backup script. Placed in /usr/local/bin and invoked by the systemd service.
+  # Phase 2: Postgres-aware. pg_dump → restic snapshot of the dump (NOT
+  # the live PGDATA). The full implementation lives at scripts/backup.sh
+  # in the repo; this is the slimmed-down clone the cloud-init bake.
   - |
     cat > /usr/local/bin/varlens-backup.sh <<'BACKUP_SCRIPT'
     #!/usr/bin/env bash
     # Invoked by /etc/systemd/system/restic-backup.service.
-    # See scripts/backup.sh in the repository for the full implementation - this
-    # script is a slimmed-down clone with the essential steps. For more mature
-    # logging and heartbeat handling, see the repository script.
     set -euo pipefail
-    # Guard against silent data loss: if /mnt/data is not mounted (e.g. volume attach
-    # failed, mount uses nofail), restic would back up an empty directory and
-    # `restic forget --prune` would rotate away valid snapshots. Hard-abort instead.
     mountpoint -q /mnt/data || { echo "FAIL: /mnt/data is not mounted"; exit 1; }
     : "$${RESTIC_REPOSITORY:?RESTIC_REPOSITORY must be set}"
     : "$${RESTIC_PASSWORD:?RESTIC_PASSWORD must be set}"
@@ -196,29 +193,45 @@ runcmd:
     : "$${RETENTION_KEEP_DAILY:=7}"
     : "$${RETENTION_KEEP_WEEKLY:=4}"
     : "$${RETENTION_KEEP_MONTHLY:=6}"
+    : "$${POSTGRES_USER:=varlens}"
+    : "$${POSTGRES_DB:=varlens}"
+    PG_DUMP_DIR="/mnt/data/postgres-dumps"
+    PG_DUMP_LOCAL_RETENTION_DAYS=7
     if ! restic snapshots --no-lock --json >/dev/null 2>&1; then
         restic init
     fi
-    # Stale-lock heuristic: if a lock exists when this script runs, the previous
-    # backup was interrupted (likely by 03:30 reboot before the F10 fix). We're
-    # the only writer, so removing all locks is safe.
     if restic list locks --no-lock 2>/dev/null | grep -q .; then
         echo "[varlens-backup] stale lock detected, calling restic unlock --remove-all"
         restic unlock --remove-all || true
     fi
-    # Quiesce SQLite via online-backup API. Captures a transactionally
-    # consistent copy of the DB at /mnt/data/app/data/varlens.db.snapshot
-    # regardless of in-flight writers. Cheaper than stopping the container.
-    if [ -f /mnt/data/app/data/varlens.db ]; then
-        docker exec varlens sqlite3 /data/varlens.db ".backup /data/varlens.db.snapshot" \
-            || echo "[varlens-backup] WARN: sqlite quiesce failed; continuing with raw file"
+    # Phase 2 Postgres quiesce: logical pg_dump BEFORE restic snapshot.
+    # Raw /mnt/data/postgres (PGDATA) is excluded from restic — file-
+    # system snapshots of a live cluster are torn. The dump file is
+    # the consistent snapshot restic backs up.
+    mkdir -p "$$PG_DUMP_DIR"
+    PG_DUMP_FILE="$$PG_DUMP_DIR/varlens-$(date -u +%Y%m%dT%H%M%SZ).dump"
+    if docker ps --format '{{.Names}}' | grep -q '^postgres$$'; then
+        if ! docker exec postgres pg_dump \
+            --format=custom --no-owner --no-acl --compress=6 \
+            -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" > "$$PG_DUMP_FILE"; then
+            echo "[varlens-backup] ERROR: pg_dump failed"
+            rm -f "$$PG_DUMP_FILE"
+            exit 4
+        fi
+        DUMP_BYTES="$(stat -c%s "$$PG_DUMP_FILE" 2>/dev/null || echo 0)"
+        if [ "$$DUMP_BYTES" -lt 100 ]; then
+            echo "[varlens-backup] ERROR: pg_dump produced suspiciously small file ($$DUMP_BYTES bytes)"
+            rm -f "$$PG_DUMP_FILE"
+            exit 5
+        fi
+    else
+        echo "[varlens-backup] ERROR: postgres container not running — refusing to back up without quiesce"
+        exit 6
     fi
-    # Exclude the live WAL/SHM sidecars: the .snapshot above is self-contained,
-    # and the running sidecars are inconsistent with it (and with each other
-    # mid-write). Restic will still capture varlens.db itself; on restore we
-    # prefer the .snapshot file.
+    find "$$PG_DUMP_DIR" -name 'varlens-*.dump' -type f -mtime +"$$PG_DUMP_LOCAL_RETENTION_DAYS" -delete 2>/dev/null || true
     restic backup "$${BACKUP_PATHS}" --tag auto --tag "$(date +%Y-%m-%d)" \
-        --exclude '*.db-wal' --exclude '*.db-shm'
+        --exclude '/mnt/data/postgres' \
+        --exclude '/mnt/data/postgres/**'
     restic forget --keep-daily "$${RETENTION_KEEP_DAILY}" --keep-weekly "$${RETENTION_KEEP_WEEKLY}" --keep-monthly "$${RETENTION_KEEP_MONTHLY}" --prune || true
     if [ -n "$${HEARTBEAT_URL:-}" ]; then
         curl -fsS --max-time 10 --retry 3 "$${HEARTBEAT_URL}" >/dev/null || true

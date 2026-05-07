@@ -143,7 +143,7 @@ if [ "$RESULT" = PASS ]; then
     fi
 fi
 
-# 6. Verification.
+# 6. Verification (a): marker file round-trips.
 if [ "$RESULT" = PASS ]; then
     step "Verifying marker content"
     RESTORED_CONTENT=$(ssh_exec "sudo cat $RESTORE_TARGET/mnt/data/$MARKER_NAME 2>/dev/null" || echo "MISSING")
@@ -151,6 +151,42 @@ if [ "$RESULT" = PASS ]; then
         step "  -> Marker content identical"
     else
         fail "Marker content not identical (expected $MARKER_CONTENT, got $RESTORED_CONTENT)"
+    fi
+fi
+
+# 6b. Phase 2 verification: a Postgres pg_dump file lands in the snapshot.
+# The whole point of the Postgres-aware backup is that the dump exists
+# AND is readable; without this check the drill could pass while the
+# pg_dump step silently no-op'd. The dump must be non-empty AND its
+# magic bytes must identify it as a Postgres custom-format archive.
+if [ "$RESULT" = PASS ]; then
+    step "Verifying pg_dump archive in restore"
+    PG_DUMP_FILES=$(ssh_exec "sudo ls -1 $RESTORE_TARGET/mnt/data/postgres-dumps/varlens-*.dump 2>/dev/null | head -1" || echo "")
+    if [ -z "$PG_DUMP_FILES" ]; then
+        fail "No pg_dump file found in restored snapshot at $RESTORE_TARGET/mnt/data/postgres-dumps/"
+    else
+        # Postgres custom-format archives start with "PGDMP" (5 bytes).
+        # Cheap byte-level sanity check; pg_restore --list would be
+        # more thorough but requires pg_restore on the server.
+        MAGIC=$(ssh_exec "sudo head -c5 $PG_DUMP_FILES" 2>/dev/null || echo "")
+        if [ "$MAGIC" = "PGDMP" ]; then
+            step "  -> pg_dump archive present and well-formed ($PG_DUMP_FILES)"
+        else
+            fail "pg_dump archive at $PG_DUMP_FILES has wrong magic bytes (expected PGDMP, got $(printf '%q' "$MAGIC"))"
+        fi
+    fi
+fi
+
+# 6c. Phase 2 verification: the raw PGDATA must NOT be in the snapshot.
+# Backing up live PGDATA is the regression Phase 2 explicitly fixes.
+# This assertion locks in the exclude rule.
+if [ "$RESULT" = PASS ]; then
+    step "Verifying PGDATA exclusion"
+    PG_DATA_PRESENT=$(ssh_exec "sudo test -d $RESTORE_TARGET/mnt/data/postgres && echo yes || echo no" 2>/dev/null || echo unknown)
+    if [ "$PG_DATA_PRESENT" = "no" ]; then
+        step "  -> PGDATA correctly excluded from snapshot"
+    else
+        fail "Raw PGDATA present in snapshot ($PG_DATA_PRESENT) — backup excludes are not working"
     fi
 fi
 

@@ -4,7 +4,7 @@ import { fork } from 'child_process'
 import { resolve } from 'path'
 
 /**
- * Phase 1 gate — SIGTERM closes the server cleanly within 5 seconds:
+ * Phase 2 gate — SIGTERM closes the server cleanly within 5 seconds:
  * in-flight requests finish, new connections are refused, exit code 0.
  *
  * Unlike the other Layer 2 tests, this one cannot use `fastify.inject()`
@@ -12,19 +12,21 @@ import { resolve } from 'path'
  * with `child_process.fork()`, sends SIGTERM, asserts on exit code +
  * timing.
  *
- * SKIPPED until the web build target lands.
+ * Gated on (a) the web build existing AND (b) VARLENS_PG_URL being
+ * set. Phase 2's Postgres-only flip means the forked child needs a
+ * reachable Postgres or it aborts before announcing a port.
  */
 
 const WEB_BUILD_PATH = resolve(process.cwd(), 'out/web/server.cjs')
 const isWebBuilt = existsSync(WEB_BUILD_PATH)
+const HAS_PG = typeof process.env.VARLENS_PG_URL === 'string' && process.env.VARLENS_PG_URL !== ''
 
-describe.skipIf(!isWebBuilt)('SIGTERM clean shutdown', () => {
+describe.skipIf(!isWebBuilt || !HAS_PG)('SIGTERM clean shutdown', () => {
   test('SIGTERM exits 0 within 5 seconds with no in-flight loss', async () => {
     const child = fork(WEB_BUILD_PATH, [], {
       env: {
         ...process.env,
-        VARLENS_WEB_PORT: '0', // ephemeral
-        VARLENS_DB_PATH: ':memory:'
+        VARLENS_WEB_PORT: '0' // ephemeral; VARLENS_PG_URL inherited from parent
       },
       stdio: 'pipe'
     })

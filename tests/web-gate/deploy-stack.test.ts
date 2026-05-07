@@ -73,16 +73,17 @@ describe.skipIf(!existsSync(DEPLOY))('deploy-stack wiring gate', () => {
   test('Makefile smoke target probes the app /healthz', () => {
     const makefile = readFileSync(MAKEFILE, 'utf8')
     expect(makefile, 'smoke must curl /varlens/healthz').toMatch(/\/varlens\/healthz/)
-    expect(makefile, 'running-services check must include varlens (4 services)').toMatch(
-      /\(caddy\|uptime-kuma\|dozzle\|varlens\)/
-    )
+    expect(
+      makefile,
+      'running-services check must include all 5 services (Phase 2: postgres unconditional)'
+    ).toMatch(/\(caddy\|uptime-kuma\|dozzle\|varlens\|postgres\)/)
   })
 
   test('CLI bin/varlens _smoke() probes the app /healthz', () => {
     const cli = readFileSync(CLI, 'utf8')
     expect(cli, 'CLI smoke must include /varlens/healthz').toMatch(/\/varlens\/healthz/)
-    expect(cli, 'CLI services check must include varlens').toMatch(
-      /\(caddy\|uptime-kuma\|dozzle\|varlens\)/
+    expect(cli, 'CLI services check must include postgres (Phase 2: 5 services)').toMatch(
+      /\(caddy\|uptime-kuma\|dozzle\|varlens\|postgres\)/
     )
   })
 
@@ -169,6 +170,56 @@ describe.skipIf(!existsSync(DEPLOY))('deploy-stack wiring gate', () => {
       postgresMatch![0],
       'postgres service must declare a healthcheck (depends_on service_healthy needs it)'
     ).toMatch(/healthcheck:[\s\S]+?pg_isready/)
+  })
+
+  test('Phase 2: backup script does Postgres pg_dump quiesce, excludes raw PGDATA', () => {
+    // QA wave's biggest pre-prod risk: the Phase 1 backup quiesced
+    // SQLite via `.backup` and snapshotted /mnt/data wholesale. With
+    // Postgres mandatory, the live PGDATA at /mnt/data/postgres is
+    // never crash-consistent on a file-system snapshot; restic must
+    // (a) pg_dump first and (b) exclude the raw datadir from the
+    // snapshot. Lock both invariants here so a regression to "just
+    // snapshot /mnt/data" can't ship without flipping this test red.
+    const backup = readFileSync(resolve(DEPLOY, 'scripts/backup.sh'), 'utf8')
+    expect(backup, 'backup.sh must run pg_dump before restic').toMatch(
+      /docker\s+exec\s+postgres\s+pg_dump/
+    )
+    expect(backup, 'backup.sh must use the custom format (-Fc / --format=custom)').toMatch(
+      /--format=custom/
+    )
+    expect(backup, 'backup.sh must exclude raw /mnt/data/postgres from restic').toMatch(
+      /--exclude\s+['"]\/mnt\/data\/postgres['"]/
+    )
+    expect(backup, 'backup.sh must refuse to back up if postgres is not running').toMatch(
+      /postgres container not running/i
+    )
+    // The cloud-init clone must mirror the same shape.
+    const cloudInit = readFileSync(resolve(DEPLOY, 'cloud-init/pilot.yaml'), 'utf8')
+    expect(cloudInit, 'cloud-init backup script must run pg_dump').toMatch(
+      /docker exec postgres pg_dump/
+    )
+    expect(cloudInit, 'cloud-init backup must exclude raw PGDATA').toMatch(
+      /--exclude\s+['"]\/mnt\/data\/postgres['"]/
+    )
+    expect(
+      cloudInit,
+      'cloud-init backup must NOT contain the legacy SQLite .backup quiesce'
+    ).not.toMatch(/sqlite3.*\.backup/)
+  })
+
+  test('Phase 2: restore-drill verifies pg_dump archive + PGDATA exclusion', () => {
+    // The drill is the only end-to-end signal that backup is actually
+    // useful. Marker-file-only verification leaves silent-pg_dump-failure
+    // undetected. The Phase 2 drill must check the dump file exists,
+    // has the PGDMP magic, and that PGDATA was excluded.
+    const drill = readFileSync(resolve(DEPLOY, 'scripts/restore-drill.sh'), 'utf8')
+    expect(drill, 'restore-drill must verify pg_dump archive presence').toMatch(
+      /postgres-dumps\/varlens-.*\.dump/
+    )
+    expect(drill, 'restore-drill must verify PGDMP magic bytes').toMatch(/PGDMP/)
+    expect(drill, 'restore-drill must verify PGDATA was excluded').toMatch(
+      /PGDATA\s+(correctly\s+)?excluded|raw PGDATA/i
+    )
   })
 
   test('Phase 2: Makefile drops conditional postgres-profile branching', () => {

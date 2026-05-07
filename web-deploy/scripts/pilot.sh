@@ -271,7 +271,21 @@ preflight() {
     errors=$((errors + 1))
   fi
 
-  # 8. Backend mode + Postgres credentials. Phase 2: web mode is
+  # 8a. Phase 1 → Phase 2 upgrade hint. The recovery-key file moved from
+  # dirname(VARLENS_DB_PATH) to VARLENS_RECOVERY_KEY_DIR. Defaults
+  # coincide on the standard pilot (/data), but operators upgrading an
+  # existing deployment may have legacy lines in their .env. Surface them.
+  local _legacy_db_path="${VARLENS_DB_PATH:-}"
+  if [[ -n "$_legacy_db_path" ]]; then
+    printf '  %s⚠%s  VARLENS_DB_PATH is set in your env (%s) — Phase 2 ignores it.\n' \
+      "$YELLOW" "$RESET" "$_legacy_db_path"
+    printf '    %sThe web variant is now Postgres-only (see\n' "$DIM"
+    printf '    .planning/web/phase2-execution-plan.md). The recovery-key\n'
+    printf '    file path comes from VARLENS_RECOVERY_KEY_DIR (default /data).\n'
+    printf '    Drop VARLENS_DB_PATH from web-deploy/.env to silence this warning.%s\n' "$RESET"
+  fi
+
+  # 8b. Backend mode + Postgres credentials. Phase 2: web mode is
   # Postgres-only; the varlens service auto-derives VARLENS_PG_URL
   # from POSTGRES_PASSWORD on the server. The compose `:?` guard on
   # POSTGRES_PASSWORD will fail loud at `docker compose up`, but

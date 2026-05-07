@@ -504,11 +504,11 @@ def _smoke(ip: str, key: Path) -> None:
 
     proc = ssh_run(
         ip, key,
-        "cd /mnt/data/app && docker compose ps --status running --services | grep -cE '^(caddy|uptime-kuma|dozzle|varlens)$'",
+        "cd /mnt/data/app && docker compose ps --status running --services | grep -cE '^(caddy|uptime-kuma|dozzle|varlens|postgres)$'",
         total_timeout=30,
         ephemeral_host=True,
     )
-    check("running services", "4", proc.stdout.strip())
+    check("running services", "5", proc.stdout.strip())
 
     for label, expected, got, ok, tls_warn in checks:
         if ok:

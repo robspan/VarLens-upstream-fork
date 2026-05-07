@@ -322,12 +322,19 @@ def write_env_file(ssh_key: Path, ip: str, env: dict[str, str]) -> None:
         fail(f"SSH write failed: {proc.stdout}{proc.stderr}")
 
 
-def persist_restic_secret_to_sops(restic_password: str, bucket: str, endpoint: str, access: str) -> None:
+def persist_restic_secret_to_sops(
+    restic_password: str, bucket: str, endpoint: str, access: str, secret: str
+) -> None:
     """Write the freshly generated restic secret bundle to secrets/restic.yaml via SOPS.
 
     Survival of this password is the difference between recoverable and
     unrecoverable backups in case of total server loss. We therefore persist
     it to a SOPS-encrypted file in the repo (committed by the user).
+
+    Both the S3 access_key AND secret_key are persisted: Hetzner shows the
+    secret only once at generation, so without persistence here an operator
+    who wipes their .env loses the only copy and must regenerate the keypair
+    in the console (orphaning the existing one).
     """
     sops_path = shutil.which("sops")
     if sops_path is None:
@@ -362,6 +369,7 @@ def persist_restic_secret_to_sops(restic_password: str, bucket: str, endpoint: s
         f'bucket: "{_yaml_escape(bucket)}"\n'
         f'endpoint: "{_yaml_escape(endpoint)}"\n'
         f'access_key: "{_yaml_escape(access)}"\n'
+        f'secret_key: "{_yaml_escape(secret)}"\n'
     )
 
     # tempfile on the same partition as target so os.replace stays atomic.
@@ -637,7 +645,7 @@ def main() -> None:
     # Otherwise the password would not survive server loss and all snapshots
     # would be undecryptable.
     if newly_generated and mode != "reuse":
-        persist_restic_secret_to_sops(restic_password, bucket, endpoint, access)
+        persist_restic_secret_to_sops(restic_password, bucket, endpoint, access, secret)
 
     # --- write env on server ---
     # HEARTBEAT_URL is set by setup-monitoring.py. If this file already

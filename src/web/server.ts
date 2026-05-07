@@ -31,9 +31,9 @@ import { createPostgresStorageSession } from '../main/storage/postgres/createPos
 import type { PostgresStorageSession } from '../main/storage/postgres/PostgresStorageSession'
 import type { StorageSession } from '../main/storage/session'
 import { AdminAlreadyExistsError, PostgresWebAuthService } from './auth/PostgresWebAuthService'
-import { registerCasesRoutes } from './routes/cases'
-import { registerAuthRoutes } from './routes/auth'
-import { registerVariantsRoutes } from './routes/variants'
+import { buildDispatcher, registerDispatcher } from './server/dispatcher'
+import { registerSessions } from './server/auth'
+import { registerStatic } from './server/static'
 import pkg from '../../package.json'
 
 export interface AdminBootstrapOptions {
@@ -88,11 +88,14 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     await maybeBootstrapAdmin(authService, options.admin, app.log)
   }
 
-  const getSession = (): StorageSession => session as StorageSession
-  const getAuthService = (): PostgresWebAuthService => authService
-  registerCasesRoutes(app, getSession)
-  registerAuthRoutes(app, getAuthService)
-  registerVariantsRoutes(app, getSession)
+  await registerSessions(app)
+
+  const dispatcherDeps = {
+    session: session as StorageSession,
+    authService
+  }
+  const { overrides } = buildDispatcher(dispatcherDeps)
+  registerDispatcher(app, dispatcherDeps, overrides)
 
   app.get('/healthz', async (_request, reply) => {
     const open = await isPostgresHealthy(pool)
@@ -102,6 +105,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     }
     return { status: 'ok', version: pkg.version, db: { open: true } }
   })
+
+  await registerStatic(app)
 
   app.addHook('onClose', async () => {
     try {

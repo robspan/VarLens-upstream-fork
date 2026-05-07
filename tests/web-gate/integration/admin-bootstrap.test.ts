@@ -42,7 +42,7 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('admin bootstrap parity', () => {
         const res = await app.inject({
           method: 'POST',
           url: '/api/auth/login',
-          payload: { username: ADMIN_USERNAME, password: ADMIN_PASSWORD }
+          payload: { args: [ADMIN_USERNAME, ADMIN_PASSWORD] }
         })
         expect(res.statusCode).toBe(200)
         const body = res.json() as {
@@ -90,7 +90,7 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('admin bootstrap parity', () => {
         const res = await app2.inject({
           method: 'POST',
           url: '/api/auth/login',
-          payload: { username: ADMIN_USERNAME, password: ADMIN_PASSWORD }
+          payload: { args: [ADMIN_USERNAME, ADMIN_PASSWORD] }
         })
         expect(res.statusCode).toBe(200)
         expect((res.json() as { success: boolean }).success).toBe(true)
@@ -117,7 +117,7 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('admin bootstrap parity', () => {
         const res = await app.inject({
           method: 'POST',
           url: '/api/auth/login',
-          payload: { username: 'anyone', password: 'whatever' }
+          payload: { args: ['anyone', 'whatever'] }
         })
         expect(res.statusCode).toBe(200)
         expect((res.json() as { success: boolean }).success).toBe(false)

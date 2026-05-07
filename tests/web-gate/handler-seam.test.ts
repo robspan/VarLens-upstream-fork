@@ -3,16 +3,17 @@ import { existsSync, readdirSync, statSync } from 'fs'
 import { resolve } from 'path'
 
 /**
- * Phase 1 gate — the IPC contract layer (`src/shared/ipc/domains/`) is the
- * "natural seam" for the web migration. Each domain must have a triple:
- *   1. shared contract:  src/shared/ipc/domains/<name>.ts
- *   2. preload binding:  src/preload/domains/<name>.ts
- *   3. main handler:     src/main/ipc/domains/<name>.ts
+ * Handler-seam gate.
  *
- * Once `src/web/routes/<name>.ts` exists, that file must reuse the SAME
- * handler function as the main IPC registration — not a re-implementation.
- * This is the structural rule that prevents the web side from drifting
- * from the desktop side at the seam.
+ * Phase 1 gated each domain on a per-file `src/web/routes/<name>.ts`
+ * binding that re-imported the matching `<name>-logic.ts` module.
+ * Phase 3 collapsed those routes into a single typed dispatcher
+ * (`src/web/server/dispatcher.ts`) that delegates to the
+ * Postgres read/write executors. The shared/preload/main triple is
+ * still load-bearing — the renderer call sites depend on it — so
+ * those tests remain. The per-route reuse test became irrelevant
+ * (there are no per-route files) and was replaced by the
+ * dispatcher-existence check below.
  *
  * Intentionally-flat handlers (no domain-module pattern) are excluded
  * per AGENTS.md: shell, shortlist, system, updater.
@@ -21,25 +22,10 @@ import { resolve } from 'path'
 const SHARED_DIR = 'src/shared/ipc/domains'
 const PRELOAD_DIR = 'src/preload/domains'
 const MAIN_DIR = 'src/main/ipc/domains'
-const WEB_DIR = 'src/web/routes'
+const DISPATCHER_PATH = 'src/web/server/dispatcher.ts'
+const TASK_TYPES_PATH = 'src/web/server/task-types.ts'
 
 const FLAT_HANDLERS = new Set(['shell', 'shortlist', 'system', 'updater'])
-
-/**
- * Phase 2 backend-split exceptions: routes that legitimately do NOT
- * reuse src/main/ipc/handlers/<domain>-logic because the web variant
- * has its own backend-specific implementation. The "reuse not
- * reimplement" rule still holds for everything else; these are the
- * documented carve-outs.
- *
- *   - auth: web mode is Postgres-only (see src/web/auth/
- *     PostgresWebAuthService.ts). The desktop AuthService is sync
- *     better-sqlite3; the web service is async pg.Pool. They share
- *     policy via src/shared/auth/auth-constants and shape via
- *     src/shared/auth/types — the structural-parity gate at
- *     tests/web-gate/parity/auth-scenarios.parity.test.ts enforces both.
- */
-const WEB_BACKEND_SPLIT_EXEMPT = new Set(['auth'])
 
 function listDomains(dir: string): string[] {
   const abs = resolve(process.cwd(), dir)
@@ -82,36 +68,14 @@ describe('handler-seam gate', () => {
     expect(orphans, `main domain without shared contract: ${orphans.join(', ')}`).toEqual([])
   })
 
-  test.skipIf(!existsSync(resolve(process.cwd(), WEB_DIR)))(
-    'every web route file imports from the corresponding main IPC handler / logic module',
-    async () => {
-      const { readFileSync } = await import('fs')
-      const webRoutes = listDomains(WEB_DIR)
-      expect(webRoutes.length).toBeGreaterThan(0)
-
-      const violations: string[] = []
-      for (const domain of webRoutes) {
-        if (WEB_BACKEND_SPLIT_EXEMPT.has(domain)) continue
-        const file = resolve(process.cwd(), WEB_DIR, `${domain}.ts`)
-        const source = readFileSync(file, 'utf8')
-
-        // Acceptable seam imports: the per-domain logic module or the
-        // per-domain handler module from src/main/ipc/handlers/.
-        const reusesLogic =
-          source.includes(`from '../../main/ipc/handlers/${domain}-logic'`) ||
-          source.includes(`from '../../main/ipc/handlers/${domain}'`)
-
-        if (!reusesLogic) {
-          violations.push(
-            `${WEB_DIR}/${domain}.ts must import from src/main/ipc/handlers/${domain}-logic ` +
-              `(or src/main/ipc/handlers/${domain}). Reuse the same function — do not re-implement.`
-          )
-        }
-      }
-
-      expect(violations, violations.join('\n')).toEqual([])
-    }
-  )
+  test('the web dispatcher and its task-type allowlist exist', () => {
+    const dispatcher = resolve(process.cwd(), DISPATCHER_PATH)
+    const taskTypes = resolve(process.cwd(), TASK_TYPES_PATH)
+    const missing: string[] = []
+    if (!existsSync(dispatcher)) missing.push(DISPATCHER_PATH)
+    if (!existsSync(taskTypes)) missing.push(TASK_TYPES_PATH)
+    expect(missing, missing.join('\n')).toEqual([])
+  })
 })
 
 export { FLAT_HANDLERS }

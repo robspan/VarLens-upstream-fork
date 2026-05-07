@@ -68,6 +68,8 @@ export default defineConfig({
         ...builtinModules.map((m) => `node:${m}`),
         'better-sqlite3-multiple-ciphers',
         'fastify',
+        '@fastify/secure-session',
+        '@fastify/static',
         'pg',
         'pg-query-stream'
       ]

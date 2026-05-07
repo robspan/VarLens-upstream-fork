@@ -127,6 +127,22 @@ export class PostgresStorageSession implements StorageSession {
     schema: string
   ) => PostgresCaseListRepository
   private readonly pool: Pool
+
+  /**
+   * Public accessor for the underlying pg.Pool.
+   *
+   * The web variant (src/web/server.ts) needs to share this pool with
+   * PostgresWebAuthService so the process opens exactly one connection
+   * pool, not two. Phase 2 #4's first cut reached into the private
+   * field via `as unknown as { pool? }` — QA flagged the cast as a
+   * type-system bypass that would silently break under any future
+   * refactor of the field. This getter makes the contract explicit
+   * and compiler-checked.
+   */
+  getPool(): Pool {
+    return this.pool
+  }
+
   private readonly readExecutor: StorageReadExecutor
   private readonly writeExecutor: StorageWriteExecutor
   private readonly importExecutor: StorageImportExecutor

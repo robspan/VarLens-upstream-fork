@@ -68,6 +68,26 @@ export interface PostgresWebAuthServiceOptions {
 }
 
 /**
+ * Typed sentinel for the admin-already-exists case. Callers (notably
+ * src/web/server.ts maybeBootstrapAdmin) want to distinguish this
+ * specific failure from any other createFirstUser error so they can
+ * take the env-rotation-ignored warn-and-skip path instead of crashing
+ * the boot. The previous regex-on-message detection was brittle to
+ * wording changes; this class makes the contract explicit and
+ * instanceof-checkable.
+ */
+export class AdminAlreadyExistsError extends Error {
+  readonly name = 'AdminAlreadyExistsError'
+  constructor(cause?: unknown) {
+    super('Admin user already exists', cause === undefined ? undefined : { cause })
+  }
+}
+
+export function isAdminAlreadyExists(err: unknown): err is AdminAlreadyExistsError {
+  return err instanceof AdminAlreadyExistsError
+}
+
+/**
  * Convert a Postgres row (BOOLEAN / TIMESTAMPTZ / BIGINT-as-string) to
  * the cross-backend User shape (number / ISO string / number).
  *
@@ -146,6 +166,24 @@ export class PostgresWebAuthService {
 
   // ---------- bootstrap ----------
 
+  /**
+   * Cheap pre-check used by server.ts maybeBootstrapAdmin to avoid
+   * paying Argon2's ~600ms hashing cost (and reserving an FS path)
+   * on every reboot of an already-bootstrapped instance. The
+   * createFirstUser race-safety still holds — the partial unique
+   * index on `role='admin'` is the source of truth — but skipping
+   * the heavy work for the steady-state case keeps restart latency
+   * low and avoids the wx-EEXIST trap when the operator hasn't
+   * captured/deleted the recovery-key file yet.
+   */
+  async hasAdmin(): Promise<boolean> {
+    const sch = this.schemaQuoted
+    const sel = await this.pool.query(`SELECT 1 FROM ${sch}."users" WHERE role = $1 LIMIT 1`, [
+      ROLE_ADMIN
+    ])
+    return (sel.rowCount ?? 0) > 0
+  }
+
   async createFirstUser(
     username: string,
     displayName: string,
@@ -193,10 +231,11 @@ export class PostgresWebAuthService {
       } catch {
         // ignore rollback failures; original error wins
       }
-      // Translate unique-violation on the partial admin index into the
-      // same error the SQLite-parity SELECT-then-throw path emits.
+      // Translate unique-violation on the partial admin index into a
+      // typed sentinel callers (server.ts maybeBootstrapAdmin) can
+      // discriminate from generic create failures.
       if (typeof err === 'object' && err !== null && 'code' in err && err.code === '23505') {
-        throw new Error('Admin user already exists', { cause: err })
+        throw new AdminAlreadyExistsError(err)
       }
       throw err
     } finally {

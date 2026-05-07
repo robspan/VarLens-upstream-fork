@@ -22,14 +22,15 @@
  */
 
 import { closeSync, existsSync, mkdirSync, openSync, unlinkSync, writeFileSync } from 'fs'
-import { dirname, isAbsolute, join } from 'path'
+import { isAbsolute, join } from 'path'
 
 import Fastify, { type FastifyInstance } from 'fastify'
 
 import { getPostgresStorageConfig } from '../main/storage/config'
 import { createPostgresStorageSession } from '../main/storage/postgres/createPostgresStorageSession'
+import type { PostgresStorageSession } from '../main/storage/postgres/PostgresStorageSession'
 import type { StorageSession } from '../main/storage/session'
-import { PostgresWebAuthService } from './auth/PostgresWebAuthService'
+import { AdminAlreadyExistsError, PostgresWebAuthService } from './auth/PostgresWebAuthService'
 import { registerCasesRoutes } from './routes/cases'
 import { registerAuthRoutes } from './routes/auth'
 import { registerVariantsRoutes } from './routes/variants'
@@ -72,16 +73,12 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     }
   })
 
-  const session: StorageSession = await createPostgresStorageSession(pgConfig)
-  // The Postgres session shares its pool with the auth service so we
-  // don't open two connection pools per process. Both consume the same
-  // schema (per-tenant routing in Stage 3 will key off this).
-  const pool = (session as unknown as { pool?: import('pg').Pool }).pool
-  if (!pool) {
-    throw new Error(
-      'PostgresStorageSession did not expose its pool — auth service cannot share the connection pool.'
-    )
-  }
+  const session: PostgresStorageSession = await createPostgresStorageSession(pgConfig)
+  // Share the storage session's pool with the auth service so we open
+  // exactly one connection pool per process. The public getPool()
+  // accessor (added in the QA round on Step 4) makes this contract
+  // type-checked rather than a structural cast.
+  const pool = session.getPool()
   const authService = new PostgresWebAuthService({
     pool,
     schema: pgConfig.schema
@@ -91,7 +88,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     await maybeBootstrapAdmin(authService, options.admin, app.log)
   }
 
-  const getSession = (): StorageSession => session
+  const getSession = (): StorageSession => session as StorageSession
   const getAuthService = (): PostgresWebAuthService => authService
   registerCasesRoutes(app, getSession)
   registerAuthRoutes(app, getAuthService)
@@ -142,6 +139,40 @@ async function maybeBootstrapAdmin(
   const recoveryKeyDir = getRecoveryKeyDir()
   const recoveryKeyPath = join(recoveryKeyDir, 'admin-recovery-key.txt')
 
+  // PRE-CHECK (Step 4 QA fix): mirror the Phase 1 SQLite path's
+  // SELECT-first ordering. If an admin already exists, take the
+  // env-rotation-ignored warn-and-skip branch BEFORE touching the FS.
+  //
+  // Without this pre-check, every reboot of an already-bootstrapped
+  // instance with VARLENS_ADMIN_* still in env tripped the
+  // wx-open(O_CREAT|O_EXCL) on the operator's still-uncaptured
+  // recovery-key file (EEXIST) and crash-looped the boot. The partial
+  // unique index in migration 0007 still guarantees race-safety on
+  // truly concurrent first-user calls; this pre-check is a fast-path,
+  // not a correctness gate.
+  if (await authService.hasAdmin()) {
+    if (existsSync(recoveryKeyPath)) {
+      log.warn(
+        {
+          event: 'admin-bootstrap',
+          action: 'stale-recovery-key-present',
+          path: recoveryKeyPath
+        },
+        `stale admin recovery-key file present at ${recoveryKeyPath} — capture its contents and delete it; the file will not be regenerated`
+      )
+    }
+    log.warn(
+      {
+        event: 'admin-bootstrap',
+        action: 'env-rotation-ignored',
+        username: admin.username
+      },
+      'VARLENS_ADMIN_USERNAME/PASSWORD are set but an admin already exists — env-based rotation is NOT supported; the new credentials are being ignored.'
+    )
+    log.info({ event: 'admin-bootstrap', action: 'skipped', reason: 'admin-exists' })
+    return
+  }
+
   // Ensure the recovery-key directory exists and is writable. Mode 700
   // so the parent dir mirrors the file's 0o600 protection. The web
   // container's volume mount lands at /data with 1001:1001 ownership
@@ -153,22 +184,6 @@ async function maybeBootstrapAdmin(
     throw new Error(
       `Cannot ensure recovery-key dir ${recoveryKeyDir}: ${err instanceof Error ? err.message : String(err)}`,
       { cause: err }
-    )
-  }
-
-  // Diagnostic 1 (F7 carry-over from Phase 1): a recovery-key file
-  // lingering on disk after createFirstUser would have been the
-  // hint that a prior boot generated a key. Under Postgres we still
-  // emit the warning if the file exists; capture-and-delete remains
-  // the operator's signal.
-  if (existsSync(recoveryKeyPath)) {
-    log.warn(
-      {
-        event: 'admin-bootstrap',
-        action: 'stale-recovery-key-present',
-        path: recoveryKeyPath
-      },
-      `stale admin recovery-key file present at ${recoveryKeyPath} — capture its contents and delete it; the file will not be regenerated`
     )
   }
 
@@ -196,10 +211,11 @@ async function maybeBootstrapAdmin(
       admin.password
     )
   } catch (createErr) {
-    // If createFirstUser refused because an admin already exists, this
-    // is the env-rotation footgun the SQLite path also warned about.
-    // Surface the WARN, clean up the reservation file, and proceed.
-    if (createErr instanceof Error && /admin user already exists/i.test(createErr.message)) {
+    // Race-loser branch: another concurrent first-user call beat us
+    // to the partial unique index. The hasAdmin() pre-check above
+    // covers the steady-state case; this branch covers exactly the
+    // race window. Typed-sentinel check (no regex coupling).
+    if (createErr instanceof AdminAlreadyExistsError) {
       try {
         unlinkSync(recoveryKeyPath)
       } catch {
@@ -208,10 +224,10 @@ async function maybeBootstrapAdmin(
       log.warn(
         {
           event: 'admin-bootstrap',
-          action: 'env-rotation-ignored',
+          action: 'env-rotation-ignored-race',
           username: admin.username
         },
-        'VARLENS_ADMIN_USERNAME/PASSWORD are set but an admin already exists — env-based rotation is NOT supported; the new credentials are being ignored.'
+        'VARLENS_ADMIN_USERNAME/PASSWORD raced an admin INSERT — env-based rotation is NOT supported; the new credentials are being ignored.'
       )
       log.info({ event: 'admin-bootstrap', action: 'skipped', reason: 'admin-exists' })
       return
@@ -264,12 +280,28 @@ async function maybeBootstrapAdmin(
   )
 }
 
+/**
+ * Liveness probe that bounds itself: kubernetes / load-balancer probes
+ * expect /healthz to return quickly. A wedged Postgres or exhausted
+ * pool would otherwise block on `pool.query` indefinitely (pg's
+ * default has no statement timeout) and the orchestrator would not
+ * see a 503 in time to evict the pod. Cap at 1.5s — well under the
+ * typical 5s probe deadline.
+ */
 async function isPostgresHealthy(pool: import('pg').Pool): Promise<boolean> {
+  const HEALTH_PROBE_TIMEOUT_MS = 1500
+  let timer: NodeJS.Timeout | undefined
+  const probe = pool.query('SELECT 1').then(
+    () => true,
+    () => false
+  )
+  const deadline = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), HEALTH_PROBE_TIMEOUT_MS)
+  })
   try {
-    await pool.query('SELECT 1')
-    return true
-  } catch {
-    return false
+    return await Promise.race([probe, deadline])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
   }
 }
 
@@ -330,9 +362,6 @@ async function main(): Promise<void> {
     void shutdown('SIGINT')
   })
 }
-
-// Quiet "unused" lint warnings on imports kept for future-proofing.
-void dirname
 
 declare const require: NodeJS.Require
 declare const module: NodeJS.Module

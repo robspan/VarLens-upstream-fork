@@ -282,7 +282,7 @@ describe.skipIf(!SHOULD_RUN_PARITY || !isElectronBuilt)('parity: cases.list on a
     // Activates only when the web build target lands. Until then this
     // test is part of the visible Phase 1 backlog.
     const { buildApp } = await import('../../../src/web/server')
-    const app = await buildApp({ db: ':memory:' })
+    const app = await buildApp()
     try {
       const res = await app.inject({ method: 'GET', url: '/api/cases' })
       expect(res.statusCode).toBe(200)

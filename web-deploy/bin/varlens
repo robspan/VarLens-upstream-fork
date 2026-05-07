@@ -309,6 +309,14 @@ def action_up(env: str, args) -> None:
 
 
 def action_down(env: str, args) -> None:
+    # Empty-state short-circuit: if there is nothing in tofu state, the
+    # confirmation prompt has nothing to defend against and `input()`
+    # would softlock if a wrapper invoked us non-interactively. Skip
+    # the prompt and exit cleanly. The previous behaviour would dump
+    # tofu's "Plan: 0 to destroy" output regardless.
+    if server_id(env) is None and ipv4(env) is None:
+        log("No resources in local tofu state. Nothing to destroy.")
+        return
     if env == "pilot":
         confirm_typed("pilot", args.yes)
     if getattr(args, "verbose", False):

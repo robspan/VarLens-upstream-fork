@@ -369,7 +369,7 @@ smoke:
 	check_tls "VarLens /varlens/healthz" "200" "$$(curl -ks -o /dev/null -w '%{http_code}' https://$$IP/varlens/healthz)"; \
 	check     "Kuma bound to localhost only"   "yes" "$$(ssh -i $(SSH_KEY) -o BatchMode=yes deploy@$$IP 'ss -tlnp 2>/dev/null | grep -qE "(127\\.0\\.0\\.1|\\[::1\\]):3001\\b" && echo yes || echo no' 2>/dev/null)"; \
 	check     "Dozzle bound to localhost only" "yes" "$$(ssh -i $(SSH_KEY) -o BatchMode=yes deploy@$$IP 'ss -tlnp 2>/dev/null | grep -qE "(127\\.0\\.0\\.1|\\[::1\\]):8080\\b" && echo yes || echo no' 2>/dev/null)"; \
-	check     "Compose stack: 5 services running" "5" "$$(ssh -i $(SSH_KEY) -o BatchMode=yes deploy@$$IP 'cd /mnt/data/app && docker compose ps --status running --services | grep -cE "^(caddy|uptime-kuma|dozzle|varlens|postgres)$$"' 2>/dev/null | tr -d ' ')"; \
+	check     "Compose stack: 5 services running" "5" "$$(ssh -i $(SSH_KEY) -o BatchMode=yes deploy@$$IP 'cd /mnt/data/app && docker compose ps --status running --services | grep -cE "^(caddy|uptime-kuma|dozzle|app|postgres)$$"' 2>/dev/null | tr -d ' ')"; \
 	if [ $$FAILED -eq 1 ]; then echo "=== Smoke tests failed ==="; exit 1; \
 	elif [ $$WARNED -eq 1 ]; then echo "=== Smoke tests passed with TLS warnings (HTTPS probes returned 000 — verify cert state via 'docker compose logs caddy') ==="; \
 	else echo "=== all smoke tests green ==="; fi

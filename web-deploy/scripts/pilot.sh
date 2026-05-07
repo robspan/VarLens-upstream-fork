@@ -64,6 +64,22 @@ on_interrupt() {
 trap 'on_interrupt SIGINT' INT
 trap 'on_interrupt SIGTERM' TERM
 
+# Detect a fully-live pilot. Used to refuse blind re-runs of `make pilot`
+# against a healthy deploy — re-running would force-recreate Caddy
+# (brief downtime + LE-rate-limit churn) and try to re-register Kuma
+# monitors that already exist. Operators should use targeted commands
+# (make pilot-smoke / make stack-up / make pilot-down) for live deploys.
+detect_healthy_pilot() {
+  local ip="$1"
+  [[ -z "$ip" ]] && return 1
+  # Both probes use -k (allow self-signed) — the goal is "is the stack
+  # actually serving HTTP", not "is the cert browser-trusted." The TLS
+  # trust check happens later, after we know we are bringing it up.
+  curl -kfsS --max-time 5 -o /dev/null "https://$ip/varlens/healthz" 2>/dev/null || return 1
+  curl -kfsS --max-time 5 -o /dev/null "https://$ip/welcome" 2>/dev/null || return 1
+  return 0
+}
+
 # Detect and clear a stale tofu lock left by a killed apply. Single-tenant
 # pilot state, so there is no other operator we could be racing.
 release_stale_tofu_lock() {
@@ -431,6 +447,34 @@ main() {
 
   release_stale_tofu_lock
 
+  # Refuse blind re-runs against a healthy deploy. Re-running would
+  # force-recreate Caddy (brief downtime + churns LE state, possibly
+  # tipping into rate limit) and re-register Kuma monitors that are
+  # already there. The right response when everything is already up is
+  # to use a targeted command, not `make pilot` again.
+  if (( resuming == 1 )); then
+    local existing_ip
+    existing_ip="$(cd "$WEB_DEPLOY" && make -s ip 2>/dev/null | grep -oE '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' || echo "")"
+    if [[ -n "$existing_ip" ]] && detect_healthy_pilot "$existing_ip"; then
+      banner "✓ Concept Pilot is already live and healthy"
+      printf '  Detected at %shttps://%s%s — refusing to re-run.\n\n' "$BOLD" "$existing_ip" "$RESET"
+      printf '  Re-running %smake pilot%s against a working deploy would:\n' "$BOLD" "$RESET"
+      printf '    %s•%s force-recreate Caddy (brief downtime + may churn LE certs into rate-limit)\n' "$DIM" "$RESET"
+      printf '    %s•%s re-pull images even if they have not changed\n' "$DIM" "$RESET"
+      printf '    %s•%s try to re-register Kuma monitors that already exist\n\n' "$DIM" "$RESET"
+      printf '  %sUse a targeted command instead:%s\n' "$BOLD" "$RESET"
+      printf '    make pilot-smoke                   %s# re-run the 12 smoke probes%s\n' "$DIM" "$RESET"
+      printf '    make pilot-ssh                     %s# SSH into the server%s\n' "$DIM" "$RESET"
+      printf '    make pilot-status                  %s# check server status%s\n' "$DIM" "$RESET"
+      printf '    make -C web-deploy stack-up        %s# pull updated image, recreate containers%s\n' "$DIM" "$RESET"
+      printf '    make -C web-deploy stack-logs      %s# tail container logs%s\n' "$DIM" "$RESET"
+      printf '    make -C web-deploy restore-drill   %s# verify backup round-trip%s\n\n' "$DIM" "$RESET"
+      printf '  To force a full bring-up cycle, tear down first:\n'
+      printf '    %smake pilot-down && make pilot%s\n\n' "$BOLD" "$RESET"
+      exit 0
+    fi
+  fi
+
   if (( resuming == 1 )); then
     banner "VarLens Concept Pilot — resuming partial bring-up"
     printf '  %sExisting Hetzner resources detected in local tofu state.%s This run will\n' "$YELLOW" "$RESET"
@@ -453,6 +497,20 @@ main() {
   printf '  %sImage:%s    %s\n' "$DIM" "$RESET" "${VARLENS_IMAGE:-ghcr.io/robspan/varlens-web:edge (compose default)}"
   printf '  %sTarget:%s   Hetzner cpx32 + 50 GB volume + IPv4 (~0.02 EUR/h while running)\n' "$DIM" "$RESET"
   printf '  %sStarted:%s  %s\n\n' "$DIM" "$RESET" "$(date '+%Y-%m-%d %H:%M:%S %Z')"
+
+  # TLS forewarning. The default profile is tls-le-ip (LE 7-day cert
+  # bound to the raw IP). LE rate-limits at 5 certs per IP per 168h, so
+  # a tear-down/bring-up cycle that recycles the IP can hit the wall and
+  # silently fall back to a self-signed cert. Operator gets a "browser
+  # cert warning" surprise hours later. Tell them upfront.
+  printf '  %s━ Heads-up about TLS certificates ━%s\n' "$YELLOW$BOLD" "$RESET"
+  printf '  %sDefault: Caddy issues a Let'\''s Encrypt cert pinned to the IP (auto-renewed%s\n' "$YELLOW" "$RESET"
+  printf '  %severy ~5 days). LE rate-limits at 5 certs per IP / 168h — recycling the IP%s\n' "$YELLOW" "$RESET"
+  printf '  %svia repeated pilot-down/up cycles can hit the wall, in which case Caddy%s\n' "$YELLOW" "$RESET"
+  printf '  %sfalls back to a self-signed cert and browsers will show ERR_CERT_* or%s\n' "$YELLOW" "$RESET"
+  printf '  %sERR_QUIC_PROTOCOL_ERROR. The bring-up reports the cert state at the end.%s\n' "$YELLOW" "$RESET"
+  printf '  %sIf you know you are rate-limited, force self-signed mode upfront:%s\n' "$YELLOW" "$RESET"
+  printf '    %smake pilot && make -C web-deploy stack-up TLS=internal%s    %s# accept browser warning%s\n\n' "$BOLD" "$RESET" "$DIM" "$RESET"
 
   printf '  %sPre-flight checks%s — verifying credentials, tools, and config %sBEFORE%s\n' "$BOLD" "$RESET" "$BOLD" "$RESET"
   printf '  any cloud resource is touched. A failure here costs nothing; it is far\n'
@@ -531,17 +589,48 @@ main() {
   # is strict so we surface Let's Encrypt rate-limit fallbacks (self-signed)
   # that would render the site browser-untrusted. Non-fatal — operators may
   # legitimately be on the staging issuer or hit a temporary LE limit.
+  # Also extract the actual issuer string so the warning explicitly names
+  # whether we are on Caddy's local CA, the LE staging CA, or a real cert.
   local probe_ip
   probe_ip="$(cd "$WEB_DEPLOY" && make -s ip 2>/dev/null | grep -oE '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' || echo "")"
+  local cert_issuer=""
+  if [[ -n "$probe_ip" ]]; then
+    cert_issuer="$(echo | openssl s_client -servername "$probe_ip" -connect "$probe_ip:443" 2>/dev/null \
+      | openssl x509 -noout -issuer 2>/dev/null | sed 's/^issuer=//' | head -c 200)"
+  fi
   if [[ -n "$probe_ip" ]]; then
     printf '\n%s    TLS trust probe: curl --fail https://%s/welcome ...%s\n' "$DIM" "$probe_ip" "$RESET"
     if curl --fail --silent --show-error --max-time 10 -o /dev/null \
          "https://$probe_ip/welcome" 2>/dev/null; then
       printf '%s    ✓ TLS cert is browser-trusted%s\n' "$GREEN" "$RESET"
+      [[ -n "$cert_issuer" ]] && printf '%s      issuer: %s%s\n' "$DIM" "$cert_issuer" "$RESET"
     else
-      printf '%s    ⚠ WARN: TLS cert at https://%s/welcome is not browser-trusted%s\n' "$YELLOW$BOLD" "$probe_ip" "$RESET"
-      printf '%s      Likely cause: Let'\''s Encrypt rate limit → Caddy fell back to a self-signed cert.%s\n' "$YELLOW" "$RESET"
-      printf '%s      Browsers will show a warning. Check Caddy logs and re-issue when the limit resets.%s\n' "$DIM" "$RESET"
+      printf '\n%s═══════════════════════════════════════════════════════════════════%s\n' "$YELLOW" "$RESET"
+      printf '%s  ⚠  TLS CERT WARNING — operator action required%s\n' "$YELLOW$BOLD" "$RESET"
+      printf '%s═══════════════════════════════════════════════════════════════════%s\n\n' "$YELLOW" "$RESET"
+      printf '  The cert at https://%s/welcome is %sNOT%s browser-trusted.\n' "$probe_ip" "$BOLD" "$RESET"
+      [[ -n "$cert_issuer" ]] && printf '  Cert issuer: %s%s%s\n' "$BOLD" "$cert_issuer" "$RESET"
+      printf '\n  %sWhat browsers will show:%s ERR_CERT_AUTHORITY_INVALID, ERR_CERT_DATE_INVALID,\n' "$BOLD" "$RESET"
+      printf '  or — on Chromium with a recycled IP — %sERR_QUIC_PROTOCOL_ERROR%s (cached HTTP/3\n' "$BOLD" "$RESET"
+      printf '  alt-svc record from a previous cert holder).\n\n'
+      printf '  %sLikely cause:%s Let'\''s Encrypt rate limit (5 certs per IP per 168h). Caddy\n' "$BOLD" "$RESET"
+      printf '  fell back to its internal self-signed CA when LE refused a fresh cert.\n\n'
+      printf '  %sFix options, in order of preference:%s\n' "$BOLD" "$RESET"
+      printf '    1. %sExplicit self-signed mode%s — own the warning, click through it once,\n' "$BOLD" "$RESET"
+      printf '       no cert churn:\n'
+      printf '         %smake -C web-deploy stack-up TLS=internal%s\n\n' "$BOLD" "$RESET"
+      printf '    2. %sWait out the LE rate limit%s (the next 168h-window line is in Caddy'\''s\n' "$BOLD" "$RESET"
+      printf '       log: %ssudo docker logs caddy 2>&1 | grep retry-after%s ), then:\n' "$DIM" "$RESET"
+      printf '         %smake -C web-deploy stack-up%s\n\n' "$BOLD" "$RESET"
+      printf '    3. %sBind a real domain%s and re-issue against it (LE rate-limits per\n' "$BOLD" "$RESET"
+      printf '       identifier, so a domain has its own quota):\n'
+      printf '         %smake -C web-deploy stack-up DOMAIN=varlens.example.org%s\n\n' "$BOLD" "$RESET"
+      printf '  %sBrowser-side gotchas (separate from the cert itself):%s\n' "$BOLD" "$RESET"
+      printf '    %s•%s Chromium caches HTTP/3 alt-svc records per-IP. After a cert change,\n' "$DIM" "$RESET"
+      printf '      open chrome://net-internals/#hsts and clear the host, OR test in a fresh\n'
+      printf '      incognito window.\n'
+      printf '    %s•%s After accepting a self-signed cert: the warning is one-time per browser\n' "$DIM" "$RESET"
+      printf '      profile. Shareable links to the URL will show the same warning to others.\n\n'
     fi
   fi
 

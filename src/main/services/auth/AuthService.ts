@@ -12,14 +12,20 @@ import {
   defaultPasswordProvider,
   type PasswordProvider
 } from '../../auth/providers/argon2-provider'
-import { LOCKOUT_DURATION_MINUTES, MAX_FAILED_ATTEMPTS } from './auth-constants'
+import {
+  LOCKOUT_DURATION_MINUTES,
+  MAX_FAILED_ATTEMPTS,
+  ROLE_ADMIN,
+  ROLE_USER,
+  type UserRole
+} from './auth-constants'
 
 interface User {
   id: number
   username: string
   display_name: string | null
   password_hash: string
-  role: string
+  role: UserRole
   is_active: number
   must_change_password: number
   failed_login_count: number
@@ -51,11 +57,11 @@ export class AuthService {
     username: string,
     displayName: string,
     password: string
-  ): Promise<{ id: number; username: string; role: string; recoveryKey: string }> {
+  ): Promise<{ id: number; username: string; role: UserRole; recoveryKey: string }> {
     // Check no admin exists
-    const existing = this.db.prepare("SELECT id FROM users WHERE role = 'admin' LIMIT 1").get() as
-      | { id: number }
-      | undefined
+    const existing = this.db
+      .prepare('SELECT id FROM users WHERE role = ? LIMIT 1')
+      .get(ROLE_ADMIN) as { id: number } | undefined
 
     if (existing) throw new Error('Admin user already exists')
 
@@ -79,9 +85,9 @@ export class AuthService {
       return this.db
         .prepare(
           `INSERT INTO users (username, display_name, password_hash, role, password_changed_at)
-           VALUES (?, ?, ?, 'admin', datetime('now'))`
+           VALUES (?, ?, ?, ?, datetime('now'))`
         )
-        .run(username, displayName, passwordHash)
+        .run(username, displayName, passwordHash, ROLE_ADMIN)
     })
 
     const result = createUser()
@@ -89,7 +95,7 @@ export class AuthService {
     return {
       id: Number(result.lastInsertRowid),
       username,
-      role: 'admin',
+      role: ROLE_ADMIN,
       recoveryKey
     }
   }
@@ -146,21 +152,21 @@ export class AuthService {
     displayName: string,
     tempPassword: string,
     createdByUsername: string
-  ): Promise<{ id: number; username: string; role: string; must_change_password: number }> {
+  ): Promise<{ id: number; username: string; role: UserRole; must_change_password: number }> {
     const creator = this.getUser(createdByUsername)
     const passwordHash = await this.passwordProvider.hashPassword(tempPassword)
 
     const result = this.db
       .prepare(
         `INSERT INTO users (username, display_name, password_hash, role, must_change_password, created_by, password_changed_at)
-         VALUES (?, ?, ?, 'user', 1, ?, datetime('now'))`
+         VALUES (?, ?, ?, ?, 1, ?, datetime('now'))`
       )
-      .run(username, displayName, passwordHash, creator?.id ?? null)
+      .run(username, displayName, passwordHash, ROLE_USER, creator?.id ?? null)
 
     return {
       id: Number(result.lastInsertRowid),
       username,
-      role: 'user',
+      role: ROLE_USER,
       must_change_password: 1
     }
   }

@@ -1,13 +1,16 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
 import {
-  USER_ROLES,
-  MAX_FAILED_ATTEMPTS,
+  DEFAULT_USER_ROLE,
   LOCKOUT_DURATION_MINUTES,
+  MAX_FAILED_ATTEMPTS,
+  ROLE_ADMIN,
+  ROLE_USER,
+  USER_ROLES,
   type UserRole
 } from '../../../../src/main/services/auth/auth-constants'
 
@@ -16,84 +19,173 @@ import {
  *
  * Both backends (the existing SQLite AuthService and the upcoming
  * PostgresWebAuthService under src/web/auth/) consume the same role
- * enum, lockout threshold, and lockout duration. Without a shared
- * source of truth they drift on policy — a desktop password lockout
- * after 5 attempts but a web one after 3, or a Postgres CHECK
- * constraint that allows roles the SQLite path silently rejects.
+ * enum, lockout threshold, lockout duration, and DEFAULT role value.
+ * Without a shared source of truth they drift on policy.
  *
- * This file is the gate. It goes RED until auth-constants.ts exists,
- * AuthService.ts imports from it, and the Postgres migration's role
- * CHECK enumerates exactly the same role names.
+ * Test goes RED before auth-constants.ts exists; goes GREEN once the
+ * module is added, AuthService imports from it, and both migrations
+ * (SQLite v12 + Postgres 0007) match the constants in CHECK enum,
+ * DEFAULT clause, and named role usage.
+ *
+ * The migration regexes here are whitespace-tolerant by design — a
+ * future SQL reformat (extra spaces, line breaks, alternate quote
+ * style) must NOT cause a false-positive drift signal. Real drift
+ * (different role names, missing/extra entries, different default)
+ * still fires.
  */
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..')
+
+const SQLITE_MIGRATION_PATH = resolve(REPO_ROOT, 'src/main/database/migrations.ts')
+const PG_USERS_MIGRATION_PATH = resolve(
+  REPO_ROOT,
+  'src/main/storage/postgres/migrations/sql/0007_create_users_and_settings.sql'
+)
+
+function readOrFail(path: string, hint: string): string {
+  if (!existsSync(path)) {
+    throw new Error(
+      `${hint} not found at ${path}. ` +
+        'If the migration file was renamed or moved, update auth-constants.test.ts ' +
+        'to point at the new location.'
+    )
+  }
+  return readFileSync(path, 'utf8')
+}
+
+function extractEnumFromCheckClause(sql: string, tableHint: string): string[] {
+  // Tolerant of whitespace and line breaks. Capture the enum body of
+  // a `role IN (...)` clause; require the surrounding context to
+  // mention the table by name so we don't accidentally match an
+  // unrelated `role` CHECK from a different table in the same file.
+  const re = new RegExp(
+    String.raw`${tableHint}[\s\S]+?role\s+TEXT\s+NOT\s+NULL\s+DEFAULT\s+'([^']+)'\s+CHECK\s*\(\s*role\s+IN\s*\(([^)]+)\)\s*\)`,
+    'i'
+  )
+  const m = sql.match(re)
+  if (!m) {
+    throw new Error(
+      `Could not locate the users.role CHECK clause anchored on '${tableHint}'. ` +
+        'Either the migration was restructured or the regex needs an update.'
+    )
+  }
+  const defaultValue = m[1]
+  const enumeratedRoles = m[2]
+    .split(',')
+    .map((s) => s.trim().replace(/^'(.*)'$/s, '$1'))
+    .filter(Boolean)
+  return [defaultValue, ...enumeratedRoles]
+}
 
 describe('auth-constants module', () => {
   it('exposes USER_ROLES with admin and user (no others)', () => {
     expect(new Set(USER_ROLES)).toEqual(new Set(['admin', 'user']))
   })
 
+  it('exposes named role constants (ROLE_ADMIN, ROLE_USER) matching USER_ROLES', () => {
+    expect(ROLE_ADMIN).toBe('admin')
+    expect(ROLE_USER).toBe('user')
+    expect(USER_ROLES).toContain(ROLE_ADMIN)
+    expect(USER_ROLES).toContain(ROLE_USER)
+  })
+
+  it('DEFAULT_USER_ROLE is a member of USER_ROLES', () => {
+    // Drift detector: a future change to USER_ROLES that drops the
+    // current default value would fail this assertion before it ships.
+    expect(USER_ROLES).toContain(DEFAULT_USER_ROLE)
+  })
+
   it('exposes lockout threshold + duration matching pre-refactor values', () => {
-    // Before extraction these were locals in AuthService.ts. Pinning to
-    // the same numbers ensures the refactor is mechanically equivalent.
+    // Pinned values — see SECURITY POLICY note in auth-constants.ts.
+    // Changing these is a security-policy edit, not a refactor: the
+    // PR that touches these numbers must include a security review.
     expect(MAX_FAILED_ATTEMPTS).toBe(5)
     expect(LOCKOUT_DURATION_MINUTES).toBe(15)
   })
 
-  it('UserRole type derives from USER_ROLES', () => {
-    // Compile-time check via assignability — runtime assertion is
-    // structural, but TS would refuse this assignment if the type drift.
-    const sample: UserRole = 'admin'
-    expect(USER_ROLES).toContain(sample)
+  it('UserRole type is a typed alias of USER_ROLES values (compile-time)', () => {
+    // Compile-time witnesses: the `satisfies` pattern locks UserRole to
+    // a subset of the array's values — TS will refuse to compile if
+    // someone widens UserRole to `string` or adds a value missing from
+    // USER_ROLES.
+    const _admin = ROLE_ADMIN satisfies UserRole
+    const _user = ROLE_USER satisfies UserRole
+    expect([_admin, _user]).toEqual(['admin', 'user'])
   })
 })
 
-describe('auth-constants cross-backend wiring', () => {
-  it('AuthService.ts imports from auth-constants (no local copies)', () => {
-    const authPath = resolve(REPO_ROOT, 'src/main/services/auth/AuthService.ts')
-    const src = readFileSync(authPath, 'utf8')
-    expect(src, 'AuthService must import from auth-constants').toMatch(
-      /from\s+['"]\.\/auth-constants['"]/
+describe('AuthService.ts uses the constants module (no role literals)', () => {
+  it('imports ROLE_ADMIN, ROLE_USER, and UserRole from auth-constants', () => {
+    const src = readOrFail(
+      resolve(REPO_ROOT, 'src/main/services/auth/AuthService.ts'),
+      'AuthService.ts'
     )
-    // The pre-refactor file declared these as local `const`. The refactor
-    // must remove the locals; otherwise the constants module is just a
-    // shadow that can drift.
-    expect(src, 'AuthService must not redeclare MAX_FAILED_ATTEMPTS locally').not.toMatch(
-      /^const\s+MAX_FAILED_ATTEMPTS\s*=/m
+    expect(src, 'AuthService must import named role constants').toMatch(
+      /import\s*\{[\s\S]*?ROLE_ADMIN[\s\S]*?\}\s*from\s*['"]\.\/auth-constants['"]/
     )
-    expect(src, 'AuthService must not redeclare LOCKOUT_DURATION_MINUTES locally').not.toMatch(
+    expect(src, 'AuthService must import ROLE_USER').toMatch(/ROLE_USER/)
+    expect(src, 'AuthService must import the UserRole type').toMatch(/type UserRole/)
+  })
+
+  it('does not redeclare the policy constants locally', () => {
+    const src = readOrFail(
+      resolve(REPO_ROOT, 'src/main/services/auth/AuthService.ts'),
+      'AuthService.ts'
+    )
+    expect(src, 'no shadowed MAX_FAILED_ATTEMPTS').not.toMatch(/^const\s+MAX_FAILED_ATTEMPTS\s*=/m)
+    expect(src, 'no shadowed LOCKOUT_DURATION_MINUTES').not.toMatch(
       /^const\s+LOCKOUT_DURATION_MINUTES\s*=/m
     )
   })
 
-  it('Postgres migration 0007 role CHECK enumerates exactly USER_ROLES', () => {
-    const sqlPath = resolve(
-      REPO_ROOT,
-      'src/main/storage/postgres/migrations/sql/0007_create_users_and_settings.sql'
+  it('uses ROLE_ADMIN/ROLE_USER as parameter values (no inline role string literals in SQL or returns)', () => {
+    const src = readOrFail(
+      resolve(REPO_ROOT, 'src/main/services/auth/AuthService.ts'),
+      'AuthService.ts'
     )
-    const sql = readFileSync(sqlPath, 'utf8')
-    for (const role of USER_ROLES) {
-      expect(sql, `role CHECK must allow '${role}'`).toMatch(new RegExp(`'${role}'`))
-    }
-    // Negative: no other role names appear in a CHECK clause. Catches a
-    // future migration that relaxes the enum.
-    const checkClauseMatch = sql.match(/CHECK\(role IN \(([^)]+)\)\)/i)
-    expect(checkClauseMatch, 'role CHECK clause must be present').not.toBeNull()
-    const enumeratedRoles =
-      checkClauseMatch![1]
-        .split(',')
-        .map((s) => s.trim().replace(/^'(.*)'$/, '$1'))
-        .filter(Boolean) ?? []
-    expect(new Set(enumeratedRoles)).toEqual(new Set(USER_ROLES))
+    // Allow the strings inside import statements + comments only. Strip
+    // those, then check no bare `'admin'` / `'user'` survives in code.
+    const stripped = src
+      .replace(/import[\s\S]*?from\s*['"][^'"]+['"]/g, '') // imports
+      .replace(/\/\/[^\n]*/g, '') // line comments
+      .replace(/\/\*[\s\S]*?\*\//g, '') // block comments
+    expect(stripped, `AuthService must use ROLE_ADMIN, not the string literal 'admin'`).not.toMatch(
+      /'admin'/
+    )
+    expect(stripped, `AuthService must use ROLE_USER, not the string literal 'user'`).not.toMatch(
+      /'user'/
+    )
   })
+})
 
-  it('SQLite migration v12 role CHECK enumerates exactly USER_ROLES', () => {
-    const migPath = resolve(REPO_ROOT, 'src/main/database/migrations.ts')
-    const src = readFileSync(migPath, 'utf8')
-    // Find the role CHECK fragment in the v12 block.
-    const checkMatch = src.match(/role TEXT NOT NULL DEFAULT 'user' CHECK\(role IN \(([^)]+)\)\)/)
-    expect(checkMatch, 'SQLite v12 role CHECK must be present').not.toBeNull()
-    const enumeratedRoles = checkMatch![1].split(',').map((s) => s.trim().replace(/^'(.*)'$/, '$1'))
-    expect(new Set(enumeratedRoles)).toEqual(new Set(USER_ROLES))
+describe('migration parity — SQLite v12', () => {
+  it('users.role CHECK enumerates exactly USER_ROLES', () => {
+    const sql = readOrFail(SQLITE_MIGRATION_PATH, 'SQLite migrations.ts')
+    const [defaultValue, ...enumerated] = extractEnumFromCheckClause(
+      sql,
+      'CREATE TABLE IF NOT EXISTS users'
+    )
+    expect(new Set(enumerated)).toEqual(new Set(USER_ROLES))
+    expect(defaultValue).toBe(DEFAULT_USER_ROLE)
+  })
+})
+
+describe('migration parity — Postgres 0007', () => {
+  it('users.role CHECK enumerates exactly USER_ROLES', () => {
+    const sql = readOrFail(PG_USERS_MIGRATION_PATH, 'Postgres 0007 migration')
+    const [defaultValue, ...enumerated] = extractEnumFromCheckClause(sql, '"users"')
+    expect(new Set(enumerated)).toEqual(new Set(USER_ROLES))
+    expect(defaultValue).toBe(DEFAULT_USER_ROLE)
+  })
+})
+
+describe('cross-backend defaults agree', () => {
+  it('SQLite and Postgres both DEFAULT to DEFAULT_USER_ROLE', () => {
+    const sqlite = readOrFail(SQLITE_MIGRATION_PATH, 'SQLite migrations.ts')
+    const pg = readOrFail(PG_USERS_MIGRATION_PATH, 'Postgres 0007 migration')
+    const [sqliteDefault] = extractEnumFromCheckClause(sqlite, 'CREATE TABLE IF NOT EXISTS users')
+    const [pgDefault] = extractEnumFromCheckClause(pg, '"users"')
+    expect(sqliteDefault).toBe(pgDefault)
+    expect(sqliteDefault).toBe(DEFAULT_USER_ROLE)
   })
 })

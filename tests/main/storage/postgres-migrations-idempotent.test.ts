@@ -105,6 +105,32 @@ describe.skipIf(!RUN)('Postgres migrations: real-instance idempotency', () => {
     const snapshot = await captureSchema(probeClient, schema)
     expect(snapshot.tables.length).toBeGreaterThan(0)
     expect(snapshot.appliedVersions).toEqual([...snapshot.appliedVersions].sort((a, b) => a - b))
+
+    // Phase 2 #1: auth tables must materialise after migration. The
+    // PostgresWebAuthService refactor (deliverable #3) depends on
+    // both being present with the columns the SQLite schema also has.
+    const tableNames = snapshot.tables.map((t) => t.table_name)
+    expect(tableNames).toContain('users')
+    expect(tableNames).toContain('database_settings')
+
+    const usersCols = snapshot.tables.find((t) => t.table_name === 'users')?.columns ?? []
+    for (const col of [
+      'id',
+      'username',
+      'display_name',
+      'password_hash',
+      'role',
+      'is_active',
+      'must_change_password',
+      'failed_login_count',
+      'locked_until',
+      'password_changed_at',
+      'created_at',
+      'created_by',
+      'updated_at'
+    ]) {
+      expect(usersCols, `users.${col} should exist`).toContain(col)
+    }
   }, 60_000)
 
   it('is idempotent — a second run produces the same schema state', async () => {

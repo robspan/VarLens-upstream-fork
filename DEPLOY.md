@@ -160,9 +160,11 @@ plaintext doesn't linger in `docker inspect` output.
 ## What to expect during the run
 
 The orchestrator (`web-deploy/scripts/pilot.sh`) prints a banner and then
-runs five numbered steps. Tool output streams through unfiltered — Tofu's
-per-resource creation log is the source of truth for "what is happening
-right now".
+runs five numbered steps. Tofu's full plan dump is filtered by default to
+keep the run-time output focused; you'll see one progress line per
+resource plus the summary. Use `--verbose` (or `export VARLENS_VERBOSE=1`)
+on `pilot up` / `pilot down` / `e2e run` to see the raw firehose for
+debugging or audit-log capture.
 
 1. **Provision Hetzner server** (cpx32 + 50 GB volume + IPv4) — ~3 min.
    You'll see Tofu creating server, volume, firewall, SSH key, attaching

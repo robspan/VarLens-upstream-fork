@@ -38,6 +38,26 @@ Cost reference values for the Concept Pilot (as of April 2026):
 
 Full cost savings only via `make down`. Bringing it back up: `make up` plus `make stack-up` (about five minutes total until the setup is fully running again).
 
+## Verbose mode
+
+Tofu's `apply` and `destroy` both dump the full plan (every resource, every attribute) before any operation runs. Once you've already confirmed an action, that's noise. The CLI filters tofu's output by default to keep only the per-resource progress lines plus the summary; the rest is suppressed.
+
+To see the raw firehose (debugging, audit log capture):
+
+```bash
+./web-deploy/bin/varlens pilot up   --verbose
+./web-deploy/bin/varlens pilot down --verbose
+./web-deploy/bin/varlens e2e   run  --verbose
+```
+
+Or set the env var once for the shell session:
+
+```bash
+export VARLENS_VERBOSE=1
+```
+
+The legacy `VARLENS_TOFU_VERBOSE=1` is honored as an alias.
+
 ## ⚠ Destructive operations
 
 Each requires a literal confirmation token — `y` / `yes` is rejected on purpose.

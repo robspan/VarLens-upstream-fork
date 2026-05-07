@@ -80,15 +80,68 @@ def tofu(env: str, *args: str, capture: bool = False, check: bool = True) -> sub
     )
 
 
+# Default: filter tofu's verbose `apply` / `destroy` output to keep only
+# per-resource progress + summary; drop the full plan dump and per-attribute
+# null-diff blocks that come before the operations. Bypass with --verbose
+# (or VARLENS_VERBOSE=1) when you want the firehose for audit / debugging.
+_TOFU_KEEP_RE = re.compile(
+    r"^("
+    r"(?:hcloud_|module\.|data\.)\S+: "
+    r"(?:Creating|Creation complete|Still creating|Modifying|Modifications complete|Still modifying|"
+    r"Destroying|Destruction complete|Still destroying|Reading|Read complete|Refreshing|Provisioning)"
+    r"|Plan: \d"
+    r"|Apply complete!|Destroy complete!"
+    r"|Outputs:"
+    r"|  [a-z_]+ +="          # output values, indented two spaces
+    r"|Error:|Warning:"
+    r")"
+)
+
+
+def _tofu_verbose() -> bool:
+    return os.environ.get("VARLENS_VERBOSE") == "1" or os.environ.get("VARLENS_TOFU_VERBOSE") == "1"
+
+
+def tofu_filtered(env: str, *args: str) -> None:
+    """Run tofu with optional output filtering.
+
+    --verbose / VARLENS_VERBOSE=1 / VARLENS_TOFU_VERBOSE=1 disable the
+    filter and stream raw stdout/stderr. Otherwise only progress and
+    summary lines pass through; the rest is suppressed.
+    """
+    if _tofu_verbose():
+        tofu(env, *args)
+        return
+    cmd = ["tofu", f"-chdir={env_dir(env)}", *args]
+    proc = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
+    )
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        if _TOFU_KEEP_RE.match(line):
+            sys.stdout.write(line)
+            sys.stdout.flush()
+    rc = proc.wait()
+    if rc != 0:
+        fail(f"tofu {' '.join(args)} exited {rc} (re-run with --verbose for full output)")
+
+
 def tofu_output(env: str, key: str) -> str | None:
+    # `tofu output -raw <key>` writes its "Warning: No outputs found"
+    # message to STDOUT (not stderr) and still exits 0 when state has no
+    # outputs — e.g. immediately after `tofu destroy`. -no-color strips
+    # the ANSI escape so the sniff for "No outputs found" is reliable
+    # across colour modes.
     proc = subprocess.run(
-        ["tofu", f"-chdir={env_dir(env)}", "output", "-raw", key],
+        ["tofu", f"-chdir={env_dir(env)}", "output", "-no-color", "-raw", key],
         capture_output=True, text=True,
     )
     if proc.returncode != 0:
         return None
     out = proc.stdout.strip()
-    return out or None
+    if not out or "No outputs found" in out or out.startswith("Warning:"):
+        return None
+    return out
 
 
 def ipv4(env: str) -> str | None:
@@ -250,40 +303,17 @@ def action_up(env: str, args) -> None:
     ensure_init(env)
     if env == "e2e":
         ensure_e2e_tfvars()
-    tofu(env, "apply", "-auto-approve")
+    if getattr(args, "verbose", False):
+        os.environ["VARLENS_VERBOSE"] = "1"
+    tofu_filtered(env, "apply", "-auto-approve")
 
 
 def action_down(env: str, args) -> None:
     if env == "pilot":
         confirm_typed("pilot", args.yes)
-    # tofu destroy -auto-approve dumps the full plan with every
-    # attribute's `attr = "x" -> null` diff before the operations —
-    # noise we don't want once the operator already typed "pilot" to
-    # confirm. Filter to the per-resource progress lines + summary.
-    # Set VARLENS_TOFU_VERBOSE=1 to see the raw output instead.
-    if os.environ.get("VARLENS_TOFU_VERBOSE") == "1":
-        tofu(env, "destroy", "-auto-approve")
-        return
-    cmd = ["tofu", f"-chdir={env_dir(env)}", "destroy", "-auto-approve"]
-    proc = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
-    )
-    keep = re.compile(
-        r"^("
-        r"hcloud_\S+: (?:Destroying|Destruction complete|Still destroying)"
-        r"|Plan: \d"
-        r"|Destroy complete!"
-        r"|Error:|Warning:"
-        r")"
-    )
-    assert proc.stdout is not None
-    for line in proc.stdout:
-        if keep.match(line):
-            sys.stdout.write(line)
-            sys.stdout.flush()
-    rc = proc.wait()
-    if rc != 0:
-        fail(f"tofu destroy exited {rc} (re-run with VARLENS_TOFU_VERBOSE=1 for full output)")
+    if getattr(args, "verbose", False):
+        os.environ["VARLENS_VERBOSE"] = "1"
+    tofu_filtered(env, "destroy", "-auto-approve")
 
 
 def action_stop(env: str, args) -> None:
@@ -360,10 +390,13 @@ def action_run(env: str, args) -> None:
     ensure_init(env)
     ensure_e2e_tfvars()
 
+    if getattr(args, "verbose", False):
+        os.environ["VARLENS_VERBOSE"] = "1"
+
     failed_step: str | None = None
     try:
         log("Step 1/6: tofu apply")
-        tofu(env, "apply", "-auto-approve")
+        tofu_filtered(env, "apply", "-auto-approve")
 
         ip = ipv4(env)
         if not ip:
@@ -399,7 +432,7 @@ def action_run(env: str, args) -> None:
         else:
             log("Cleaning up E2E environment (tofu destroy)")
             try:
-                tofu(env, "destroy", "-auto-approve")
+                tofu_filtered(env, "destroy", "-auto-approve")
             except subprocess.CalledProcessError as exc:
                 log(f"WARNING: tofu destroy failed: {exc}")
                 log(f"Manual cleanup required: tofu -chdir={env_dir(env)} destroy")
@@ -601,6 +634,11 @@ def build_parser() -> argparse.ArgumentParser:
     def add_action(actions, name, func, help_=None):
         ap = actions.add_parser(name, help=help_)
         ap.add_argument("--yes", action="store_true", help="Skip confirmation prompts (for CI)")
+        ap.add_argument(
+            "--verbose",
+            action="store_true",
+            help="Show raw tofu output (default: filter to per-resource progress + summary)",
+        )
         ap.set_defaults(func=func)
         return ap
 

@@ -38,10 +38,6 @@ npm-debug.log*
 .env.local
 .env.*.local
 
-# Per-clone web-mode sentinel (touch .varlens-web-mode to default
-# VARLENS_WEB=1 in this checkout — see Makefile mode-toggle block).
-.varlens-web-mode
-
 # Database
 *.db
 *.db-journal

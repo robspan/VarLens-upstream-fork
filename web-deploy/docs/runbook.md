@@ -1,14 +1,6 @@
 # Runbook — Concept Pilot
 
-Day-to-day. All commands run from the repo root and require web mode enabled. Three ways, in increasing persistence:
-
-```bash
-VARLENS_WEB=1 make pilot-status     # one-off
-export VARLENS_WEB=1                # whole shell session
-touch .varlens-web-mode             # persistent for this checkout (gitignored)
-```
-
-The deploy CLI is opt-in by design — see [`AGENTS.md`](../../AGENTS.md) > Mode toggle.
+Day-to-day. All commands run from the repo root. Web mode is auto-on whenever `web-deploy/.env` exists (= you've populated the operator-secrets file you need anyway for the pilot to work). To force one way or the other for a single command, set the env var explicitly: `VARLENS_WEB=1` or `VARLENS_WEB=0`. See [`AGENTS.md`](../../AGENTS.md) > Mode toggle for the rationale.
 
 | Need                          | Command                                                       |
 | ----------------------------- | ------------------------------------------------------------- |

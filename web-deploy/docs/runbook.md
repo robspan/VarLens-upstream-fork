@@ -20,6 +20,121 @@ Plan reference: Stage 1 infrastructure plan §infrastruktur4 Phase 1 requires Ru
 | Tear everything down (server + volume + all) | `make down` |
 | cloud-init log on the server | `make logs` |
 
+## Scenario 0: Fresh Bring-up (Cold-start Cycle)
+
+**Trigger:** Standing up a new pilot from a clean slate — first-time bring-up, recreating the server after a `pilot-down`, or moving to a new region. All commands run from the repo root with `web-deploy/.env` populated (chmod 600).
+
+### Prerequisites
+
+`web-deploy/.env` must contain at minimum:
+
+```
+GHCR_TOKEN=<github-pat with read:packages>
+GHCR_USER=<github-username>
+RESTIC_S3_ACCESS_KEY=<hetzner-s3-access-key>
+RESTIC_S3_SECRET_KEY=<hetzner-s3-secret-key>
+VARLENS_ADMIN_USERNAME=admin
+VARLENS_ADMIN_PASSWORD=<one-shot-bootstrap-password>
+```
+
+Optional knobs (leave blank to inherit defaults):
+
+```
+RESTIC_PASSWORD=<operator-typed restic password>
+POSTGRES_PASSWORD=<operator-typed pg password>
+BUCKET_NAME=<override; default varlens-pilot-backup>
+APP_NAME=<container/network name; default varlens>
+APP_PATH_PREFIX=<URL prefix; default /varlens>
+APP_PORT=<internal port; default 8080>
+```
+
+`web-deploy/tofu/environments/pilot/terraform.tfvars` must have `hcloud_token` and `ssh_pubkey` populated.
+
+### Step 1 — Tear down (skip if no server is up)
+
+```bash
+# Destroys server + volume + firewall. Type literally "pilot" at the prompt.
+make pilot-down
+```
+
+Optional bucket nuke (only if you want to wipe all restic snapshots):
+
+```bash
+export $(grep -E "^RESTIC_S3_" web-deploy/.env | xargs)
+make -C web-deploy destroy-bucket DESTROY_BUCKET_ARGS=--yes
+```
+
+If Hetzner returns `BucketNotEmpty` despite the bucket appearing empty, that's their async-reconciliation ghost state. Either wait 5–10 min and retry, or sidestep it by setting `BUCKET_NAME=...-v2` in `web-deploy/.env`.
+
+### Step 2 — Bring it up
+
+```bash
+# Provisions cpx32 + 50 GB volume + IPv4, runs cloud-init, brings up the
+# Compose stack, configures restic, runs smoke probes. Reads all secrets
+# from web-deploy/.env. ~3-4 minutes.
+make pilot
+```
+
+Smoke probes will likely report HTTPS warnings (`got 000`) on the first run — that's the Let's Encrypt rate limit on a recycled IP. The stack itself is fine; switch to self-signed:
+
+```bash
+make -C web-deploy stack-up TLS=internal
+```
+
+### Step 3 — Verify
+
+```bash
+IP=$(make pilot-status 2>/dev/null | awk '/IPv4:/ {print $2}')
+
+curl -sk https://$IP/varlens/healthz
+# expected: {"status":"ok","version":"...","db":{"open":true}}
+
+curl -sk -c /tmp/jar -X POST -H "content-type: application/json" \
+  --data '{"args":["admin","<your VARLENS_ADMIN_PASSWORD>"]}' \
+  https://$IP/varlens/api/auth/login
+# expected: {"success":true,"user":{...}}
+
+curl -sk -b /tmp/jar -X POST -H "content-type: application/json" \
+  --data '{"args":[]}' \
+  https://$IP/varlens/api/auth/currentUser
+# expected: {"id":1,"username":"admin","role":"admin"}
+```
+
+Open `https://<IP>/varlens/` in a browser to load the SPA (cert warning, click through).
+
+### Step 4 — Capture admin recovery key (one-shot)
+
+```bash
+make pilot-ssh
+sudo cat /mnt/data/app/data/admin-recovery-key.txt   # save somewhere safe
+sudo rm /mnt/data/app/data/admin-recovery-key.txt    # then delete
+exit
+```
+
+Then blank the password line in `web-deploy/.env`:
+
+```bash
+sed -i '' 's/^VARLENS_ADMIN_PASSWORD=.*/VARLENS_ADMIN_PASSWORD=/' web-deploy/.env
+```
+
+### Side channels
+
+| Need | Command |
+|---|---|
+| ssh as deploy user | `make pilot-ssh` |
+| current server IP / status | `make pilot-status` |
+| re-run smoke probes | `make pilot-smoke` |
+| tail compose logs | `make -C web-deploy stack-logs` |
+| retry just the backup setup | `make -C web-deploy setup-backup SETUP_BACKUP_ARGS=--default-reuse-when-resumable` |
+
+### Sibling instance (prod alongside dev)
+
+Stand up a separate Hetzner server with its own tofu workspace (or its own checkout) and a distinct `web-deploy/.env` — typically the prod box leaves `APP_NAME` blank (defaults to `varlens`), and the dev box sets `APP_NAME=varlens-dev`. The container name and Caddy upstream cascade automatically. Bucket names should also differ (`BUCKET_NAME=varlens-prod-backup` vs `varlens-dev-backup`) so the two backups stay isolated.
+
+> Limitation: the SPA's vite `base` is currently baked into the docker image at `/varlens/`. Co-located prod+dev with distinct path prefixes would need a build-time templating story; separate-server prod/dev (the planned topology) is unaffected.
+
+---
+
 ## Scenario 1: Updating the Container Images
 
 **Trigger:** Trivy in CI reports a HIGH/CRITICAL CVE for Caddy, Postgres, Uptime Kuma or Dozzle. Or a routine update window (every four to six weeks recommended).

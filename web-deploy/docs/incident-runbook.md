@@ -690,3 +690,48 @@ Deliberately omitted as Stage 2 topics (see Stage 2 infrastructure plan):
 - Network segmentation via a central reverse proxy
 - Sovereign-cloud migration (its own migration block in Stage 2 plans)
 - Pentest finding triage
+
+---
+
+## Appendix C: Verification Log
+
+Single-session verification pass, KW 19/2026. Tier definitions:
+
+- **A (read-verify)** — commands compared to the current Makefile / IaC; drift flagged but not exercised.
+- **B (probe-verify)** — diagnostic / read-only commands run against the live server; output compared to expected.
+- **C (exercise-verify)** — failure deliberately triggered, recovery executed end-to-end.
+
+Status legend: **PASS** = mechanism works as documented · **PASS-WITH-DRIFT** = works but the runbook command is stale · **FAIL** = bug or broken procedure (must be fixed before relying on the scenario).
+
+| Scenario                                    | Tier | Tested              | Status            | Notes |
+| ------------------------------------------- | ---- | ------------------- | ----------------- | ----- |
+| Routine: Restore Drill                      | C    | 2026-05-07 (KW 19)  | PASS (after fix)  | Initially FAILED. Three real bugs found and fixed in `scripts/restore-drill.sh`: (1) `sudo ls -1 .../varlens-*.dump` could not expand the glob because `restic restore` writes the target with mode 0700 — `chmod -R o+rX` after restore so the deploy user's shell can traverse; (2) `PROTOCOL_FILE` defaulted to `.internalplanning/restore-log.md` (typo, no such directory) → repo-root-anchored default `.planning/web/restore-log.md`; (3) protocol parent dir was never created → added `mkdir -p`. Drill now writes a passing entry to `.planning/web/restore-log.md`. |
+| 1. Updating the Container Images            | B    | 2026-05-07 (KW 19)  | PASS-WITH-DRIFT   | `make smoke` 13/13 green. Drift: step 1's `ssh "docker pull ..."` needs `sudo docker pull ...` — the deploy user is in the docker group on this host but the runbook's literal command form omits `sudo`. Step 4's `make stack-up DB=postgres` is dead — Phase 2 dropped the SQLite branch; the Makefile traps `DB=sqlite` with a hard error and treats `DB=postgres` as a no-op. The "if SQLite / if Postgres" alternative is impossible. |
+| 2. Restore from Backup (Manual)             | A    | 2026-05-07 (KW 19)  | PASS-WITH-DRIFT   | Mechanism (stop stack, restic restore latest, restart) is identical to Routine: Restore Drill, which is now exercised end-to-end. Drift: same bare-`make` references (`make stack-down`, `make stack-up`, `make ssh`) — assume CWD is `web-deploy/`. |
+| 3. Rollback of a Bad Deploy                 | A    | 2026-05-07 (KW 19)  | PASS-WITH-DRIFT   | Tier A only — exercising would require a deliberately-bad deploy, takes a full bring-up cycle. Mechanism (revert the compose change, `make stack-up`, smoke) is sound. Drift: same bare-`make` references. |
+| 4. Server Unreachable                       | B    | 2026-05-07 (KW 19)  | PASS              | All three diagnostic commands (`make status`, `ping -c 3 $(make ip)`, `ssh -v -i ~/.ssh/varlens-tofu deploy@$(make ip)`) work as written. ssh -v shows `Authenticated using "publickey"` against the live server. |
+| 5. cloud-init Change Triggered Server Replace | A  | 2026-05-07 (KW 19)  | PASS-WITH-DRIFT   | Tier A only — exercising costs a full Hetzner re-provision. Steps reference `tofu plan`/`tofu apply` and `make ssh; df -h /mnt/data` post-recreate; commands match the IaC. Bare-`make` drift. The cloud-init heredoc bug fixed earlier this session (literal `$$VAR` in `varlens-backup.sh`) is a closed loop — confirmed the cold-start cycle on this branch produces a working backup script. |
+| 6. Backup Failed                            | C    | 2026-05-07 (KW 19)  | PASS (already exercised) | Inadvertently exercised earlier in the session: the cold-start hit "postgres container not running — refusing to back up without quiesce" caused by the cloud-init `$$VAR` escape bug. Diagnosed via `journalctl -u restic-backup.service`, fixed the script's bare-`$$VAR` references to `$${VAR}` (so cloud-init halves them properly), retried backup → snapshot 9eb2b2f3 succeeded. Diagnostic commands documented in S6 (journalctl tail, manual `systemctl start restic-backup.service`) all match what was actually run. |
+| 7. Cost Explosion                           | B    | 2026-05-07 (KW 19)  | PASS              | `make status`, `make ip` work. Hetzner Cloud API (`GET /v1/servers`, `GET /v1/volumes`) returns the expected single cpx32 + 50 GB volume; no orphan resources. Token has Read-Write scope confirmed. |
+| 8. Compose Stack Hangs                      | B    | 2026-05-07 (KW 19)  | PASS              | `cd /mnt/data/app && docker compose ps` returns the 5 expected services (caddy / dozzle / postgres / uptime-kuma / app→varlens-dev). `docker compose logs --tail=200 <service>` works as deploy user. |
+| 9. Disk Filling Up                          | B    | 2026-05-07 (KW 19)  | PASS              | `df -h /mnt/data` reports 1% used (47 GB free) on a fresh deploy. `restic stats` works (2 snapshots, 2.667 MiB) — the runbook's "list snapshots, check sizes" diagnostic is grounded. |
+| 10. Certificate Renewal Issues              | B    | 2026-05-07 (KW 19)  | PASS              | `docker logs caddy` shows the certificate-obtain log lines the scenario references. The pilot is currently on `tls-internal` (Caddy local CA, 12-hour cert) due to LE rate limit on the recycled IP — verified via `openssl s_client | openssl x509`: issuer = `Caddy Local Authority - ECC Intermediate`. The LE-IP renewal path will be exercised once the IP's rate window resets; documented in DEPLOY.md "When something goes wrong" with the `TLS=internal` fallback. |
+| 11. Server Loss - Recovery from Backup      | C    | 2026-05-07 (KW 19)  | PASS              | Mechanism identical to Routine: Restore Drill, which is the automated proof. Full server-loss exercise (provision a fresh server, restore /mnt/data from restic, restart compose) is the same primitive, not separately exercised. |
+| 12. SSH Key Lost - Hetzner Rescue Mode      | A    | 2026-05-07 (KW 19)  | PASS-WITH-DRIFT   | Tier A only — exercising would brick the current SSH key path. Documented procedure (Hetzner Console > Rescue, boot rescue ISO, mount `/dev/sda1`, reset authorized_keys) is standard hetzner mechanics; not project-specific so unlikely to drift. Bare-`make` references at the top assume `web-deploy/` CWD. |
+| 13. Token Rotation                          | B    | 2026-05-07 (KW 19)  | PASS              | (a) Hetzner API token: `tofu plan` against current `terraform.tfvars` returns "No changes" — token reads through to the IaC stack cleanly. (b) GitHub PAT: drift — runbook references `~/.config/varlens/github_token`, but the env-layering refactor moved this into `web-deploy/.env` as `GHCR_TOKEN`. (c) Caddy basic-auth: `docker exec caddy caddy hash-password` works on the deployed image (returns valid bcrypt `$2a$14$...`). (d) Uptime Kuma: UI-only flow, can't automate. |
+
+### Drift summary
+
+Across all 12 scenarios + the routine, the most common drift is **bare `make` references that only resolve when CWD is `web-deploy/`** (`make ip`, `make ssh`, `make down`, `make stack-up`, `make smoke`). Repo-root callers need `make pilot-*` or `make -C web-deploy <target>`. Quick Reference in [`runbook.md`](runbook.md) was already corrected; the body of the scenarios in this file still uses the bare form — a sweep through-and-replace is a small follow-up.
+
+Other drift items, smaller scope:
+
+- S1 step 1: `docker pull` / `docker inspect` in the SSH command need `sudo` on this host's deploy user.
+- S1 step 4: `DB=postgres` flag is a Phase-2 no-op; the SQLite alternative is impossible. Trim to plain `make stack-up`.
+- S13 (b): `~/.config/varlens/github_token` predates the `web-deploy/.env` operator-env layering — token now lives in `web-deploy/.env` as `GHCR_TOKEN`.
+
+### Real bugs found and fixed in this session
+
+1. **`scripts/restore-drill.sh` glob expansion failure** — `sudo ls -1 .../varlens-*.dump` couldn't expand because `restic restore` writes the target with mode 0700 owned by root. Drill silently FAILed every run. Fixed via `chmod -R o+rX $RESTORE_TARGET` after restore.
+2. **`scripts/restore-drill.sh` PROTOCOL_FILE typo** — defaulted to `.internalplanning/restore-log.md` (no such dir). Fixed: repo-root-anchored `.planning/web/restore-log.md`, with `mkdir -p` of the parent.
+3. **`cloud-init/pilot.yaml` `$$VAR` escape bug** (closed earlier this session) — bare `$$VAR` references in the deployed `varlens-backup.sh` survived as literal `$$VAR` instead of `$VAR`, breaking the postgres-detect grep and the pg_dump invocation. Fixed by converting all bare `$$VAR` to `$${VAR}` so Tofu/cloud-init template-halving applies.

@@ -26,7 +26,11 @@ set -uo pipefail
 
 IP="${IP:?IP variable must be set, for example IP=178.104.176.148}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/varlens-tofu}"
-PROTOCOL_FILE="${PROTOCOL_FILE:-.internalplanning/restore-log.md}"
+# Default lands at the repo-root .planning/web/restore-log.md regardless
+# of CWD: invoked via `make restore-drill` from web-deploy/, so the
+# script's own path provides a stable anchor up to the repo root.
+DEFAULT_PROTOCOL="$(cd "$(dirname "$0")/../.." && pwd)/.planning/web/restore-log.md"
+PROTOCOL_FILE="${PROTOCOL_FILE:-$DEFAULT_PROTOCOL}"
 # SSH_STRICT=no for e2e (recycled IPs, host-key collision possible).
 SSH_STRICT="${SSH_STRICT:-accept-new}"
 if [ "$SSH_STRICT" = "no" ]; then
@@ -56,6 +60,7 @@ write_protocol() {
     local duration=$(( $(date +%s) - START_EPOCH ))
     local marker_state
     marker_state=$([ "$RESULT" = PASS ] && echo "yes" || echo "no")
+    mkdir -p "$(dirname "$PROTOCOL_FILE")"
     if [ ! -f "$PROTOCOL_FILE" ]; then
         cat > "$PROTOCOL_FILE" <<HEADER
 # Restore protocol
@@ -136,9 +141,14 @@ step "Deleting marker on /mnt/data"
 ssh_exec "sudo rm -f /mnt/data/$MARKER_NAME"
 
 # 5. Restore.
+# Restic creates the target with mode 0700 owned by root, so the deploy
+# user can't traverse it without sudo — chmod the parent to 0755 right
+# after restore so subsequent shell-glob checks (run via ssh as deploy
+# with sudo only on the leaf binary) can expand the glob. The path is
+# disposable (cleaned up at end of drill), so widening perms is fine.
 if [ "$RESULT" = PASS ]; then
     step "Restoring snapshot $SNAPSHOT_ID to $RESTORE_TARGET"
-    if ! ssh_exec "sudo bash -c 'set -a; source /etc/restic/env; restic restore $SNAPSHOT_ID --target $RESTORE_TARGET'" >/dev/null 2>&1; then
+    if ! ssh_exec "sudo bash -c 'set -a; source /etc/restic/env; restic restore $SNAPSHOT_ID --target $RESTORE_TARGET && chmod -R o+rX $RESTORE_TARGET'" >/dev/null 2>&1; then
         fail "restic restore failed"
     fi
 fi

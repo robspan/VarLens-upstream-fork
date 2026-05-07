@@ -699,19 +699,28 @@ def main() -> None:
         log(f"WARNING: bucket versioning could not be enabled (HTTP {vcode}): {vbody[:200]}")
 
     # --- restic password: operator override > existing > generate ---
+    # Precedence is operator-explicit-first: if the operator typed a
+    # password into web-deploy/.env they mean it, even if /etc/restic/env
+    # or SOPS already has a different value. Mismatch with prior
+    # snapshots is documented in .env.example. The operator-typed value
+    # is SOPS-persisted on creation so cold-starts keep decrypting the
+    # bucket.
     operator_password = os.environ.get("RESTIC_PASSWORD", "").strip()
     newly_generated = False
-    if existing_password and mode in ("default", "reuse"):
-        restic_password = existing_password
-        log("Reusing existing restic password")
-    elif operator_password:
-        # Operator typed a password into web-deploy/.env. Treat as
-        # newly_generated for SOPS persistence so the next bring-up on a
-        # fresh server (without /etc/restic/env) can still decrypt the
-        # bucket. Skip generation entirely.
+    if operator_password:
+        if existing_password and existing_password != operator_password:
+            log(
+                "WARNING: operator-supplied RESTIC_PASSWORD differs from existing "
+                "(server or SOPS) password. Using operator value; prior snapshots "
+                "encrypted with the old password will be UNDECRYPTABLE until you "
+                "rotate them or revert RESTIC_PASSWORD."
+            )
         restic_password = operator_password
         newly_generated = True
         log("Using operator-supplied RESTIC_PASSWORD")
+    elif existing_password and mode in ("default", "reuse"):
+        restic_password = existing_password
+        log("Reusing existing restic password")
     else:
         restic_password = base64.b64encode(secrets.token_bytes(24)).decode("ascii")
         newly_generated = True

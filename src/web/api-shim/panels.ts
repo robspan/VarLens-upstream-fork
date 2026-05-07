@@ -16,8 +16,7 @@ export const createPanelsApi = (): PanelsDomainContract => ({
   activeForCase: (caseId) => httpInvoke('/api/panels/activeForCase', [caseId]),
   validateSymbols: (symbols) => httpInvoke('/api/panels/validateSymbols', [symbols]),
   autocomplete: (query, limit) => httpInvoke('/api/panels/autocomplete', [query, limit]),
-  searchPanelApp: (keyword, region) =>
-    httpInvoke('/api/panels/searchPanelApp', [keyword, region]),
+  searchPanelApp: (keyword, region) => httpInvoke('/api/panels/searchPanelApp', [keyword, region]),
   importPanelApp: (params) => httpInvoke('/api/panels/importPanelApp', [params]),
   generateStringDb: (params) => httpInvoke('/api/panels/generateStringDb', [params]),
   exportBed: (panelId, assembly, paddingBp) =>

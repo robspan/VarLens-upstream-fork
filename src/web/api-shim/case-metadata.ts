@@ -21,8 +21,7 @@ export const createCaseMetadataApi = (): CaseMetadataDomainContract => ({
   getHpoTerms: (caseId) => httpInvoke('/api/case-metadata/getHpoTerms', [caseId]),
   assignHpoTerm: (caseId, hpoId, hpoLabel) =>
     httpInvoke('/api/case-metadata/assignHpoTerm', [caseId, hpoId, hpoLabel]),
-  removeHpoTerm: (caseId, hpoId) =>
-    httpInvoke('/api/case-metadata/removeHpoTerm', [caseId, hpoId]),
+  removeHpoTerm: (caseId, hpoId) => httpInvoke('/api/case-metadata/removeHpoTerm', [caseId, hpoId]),
   getDataInfo: (caseId) => httpInvoke('/api/case-metadata/getDataInfo', [caseId]),
   upsertDataInfo: (caseId, updates) =>
     httpInvoke('/api/case-metadata/upsertDataInfo', [caseId, updates]),

@@ -21,8 +21,7 @@ export const createDatabaseApi = (): DatabaseDomainContract => ({
   postgresProfileRemove: (profileId) =>
     httpInvoke('/api/database/postgresProfileRemove', [profileId]),
   postgresProfileTest: (input) => httpInvoke('/api/database/postgresProfileTest', [input]),
-  postgresProfileOpen: (profileId) =>
-    httpInvoke('/api/database/postgresProfileOpen', [profileId]),
+  postgresProfileOpen: (profileId) => httpInvoke('/api/database/postgresProfileOpen', [profileId]),
   recentList: () => httpInvoke('/api/database/recentList', []),
   getOverview: () => httpInvoke('/api/database/getOverview', []),
   removeRecent: (path) => httpInvoke('/api/database/removeRecent', [path]),

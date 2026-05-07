@@ -25,9 +25,7 @@ export async function httpInvoke<T = unknown>(path: string, args: unknown[]): Pr
   })
   if (!res.ok) {
     const body = await res.text().catch(() => '')
-    throw new Error(
-      `HTTP ${res.status} ${res.statusText} from ${path}: ${body.slice(0, 200)}`
-    )
+    throw new Error(`HTTP ${res.status} ${res.statusText} from ${path}: ${body.slice(0, 200)}`)
   }
   return (await res.json()) as T
 }

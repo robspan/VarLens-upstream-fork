@@ -38,6 +38,17 @@ Cost reference values for the Concept Pilot (as of April 2026):
 
 Full cost savings only via `make down`. Bringing it back up: `make up` plus `make stack-up` (about five minutes total until the setup is fully running again).
 
+## ⚠ Destructive operations
+
+Each requires a literal confirmation token — `y` / `yes` is rejected on purpose.
+
+| Action                                                                              | Command                                                                      | Required input                              | Effect                                                                                                                                                                                                                                                          |
+| ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tear down the Hetzner environment (server + 50 GB volume + IPv4 + firewall + SSH key) | `make pilot-down`                                                            | type literally `pilot`                      | All data on the volume is gone. Restic snapshots in the bucket are untouched and can rebuild a new server via `make -C web-deploy restore-drill` / `restore.sh`.                                                                                                |
+| Destroy the restic bucket and ALL snapshots in it                                   | `make -C web-deploy destroy-bucket DESTROY_BUCKET_ARGS=--yes`                | `--yes` flag                                | Every backup ever taken into this bucket is irrecoverable. Run only if you accept losing all snapshot history. Requires `RESTIC_S3_ACCESS_KEY` / `RESTIC_S3_SECRET_KEY` exported in the shell.                                                                  |
+| Force-overwrite an initialised restic repo                                          | `make -C web-deploy setup-backup SETUP_BACKUP_ARGS=--force`                  | `--force` flag                              | All prior snapshots become undecryptable; only valid if you also rotated the password and accept that loss.                                                                                                                                                     |
+| Rekey the restic password mid-life                                                  | edit `RESTIC_PASSWORD=` in `web-deploy/.env`, re-run `setup-backup`          | manual edit                                 | Snapshots encrypted with the prior password become undecryptable. The script logs a `WARNING` line on mismatch.                                                                                                                                                 |
+
 ## CLI Reference
 
 `./bin/varlens` is the wrapper to which the Makefile delegates destructive actions. Invoke it directly for E2E control or to explicitly bypass confirms.

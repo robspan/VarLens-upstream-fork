@@ -19,29 +19,7 @@ import {
   ROLE_USER,
   type UserRole
 } from '../../../shared/auth/auth-constants'
-
-interface User {
-  id: number
-  username: string
-  display_name: string | null
-  password_hash: string
-  role: UserRole
-  is_active: number
-  must_change_password: number
-  failed_login_count: number
-  locked_until: string | null
-  password_changed_at: string | null
-  created_at: string
-  created_by: number | null
-  updated_at: string | null
-}
-
-interface AuthResult {
-  success: boolean
-  user: Omit<User, 'password_hash'> | null
-  locked?: boolean
-  mustChangePassword?: boolean
-}
+import type { AuthResult, User } from '../../../shared/auth/types'
 
 export class AuthService {
   private readonly passwordProvider: PasswordProvider

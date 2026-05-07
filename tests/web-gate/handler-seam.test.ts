@@ -25,6 +25,22 @@ const WEB_DIR = 'src/web/routes'
 
 const FLAT_HANDLERS = new Set(['shell', 'shortlist', 'system', 'updater'])
 
+/**
+ * Phase 2 backend-split exceptions: routes that legitimately do NOT
+ * reuse src/main/ipc/handlers/<domain>-logic because the web variant
+ * has its own backend-specific implementation. The "reuse not
+ * reimplement" rule still holds for everything else; these are the
+ * documented carve-outs.
+ *
+ *   - auth: web mode is Postgres-only (see src/web/auth/
+ *     PostgresWebAuthService.ts). The desktop AuthService is sync
+ *     better-sqlite3; the web service is async pg.Pool. They share
+ *     policy via src/shared/auth/auth-constants and shape via
+ *     src/shared/auth/types — the structural-parity gate at
+ *     tests/web-gate/parity/auth-scenarios.parity.test.ts enforces both.
+ */
+const WEB_BACKEND_SPLIT_EXEMPT = new Set(['auth'])
+
 function listDomains(dir: string): string[] {
   const abs = resolve(process.cwd(), dir)
   if (!existsSync(abs)) return []
@@ -75,6 +91,7 @@ describe('handler-seam gate', () => {
 
       const violations: string[] = []
       for (const domain of webRoutes) {
+        if (WEB_BACKEND_SPLIT_EXEMPT.has(domain)) continue
         const file = resolve(process.cwd(), WEB_DIR, `${domain}.ts`)
         const source = readFileSync(file, 'utf8')
 

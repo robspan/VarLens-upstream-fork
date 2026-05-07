@@ -31,35 +31,12 @@ import {
   ROLE_USER,
   type UserRole
 } from '../../shared/auth/auth-constants'
+// Cross-backend User + AuthResult shape (Phase 2 #6 QA fix): both
+// implementations import the same types so shape parity is enforced
+// at compile time, not by source-text grep.
+import type { AuthResult, User } from '../../shared/auth/types'
 
-/**
- * Cross-backend User shape. Storage representation differs (Postgres
- * stores boolean / timestamptz / bigint natively), but the row mapper
- * normalises everything to the same shape the SQLite AuthService
- * returns so handlers don't need to branch on backend.
- */
-export interface User {
-  id: number
-  username: string
-  display_name: string | null
-  password_hash: string
-  role: UserRole
-  is_active: number
-  must_change_password: number
-  failed_login_count: number
-  locked_until: string | null
-  password_changed_at: string | null
-  created_at: string
-  created_by: number | null
-  updated_at: string | null
-}
-
-export interface AuthResult {
-  success: boolean
-  user: Omit<User, 'password_hash'> | null
-  locked?: boolean
-  mustChangePassword?: boolean
-}
+export type { AuthResult, User }
 
 export interface PostgresWebAuthServiceOptions {
   pool: Pool

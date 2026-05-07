@@ -23,33 +23,44 @@ const MAKEFILE = resolve(DEPLOY, 'Makefile')
 const CLI = resolve(DEPLOY, 'bin/varlens')
 
 describe.skipIf(!existsSync(DEPLOY))('deploy-stack wiring gate', () => {
-  test('compose/docker-compose.yml registers the varlens service', () => {
+  test('compose/docker-compose.yml registers the app service (Phase 3: parameterised)', () => {
     const yaml = readFileSync(COMPOSE, 'utf8')
-    expect(yaml, 'compose must declare a varlens service block').toMatch(/^\s+varlens:/m)
+    // Service key was renamed `varlens` → `app` so the same compose can
+    // host prod and dev with distinct APP_NAME values. The container_name
+    // still resolves to `varlens` via ${APP_NAME:-varlens}.
+    expect(yaml, 'compose must declare an app service block').toMatch(/^\s+app:/m)
+    expect(yaml, 'app container_name must default to varlens via APP_NAME').toMatch(
+      /container_name:\s*\$\{APP_NAME:-varlens\}/
+    )
     expect(yaml, 'compose must reference the GHCR image').toMatch(
       /image:\s*\$?\{?VARLENS_IMAGE.*ghcr\.io\/.*varlens-web/
     )
-    expect(yaml, 'varlens must join the existing varlens network').toMatch(
-      /varlens:[\s\S]+?networks:[\s\S]+?-\s*varlens/
+    expect(yaml, 'app must join the renamed `app` network').toMatch(
+      /app:[\s\S]+?networks:[\s\S]+?-\s*app/
+    )
+    expect(yaml, 'network must default to varlens via APP_NAME').toMatch(
+      /name:\s*\$\{APP_NAME:-varlens\}/
     )
     // Volume mount uses the data subdir specifically (see d2f2c829): the
     // parent /mnt/data/app stays deploy-owned for rsync, /mnt/data/app/data
     // is chowned to the container's varlens uid (1001) for SQLite writes.
-    expect(yaml, 'varlens must mount /mnt/data/app/data:/data subdir').toMatch(
+    expect(yaml, 'app must mount /mnt/data/app/data:/data subdir').toMatch(
       /\/mnt\/data\/app\/data:\/data/
     )
-    expect(yaml, 'varlens must declare a healthcheck against /healthz').toMatch(
-      /varlens:[\s\S]+?healthcheck:[\s\S]+?\/healthz/
+    expect(yaml, 'app must declare a healthcheck against /healthz').toMatch(
+      /app:[\s\S]+?healthcheck:[\s\S]+?\/healthz/
     )
   })
 
-  test('Caddyfile reverse-proxies /varlens/* to the app container', () => {
+  test('Caddyfile reverse-proxies APP_PATH_PREFIX/* to the app container', () => {
     const caddy = readFileSync(CADDYFILE, 'utf8')
-    expect(caddy, 'Caddyfile must reverse_proxy to varlens:8080').toMatch(
-      /reverse_proxy\s+varlens:8080/
+    // Phase 3: handle_path + reverse_proxy parameterised on APP_NAME /
+    // APP_PATH_PREFIX / APP_PORT, defaults preserve Stage-1 behaviour.
+    expect(caddy, 'Caddyfile must reverse_proxy to {APP_NAME}:{APP_PORT}').toMatch(
+      /reverse_proxy\s+\{\$APP_NAME:-varlens\}:\{\$APP_PORT:-8080\}/
     )
-    expect(caddy, 'route prefix must be /varlens (handle_path strips it)').toMatch(
-      /handle_path\s+\/varlens\*/
+    expect(caddy, 'route prefix must be APP_PATH_PREFIX (default /varlens)').toMatch(
+      /handle_path\s+\{\$APP_PATH_PREFIX:-\/varlens\}\*/
     )
   })
 
@@ -75,15 +86,15 @@ describe.skipIf(!existsSync(DEPLOY))('deploy-stack wiring gate', () => {
     expect(makefile, 'smoke must curl /varlens/healthz').toMatch(/\/varlens\/healthz/)
     expect(
       makefile,
-      'running-services check must include all 5 services (Phase 2: postgres unconditional)'
-    ).toMatch(/\(caddy\|uptime-kuma\|dozzle\|varlens\|postgres\)/)
+      'running-services check must include all 5 services (Phase 3: app key replaces varlens)'
+    ).toMatch(/\(caddy\|uptime-kuma\|dozzle\|app\|postgres\)/)
   })
 
   test('CLI bin/varlens _smoke() probes the app /healthz', () => {
     const cli = readFileSync(CLI, 'utf8')
     expect(cli, 'CLI smoke must include /varlens/healthz').toMatch(/\/varlens\/healthz/)
-    expect(cli, 'CLI services check must include postgres (Phase 2: 5 services)').toMatch(
-      /\(caddy\|uptime-kuma\|dozzle\|varlens\|postgres\)/
+    expect(cli, 'CLI services check must match the parameterised compose service key').toMatch(
+      /\(caddy\|uptime-kuma\|dozzle\|(app|varlens)\|postgres\)/
     )
   })
 
@@ -115,42 +126,42 @@ describe.skipIf(!existsSync(DEPLOY))('deploy-stack wiring gate', () => {
     )
   })
 
-  test('Phase 2: varlens service receives VARLENS_PG_URL + depends_on postgres', () => {
-    // Phase 2 deliverable #5: web mode is Postgres-only. Anchor every
-    // assertion on the varlens service block specifically (extracted
-    // by header) so a future refactor that moves env or depends_on to
-    // a different service is caught.
+  test('Phase 2: app service receives VARLENS_PG_URL + depends_on postgres', () => {
+    // Phase 2 deliverable #5: web mode is Postgres-only. Phase 3 renamed
+    // the compose service key from `varlens` to `app` (parameterisation).
+    // Anchor on the app service block specifically (extracted by header)
+    // so a future refactor that moves env or depends_on to a different
+    // service is caught.
     const yaml = readFileSync(COMPOSE, 'utf8')
 
-    // Extract the varlens service block: from `^  varlens:` through
-    // the start of the next top-level key (`^  \w+:` or end of file).
-    const varlensMatch = yaml.match(/^ {2}varlens:[\s\S]+?(?=^ {2}\w[\w-]*:|^\w|$(?![\r\n]))/m)
-    expect(varlensMatch, 'compose must declare a varlens service block').not.toBeNull()
-    const varlensBlock = varlensMatch![0]
+    // Extract the app service block: from `^  app:` through the start
+    // of the next top-level key (`^  \w+:` or end of file).
+    const appMatch = yaml.match(/^ {2}app:[\s\S]+?(?=^ {2}\w[\w-]*:|^\w|$(?![\r\n]))/m)
+    expect(appMatch, 'compose must declare an app service block').not.toBeNull()
+    const appBlock = appMatch![0]
 
-    expect(varlensBlock, 'varlens must declare VARLENS_PG_URL').toContain('VARLENS_PG_URL')
-    expect(varlensBlock, 'VARLENS_PG_URL default must use postgres:// scheme').toMatch(
+    expect(appBlock, 'app must declare VARLENS_PG_URL').toContain('VARLENS_PG_URL')
+    expect(appBlock, 'VARLENS_PG_URL default must use postgres:// scheme').toMatch(
       /VARLENS_PG_URL:[\s\S]*?postgres:\/\//
     )
-    expect(varlensBlock, 'VARLENS_PG_URL default must interpolate POSTGRES_PASSWORD').toMatch(
+    expect(appBlock, 'VARLENS_PG_URL default must interpolate POSTGRES_PASSWORD').toMatch(
       /VARLENS_PG_URL:[\s\S]*?\$\{POSTGRES_PASSWORD/
     )
-    expect(
-      varlensBlock,
-      'POSTGRES_PASSWORD interpolation must use the `:?` fail-fast guard'
-    ).toMatch(/\$\{POSTGRES_PASSWORD:\?/)
-    expect(varlensBlock, 'VARLENS_PG_URL default must target the in-stack postgres host').toMatch(
+    expect(appBlock, 'POSTGRES_PASSWORD interpolation must use the `:?` fail-fast guard').toMatch(
+      /\$\{POSTGRES_PASSWORD:\?/
+    )
+    expect(appBlock, 'VARLENS_PG_URL default must target the in-stack postgres host').toMatch(
       /@postgres:5432\//
     )
-    expect(varlensBlock, 'varlens must depend_on postgres health').toMatch(
+    expect(appBlock, 'app must depend_on postgres health').toMatch(
       /depends_on:[\s\S]*?postgres:[\s\S]*?condition:\s*service_healthy/
     )
-    expect(varlensBlock, 'VARLENS_RECOVERY_KEY_DIR must be wired (Phase 2 path moved)').toContain(
+    expect(appBlock, 'VARLENS_RECOVERY_KEY_DIR must be wired (Phase 2 path moved)').toContain(
       'VARLENS_RECOVERY_KEY_DIR'
     )
     expect(
-      varlensBlock,
-      'VARLENS_DB_PATH must NOT survive on the varlens service (Phase 2 dropped SQLite)'
+      appBlock,
+      'VARLENS_DB_PATH must NOT survive on the app service (Phase 2 dropped SQLite)'
     ).not.toMatch(/VARLENS_DB_PATH/)
   })
 

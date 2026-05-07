@@ -1,6 +1,6 @@
 # Operations Guide
 
-Detailed operational documentation. For the quick-start sequence see the repository `README.md`. For incident recovery see `runbook.md`.
+Detailed operational documentation. For the quick-start sequence see the repository `README.md`. For day-to-day commands see `runbook.md`. For incident recovery see `incident-runbook.md`.
 
 ## Lifecycle and Cost Control
 

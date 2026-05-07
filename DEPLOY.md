@@ -54,14 +54,14 @@ one-off invocations don't need to write to disk.
 Leave blank to inherit defaults. Useful for sibling deployments
 (prod alongside dev) or restoring against a known password.
 
-| Key                | Default                  | When to set                                                                                                   |
-| ------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| `POSTGRES_PASSWORD` | auto-generated, persisted to `/etc/varlens/postgres-password` | Restoring from a backup that used a known password, or staging a value before bring-up. First-boot only.     |
-| `RESTIC_PASSWORD`  | auto-generated, SOPS-persisted on creation | Operator-controlled bucket password. Must match the prior value if the bucket already has snapshots — otherwise old snapshots become undecryptable. |
-| `BUCKET_NAME`      | `varlens-pilot-backup`   | Distinct bucket per instance (`varlens-prod-backup` / `varlens-dev-backup`), or sidestepping a Hetzner ghost-state bucket that won't delete. |
-| `APP_NAME`         | `varlens`                | Distinct container/network name per instance. The Caddy upstream tracks this automatically.                   |
-| `APP_PATH_PREFIX`  | `/varlens`               | URL prefix the app is mounted under. Note: the SPA bundle bakes `/varlens/` into its asset URLs at image-build time — separate-server prod/dev is fine, but co-located instances with distinct prefixes need a build-time templating story (not yet wired). |
-| `APP_PORT`         | `8080`                   | Internal HTTP port the app listens on inside the container.                                                   |
+| Key                 | Default                                                       | When to set                                                                                                                                                                                                                                                 |
+| ------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POSTGRES_PASSWORD` | auto-generated, persisted to `/etc/varlens/postgres-password` | Restoring from a backup that used a known password, or staging a value before bring-up. First-boot only.                                                                                                                                                    |
+| `RESTIC_PASSWORD`   | auto-generated, SOPS-persisted on creation                    | Operator-controlled bucket password. Must match the prior value if the bucket already has snapshots — otherwise old snapshots become undecryptable.                                                                                                         |
+| `BUCKET_NAME`       | `varlens-pilot-backup`                                        | Distinct bucket per instance (`varlens-prod-backup` / `varlens-dev-backup`), or sidestepping a Hetzner ghost-state bucket that won't delete.                                                                                                                |
+| `APP_NAME`          | `varlens`                                                     | Distinct container/network name per instance. The Caddy upstream tracks this automatically.                                                                                                                                                                 |
+| `APP_PATH_PREFIX`   | `/varlens`                                                    | URL prefix the app is mounted under. Note: the SPA bundle bakes `/varlens/` into its asset URLs at image-build time — separate-server prod/dev is fine, but co-located instances with distinct prefixes need a build-time templating story (not yet wired). |
+| `APP_PORT`          | `8080`                                                        | Internal HTTP port the app listens on inside the container.                                                                                                                                                                                                 |
 
 ## First-time setup
 
@@ -272,8 +272,10 @@ incident recovery, database notes) see:
 - [`web-deploy/README.md`](web-deploy/README.md) — quickstart and layout
 - [`web-deploy/docs/operations.md`](web-deploy/docs/operations.md) —
   command-by-command operations reference
-- [`web-deploy/docs/runbook.md`](web-deploy/docs/runbook.md) — incident
-  scenarios (image updates, restore, rollback)
+- [`web-deploy/docs/runbook.md`](web-deploy/docs/runbook.md) — day-to-day
+  operations (Quick Reference, danger table)
+- [`web-deploy/docs/incident-runbook.md`](web-deploy/docs/incident-runbook.md) —
+  13 incident scenarios (image updates, restore, rollback, server recovery)
 - [`web-deploy/docs/smoke-remediation.md`](web-deploy/docs/smoke-remediation.md) —
   per-check failure causes and fixes for the 13-probe smoke gate
 - [`web-deploy/docs/backup.md`](web-deploy/docs/backup.md)
@@ -335,7 +337,7 @@ make -C web-deploy logs       # tails /var/log/cloud-init-output.log
 ```
 
 For deeper scenario-driven recovery, see
-[`web-deploy/docs/runbook.md`](web-deploy/docs/runbook.md).
+[`web-deploy/docs/incident-runbook.md`](web-deploy/docs/incident-runbook.md).
 
 ## Tearing down
 

@@ -96,7 +96,7 @@ When a maintainer leaves the repository:
 
 ## Hetzner Object Storage as a restic target
 
-For the backup path (see `docs/runbook.md`):
+For the backup path (see `docs/incident-runbook.md`, Scenario 6 / Scenario 11):
 
 1. In the Hetzner Console, create a bucket under Object Storage, for example `varlens-pilot-backup`.
 2. Generate access credentials (access key + secret key).

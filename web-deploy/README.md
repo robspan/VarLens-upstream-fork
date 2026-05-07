@@ -55,7 +55,8 @@ The Stage 1 / Stage 2 planning documents live outside the repository on Confluen
 ## Further Documentation
 
 - **[docs/operations.md](docs/operations.md)** — Lifecycle commands, CLI reference, CI/PAT, cloud-init replace, troubleshooting
-- **[docs/runbook.md](docs/runbook.md)** — Incident scenarios (server recovery, Hetzner rescue mode, token rotation)
+- **[docs/runbook.md](docs/runbook.md)** — Day-to-day operations (Quick Reference, danger table)
+- **[docs/incident-runbook.md](docs/incident-runbook.md)** — 13 incident scenarios (server recovery, Hetzner rescue mode, token rotation)
 - **[docs/backup.md](docs/backup.md)** — restic bucket details
 - **[docs/database.md](docs/database.md)** — SQLite vs PostgreSQL profile
 - **[docs/sops.md](docs/sops.md)** — SOPS+age workflow

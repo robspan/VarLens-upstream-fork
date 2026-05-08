@@ -187,7 +187,11 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pilot
-      url: https://${{ vars.DEPLOY_HOST_PUBLIC || secrets.DEPLOY_HOST }}/varlens/
+      # No `url:` here — GitHub's expression engine doesn't expose
+      # `secrets.*` to the environment context, and the host *is* a
+      # secret (we don't publish the pilot IPv4). Operators jump from
+      # the release page to the deploy step's summary, which prints
+      # the live URL.
     steps:
       - name: Checkout (for the smoke probe definitions)
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # actions/checkout@v4.1.7

@@ -224,21 +224,34 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           VERSION: ${{ needs.resolve-version.outputs.version }}
           IMAGE_REF: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.resolve-version.outputs.version }}
+          # Short-lived GHCR token from the runner's GITHUB_TOKEN. Used
+          # *only* to docker-login on the server, then immediately
+          # discarded. The server's persistent docker auth (set up by
+          # `make stack-up` from the operator's GHCR_TOKEN) can grow
+          # stale between releases — re-logging in every deploy makes
+          # the pull insensitive to that staleness.
+          GHCR_PULL_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_PULL_USER: ${{ github.actor }}
         run: |
           set -euo pipefail
           # Idempotent server-side update:
-          #   1. Replace VARLENS_IMAGE in /mnt/data/app/.env (insert if
+          #   1. Refresh GHCR auth (server's persistent token may be stale).
+          #   2. Replace VARLENS_IMAGE in /mnt/data/app/.env (insert if
           #      absent — older .env files predate the var).
-          #   2. `docker compose pull app` to fetch the pinned tag.
-          #   3. `docker compose up -d --no-deps app` so we recreate
+          #   3. `docker compose pull app` to fetch the pinned tag.
+          #   4. `docker compose up -d --no-deps app` so we recreate
           #      ONLY the app container; postgres/caddy/kuma/dozzle
           #      stay up. --no-deps avoids touching postgres on a
           #      release that didn't change schema.
           ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
               -i ~/.ssh/deploy_key deploy@"$DEPLOY_HOST" \
-              VERSION="$VERSION" IMAGE_REF="$IMAGE_REF" bash <<'REMOTE'
+              VERSION="$VERSION" IMAGE_REF="$IMAGE_REF" \
+              GHCR_PULL_USER="$GHCR_PULL_USER" GHCR_PULL_TOKEN="$GHCR_PULL_TOKEN" bash <<'REMOTE'
           set -euo pipefail
           cd /mnt/data/app
+          # Refresh GHCR docker auth on the server. Pipe the token via
+          # stdin so it never appears in the shell process listing.
+          printf '%s' "$GHCR_PULL_TOKEN" | docker login ghcr.io -u "$GHCR_PULL_USER" --password-stdin >/dev/null
           if grep -q '^VARLENS_IMAGE=' .env; then
             sudo sed -i "s|^VARLENS_IMAGE=.*|VARLENS_IMAGE=${IMAGE_REF}|" .env
           else

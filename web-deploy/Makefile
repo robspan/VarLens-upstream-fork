@@ -347,14 +347,16 @@ setup-monitoring:
 # a "full reset" leaves a half-state where the bucket still holds snapshots
 # encrypted with a password that may no longer exist on disk.
 #
-# Requires RESTIC_S3_ACCESS_KEY/SECRET in the environment.
+# Auto-sources web-deploy/.env so the operator does not have to remember to
+# export RESTIC_S3_* — matches the restore-list pattern. Shell exports still
+# win over .env values.
 destroy-bucket:
-	@if [ -z "$(RESTIC_S3_ACCESS_KEY)" ] || [ -z "$(RESTIC_S3_SECRET_KEY)" ]; then \
-		echo "Set RESTIC_S3_ACCESS_KEY and RESTIC_S3_SECRET_KEY in your shell first."; \
+	@if [ -f .env ] && [ -z "$$RESTIC_S3_ACCESS_KEY" ]; then set -a; . ./.env; set +a; fi; \
+	if [ -z "$$RESTIC_S3_ACCESS_KEY" ] || [ -z "$$RESTIC_S3_SECRET_KEY" ]; then \
+		echo "Set RESTIC_S3_ACCESS_KEY and RESTIC_S3_SECRET_KEY first (or populate web-deploy/.env)."; \
 		exit 1; \
-	fi
-	@RESTIC_S3_ACCESS_KEY=$(RESTIC_S3_ACCESS_KEY) RESTIC_S3_SECRET_KEY=$(RESTIC_S3_SECRET_KEY) \
-		BUCKET_NAME=$${BUCKET_NAME:-varlens-pilot-backup} \
+	fi; \
+	BUCKET_NAME=$${BUCKET_NAME:-varlens-pilot-backup} \
 		./scripts/teardown-bucket.py $(DESTROY_BUCKET_ARGS)
 # Invocation to reuse existing configuration:
 #   make setup-backup SETUP_BACKUP_ARGS=--reuse
@@ -409,6 +411,8 @@ smoke:
 	check_tls "Logs without auth 401"    "401" "$$(curl -ks -o /dev/null -w '%{http_code}' https://$$IP/logs/)"; \
 	check_tls "Logs with auth ok"        "200" "$$(curl -ks -o /dev/null -w '%{http_code}' -u <configured credentials> https://$$IP/logs/)"; \
 	check_tls "VarLens /varlens/healthz" "200" "$$(curl -ks -o /dev/null -w '%{http_code}' https://$$IP/varlens/healthz)"; \
+	check_tls "Login wall: anon /varlens/ → 302 /login" "302" "$$(curl -ks -o /dev/null -w '%{http_code}' https://$$IP/varlens/)"; \
+	check_tls "Login page reachable"     "200" "$$(curl -ks -o /dev/null -w '%{http_code}' https://$$IP/varlens/login)"; \
 	check     "Kuma bound to localhost only"   "yes" "$$(ssh -i $(SSH_KEY) -o BatchMode=yes deploy@$$IP 'ss -tlnp 2>/dev/null | grep -qE "(127\\.0\\.0\\.1|\\[::1\\]):3001\\b" && echo yes || echo no' 2>/dev/null)"; \
 	check     "Dozzle bound to localhost only" "yes" "$$(ssh -i $(SSH_KEY) -o BatchMode=yes deploy@$$IP 'ss -tlnp 2>/dev/null | grep -qE "(127\\.0\\.0\\.1|\\[::1\\]):8080\\b" && echo yes || echo no' 2>/dev/null)"; \
 	check     "Compose stack: 5 services running" "5" "$$(ssh -i $(SSH_KEY) -o BatchMode=yes deploy@$$IP 'cd /mnt/data/app && docker compose ps --status running --services | grep -cE "^(caddy|uptime-kuma|dozzle|app|postgres)$$"' 2>/dev/null | tr -d ' ')"; \

@@ -33,6 +33,8 @@ import type { StorageSession } from '../main/storage/session'
 import { AdminAlreadyExistsError, PostgresWebAuthService } from './auth/PostgresWebAuthService'
 import { buildDispatcher, registerDispatcher } from './server/dispatcher'
 import { registerSessions } from './server/auth'
+import { registerLoginRoute, resolveAppPathPrefix } from './server/login-route'
+import { registerPageGate } from './server/page-gate'
 import { registerStatic } from './server/static'
 import pkg from '../../package.json'
 
@@ -89,6 +91,15 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   }
 
   await registerSessions(app)
+
+  // Login wall: the `/login` page itself + the preHandler that redirects
+  // unauthenticated GETs to it. Registered before the dispatcher and
+  // static handler so the explicit `/login` route wins over the SPA
+  // fallback, and so the gate runs before any route handler ships
+  // bytes. `/api/*`, `/healthz`, and `/login*` are passthrough.
+  const appPathPrefix = resolveAppPathPrefix()
+  registerLoginRoute(app)
+  registerPageGate(app, { appPathPrefix })
 
   const dispatcherDeps = {
     session: session as StorageSession,

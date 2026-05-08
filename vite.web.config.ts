@@ -11,6 +11,7 @@
  */
 import { defineConfig, type Plugin } from 'vite'
 import { builtinModules } from 'node:module'
+import { copyFileSync, mkdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 /**
@@ -34,6 +35,29 @@ const WEB_STUBS: Record<string, string> = {
   )
 }
 
+/**
+ * Copies static assets that live next to the web server source but
+ * are not part of the JS bundle — currently just the login wall HTML
+ * (`src/web/login/login.html` → `out/web/login/login.html`). The
+ * server reads it from disk at request time; bundling it into the
+ * .cjs would force a rebuild for content tweaks and complicate the
+ * `VARLENS_LOGIN_HTML_PATH` override path used by tests.
+ */
+function copyWebStaticAssets(): Plugin {
+  const outDir = resolve(__dirname, 'out/web')
+  return {
+    name: 'web-build:copy-static-assets',
+    apply: 'build',
+    writeBundle() {
+      mkdirSync(resolve(outDir, 'login'), { recursive: true })
+      copyFileSync(
+        resolve(__dirname, 'src/web/login/login.html'),
+        resolve(outDir, 'login/login.html')
+      )
+    }
+  }
+}
+
 function aliasDesktopModulesToWebStubs(): Plugin {
   return {
     name: 'web-build:alias-desktop-to-web-stubs',
@@ -51,7 +75,7 @@ function aliasDesktopModulesToWebStubs(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [aliasDesktopModulesToWebStubs()],
+  plugins: [aliasDesktopModulesToWebStubs(), copyWebStaticAssets()],
   build: {
     target: 'node24',
     outDir: resolve(__dirname, 'out/web'),

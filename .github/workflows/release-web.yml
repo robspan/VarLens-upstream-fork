@@ -249,9 +249,13 @@ jobs:
               GHCR_PULL_USER="$GHCR_PULL_USER" GHCR_PULL_TOKEN="$GHCR_PULL_TOKEN" bash <<'REMOTE'
           set -euo pipefail
           cd /mnt/data/app
-          # Refresh GHCR docker auth on the server. Pipe the token via
-          # stdin so it never appears in the shell process listing.
-          printf '%s' "$GHCR_PULL_TOKEN" | docker login ghcr.io -u "$GHCR_PULL_USER" --password-stdin >/dev/null
+          # Refresh GHCR docker auth on the server. We `sudo docker
+          # login` (not bare `docker login`) so the credentials land
+          # in /root/.docker/config.json — the subsequent `sudo
+          # docker compose pull` reads root's config, not deploy's.
+          # Pipe the token via stdin so it never appears in the
+          # shell process listing.
+          printf '%s' "$GHCR_PULL_TOKEN" | sudo docker login ghcr.io -u "$GHCR_PULL_USER" --password-stdin >/dev/null
           if grep -q '^VARLENS_IMAGE=' .env; then
             sudo sed -i "s|^VARLENS_IMAGE=.*|VARLENS_IMAGE=${IMAGE_REF}|" .env
           else

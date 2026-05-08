@@ -17,7 +17,6 @@
  * the constants module is process-agnostic and the only thing the two
  * implementations share.
  */
-import { nanoid } from 'nanoid'
 import type { Pool } from 'pg'
 
 import {
@@ -31,6 +30,48 @@ import {
   ROLE_USER,
   type UserRole
 } from '../../shared/auth/auth-constants'
+
+/**
+ * Minimum length for any new password set on the web track. Picked at
+ * 12 to align with NIST SP 800-63B guidance for memorised secrets in
+ * an admin/single-user context. The desktop AuthService keeps its
+ * own (laxer) rule because that surface predates this policy.
+ */
+export const MIN_PASSWORD_LENGTH = 12
+
+/**
+ * Server-side validation errors that callers need to discriminate
+ * (the standalone login page surfaces them as inline messages, the
+ * dispatcher maps them to specific 4xx codes). Distinct from
+ * "invalid old password" which is signalled by a `false` return.
+ */
+export class PasswordPolicyError extends Error {
+  readonly name = 'PasswordPolicyError'
+  readonly code: 'too-short' | 'same-as-old'
+  constructor(code: 'too-short' | 'same-as-old', message: string) {
+    super(message)
+    this.code = code
+  }
+}
+
+/**
+ * Shape-check an Argon2id hash without invoking the verifier. The
+ * `@node-rs/argon2` PHC string format is
+ * `$argon2id$v=19$m=...,t=...,p=...$<salt>$<hash>` with base64-noPad
+ * salt/hash segments. We don't validate every parameter — that's
+ * what `verifyPassword` does at use time — but we do reject obvious
+ * non-Argon2 inputs (plaintext, bcrypt, scrypt) so a misconfigured
+ * `VARLENS_ADMIN_PASSWORD_HASH=hunter2` fails loudly at boot
+ * instead of silently locking the operator out.
+ */
+function isLikelyArgon2idHash(value: string): boolean {
+  return (
+    typeof value === 'string' &&
+    /^\$argon2id\$v=\d+\$m=\d+,t=\d+,p=\d+\$[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+$/.test(value)
+  )
+}
+
+export { isLikelyArgon2idHash }
 // Cross-backend User + AuthResult shape (Phase 2 #6 QA fix): both
 // implementations import the same types so shape parity is enforced
 // at compile time, not by source-text grep.
@@ -161,16 +202,63 @@ export class PostgresWebAuthService {
     return (sel.rowCount ?? 0) > 0
   }
 
+  /**
+   * Hash-bootstrap path. Accepts a pre-computed Argon2id hash and
+   * does **not** ever see the plaintext. This is the preferred
+   * path for production: `VARLENS_ADMIN_PASSWORD_HASH` lives in the
+   * operator's `.env` and on the server's `.env`; the plaintext
+   * exists only in the operator's memory between typing it and
+   * `npm run varlens:hash-password` printing the hash.
+   *
+   * The recovery-key write (DB + plaintext file) used to live here.
+   * It was carried over from the desktop track but no consumer code
+   * reads it back, and the on-disk plaintext file was a real
+   * footgun (mode 0600 yes, but still a plaintext credential lying
+   * around until manually captured + deleted). Removed entirely; if
+   * a recovery flow ships later it can issue a key at that point.
+   */
+  async createFirstUserFromHash(
+    username: string,
+    displayName: string,
+    passwordHash: string
+  ): Promise<{ id: number; username: string; role: UserRole }> {
+    if (!isLikelyArgon2idHash(passwordHash)) {
+      throw new Error(
+        'createFirstUserFromHash: passwordHash does not look like an Argon2id hash. ' +
+          'Generate one with `npm run varlens:hash-password`.'
+      )
+    }
+    return await this.insertFirstUser(username, displayName, passwordHash)
+  }
+
+  /**
+   * Plaintext bootstrap path — DEPRECATED. Hashes server-side, then
+   * delegates to the same insert as the hash path. Retained for one
+   * migration release so existing operators with
+   * `VARLENS_ADMIN_PASSWORD=` set in `.env` still come up; expect
+   * removal in the next major.
+   */
   async createFirstUser(
     username: string,
     displayName: string,
     password: string
-  ): Promise<{ id: number; username: string; role: UserRole; recoveryKey: string }> {
-    const sch = this.schemaQuoted
+  ): Promise<{ id: number; username: string; role: UserRole }> {
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      throw new PasswordPolicyError(
+        'too-short',
+        `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`
+      )
+    }
     const passwordHash = await this.passwordProvider.hashPassword(password)
-    const recoveryKey = nanoid(32)
-    const recoveryKeyHash = await this.passwordProvider.hashPassword(recoveryKey)
+    return await this.insertFirstUser(username, displayName, passwordHash)
+  }
 
+  private async insertFirstUser(
+    username: string,
+    displayName: string,
+    passwordHash: string
+  ): Promise<{ id: number; username: string; role: UserRole }> {
+    const sch = this.schemaQuoted
     // Race-safety: the SELECT-outside-transaction pattern in earlier
     // revisions of this method allowed two concurrent first-user calls
     // to both observe "no admin" and both proceed. The partial unique
@@ -178,20 +266,24 @@ export class PostgresWebAuthService {
     // one admin row per schema; the second concurrent INSERT trips
     // unique_violation (SQLSTATE 23505) and we translate it into the
     // same friendly error a serial caller would see.
+    //
+    // The bootstrapped admin is created with must_change_password=TRUE
+    // so the first login forces a rotation before any session-bearing
+    // request can reach the application surface. The dispatcher's
+    // pre-rotation gate enforces this server-side; the operator never
+    // sees an exposure window where the bootstrap credential could
+    // call /api/* freely.
     const client = await this.pool.connect()
     try {
       await client.query('BEGIN')
-      await client.query(`INSERT INTO ${sch}."database_settings" (key, value) VALUES ($1, $2)`, [
-        'recovery_key_hash',
-        recoveryKeyHash
-      ])
       await client.query(
         `INSERT INTO ${sch}."database_settings" (key, value) VALUES ('accounts_enabled', 'true')
          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`
       )
       const inserted = await client.query<{ id: string }>(
-        `INSERT INTO ${sch}."users" (username, display_name, password_hash, role, password_changed_at)
-         VALUES ($1, $2, $3, $4, now())
+        `INSERT INTO ${sch}."users"
+          (username, display_name, password_hash, role, must_change_password, password_changed_at)
+         VALUES ($1, $2, $3, $4, TRUE, now())
          RETURNING id`,
         [username, displayName, passwordHash, ROLE_ADMIN]
       )
@@ -199,8 +291,7 @@ export class PostgresWebAuthService {
       return {
         id: Number(inserted.rows[0].id),
         username,
-        role: ROLE_ADMIN,
-        recoveryKey
+        role: ROLE_ADMIN
       }
     } catch (err) {
       try {
@@ -351,11 +442,40 @@ export class PostgresWebAuthService {
     )
   }
 
+  /**
+   * Rotate a user's password.
+   *
+   * Returns `false` when `oldPassword` doesn't verify (caller maps to
+   * 401). Throws `PasswordPolicyError` for policy violations the
+   * caller can surface as targeted 4xx codes (too short / reused).
+   * Other errors propagate as 500.
+   *
+   * Server-side enforcement of:
+   *   - newPassword length >= MIN_PASSWORD_LENGTH (12)
+   *   - newPassword !== oldPassword (defence-in-depth even if the
+   *     UI also checks; the server is authoritative)
+   *
+   * On success, must_change_password is cleared and the dispatcher's
+   * pre-rotation gate stops blocking other endpoints for this
+   * session.
+   */
   async changePassword(
     username: string,
     oldPassword: string,
     newPassword: string
   ): Promise<boolean> {
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      throw new PasswordPolicyError(
+        'too-short',
+        `New password must be at least ${MIN_PASSWORD_LENGTH} characters.`
+      )
+    }
+    if (newPassword === oldPassword) {
+      throw new PasswordPolicyError(
+        'same-as-old',
+        'New password must differ from the current password.'
+      )
+    }
     const sch = this.schemaQuoted
     const sel = await this.pool.query<Record<string, unknown>>(
       `SELECT * FROM ${sch}."users" WHERE username = $1`,

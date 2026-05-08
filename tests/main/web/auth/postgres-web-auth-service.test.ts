@@ -133,10 +133,19 @@ function newSvc(pool: FakePool): PostgresWebAuthService {
   })
 }
 
+// 2026-security: createFirstUser requires a password >= 12 chars
+// (MIN_PASSWORD_LENGTH). Test fixtures use a fixed 12-char string so
+// the error path tests trip on the actual condition under test
+// rather than the policy check.
+const FIXTURE_PW = 'pw-1234567890'
+const FIXTURE_NEW_PW = 'rotated12345-fixture'
+
 // Convenience: enqueue the four-query happy path of createFirstUser.
+// The recovery-key write was deleted in the 2026-security pass, so
+// the transaction is now BEGIN → UPSERT accounts_enabled → INSERT
+// user → COMMIT (4 queries instead of 5).
 function enqueueCreateFirstUserHappyPath(pool: FakePool, userId = '42'): void {
   pool.enqueueResponse({ rows: [], rowCount: 1 }) // BEGIN
-  pool.enqueueResponse({ rows: [], rowCount: 1 }) // INSERT recovery_key_hash
   pool.enqueueResponse({ rows: [], rowCount: 1 }) // UPSERT accounts_enabled
   pool.enqueueResponse({ rows: [{ id: userId }], rowCount: 1 }) // INSERT user
   pool.enqueueResponse({ rows: [], rowCount: 0 }) // COMMIT
@@ -163,10 +172,9 @@ describe('PostgresWebAuthService — createFirstUser', () => {
 
   it('issues a transactional INSERT with ROLE_ADMIN — never inlines the role string', async () => {
     enqueueCreateFirstUserHappyPath(pool)
-    const result = await svc.createFirstUser('alice', 'Alice', 'pw')
+    const result = await svc.createFirstUser('alice', 'Alice', FIXTURE_PW)
     expect(result.username).toBe('alice')
     expect(result.role).toBe(ROLE_ADMIN)
-    expect(result.recoveryKey).toMatch(/^.{32}$/)
     expect(result.id).toBe(42)
 
     const inserts = pool.queries.filter((q) => /INSERT INTO[\s\S]+users/i.test(q.text))
@@ -177,14 +185,14 @@ describe('PostgresWebAuthService — createFirstUser', () => {
 
   it('runs every write inside a transactional client (rollback semantics)', async () => {
     enqueueCreateFirstUserHappyPath(pool)
-    await svc.createFirstUser('alice', 'Alice', 'pw')
+    await svc.createFirstUser('alice', 'Alice', FIXTURE_PW)
 
     // BEGIN, the two settings INSERTs, the users INSERT, COMMIT — every
     // one of these must be on the connected client (viaClient=true), not
     // on the bare pool. A regression that smears writes across pool
     // checkouts (no real transaction) would fail here.
     const dml = pool.queries.filter((q) => /BEGIN|COMMIT|ROLLBACK|INSERT|UPDATE/i.test(q.text))
-    expect(dml.length).toBeGreaterThanOrEqual(5)
+    expect(dml.length).toBeGreaterThanOrEqual(4)
     for (const q of dml) {
       expect(
         q.viaClient,
@@ -197,7 +205,7 @@ describe('PostgresWebAuthService — createFirstUser', () => {
 
   it('quotes the configured schema in every users-touching query', async () => {
     enqueueCreateFirstUserHappyPath(pool)
-    await svc.createFirstUser('alice', 'Alice', 'pw')
+    await svc.createFirstUser('alice', 'Alice', FIXTURE_PW)
     for (const q of pool.queries) {
       if (/INSERT|UPDATE|SELECT.*users/i.test(q.text)) {
         expect(q.text).toContain(`"${SCHEMA}"`)
@@ -205,15 +213,21 @@ describe('PostgresWebAuthService — createFirstUser', () => {
     }
   })
 
+  it('rejects passwords shorter than the policy minimum', async () => {
+    await expect(svc.createFirstUser('alice', 'Alice', 'short')).rejects.toThrow(
+      /at least 12 characters/i
+    )
+    expect(pool.queries.length, 'no DB writes happen when policy fails').toBe(0)
+  })
+
   it('translates unique_violation (SQLSTATE 23505) into "Admin user already exists"', async () => {
     pool.enqueueResponse({ rows: [], rowCount: 1 }) // BEGIN
-    pool.enqueueResponse({ rows: [], rowCount: 1 }) // INSERT recovery_key_hash
     pool.enqueueResponse({ rows: [], rowCount: 1 }) // UPSERT accounts_enabled
     const uniqueViolation = Object.assign(new Error('duplicate key value'), { code: '23505' })
     pool.enqueueError(uniqueViolation) // INSERT user fails on partial unique idx
     pool.enqueueResponse({ rows: [], rowCount: 0 }) // ROLLBACK
 
-    await expect(svc.createFirstUser('alice', 'Alice', 'pw')).rejects.toThrow(
+    await expect(svc.createFirstUser('alice', 'Alice', FIXTURE_PW)).rejects.toThrow(
       /admin user already exists/i
     )
 
@@ -226,10 +240,10 @@ describe('PostgresWebAuthService — createFirstUser', () => {
 
   it('rolls back and releases the client when a non-unique error fires mid-transaction', async () => {
     pool.enqueueResponse({ rows: [], rowCount: 1 }) // BEGIN
-    pool.enqueueError(new Error('disk full')) // INSERT recovery_key_hash fails
+    pool.enqueueError(new Error('disk full')) // UPSERT accounts_enabled fails
     pool.enqueueResponse({ rows: [], rowCount: 0 }) // ROLLBACK
 
-    await expect(svc.createFirstUser('alice', 'Alice', 'pw')).rejects.toThrow(/disk full/)
+    await expect(svc.createFirstUser('alice', 'Alice', FIXTURE_PW)).rejects.toThrow(/disk full/)
     expect(pool.queries.some((q) => /^ROLLBACK$/i.test(q.text))).toBe(true)
     expect(pool.releasedCount).toBe(1)
   })
@@ -431,7 +445,7 @@ describe('PostgresWebAuthService — deactivateUser / resetPassword / changePass
     const pool = new FakePool()
     const svc = newSvc(pool)
     pool.enqueueResponse({ rows: [], rowCount: 0 })
-    expect(await svc.changePassword('ghost', 'old', 'new')).toBe(false)
+    expect(await svc.changePassword('ghost', 'old-pwd-1234', FIXTURE_NEW_PW)).toBe(false)
   })
 
   it('changePassword returns false when old password does not verify', async () => {
@@ -441,18 +455,39 @@ describe('PostgresWebAuthService — deactivateUser / resetPassword / changePass
       rows: [pgUserRow({ password_hash: 'hashed::differentpw' })],
       rowCount: 1
     })
-    expect(await svc.changePassword('alice', 'wrong', 'new')).toBe(false)
+    expect(await svc.changePassword('alice', 'wrong-pwd-12', FIXTURE_NEW_PW)).toBe(false)
   })
 
   it('changePassword updates hash and clears must_change_password on valid old password', async () => {
     const pool = new FakePool()
     const svc = newSvc(pool)
-    pool.enqueueResponse({ rows: [pgUserRow()], rowCount: 1 })
+    // Pretend the stored hash matches `FIXTURE_PW` under the fake provider.
+    pool.enqueueResponse({
+      rows: [pgUserRow({ password_hash: `hashed::${FIXTURE_PW}` })],
+      rowCount: 1
+    })
     pool.enqueueResponse({ rows: [], rowCount: 1 })
-    expect(await svc.changePassword('alice', 'pw', 'newpw')).toBe(true)
+    expect(await svc.changePassword('alice', FIXTURE_PW, FIXTURE_NEW_PW)).toBe(true)
     const upd = pool.queries[1]
     expect(upd.text).toMatch(/must_change_password\s*=\s*FALSE/i)
-    expect(upd.values).toContain('hashed::newpw')
+    expect(upd.values).toContain(`hashed::${FIXTURE_NEW_PW}`)
+  })
+
+  it('changePassword rejects new passwords shorter than the policy minimum', async () => {
+    const pool = new FakePool()
+    const svc = newSvc(pool)
+    await expect(svc.changePassword('alice', FIXTURE_PW, 'short')).rejects.toThrow(
+      /at least 12 characters/i
+    )
+    expect(pool.queries.length, 'no DB read either when policy fails').toBe(0)
+  })
+
+  it('changePassword rejects new === old', async () => {
+    const pool = new FakePool()
+    const svc = newSvc(pool)
+    await expect(svc.changePassword('alice', FIXTURE_PW, FIXTURE_PW)).rejects.toThrow(
+      /must differ from/i
+    )
   })
 })
 

@@ -219,6 +219,37 @@ browsers trust it. To switch to a domain certificate, point a DNS A
 record at the IP, then re-run with `make -C web-deploy stack-up
 DOMAIN=foo.example.org`.
 
+### Admin bootstrap (2026-security)
+
+Hash-preferred. Generate a hash locally with the same Argon2id params
+the server uses, paste it into `web-deploy/.env`, never put plaintext
+on disk:
+
+```bash
+npm run varlens:hash-password   # prompts; prints the hash
+```
+
+Then in `web-deploy/.env`:
+
+```
+VARLENS_ADMIN_USERNAME=admin
+VARLENS_ADMIN_PASSWORD_HASH=$argon2id$v=19$m=65536,t=3,p=4$...
+VARLENS_ADMIN_PASSWORD=          # leave blank
+VARLENS_ADMIN_DISPLAY_NAME=Admin
+```
+
+The bootstrapped admin row is flagged `must_change_password=TRUE`.
+On first login the standalone login page swaps to a "set new
+password" form (min 12 chars, must differ from current); the server
+refuses every other API endpoint with 403 until the rotation
+commits. Net effect: the bootstrap credential has zero exposure
+window — even with a valid session cookie, no application surface
+is reachable until the user picks a new password.
+
+**Plaintext** (`VARLENS_ADMIN_PASSWORD=...`) is kept for one
+migration release with a hard-deprecation log on every boot. Use
+the hash variant; the plaintext path will be removed.
+
 ### Operator commands
 
 Run from the repo root:

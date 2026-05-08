@@ -211,8 +211,9 @@ stack-up: deploy-stack
 	@# with arbitrary password characters. server.ts ignores these vars
 	@# post-bootstrap with a WARN, so re-injecting on re-runs would only
 	@# extend plaintext exposure with no functional benefit.
-	@printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
+	@printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
 		"$${VARLENS_ADMIN_USERNAME:-}" \
+		"$${VARLENS_ADMIN_PASSWORD_HASH:-}" \
 		"$${VARLENS_ADMIN_PASSWORD:-}" \
 		"$${VARLENS_ADMIN_DISPLAY_NAME:-}" \
 		"$${POSTGRES_PASSWORD:-}" \
@@ -221,6 +222,7 @@ stack-up: deploy-stack
 		"$${APP_PORT:-}" | \
 	ssh -i $(SSH_KEY) deploy@$(call IPV4) 'cd /mnt/data/app && \
 		read -r ADMIN_USER; \
+		read -r ADMIN_HASH; \
 		read -r ADMIN_PASS; \
 		read -r ADMIN_DISP; \
 		read -r OPERATOR_PGPW; \
@@ -248,15 +250,21 @@ stack-up: deploy-stack
 			fi && \
 			cp .env.example .env && \
 			sed -i "s|REPLACE_WITH_GENERATED_PASSWORD|$$PGPW|" .env && \
-			if [ -n "$$ADMIN_USER" ] && [ -n "$$ADMIN_PASS" ]; then \
+			if [ -n "$$ADMIN_USER" ] && { [ -n "$$ADMIN_HASH" ] || [ -n "$$ADMIN_PASS" ]; }; then \
 				sed -i "/^VARLENS_ADMIN_/d" .env && \
 				{ printf "VARLENS_ADMIN_USERNAME=%s\n" "$$ADMIN_USER"; \
-				  printf "VARLENS_ADMIN_PASSWORD=%s\n" "$$ADMIN_PASS"; \
+				  if [ -n "$$ADMIN_HASH" ]; then \
+				    printf "VARLENS_ADMIN_PASSWORD_HASH=%s\n" "$$ADMIN_HASH"; \
+				    BOOTSTRAP_VIA="hash (no plaintext on disk)"; \
+				  else \
+				    printf "VARLENS_ADMIN_PASSWORD=%s\n" "$$ADMIN_PASS"; \
+				    BOOTSTRAP_VIA="plaintext (DEPRECATED — generate a hash via npm run varlens:hash-password)"; \
+				  fi; \
 				  printf "VARLENS_ADMIN_DISPLAY_NAME=%s\n" "$$ADMIN_DISP"; } >> .env && \
 				chmod 600 .env && \
-				echo "Admin bootstrap injected (user: $$ADMIN_USER); recovery key will be at /mnt/data/app/data/admin-recovery-key.txt"; \
+				echo "Admin bootstrap injected (user: $$ADMIN_USER) via $$BOOTSTRAP_VIA — first login will force password rotation"; \
 			else \
-				echo "VARLENS_ADMIN_USERNAME/PASSWORD not set on operator shell — app will boot without an admin"; \
+				echo "Neither VARLENS_ADMIN_PASSWORD_HASH nor VARLENS_ADMIN_PASSWORD set on operator shell — app will boot without an admin"; \
 			fi; \
 		fi && \
 		sed -i "s|^SERVER_HOST=.*|SERVER_HOST=$(CADDY_HOST)|" .env && \

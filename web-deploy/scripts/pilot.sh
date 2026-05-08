@@ -411,14 +411,19 @@ preflight() {
 
   # 9. VarLens admin bootstrap creds — non-fatal but loud. Without them
   # the app boots fine, but no admin exists, so /api/auth/login has no
-  # user to log in as. Operators frequently miss this on first run; the
-  # warn here makes it visible at preflight rather than at first-login.
-  if [[ -n "${VARLENS_ADMIN_USERNAME:-}" && -n "${VARLENS_ADMIN_PASSWORD:-}" ]]; then
-    printf '  %s✓%s VARLENS_ADMIN_USERNAME + VARLENS_ADMIN_PASSWORD present (one-shot bootstrap)\n' "$GREEN" "$RESET"
+  # user to log in as. Hash-preferred (no plaintext on disk); plaintext
+  # path is deprecated and warns loudly.
+  if [[ -n "${VARLENS_ADMIN_USERNAME:-}" && -n "${VARLENS_ADMIN_PASSWORD_HASH:-}" ]]; then
+    printf '  %s✓%s VARLENS_ADMIN_USERNAME + VARLENS_ADMIN_PASSWORD_HASH present (hash bootstrap, no plaintext on disk)\n' "$GREEN" "$RESET"
+  elif [[ -n "${VARLENS_ADMIN_USERNAME:-}" && -n "${VARLENS_ADMIN_PASSWORD:-}" ]]; then
+    printf '  %s⚠%s  VARLENS_ADMIN_PASSWORD (plaintext) is DEPRECATED — generate a hash via:\n' "$YELLOW" "$RESET"
+    printf '    %snpm run varlens:hash-password%s\n' "$BOLD" "$RESET"
+    printf '    Then replace VARLENS_ADMIN_PASSWORD with VARLENS_ADMIN_PASSWORD_HASH in web-deploy/.env.\n'
+    printf '  %s✓%s Bootstrap will proceed with the plaintext path for this run (first login forces rotation).\n' "$DIM" "$RESET"
   else
     printf '  %s⚠%s  VARLENS_ADMIN_* not set — the app will boot without an admin user\n' "$YELLOW" "$RESET"
-    printf '    %sFix:%s set VARLENS_ADMIN_USERNAME and VARLENS_ADMIN_PASSWORD in web-deploy/.env (or shell env) before continuing\n' "$DIM" "$RESET"
-    printf '    %sIf you continue, you will need to set them on the server post-boot and recreate the varlens container.%s\n' "$DIM" "$RESET"
+    printf '    %sFix:%s set VARLENS_ADMIN_USERNAME plus VARLENS_ADMIN_PASSWORD_HASH (preferred) or VARLENS_ADMIN_PASSWORD (deprecated) in web-deploy/.env\n' "$DIM" "$RESET"
+    printf '    %sGenerate a hash with:%s npm run varlens:hash-password\n' "$DIM" "$RESET"
   fi
 
   if (( errors > 0 )); then
@@ -986,18 +991,23 @@ main() {
   printf '    Logs:               https://%s/logs/\n' "$ip"
   printf '    %s↳ Dozzle — live container logs in the browser, basic-auth gated%s\n\n' "$DIM" "$RESET"
 
-  # Admin bootstrap follow-up. The recovery key file is the only copy of
-  # an extremely sensitive secret; point operators at it loudly so the
-  # capture-and-delete step doesn't get skipped.
-  if [[ -n "${VARLENS_ADMIN_USERNAME:-}" && -n "${VARLENS_ADMIN_PASSWORD:-}" ]]; then
+  # Admin bootstrap follow-up. The recovery-key file no longer exists
+  # (no consumer code read it; it was plaintext on disk and was
+  # removed in the 2026-security pass). The bootstrapped admin row
+  # carries must_change_password=TRUE — first login forces a rotation
+  # before any application surface is reachable, so the bootstrap
+  # credential has zero exposure window.
+  if [[ -n "${VARLENS_ADMIN_USERNAME:-}" ]] && \
+     { [[ -n "${VARLENS_ADMIN_PASSWORD_HASH:-}" ]] || [[ -n "${VARLENS_ADMIN_PASSWORD:-}" ]]; }; then
     printf '  %sAdmin bootstrap:%s\n' "$BOLD" "$RESET"
-    printf '    User:        %s%s%s (Argon2 password from VARLENS_ADMIN_PASSWORD)\n' "$BOLD" "${VARLENS_ADMIN_USERNAME}" "$RESET"
-    printf '    %sCapture the one-time recovery key NOW:%s\n' "$YELLOW" "$RESET"
-    printf '      make pilot-ssh\n'
-    printf '      sudo cat /mnt/data/app/data/admin-recovery-key.txt    # copy somewhere safe\n'
-    printf '      sudo rm  /mnt/data/app/data/admin-recovery-key.txt    # then delete\n'
-    printf '    %sAfter capture, blank VARLENS_ADMIN_PASSWORD in web-deploy/.env%s\n' "$DIM" "$RESET"
-    printf '    %s(env-based rotation is not supported; future: varlens admin rotate)%s\n\n' "$DIM" "$RESET"
+    printf '    User:        %s%s%s\n' "$BOLD" "${VARLENS_ADMIN_USERNAME}" "$RESET"
+    if [[ -n "${VARLENS_ADMIN_PASSWORD_HASH:-}" ]]; then
+      printf '    Source:      Argon2id hash (no plaintext on disk).\n'
+    else
+      printf '    Source:      plaintext (DEPRECATED — switch to VARLENS_ADMIN_PASSWORD_HASH next time).\n'
+    fi
+    printf '    %sFirst login will force a password rotation before any app access.%s\n' "$YELLOW" "$RESET"
+    printf '    %sAfter login, blank the bootstrap value in web-deploy/.env so it isn'\''t reused on the next pilot bring-up.%s\n\n' "$DIM" "$RESET"
   fi
 
   printf '  %sOperator commands:%s\n' "$BOLD" "$RESET"

@@ -21,8 +21,7 @@
  *   - production runs `node out/web/server.cjs` via main()
  */
 
-import { closeSync, existsSync, mkdirSync, openSync, unlinkSync, writeFileSync } from 'fs'
-import { isAbsolute, join } from 'path'
+import { isAbsolute } from 'path'
 
 import Fastify, { type FastifyInstance } from 'fastify'
 
@@ -38,9 +37,21 @@ import { registerPageGate } from './server/page-gate'
 import { registerStatic } from './server/static'
 import pkg from '../../package.json'
 
+/**
+ * Admin bootstrap on first boot. Exactly one credential field must
+ * be set: either a pre-computed Argon2id hash (preferred — no
+ * plaintext on disk anywhere) or a plaintext password (deprecated,
+ * kept for one migration release with a hard-deprecation log).
+ *
+ * Tests construct this directly; production reads from env via
+ * `readAdminEnv()` below.
+ */
 export interface AdminBootstrapOptions {
   username: string
-  password: string
+  /** Pre-computed Argon2id hash. Preferred path. */
+  passwordHash?: string
+  /** Plaintext password. Deprecated — emits a warn at boot. */
+  password?: string
   displayName?: string
 }
 
@@ -53,8 +64,6 @@ export interface AdminBootstrapOptions {
 export interface BuildAppOptions {
   admin?: AdminBootstrapOptions
 }
-
-const DEFAULT_RECOVERY_KEY_DIR = '/data'
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
   // Validate Postgres config BEFORE building the app; any later
@@ -136,15 +145,21 @@ interface BootstrapLogger {
   fatal: (obj: object, msg?: string) => void
 }
 
-function getRecoveryKeyDir(): string {
+/**
+ * Validates `VARLENS_RECOVERY_KEY_DIR`. Kept around because the
+ * session-secret file (`web-session-secret`) lives in this directory
+ * and `auth.ts` resolves the same env var. The recovery-key *file*
+ * (`admin-recovery-key.txt`) was deleted in the 2026-security pass —
+ * it was plaintext on disk that no consumer code read.
+ */
+function validateRecoveryKeyDir(): void {
   const raw = process.env.VARLENS_RECOVERY_KEY_DIR
-  const dir = typeof raw === 'string' && raw.trim() !== '' ? raw.trim() : DEFAULT_RECOVERY_KEY_DIR
-  if (!isAbsolute(dir)) {
+  if (raw === undefined || raw.trim() === '') return
+  if (!isAbsolute(raw.trim())) {
     throw new Error(
-      `VARLENS_RECOVERY_KEY_DIR must be an absolute path; got: ${JSON.stringify(dir)}`
+      `VARLENS_RECOVERY_KEY_DIR must be an absolute path; got: ${JSON.stringify(raw)}`
     )
   }
-  return dir
 }
 
 async function maybeBootstrapAdmin(
@@ -152,147 +167,98 @@ async function maybeBootstrapAdmin(
   admin: AdminBootstrapOptions,
   log: BootstrapLogger
 ): Promise<void> {
-  const recoveryKeyDir = getRecoveryKeyDir()
-  const recoveryKeyPath = join(recoveryKeyDir, 'admin-recovery-key.txt')
+  validateRecoveryKeyDir()
 
-  // PRE-CHECK (Step 4 QA fix): mirror the Phase 1 SQLite path's
-  // SELECT-first ordering. If an admin already exists, take the
-  // env-rotation-ignored warn-and-skip branch BEFORE touching the FS.
-  //
-  // Without this pre-check, every reboot of an already-bootstrapped
-  // instance with VARLENS_ADMIN_* still in env tripped the
-  // wx-open(O_CREAT|O_EXCL) on the operator's still-uncaptured
-  // recovery-key file (EEXIST) and crash-looped the boot. The partial
-  // unique index in migration 0007 still guarantees race-safety on
-  // truly concurrent first-user calls; this pre-check is a fast-path,
-  // not a correctness gate.
+  // Steady-state pre-check: if an admin already exists, the env vars
+  // are stale (operator forgot to blank them after first boot) — log
+  // loudly that we're ignoring them and return. The partial unique
+  // index in migration 0007 still guarantees race-safety on truly
+  // concurrent first-user calls; this is a fast-path.
   if (await authService.hasAdmin()) {
-    if (existsSync(recoveryKeyPath)) {
-      log.warn(
-        {
-          event: 'admin-bootstrap',
-          action: 'stale-recovery-key-present',
-          path: recoveryKeyPath
-        },
-        `stale admin recovery-key file present at ${recoveryKeyPath} — capture its contents and delete it; the file will not be regenerated`
-      )
-    }
     log.warn(
       {
         event: 'admin-bootstrap',
         action: 'env-rotation-ignored',
         username: admin.username
       },
-      'VARLENS_ADMIN_USERNAME/PASSWORD are set but an admin already exists — env-based rotation is NOT supported; the new credentials are being ignored.'
+      'VARLENS_ADMIN_* set but an admin already exists — env-based rotation is NOT supported; ignoring.'
     )
     log.info({ event: 'admin-bootstrap', action: 'skipped', reason: 'admin-exists' })
     return
   }
 
-  // Ensure the recovery-key directory exists and is writable. Mode 700
-  // so the parent dir mirrors the file's 0o600 protection. The web
-  // container's volume mount lands at /data with 1001:1001 ownership
-  // already; on dev/test the mkdir is the only thing standing between
-  // a fresh checkout and a working bootstrap.
-  try {
-    mkdirSync(recoveryKeyDir, { recursive: true, mode: 0o700 })
-  } catch (err) {
-    throw new Error(
-      `Cannot ensure recovery-key dir ${recoveryKeyDir}: ${err instanceof Error ? err.message : String(err)}`,
-      { cause: err }
+  // Hash-preferred bootstrap. The hash path never sees plaintext at
+  // any process boundary; the plaintext path is retained for one
+  // migration release with a hard-deprecation warn.
+  const useHash = typeof admin.passwordHash === 'string' && admin.passwordHash !== ''
+  if (!useHash) {
+    if (typeof admin.password !== 'string' || admin.password === '') {
+      throw new Error(
+        'admin bootstrap: neither VARLENS_ADMIN_PASSWORD_HASH nor VARLENS_ADMIN_PASSWORD provided. ' +
+          'Generate a hash with `npm run varlens:hash-password` and set VARLENS_ADMIN_PASSWORD_HASH=...'
+      )
+    }
+    log.warn(
+      {
+        event: 'admin-bootstrap',
+        action: 'plaintext-deprecated',
+        username: admin.username
+      },
+      'VARLENS_ADMIN_PASSWORD (plaintext) is DEPRECATED. ' +
+        'Replace with VARLENS_ADMIN_PASSWORD_HASH (generate via `npm run varlens:hash-password`). ' +
+        'The plaintext path will be removed in a future release.'
     )
   }
 
-  // Atomically reserve the recovery-key path BEFORE attempting the
-  // admin INSERT. `wx` flag is open(O_CREAT|O_EXCL) — fails if the
-  // file already exists (uncaptured prior key) or the directory
-  // isn't writable.
-  let fd: number
   try {
-    fd = openSync(recoveryKeyPath, 'wx', 0o600)
-  } catch (err) {
-    throw new Error(
-      `Cannot reserve admin recovery-key file at ${recoveryKeyPath}: ${err instanceof Error ? err.message : String(err)}. ` +
-        'Resolve manually before retrying (capture and delete any stale file; ensure the directory exists and is writable).',
-      { cause: err }
-    )
-  }
-  closeSync(fd)
-
-  let result: { recoveryKey: string }
-  try {
-    result = await authService.createFirstUser(
-      admin.username,
-      admin.displayName ?? admin.username,
-      admin.password
-    )
+    if (useHash) {
+      await authService.createFirstUserFromHash(
+        admin.username,
+        admin.displayName ?? admin.username,
+        admin.passwordHash as string
+      )
+    } else {
+      await authService.createFirstUser(
+        admin.username,
+        admin.displayName ?? admin.username,
+        admin.password as string
+      )
+    }
   } catch (createErr) {
-    // Race-loser branch: another concurrent first-user call beat us
-    // to the partial unique index. The hasAdmin() pre-check above
-    // covers the steady-state case; this branch covers exactly the
-    // race window. Typed-sentinel check (no regex coupling).
+    // Race-loser branch: a concurrent first-user call beat us to the
+    // partial unique index. The hasAdmin() pre-check above covers the
+    // steady-state case; this branch covers exactly the race window.
     if (createErr instanceof AdminAlreadyExistsError) {
-      try {
-        unlinkSync(recoveryKeyPath)
-      } catch {
-        /* best-effort */
-      }
       log.warn(
         {
           event: 'admin-bootstrap',
           action: 'env-rotation-ignored-race',
           username: admin.username
         },
-        'VARLENS_ADMIN_USERNAME/PASSWORD raced an admin INSERT — env-based rotation is NOT supported; the new credentials are being ignored.'
+        'admin bootstrap raced an existing admin INSERT — env-based rotation is NOT supported; ignoring.'
       )
       log.info({ event: 'admin-bootstrap', action: 'skipped', reason: 'admin-exists' })
       return
     }
-    // Any other failure: clean up the empty reservation file so a retry
-    // can proceed without facing a confusing "stale recovery key" error.
-    try {
-      unlinkSync(recoveryKeyPath)
-    } catch {
-      /* best-effort */
-    }
     throw createErr
   }
 
-  try {
-    writeFileSync(
-      recoveryKeyPath,
-      `# VarLens admin recovery key — generated ${new Date().toISOString()}\n` +
-        '# This is the ONLY copy. If you lose it the admin account cannot be recovered.\n' +
-        '# After capturing this value, DELETE this file from the volume.\n' +
-        `${result.recoveryKey}\n`,
-      { mode: 0o600 }
-    )
-  } catch (writeErr) {
-    log.fatal(
-      {
-        event: 'admin-bootstrap',
-        action: 'recovery-key-write-failed',
-        username: admin.username,
-        recoveryKey: result.recoveryKey,
-        writeError: writeErr instanceof Error ? writeErr.message : String(writeErr)
-      },
-      'CRITICAL: recovery-key file write failed AFTER admin row was committed.'
-    )
-    throw new Error(
-      `Admin bootstrap completed but recovery-key write failed. ` +
-        `RECOVERY KEY (capture immediately and rotate): ${result.recoveryKey}`,
-      { cause: writeErr }
-    )
-  }
-
-  log.warn(
+  // The bootstrapped admin is created with must_change_password=TRUE.
+  // The dispatcher's pre-rotation gate enforces that this user can
+  // only call auth:changePassword and auth:logout — so even though a
+  // login succeeds with the bootstrap credentials, the resulting
+  // session has zero application-surface access until the user picks
+  // a new password. There is no exposure window where the bootstrap
+  // password could read or write any data.
+  log.info(
     {
       event: 'admin-bootstrap',
       action: 'created',
       username: admin.username,
-      recoveryKeyPath
+      mustChangePassword: true,
+      via: useHash ? 'hash' : 'plaintext'
     },
-    `admin created — recovery key written to ${recoveryKeyPath}; capture it now and delete the file`
+    `admin created — must rotate on first login (via ${useHash ? 'hash' : 'plaintext'})`
   )
 }
 
@@ -321,23 +287,36 @@ async function isPostgresHealthy(pool: import('pg').Pool): Promise<boolean> {
   }
 }
 
+/**
+ * Resolve admin-bootstrap credentials from env. Hash takes precedence:
+ * if both VARLENS_ADMIN_PASSWORD_HASH and VARLENS_ADMIN_PASSWORD are
+ * set, the hash wins and the plaintext is silently ignored — the
+ * operator is migrating and we shouldn't second-guess them.
+ *
+ * Returns undefined when no usable credential is set, in which case
+ * the boot path skips the bootstrap entirely (admin must already
+ * exist or the user surface stays unreachable).
+ */
 function readAdminEnv(): AdminBootstrapOptions | undefined {
   const username = process.env.VARLENS_ADMIN_USERNAME
+  const passwordHash = process.env.VARLENS_ADMIN_PASSWORD_HASH
   const password = process.env.VARLENS_ADMIN_PASSWORD
   const displayName = process.env.VARLENS_ADMIN_DISPLAY_NAME
 
-  if (
-    typeof username !== 'string' ||
-    username.trim() === '' ||
-    typeof password !== 'string' ||
-    password === ''
-  ) {
+  if (typeof username !== 'string' || username.trim() === '') {
+    return undefined
+  }
+
+  const hashSet = typeof passwordHash === 'string' && passwordHash.trim() !== ''
+  const passwordSet = typeof password === 'string' && password !== ''
+  if (!hashSet && !passwordSet) {
     return undefined
   }
 
   return {
     username: username.trim(),
-    password,
+    passwordHash: hashSet ? (passwordHash as string).trim() : undefined,
+    password: !hashSet && passwordSet ? password : undefined,
     displayName:
       typeof displayName === 'string' && displayName.trim() !== '' ? displayName.trim() : undefined
   }

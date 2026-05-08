@@ -36,12 +36,47 @@ import secureSession from '@fastify/secure-session'
 declare module '@fastify/secure-session' {
   interface SessionData {
     user: { id: number; username: string; role: string }
+    /**
+     * Sticky bit set on login when the authenticated user has
+     * must_change_password=TRUE in the DB; cleared by the
+     * auth:changePassword override on success. The dispatcher's
+     * pre-rotation gate reads this directly from the session so
+     * every request doesn't have to re-query the DB.
+     */
+    mustChangePassword: boolean
   }
 }
 
 const DEFAULT_RECOVERY_KEY_DIR = '/data'
 const SESSION_SECRET_FILENAME = 'web-session-secret'
-const SESSION_COOKIE_NAME = 'varlens.sid'
+
+/**
+ * Cookie name. In production we use the `__Host-` prefix, which the
+ * browser binds to:
+ *   - Path=/ (we set this)
+ *   - Secure (we set this)
+ *   - no Domain attribute (we don't set Domain)
+ *
+ * Browsers reject `__Host-` cookies that don't satisfy all three, so
+ * the prefix turns "I configured this cookie correctly" into a
+ * runtime invariant. Dev (HTTP) drops the prefix because Secure
+ * isn't possible there.
+ */
+function resolveSessionCookieName(): string {
+  return isProductionMode() ? '__Host-varlens.sid' : 'varlens.sid'
+}
+
+/**
+ * Production mode = anything but explicit dev. We default-deny
+ * insecurity: only NODE_ENV=development relaxes Secure, and only
+ * NODE_ENV=test relaxes it for the test runner. Anything else
+ * (including missing NODE_ENV in a packaged image) gets the
+ * production cookie posture.
+ */
+function isProductionMode(): boolean {
+  const env = process.env.NODE_ENV
+  return env !== 'development' && env !== 'test'
+}
 
 const PUBLIC_API_PATHS = new Set<string>(['/api/auth/login', '/api/auth/isAccountsEnabled'])
 
@@ -91,19 +126,31 @@ function loadOrCreateSessionKey(): Buffer {
 
 export async function registerSessions(app: FastifyInstance): Promise<void> {
   const key = loadOrCreateSessionKey()
+  const production = isProductionMode()
 
   await app.register(secureSession, {
     key,
-    cookieName: SESSION_COOKIE_NAME,
+    cookieName: resolveSessionCookieName(),
     cookie: {
       path: '/',
       httpOnly: true,
-      sameSite: 'lax',
-      // `secure: true` requires HTTPS. Caddy terminates TLS in
-      // production; the dev container runs over plain HTTP. Read
-      // from env so we don't accidentally lock dev out.
-      secure: process.env.VARLENS_SESSION_COOKIE_SECURE !== '0',
-      maxAge: 60 * 60 * 8 // 8 hours
+      // SameSite=Strict for an admin-only single-tenant tool with no
+      // cross-site flows (no SSO redirect, no embeds, no third-party
+      // links coming back into authenticated pages). Lax was a
+      // legacy-from-desktop default that opened a window for
+      // cross-site GET-triggered side effects; Strict closes it.
+      sameSite: 'strict',
+      // Production: Secure is non-negotiable — `__Host-` prefix
+      // *requires* Secure, and we never want a session cookie
+      // travelling over HTTP. Dev / test: drop Secure so localhost
+      // HTTP works; the cookie name also drops the __Host- prefix
+      // there so browsers don't reject the Set-Cookie outright.
+      secure: production,
+      // 4h max-age. An admin tool that's used in burst sessions
+      // doesn't need a multi-day cookie; the shorter window limits
+      // exposure if a laptop is briefly unattended. Re-login is
+      // cheap.
+      maxAge: 60 * 60 * 4
     }
   })
 

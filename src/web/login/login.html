@@ -212,6 +212,7 @@
       <p class="subtitle">Sign in to continue</p>
 
       <div id="alert" class="alert alert-error" role="alert" aria-live="polite"></div>
+      <div id="info" class="alert alert-info" role="status" aria-live="polite"></div>
 
       <form id="login-form" novalidate>
         <div class="field">
@@ -244,49 +245,115 @@
         </button>
       </form>
 
+      <form id="rotate-form" novalidate hidden>
+        <p class="subtitle" style="margin-top:-12px">
+          Set a new password before continuing. Minimum 12 characters,
+          must differ from your current password.
+        </p>
+        <div class="field">
+          <label for="new-password">New password</label>
+          <input
+            id="new-password"
+            name="new-password"
+            type="password"
+            autocomplete="new-password"
+            minlength="12"
+            required
+          />
+        </div>
+        <div class="field">
+          <label for="confirm-password">Confirm new password</label>
+          <input
+            id="confirm-password"
+            name="confirm-password"
+            type="password"
+            autocomplete="new-password"
+            minlength="12"
+            required
+          />
+        </div>
+        <button id="rotate-submit" class="submit" type="submit">
+          <span class="spinner" aria-hidden="true"></span>
+          <span class="label">Set new password</span>
+        </button>
+      </form>
+
       <div class="footer">VarLens · offline genetic variant analysis</div>
     </section>
   </main>
 
   <script>
     (function () {
-      // Server interpolates this on each request so the page works under
+      // Server interpolates these on each request so the page works under
       // any URL prefix (Caddy default: /varlens) without rebuilds.
       var APP_PATH_PREFIX = "__APP_PATH_PREFIX__";
       var REDIRECT_TO = "__REDIRECT_TO__";
+      var MIN_PASSWORD_LENGTH = 12;
 
-      var form = document.getElementById('login-form');
+      var loginForm = document.getElementById('login-form');
+      var rotateForm = document.getElementById('rotate-form');
       var alertBox = document.getElementById('alert');
-      var btn = document.getElementById('submit');
+      var infoBox = document.getElementById('info');
+      var loginBtn = document.getElementById('submit');
+      var rotateBtn = document.getElementById('rotate-submit');
       var userInput = document.getElementById('username');
       var passInput = document.getElementById('password');
+      var newInput = document.getElementById('new-password');
+      var confirmInput = document.getElementById('confirm-password');
+
+      // The plaintext old password is needed to drive auth:changePassword.
+      // We hold it in memory between the login response and the rotation
+      // submit; cleared the moment rotation succeeds. Module-scoped so a
+      // crafted DOM event can't snoop it via a leaked input value.
+      var pendingOldPassword = null;
 
       function showError(msg) {
+        infoBox.className = 'alert alert-info';
         alertBox.className = 'alert alert-error show';
         alertBox.textContent = msg;
       }
-      function clearError() {
+      function showInfo(msg) {
+        alertBox.className = 'alert alert-error';
+        infoBox.className = 'alert alert-info show';
+        infoBox.textContent = msg;
+      }
+      function clearMessages() {
         alertBox.className = 'alert alert-error';
         alertBox.textContent = '';
+        infoBox.className = 'alert alert-info';
+        infoBox.textContent = '';
       }
-      function setLoading(loading) {
+      function setLoading(form, loading) {
+        var btn = form === loginForm ? loginBtn : rotateBtn;
+        var inputs = form.querySelectorAll('input');
         btn.disabled = loading;
-        userInput.disabled = loading;
-        passInput.disabled = loading;
+        for (var i = 0; i < inputs.length; i++) inputs[i].disabled = loading;
         if (loading) btn.classList.add('loading');
         else btn.classList.remove('loading');
       }
+      function switchToRotate() {
+        loginForm.hidden = true;
+        rotateForm.hidden = false;
+        showInfo('Your password has not been rotated since bootstrap. Set a new one to continue.');
+        setTimeout(function () { newInput.focus(); }, 0);
+      }
+      function clearSensitive() {
+        passInput.value = '';
+        newInput.value = '';
+        confirmInput.value = '';
+        pendingOldPassword = null;
+      }
 
-      form.addEventListener('submit', async function (e) {
+      loginForm.addEventListener('submit', async function (e) {
         e.preventDefault();
-        clearError();
+        clearMessages();
         var username = userInput.value.trim();
         var password = passInput.value;
         if (!username || !password) {
           showError('Enter username and password.');
           return;
         }
-        setLoading(true);
+        setLoading(loginForm, true);
         try {
           var res = await fetch(APP_PATH_PREFIX + '/api/auth/login', {
             method: 'POST',
@@ -301,10 +368,14 @@
           var body = await res.json().catch(function () { return null; });
           if (body && body.success === true) {
             if (body.mustChangePassword === true) {
-              // Surface as a non-blocking notice; the SPA will handle the
-              // forced rotation on first navigation. The session is
-              // already valid, so we let the user through.
-              window.location.assign(REDIRECT_TO);
+              // Hold the just-validated old password in memory ONLY for
+              // the rotation submit. The server's pre-rotation gate
+              // forbids any other API call until rotation completes, so
+              // even though the session cookie is set, the application
+              // surface is unreachable.
+              pendingOldPassword = password;
+              passInput.value = '';
+              switchToRotate();
               return;
             }
             window.location.assign(REDIRECT_TO);
@@ -318,7 +389,72 @@
         } catch (err) {
           showError('Network error — please try again.');
         } finally {
-          setLoading(false);
+          setLoading(loginForm, false);
+        }
+      });
+
+      rotateForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        clearMessages();
+        if (pendingOldPassword === null) {
+          // Defensive: rotate form should never be visible without a
+          // login round-trip first. If someone reloaded the page mid-
+          // flow, send them back to the login form.
+          rotateForm.hidden = true;
+          loginForm.hidden = false;
+          showError('Session expired. Sign in again.');
+          return;
+        }
+        var newPw = newInput.value;
+        var confirmPw = confirmInput.value;
+        if (newPw.length < MIN_PASSWORD_LENGTH) {
+          showError('New password must be at least ' + MIN_PASSWORD_LENGTH + ' characters.');
+          return;
+        }
+        if (newPw !== confirmPw) {
+          showError('New password and confirmation do not match.');
+          return;
+        }
+        if (newPw === pendingOldPassword) {
+          showError('New password must differ from the current password.');
+          return;
+        }
+        setLoading(rotateForm, true);
+        try {
+          var res = await fetch(APP_PATH_PREFIX + '/api/auth/changePassword', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'content-type': 'application/json', 'accept': 'application/json' },
+            body: JSON.stringify({ args: [pendingOldPassword, newPw] })
+          });
+          if (res.status === 401) {
+            // Session/old-password mismatch — start over.
+            clearSensitive();
+            rotateForm.hidden = true;
+            loginForm.hidden = false;
+            showError('Session expired. Sign in again.');
+            return;
+          }
+          if (res.status === 422) {
+            var policyBody = await res.json().catch(function () { return null; });
+            showError((policyBody && policyBody.message) || 'Password rejected by policy.');
+            return;
+          }
+          if (!res.ok) {
+            showError('Could not change password (HTTP ' + res.status + ').');
+            return;
+          }
+          var body = await res.json().catch(function () { return null; });
+          if (body && body.success === true) {
+            clearSensitive();
+            window.location.assign(REDIRECT_TO);
+            return;
+          }
+          showError('Could not change password.');
+        } catch (err) {
+          showError('Network error — please try again.');
+        } finally {
+          setLoading(rotateForm, false);
         }
       });
     })();

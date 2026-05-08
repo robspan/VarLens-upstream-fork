@@ -27,8 +27,21 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { StorageSession } from '../../main/storage/session'
 import type { StorageReadTask } from '../../main/storage/read-executor'
 import type { StorageWriteTask } from '../../main/storage/write-executor'
-import type { PostgresWebAuthService } from '../auth/PostgresWebAuthService'
+import { PasswordPolicyError, type PostgresWebAuthService } from '../auth/PostgresWebAuthService'
 import { isReadTaskType, isWriteTaskType, toTaskDomain } from './task-types'
+
+/**
+ * Methods reachable to a session that still has
+ * must_change_password=TRUE. Everything else returns 403 until the
+ * user rotates. This is the load-bearing gate that closes the
+ * bootstrap-credential exposure window: even with a valid session
+ * cookie, the bootstrap user has zero application-surface access
+ * until the new password is committed.
+ *
+ * `auth:logout` is included so a user who's stuck in the rotation
+ * flow can drop their session and start over.
+ */
+const PRE_ROTATION_ALLOWED = new Set<string>(['auth:changePassword', 'auth:logout'])
 
 export interface DispatcherDeps {
   session: StorageSession
@@ -70,7 +83,12 @@ function buildOverrides(): Record<string, OverrideHandler> {
         const result = await authService.authenticate(username, password)
         if (result.success && result.user !== null) {
           const { id, username: name, role } = result.user
+          // Persist mustChangePassword on the session so the
+          // pre-rotation gate (in the dispatcher route handler) can
+          // enforce it without re-querying the DB on every request.
+          // Cleared by the auth:changePassword override on success.
           request.session.user = { id, username: name, role }
+          request.session.mustChangePassword = result.mustChangePassword === true
         }
         return result
       }
@@ -93,6 +111,46 @@ function buildOverrides(): Record<string, OverrideHandler> {
       public: true,
       async handle() {
         return true
+      }
+    },
+
+    'auth:changePassword': {
+      // Requires a session — the pre-rotation gate explicitly allows
+      // this method through even when the session still carries
+      // must_change_password. On success we clear the rotation flag
+      // on the session so subsequent requests get the full
+      // application surface without needing a re-login.
+      async handle(args, request, reply, { authService }) {
+        const session = request.session
+        const sessionUser = session?.user
+        if (sessionUser === undefined) {
+          reply.code(401)
+          return { error: 'authentication required' }
+        }
+        const [oldPassword, newPassword] = args as [unknown, unknown]
+        if (typeof oldPassword !== 'string' || typeof newPassword !== 'string') {
+          reply.code(400)
+          return { error: 'oldPassword and newPassword (string) required' }
+        }
+        try {
+          const ok = await authService.changePassword(
+            sessionUser.username,
+            oldPassword,
+            newPassword
+          )
+          if (!ok) {
+            reply.code(401)
+            return { success: false, error: 'old-password-invalid' }
+          }
+          session.mustChangePassword = false
+          return { success: true }
+        } catch (err) {
+          if (err instanceof PasswordPolicyError) {
+            reply.code(422)
+            return { success: false, error: err.code, message: err.message }
+          }
+          throw err
+        }
       }
     },
 
@@ -153,6 +211,27 @@ export function registerDispatcher(
 
     const taskDomain = toTaskDomain(domain)
     const key = `${taskDomain}:${method}`
+
+    // Pre-rotation gate. A session that still carries
+    // must_change_password gets exactly two methods reachable —
+    // changePassword (the way out) and logout (the escape hatch).
+    // Everything else, including reads, is 403'd. This closes the
+    // bootstrap-credential exposure window completely: there is no
+    // moment in which a user with the bootstrap password can call
+    // any application endpoint.
+    if (
+      request.session?.user !== undefined &&
+      request.session.mustChangePassword === true &&
+      !PRE_ROTATION_ALLOWED.has(key)
+    ) {
+      reply.code(403)
+      return {
+        error: 'password-rotation-required',
+        message:
+          'Your password must be changed before any other action. ' +
+          'Call auth:changePassword first.'
+      }
+    }
 
     const override = overrides[key]
     if (override !== undefined) {

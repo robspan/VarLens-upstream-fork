@@ -245,24 +245,26 @@ make -C web-deploy restore-drill
 **Ship a new VarLens version (preferred — automated end-to-end)**:
 
 ```bash
-make web-release VERSION=v0.x.y NOTES_FROM=auto
+make web-release VERSION=web-v0.x.y NOTES_FROM=auto
 ```
 
-Cuts a GitHub Release. The
-[`release-web.yml`](.github/workflows/release-web.yml) workflow then
-builds the versioned image, pushes to GHCR, SSHes into the pilot,
-pins `VARLENS_IMAGE` in the server's `.env`, recreates **only the
-app container** (Caddy/Postgres/Kuma stay up — no LE rate-limit
-churn, no DB bounce), and runs the smoke suite. A red smoke fails
-the release page. `make pilot` already uploads the required repo
-secrets on first bring-up; re-upload manually with
+Web releases use the **`web-vX.Y.Z`** tag prefix to stay disjoint
+from the desktop installer track (which owns bare `vX.Y.Z`). Cuts a
+GitHub Release with that tag; only the
+[`release-web.yml`](.github/workflows/release-web.yml) workflow
+fires. It builds the versioned image, pushes to GHCR, SSHes into
+the pilot, pins `VARLENS_IMAGE` in the server's `.env`, recreates
+**only the app container** (Caddy/Postgres/Kuma stay up — no LE
+rate-limit churn, no DB bounce), and runs the smoke suite. A red
+smoke fails the release page. `make pilot` already uploads the
+required repo secrets on first bring-up; re-upload manually with
 `make web-release-enable`. Full reference:
 [`web-deploy/docs/releases.md`](web-deploy/docs/releases.md).
 
 Roll back to a previous version (no rebuild):
 
 ```bash
-gh workflow run release-web.yml -f version=v0.x.y -f skip_build=true
+gh workflow run release-web.yml -f version=web-v0.x.y -f skip_build=true
 ```
 
 **Pull a new image manually (escape hatch)** — for the rare cases

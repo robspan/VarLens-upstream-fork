@@ -1,11 +1,26 @@
 # Releases — shipping a new version of the web app
 
-A GitHub Release published on `robspan/VarLens` triggers
+A GitHub Release with a tag of the form **`web-vX.Y.Z`** triggers
 [`.github/workflows/release-web.yml`](../../.github/workflows/release-web.yml),
 which builds the versioned image, pushes it to GHCR, recreates the
 `app` container on the running pilot, and runs the full smoke suite.
 A red smoke fails the release page so a bad ship is visible
 immediately.
+
+## Why the `web-v` prefix?
+
+The desktop track (Electron installers) owns the bare `vX.Y.Z` tag
+namespace via [`release.yml`](../../.github/workflows/release.yml).
+Sharing prefixes would mean every desktop release fires the web
+deploy and every web release builds .dmg/.exe artefacts — neither is
+what the operator intended. The `web-` prefix keeps the two
+disjoint:
+
+| Tag pattern        | Workflow                  | What ships                              |
+| ------------------ | ------------------------- | --------------------------------------- |
+| `vX.Y.Z`           | `release.yml`             | desktop installers as release assets    |
+| `web-vX.Y.Z`       | `release-web.yml`         | versioned GHCR image + pilot redeploy   |
+| (push to branch)   | `publish-web.yml`         | rolling `:edge` GHCR image, no deploy   |
 
 ## One-time setup
 
@@ -29,8 +44,8 @@ or `--host <ip>` available.
 
 | Need                                | Command                  |
 | ----------------------------------- | ------------------------ |
-| Cut + ship a release with auto notes | `make web-release VERSION=v0.60.0 NOTES_FROM=auto` |
-| Cut + ship without notes (write later) | `make web-release VERSION=v0.60.0`               |
+| Cut + ship a release with auto notes | `make web-release VERSION=web-v0.1.0 NOTES_FROM=auto` |
+| Cut + ship without notes (write later) | `make web-release VERSION=web-v0.1.0`               |
 | Ship via GitHub UI                  | <https://github.com/robspan/VarLens/releases/new> (target: `VarLens-Web`) |
 | Watch the running deploy            | `gh run watch` or `gh run list --workflow=release-web.yml -L 5` |
 | List recent deploys                 | `gh run list --workflow=release-web.yml`                |
@@ -42,11 +57,11 @@ web-release` wrapper and the workflow validate this independently.
 ## Rollback
 
 A release ships an immutable, version-pinned image to the server's
-`.env` (`VARLENS_IMAGE=ghcr.io/robspan/varlens-web:v0.60.0`). To roll
+`.env` (`VARLENS_IMAGE=ghcr.io/robspan/varlens-web:web-v0.1.0`). To roll
 back, redeploy the previous tag — no rebuild needed:
 
 ```
-gh workflow run release-web.yml -f version=v0.59.0 -f skip_build=true
+gh workflow run release-web.yml -f version=web-v0.0.9 -f skip_build=true
 ```
 
 `skip_build=true` reuses the GHCR image you already shipped, so
@@ -95,7 +110,8 @@ push/pull. No other CI secrets are required.
 | Symptom                              | Likely cause / fix                                                      |
 | ------------------------------------ | ----------------------------------------------------------------------- |
 | `Missing repo secrets DEPLOY_SSH_KEY and/or DEPLOY_HOST` | Run `make web-release-enable` (or re-provision via `make pilot`). |
-| `version 'X' does not match vMAJOR.MINOR.PATCH` | Use `vX.Y.Z`, not bare `X.Y.Z` — the leading `v` is required.   |
+| `version 'X' does not match web-vMAJOR.MINOR.PATCH` | Use `web-vX.Y.Z`, not bare `vX.Y.Z` — the `web-` prefix keeps the web release track disjoint from the desktop installer track.   |
+| GitHub Release published but `release-web.yml` didn't fire | Tag was bare `vX.Y.Z` (desktop). Web releases must use `web-vX.Y.Z`; `release-web.yml` ignores anything else by design. |
 | `app container did not reach healthy within 60s` | New image is broken. `gh workflow run release-web.yml -f version=<previous> -f skip_build=true` to roll back, then investigate via `make pilot-ssh` + `docker logs varlens-dev`. |
 | Smoke `Login wall: anon /varlens/ → 302 /login` fails (got 200) | The image being deployed predates the login-wall change — bump VERSION to a tag built from `VarLens-Web` after that commit. |
 | Want to redeploy with no changes (e.g. flush a wedged container) | Trigger `workflow_dispatch` with the same `version` and `skip_build=true`. |

@@ -39,13 +39,23 @@
 
 name: release-web
 
+# Tag format: `web-vX.Y.Z[-suffix]`.
+#
+# The desktop track (electron installers) owns the bare `vX.Y.Z`
+# namespace via `.github/workflows/release.yml`. Sharing a tag prefix
+# would mean every desktop release fires the web deploy and every web
+# release fires the desktop installer build — neither is what the
+# operator intended. The `web-` prefix keeps the two release tracks
+# fully independent: a desktop release never reaches the pilot, and
+# a web release never produces .dmg/.exe artefacts.
+
 on:
   release:
     types: [published]
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag to deploy (e.g. v1.2.3). Image must already exist in GHCR.'
+        description: 'Web release tag to deploy (e.g. web-v0.1.0). Image must already exist in GHCR.'
         required: true
         type: string
       skip_build:
@@ -71,6 +81,14 @@ env:
 
 jobs:
   resolve-version:
+    # Workflow-level guard: a release event with a non-web tag (e.g.
+    # the desktop track's `v0.60.0`) is silently ignored — no failure
+    # noise on the release page, no half-fired deploy. Manual
+    # workflow_dispatch always runs (the version input is validated
+    # below).
+    if: |
+      github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'web-v'))
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.v.outputs.version }}
@@ -92,8 +110,8 @@ jobs:
             VERSION="$DISPATCH_VERSION"
             SHOULD_BUILD="$([[ "$DISPATCH_SKIP" == "true" ]] && echo false || echo true)"
           fi
-          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9._-]+)?$ ]]; then
-            echo "::error::version '$VERSION' does not match vMAJOR.MINOR.PATCH[-suffix]"
+          if [[ ! "$VERSION" =~ ^web-v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9._-]+)?$ ]]; then
+            echo "::error::version '$VERSION' does not match web-vMAJOR.MINOR.PATCH[-suffix]"
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"

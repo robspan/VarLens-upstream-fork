@@ -403,16 +403,32 @@ web-release-enable: ## Configure GitHub repo secrets so release-web.yml can depl
 	$(require_web_mode)
 	@web-deploy/scripts/enable-github-release.sh $(WEB_RELEASE_ENABLE_ARGS)
 
-web-release: ## Cut and publish a versioned web release (usage: make web-release VERSION=v1.2.3 [NOTES_FROM=auto])
+web-release: ## Cut and publish a versioned web release (usage: make web-release VERSION=web-v0.1.0 [NOTES_FROM=auto])
 	$(require_web_mode)
 	@if [ -z "$(VERSION)" ]; then \
-		echo "Usage: make web-release VERSION=vX.Y.Z [NOTES_FROM=auto]"; \
-		echo "  VERSION must match vMAJOR.MINOR.PATCH (the same regex release-web.yml validates)."; \
+		echo "Usage: make web-release VERSION=web-vX.Y.Z [NOTES_FROM=auto]"; \
+		echo "  Web releases use the 'web-v' prefix to stay disjoint from the desktop"; \
+		echo "  installer track ('vX.Y.Z' tags). release-web.yml only fires on 'web-v*' tags;"; \
+		echo "  release.yml (desktop) only fires on bare 'v*' tags."; \
 		exit 1; \
 	fi
 	@command -v gh >/dev/null 2>&1 || { echo "gh CLI not found. Install: https://cli.github.com"; exit 1; }
-	@if ! echo "$(VERSION)" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+([-.][A-Za-z0-9._-]+)?$$'; then \
-		echo "VERSION '$(VERSION)' is not a valid semver tag (expected vX.Y.Z[-suffix])"; exit 1; \
+	@if ! echo "$(VERSION)" | grep -qE '^web-v[0-9]+\.[0-9]+\.[0-9]+([-.][A-Za-z0-9._-]+)?$$'; then \
+		echo "VERSION '$(VERSION)' is not a valid web release tag (expected web-vMAJOR.MINOR.PATCH[-suffix])"; \
+		echo "Hint: desktop releases use bare 'vX.Y.Z' (handled by release.yml — separate workflow)."; \
+		exit 1; \
+	fi
+	@# Sanity: don't ship a release whose commit isn't on origin yet.
+	@# `gh release create --target VarLens-Web` resolves the target on
+	@# the GitHub side, so an unpushed local HEAD would tag whatever
+	@# commit origin currently points at — almost never what you wanted.
+	@git fetch --quiet origin VarLens-Web 2>/dev/null || true
+	@LOCAL=$$(git rev-parse VarLens-Web 2>/dev/null) ; \
+	REMOTE=$$(git rev-parse origin/VarLens-Web 2>/dev/null) ; \
+	if [ -n "$$LOCAL" ] && [ -n "$$REMOTE" ] && [ "$$LOCAL" != "$$REMOTE" ]; then \
+		echo "ERROR: local VarLens-Web ($$LOCAL) is not in sync with origin/VarLens-Web ($$REMOTE)."; \
+		echo "       Push first ('git push origin VarLens-Web') so the release tags the right commit."; \
+		exit 1; \
 	fi
 	@echo "==> Cutting release $(VERSION) — release-web.yml will build, deploy, and smoke."
 	@if [ "$(NOTES_FROM)" = "auto" ]; then NOTES_FLAG="--generate-notes"; else NOTES_FLAG=""; fi; \

@@ -30,7 +30,7 @@ The `Makefile` at the repository root bundles all common operations.
 | `make sops-edit FILE=secrets/<f>.yaml` | Open encrypted file in editor | - |
 | `make sops-decrypt FILE=secrets/<f>.yaml` | Show plaintext (read-only) | - |
 | `make web-release-enable` | Upload `DEPLOY_SSH_KEY` + `DEPLOY_HOST` repo secrets (auto-run by `make pilot`) | - |
-| `make web-release VERSION=vX.Y.Z [NOTES_FROM=auto]` | Cut a GitHub Release; CI builds, deploys, smokes. Full flow in [`releases.md`](releases.md). | - |
+| `make web-release VERSION=web-vX.Y.Z [NOTES_FROM=auto]` | Cut a GitHub Release; CI builds, deploys, smokes. Web tags use the `web-v` prefix to stay disjoint from the desktop installer track. Full flow in [`releases.md`](releases.md). | - |
 
 Cost reference values for the Concept Pilot (as of April 2026):
 

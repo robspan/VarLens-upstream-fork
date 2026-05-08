@@ -35,12 +35,18 @@ DEFAULT_ADMIN_USER = "admin"
 DEFAULT_ADMIN_PW = "varlens-konzept"
 MONITOR_NAME = "varlens-backup"
 
-# bcrypt hash for "varlens-konzept" (cost 14, $2a$). Also used by Caddy
-# basic_auth — same Concept Pilot default credentials.
-# The adopter changes this password after the first login in Kuma (UI > Settings
-# > Security > Change Password). The Caddy hash can be updated independently via
-# `docker exec caddy caddy hash-password`.
+# Pre-computed bcrypt hash for the literal "varlens-konzept" (cost 14, $2a$).
+# Used as a fast-path when the operator hasn't overridden KUMA_ADMIN_PASSWORD
+# — saves a round-trip through `docker exec uptime-kuma node` for the common
+# "I just want defaults" path. When KUMA_ADMIN_PASSWORD differs from this,
+# bcrypt_password_via_kuma() hashes it at runtime instead.
 DEFAULT_ADMIN_PW_BCRYPT = "$2a$14$6QBIGJyJFZMJIomvheSxvOUokBVZsvz03snLpmL7auY8aBmxVfNKy"
+
+# Caddy's basic_auth gate at /logs/ (Dozzle) is independent of this script —
+# it lives in compose/Caddyfile as a literal bcrypt hash for the same default
+# credentials. Rotating the Caddy gate is a separate operation: regenerate
+# the hash with `docker exec caddy caddy hash-password --plaintext '<new>'`,
+# paste into Caddyfile, and `make -C web-deploy stack-up`.
 
 
 def log(msg: str) -> None:
@@ -117,6 +123,48 @@ def random_push_token(length: int = 16) -> str:
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
+def bcrypt_password_via_kuma(ip: str, ssh_key: Path, password: str) -> str:
+    """Bcrypt-hash a password using the Kuma container's own bcryptjs.
+
+    Why borrow Kuma's bcryptjs instead of pip-installing `bcrypt` locally:
+      - `bcryptjs` is already present inside the running uptime-kuma image
+        (Kuma uses it for its own login verification), so there's no new
+        local dependency to install or document.
+      - Cost 14 + $2a$ format match what Kuma will accept on login. Mixing
+        $2b$ from a different library would also work, but matching $2a$
+        keeps the DEFAULT_ADMIN_PW_BCRYPT shape identical.
+      - The password travels via two stdin hops (SSH stdin → docker exec
+        stdin → node stdin) and never lands in any process's argv. A
+        prior version that used `--plaintext` on the Caddy CLI would
+        have exposed the password through `ps auxww`; this path doesn't.
+
+    Returns the $2a$ bcrypt hash string ready to insert into Kuma's
+    user.password column.
+    """
+    # Inline node script reads the password from stdin, trims trailing
+    # newline (added by the SSH heredoc), bcrypts at cost 14, prints the
+    # hash. No password ever appears on argv.
+    node_program = (
+        'let s="";'
+        'process.stdin.on("data",d=>s+=d);'
+        'process.stdin.on("end",()=>{'
+        's=s.replace(/\\r?\\n$/,"");'
+        'console.log(require("bcryptjs").hashSync(s,14));'
+        '});'
+    )
+    remote = f"docker exec -i uptime-kuma node -e '{node_program}'"
+    rc, out = ssh_with_stdin(ip, ssh_key, remote, stdin=password, timeout=30)
+    if rc != 0:
+        fail(f"bcrypt-hashing the Kuma password failed: {out.strip()}")
+    hash_line = next(
+        (line for line in out.splitlines() if line.startswith("$2a$") or line.startswith("$2b$")),
+        "",
+    )
+    if hash_line == "":
+        fail(f"bcrypt-hashing the Kuma password produced unexpected output: {out!r}")
+    return hash_line
+
+
 def main() -> None:
     ip = os.environ.get("IP")
     if not ip:
@@ -126,9 +174,17 @@ def main() -> None:
         fail(f"SSH key {ssh_key} not found")
     admin_user = os.environ.get("KUMA_ADMIN_USER", DEFAULT_ADMIN_USER)
     admin_pw = os.environ.get("KUMA_ADMIN_PASSWORD", DEFAULT_ADMIN_PW)
+    using_default_pw = admin_pw == DEFAULT_ADMIN_PW
 
     log(f"Target: {ip}, admin user: {admin_user}")
-    log("Important: change default password 'varlens-konzept' after first login in Kuma UI > Settings > Security > Change Password.")
+    if using_default_pw:
+        log(
+            "Using DEFAULT Kuma admin password 'varlens-konzept'. "
+            "Change after first login (Kuma UI > Settings > Security), "
+            "or set KUMA_ADMIN_PASSWORD=<your-pw> in web-deploy/.env before re-running setup-monitoring."
+        )
+    else:
+        log("Using operator-supplied KUMA_ADMIN_PASSWORD (will be bcrypt'd via the Kuma container).")
 
     # ----- 1. Is Kuma reachable? -----
     log("Checking reachability of Uptime Kuma on 127.0.0.1:3001 (from the server context)")
@@ -154,12 +210,24 @@ def main() -> None:
         # validation accepts $2a$ hashes (standard bcrypt). After restart,
         # Kuma picks up the user and the UI login works.
         log("Creating admin account directly in the Kuma DB")
-        # SQL quote escape: double single quotes so usernames containing
-        # ' do not lead to SQL injection.
+        # Resolve the password hash. Common case (operator hasn't
+        # overridden the default) hits a precomputed constant; the
+        # uncommon case bcrypts via the running Kuma container's own
+        # bcryptjs so the password never lands on any argv.
+        if using_default_pw:
+            password_hash = DEFAULT_ADMIN_PW_BCRYPT
+        else:
+            log("  Hashing operator-supplied password via the Kuma container...")
+            password_hash = bcrypt_password_via_kuma(ip, ssh_key, admin_pw)
+        # SQL quote escape: double single quotes so usernames or hashes
+        # containing ' do not lead to SQL injection. Bcrypt PHC strings
+        # don't contain ' but the username field is operator input so
+        # we escape both for symmetry.
         admin_user_sql = admin_user.replace("'", "''")
+        password_hash_sql = password_hash.replace("'", "''")
         sql = (
             f"INSERT INTO user (username, password, active) "
-            f"VALUES ('{admin_user_sql}', '{DEFAULT_ADMIN_PW_BCRYPT}', 1);"
+            f"VALUES ('{admin_user_sql}', '{password_hash_sql}', 1);"
         )
         # Pipe SQL via stdin (NOT argv) so the bcrypt hash's $-characters
         # are not interpreted by the remote shell. Bash on the SSH side
@@ -170,7 +238,10 @@ def main() -> None:
             "docker exec -i uptime-kuma sqlite3 /app/data/kuma.db",
             stdin=sql,
         )
-        log(f"  Admin user '{admin_user}' created (default password: see DEFAULT_ADMIN_PW in the script)")
+        if using_default_pw:
+            log(f"  Admin user '{admin_user}' created (password: '{DEFAULT_ADMIN_PW}' — change after first login)")
+        else:
+            log(f"  Admin user '{admin_user}' created with operator-supplied password (KUMA_ADMIN_PASSWORD)")
         log("  Restarting Kuma so the user state is recognized")
         ssh(ip, ssh_key, "cd /mnt/data/app && docker compose restart uptime-kuma")
         for _ in range(30):
@@ -281,7 +352,14 @@ def main() -> None:
             "ignore_tls": 1,
             "hostname": None,
             "port": None,
-            "basic_auth_user": "admin",
+            "basic_auth_user": admin_user,
+            # Caddy's /logs/ basic_auth still expects DEFAULT_ADMIN_PW
+            # because the Caddyfile carries a hardcoded bcrypt hash.
+            # When the operator rotates KUMA_ADMIN_PASSWORD without
+            # also updating the Caddyfile, this Dozzle heartbeat
+            # monitor will go red — that's a one-time signal to
+            # rotate the Caddy basic_auth too. Surfaces the drift
+            # rather than hiding it.
             "basic_auth_pass": DEFAULT_ADMIN_PW,
         },
         {
@@ -472,7 +550,10 @@ def main() -> None:
     print(f"  Push token:      {push_token[:6]}... (in Kuma DB)")
     print(f"  Heartbeat URL:   in /etc/restic/env (HEARTBEAT_URL)")
     print(f"  Kuma UI:         https://<server>/monitor/")
-    print(f"  Kuma UI login:   admin / <default password: see DEFAULT_ADMIN_PW in the script>")
+    if using_default_pw:
+        print(f"  Kuma UI login:   {admin_user} / {DEFAULT_ADMIN_PW}  (default — rotate after first login)")
+    else:
+        print(f"  Kuma UI login:   {admin_user} / <KUMA_ADMIN_PASSWORD from web-deploy/.env>")
     print()
     print("The next backup run will ping automatically. Manual test:")
     print(f"  ssh -i {ssh_key} deploy@{ip} 'sudo systemctl start restic-backup.service'")

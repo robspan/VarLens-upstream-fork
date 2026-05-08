@@ -347,7 +347,13 @@ setup-backup:
 
 setup-monitoring:
 	@if [ -z "$(call IPV4)" ]; then echo "No server present."; exit 1; fi
-	@IP=$(call IPV4) SSH_KEY=$(SSH_KEY) ./scripts/setup-monitoring.py
+	@# Source web-deploy/.env so KUMA_ADMIN_USER + KUMA_ADMIN_PASSWORD
+	@# (and any future setup-monitoring env vars) are picked up the
+	@# same way setup-backup does. Shell exports still win (set -a +
+	@# `.` is a no-op for already-set vars, so an operator can override
+	@# from the calling shell).
+	@if [ -f .env ]; then set -a; . ./.env; set +a; fi; \
+	IP=$(call IPV4) SSH_KEY=$(SSH_KEY) ./scripts/setup-monitoring.py
 
 # Counterpart to `make down`: empties and deletes the restic backup bucket.
 # Required because the bucket is not Tofu-managed (it lives in Hetzner Object

@@ -123,6 +123,9 @@ require_literal "Confirmation 2/2 — type \"DESTROY\" (uppercase) to authorize 
 # Both confirmations passed; proceed with the actual tofu destroy.
 # bin/varlens pilot down --yes is invoked because we already collected
 # our own typed confirmations and don't want the CLI's separate prompt.
+printf '\n  %sDestroying server, volume, IPv4, firewall, SSH key…%s\n' "$BOLD" "$RESET"
+printf '  %sThis typically takes ~60s. Tofu progress lines stream below;%s\n' "$DIM" "$RESET"
+printf '  %sif you see no output for >2 min, re-run with VARLENS_VERBOSE=1.%s\n\n' "$DIM" "$RESET"
 start=$(date +%s)
 ( cd "$WEB_DEPLOY" && ./bin/varlens pilot down --yes )
 elapsed=$(($(date +%s) - start))
@@ -133,5 +136,5 @@ printf '  Tofu state is now empty. Run %smake pilot%s to provision a fresh serve
 printf '  %sBackup bucket preserved.%s Snapshots in Hetzner Object Storage are intact\n' "$GREEN$BOLD" "$RESET"
 printf '  and can rebuild a new server. To verify them: %smake pilot && make -C web-deploy restore-drill%s.\n\n' "$BOLD" "$RESET"
 printf '  %sIf you also want to destroy the bucket (separate, deliberate command):%s\n' "$YELLOW" "$RESET"
-printf '    export RESTIC_S3_ACCESS_KEY=… RESTIC_S3_SECRET_KEY=… \\\n'
-printf '    && make -C web-deploy destroy-bucket DESTROY_BUCKET_ARGS=--yes\n\n'
+printf '    make -C web-deploy destroy-bucket DESTROY_BUCKET_ARGS=--yes\n'
+printf '    %s(auto-sources web-deploy/.env for RESTIC_S3_*)%s\n\n' "$DIM" "$RESET"

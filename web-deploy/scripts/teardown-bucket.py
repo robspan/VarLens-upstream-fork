@@ -32,6 +32,7 @@ import hashlib
 import hmac
 import os
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -161,12 +162,89 @@ def list_versions(endpoint, region, access, secret, bucket):
 
 def delete_object(endpoint, region, access, secret, bucket, key, version_id):
     path = f"/{bucket}/{urllib.parse.quote(key, safe='/')}"
-    query = f"versionId={urllib.parse.quote(version_id, safe='')}"
+    query = f"versionId={urllib.parse.quote(version_id, safe='')}" if version_id else ""
     code, body = s3_request("DELETE", endpoint, region, access, secret, path, query=query)
     if code not in (200, 204):
-        log(f"  WARN: delete {key}@{version_id[:8]} returned {code}: {body[:200].decode('utf-8', errors='replace')}")
+        vid_tag = (version_id or "null")[:8]
+        log(f"  WARN: delete {key}@{vid_tag} returned {code}: {body[:200].decode('utf-8', errors='replace')}")
         return False
     return True
+
+
+def list_objects_flat(endpoint, region, access, secret, bucket):
+    """Yield keys via plain ListObjectsV2.
+
+    Catches objects uploaded BEFORE versioning was enabled (or when
+    versioning was suspended): those have no entry in the ?versions
+    listing, so the version-sweep alone leaves them behind and
+    DeleteBucket returns 409 BucketNotEmpty even though we 'deleted
+    everything'.
+    """
+    continuation = ""
+    while True:
+        params = {"list-type": "2", "max-keys": "1000"}
+        if continuation:
+            params["continuation-token"] = continuation
+        query = "&".join(
+            f"{urllib.parse.quote(k, safe='')}={urllib.parse.quote(v, safe='')}"
+            for k, v in sorted(params.items())
+        )
+        code, body = s3_request("GET", endpoint, region, access, secret, f"/{bucket}", query=query)
+        if code != 200:
+            fail(f"List objects failed ({code}): {body[:300].decode('utf-8', errors='replace')}")
+        root = ET.fromstring(body)
+        for c in root.findall(f"{S3_NS}Contents"):
+            key = c.findtext(f"{S3_NS}Key")
+            if key:
+                yield key
+        if root.findtext(f"{S3_NS}IsTruncated") != "true":
+            break
+        continuation = root.findtext(f"{S3_NS}NextContinuationToken") or ""
+        if not continuation:
+            break
+
+
+def sweep_until_empty(endpoint, region, access, secret, bucket, max_passes=6):
+    """Re-list and delete until both namespaces report zero, or we give up.
+
+    Hetzner Object Storage occasionally surfaces objects through one
+    listing API that the other missed, and bulk deletes are eventually
+    consistent. A single pass of `list_versions -> delete` is therefore
+    not sufficient to guarantee an empty bucket, even when our first
+    listing reported "227/227 removed". We retry with backoff until both
+    ?versions and list-type=2 return empty.
+    """
+    for attempt in range(1, max_passes + 1):
+        versions = list(list_versions(endpoint, region, access, secret, bucket))
+        flats = [] if versions else list(list_objects_flat(endpoint, region, access, secret, bucket))
+        if not versions and not flats:
+            return  # truly empty
+
+        if versions:
+            log(f"  Pass {attempt}: {len(versions)} version/delete-marker entries to remove.")
+            for key, vid, _is_dm in versions:
+                delete_object(endpoint, region, access, secret, bucket, key, vid)
+        if flats:
+            log(f"  Pass {attempt}: {len(flats)} flat (null-version) object(s) to remove.")
+            for key in flats:
+                delete_object(endpoint, region, access, secret, bucket, key, "")
+
+        # Backoff lets Hetzner's index catch up before we re-list.
+        delay = min(2 * attempt, 10)
+        log(f"  Waiting {delay}s for backend reconciliation before re-listing...")
+        time.sleep(delay)
+
+    # One last check after the loop bails.
+    leftover_versions = list(list_versions(endpoint, region, access, secret, bucket))
+    leftover_flats = [] if leftover_versions else list(list_objects_flat(endpoint, region, access, secret, bucket))
+    if leftover_versions or leftover_flats:
+        fail(
+            f"Bucket still not empty after {max_passes} sweep passes "
+            f"(versions={len(leftover_versions)}, flat={len(leftover_flats)}).\n"
+            "  Re-run this command in a few minutes (Hetzner index may still be catching up),\n"
+            "  or use the Hetzner Console > Object Storage > <bucket> > Delete button.",
+            code=5,
+        )
 
 
 def list_multipart_uploads(endpoint, region, access, secret, bucket):
@@ -224,29 +302,37 @@ def abort_multipart_upload(endpoint, region, access, secret, bucket, key, upload
 
 
 def delete_bucket(endpoint, region, access, secret, bucket, listings_were_empty):
-    code, body = s3_request("DELETE", endpoint, region, access, secret, f"/{bucket}")
-    if code in (200, 204):
-        return
-    decoded = body[:300].decode("utf-8", errors="replace")
-    # 409 BucketNotEmpty is recoverable via S3 API only when our preceding
-    # listings actually found something. If the listings reported the bucket
-    # empty (zero versions, zero multipart uploads, zero flat objects) and
-    # the backend STILL refuses, this is a Hetzner-side state-reconciliation
-    # issue we cannot fix from the client. Surface the operator escape hatch.
-    if code == 409 and listings_were_empty:
+    # Hetzner can return 409 BucketNotEmpty for several seconds after the
+    # last object delete, even when ?versions and list-type=2 both report
+    # empty. Retry with backoff before surfacing the error to the operator.
+    last_code, last_body = 0, b""
+    for attempt in range(1, 5):
+        code, body = s3_request("DELETE", endpoint, region, access, secret, f"/{bucket}")
+        if code in (200, 204):
+            return
+        last_code, last_body = code, body
+        if code == 409:
+            delay = 5 * attempt
+            log(f"  DeleteBucket attempt {attempt} returned 409; backing off {delay}s...")
+            time.sleep(delay)
+            continue
+        break  # non-409: don't bother retrying
+
+    decoded = last_body[:300].decode("utf-8", errors="replace")
+    if last_code == 409 and listings_were_empty:
         fail(
-            f"Delete bucket failed ({code}): {decoded}\n"
+            f"Delete bucket failed ({last_code}) after retries: {decoded}\n"
             "\n"
             "All S3 listings reported the bucket empty (versions=0, multipart=0,\n"
-            "objects=0), so this is a Hetzner backend ghost-state issue rather\n"
-            "than missing client cleanup. Operator workarounds:\n"
-            "  - Wait 5-10 min for async reconciliation, then retry this script.\n"
+            "objects=0) but Hetzner still refuses DeleteBucket. This is a backend\n"
+            "state-reconciliation issue we cannot fix from the client. Workarounds:\n"
+            "  - Wait 5-10 min for async reconciliation, then re-run this script.\n"
             "  - Hetzner Console > Object Storage > <bucket> > 'Delete' button.\n"
             "    The Console can force-delete past stuck state.\n"
             "  - Hetzner Cloud Support (rare; ticket if the Console option fails).",
             code=4,
         )
-    fail(f"Delete bucket failed ({code}): {decoded}")
+    fail(f"Delete bucket failed ({last_code}): {decoded}")
 
 
 # ----- main -----
@@ -289,7 +375,7 @@ def main() -> None:
                 deleted += 1
             if deleted % 20 == 0:
                 log(f"  {deleted}/{len(versions)} {tag}s removed...")
-        log(f"  {deleted}/{len(versions)} entries removed.")
+        log(f"  {deleted}/{len(versions)} entries removed (first pass).")
 
     # Multipart uploads live in a separate namespace from object versions;
     # they must be aborted explicitly or DeleteBucket returns 409 BucketNotEmpty
@@ -305,6 +391,13 @@ def main() -> None:
             if abort_multipart_upload(endpoint, region, access, secret, bucket, key, upload_id):
                 aborted += 1
         log(f"  {aborted}/{len(uploads)} multipart uploads aborted.")
+
+    # Re-list and sweep until both ?versions and list-type=2 return empty.
+    # First-pass deletes can leave residue: flat null-version objects from
+    # pre-versioning uploads, plus eventual-consistency lag on the index.
+    log("Sweeping bucket until empty (re-list + delete loop)...")
+    sweep_until_empty(endpoint, region, access, secret, bucket)
+    log("  Bucket confirmed empty by both listings.")
 
     listings_were_empty = (len(versions) == 0 and len(uploads) == 0)
     log(f"Deleting bucket {bucket}")

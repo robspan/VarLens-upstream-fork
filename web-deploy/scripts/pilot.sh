@@ -954,6 +954,26 @@ main() {
   local ip
   ip="$(_pilot_ipv4 || echo "unknown")"
 
+  # Best-effort: configure the GitHub Actions release-deploy secrets so
+  # the operator can ship subsequent versions via `make web-release` (or
+  # the GitHub UI Release dialog) without manually wiring repo secrets.
+  # Re-running the pilot rotates the IP, so re-uploading on every fresh
+  # bring-up keeps DEPLOY_HOST in sync with reality.
+  #
+  # Failure here is *never* fatal. If the operator hasn't installed gh,
+  # hasn't authenticated, or doesn't want CI deploys, we print a
+  # one-line tip and move on — the pilot itself is fully usable.
+  if [[ -n "$ip" && "$ip" != "unknown" ]]; then
+    printf '\n%s  Configuring GitHub Actions release-deploy secrets (best-effort)...%s\n' "$DIM" "$RESET"
+    if "$WEB_DEPLOY/scripts/enable-github-release.sh" --host "$ip" >/dev/null 2>&1; then
+      printf '%s    ✓ DEPLOY_SSH_KEY + DEPLOY_HOST uploaded — releases will auto-deploy.%s\n' "$GREEN" "$RESET"
+      printf '%s      Ship the next version with: %smake web-release VERSION=v0.x.y NOTES_FROM=auto%s\n' "$DIM" "$BOLD" "$RESET"
+    else
+      printf '%s    ⚠ Skipped — gh not installed/authed, or no origin remote yet.%s\n' "$YELLOW" "$RESET"
+      printf '%s      Re-run later with: %smake web-release-enable%s%s (pilot is fully usable without it).%s\n' "$DIM" "$BOLD" "$RESET" "$DIM" "$RESET"
+    fi
+  fi
+
   banner "✓ Concept Pilot is live in $(human_time "$total")"
   printf '  %sFour URLs you can hit right now (replace <ip> if copy-pasting):%s\n\n' "$BOLD" "$RESET"
   printf '    Welcome page:       https://%s/welcome\n' "$ip"

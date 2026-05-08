@@ -123,6 +123,32 @@ def random_push_token(length: int = 16) -> str:
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
+def read_postgres_password(ip: str, ssh_key: Path) -> str:
+    """Read the persisted Postgres password from the server.
+
+    Lives at /etc/varlens/postgres-password (root:root, 0600), written
+    by `make stack-up` on first boot. We need it here because Kuma's
+    `postgres` monitor type stores the connection URI verbatim in its
+    own SQLite — there is no Kuma-side credential helper. Reading via
+    `sudo cat` over SSH means the password travels only on the
+    encrypted SSH stream and never appears on argv.
+
+    fail-loud if the file is missing: a Postgres monitor without a
+    real password is just noise on the dashboard.
+    """
+    rc, out, err = ssh_stdout_only(
+        ip, ssh_key, "sudo cat /etc/varlens/postgres-password", check=False,
+    )
+    pw = (out or "").strip()
+    if rc != 0 or pw == "":
+        fail(
+            "/etc/varlens/postgres-password is missing or unreadable. "
+            "`make stack-up` should have created it on first boot. "
+            f"sudo stderr: {(err or '').strip()}"
+        )
+    return pw
+
+
 def bcrypt_password_via_kuma(ip: str, ssh_key: Path, password: str) -> str:
     """Bcrypt-hash a password using the Kuma container's own bcryptjs.
 
@@ -327,12 +353,55 @@ def main() -> None:
             fail(f"Monitor insert failed: {out}")
         log("  Push monitor inserted")
 
-    # ----- 3b. Stack monitors (HTTPS welcome, Dozzle, SSH) -----
-    # Adds three additional monitors so the Kuma dashboard reflects the
-    # full Compose stack health, not just the backup heartbeat. Each is
-    # idempotent: skipped if a monitor with the same name already exists.
-    log("Setting up stack monitors (HTTPS welcome, Dozzle, SSH)")
+    # ----- 3b. Stack monitors -----
+    # Reflects the full Compose stack health on the Kuma dashboard, not
+    # just the backup heartbeat. Each is idempotent: skipped if a
+    # monitor with the same name already exists.
+    log("Setting up stack monitors (VarLens app, Postgres, HTTPS welcome, Dozzle, SSH)")
+
+    # The VarLens /healthz endpoint already probes Postgres on every
+    # request — a 503 means either the app is wedged or the DB pool is
+    # exhausted/disconnected. We monitor it as a single HTTP check; the
+    # dedicated Postgres monitor below adds a transport-level probe so
+    # we can disambiguate "app dead" from "DB dead" when something
+    # breaks.
+    pg_password = read_postgres_password(ip, ssh_key)
+    pg_password_sql = pg_password.replace("'", "''")
+
     stack_monitors = [
+        {
+            "name": "VarLens app",
+            "type": "http",
+            # `/varlens/healthz` returns 200 + {status:'ok',db:{open:true}}
+            # when both the app and Postgres are healthy. 503 otherwise.
+            "url": f"https://{ip}/varlens/healthz",
+            "method": "GET",
+            "ignore_tls": 1,
+            "hostname": None,
+            "port": None,
+            "basic_auth_user": None,
+            "basic_auth_pass": None,
+        },
+        {
+            "name": "PostgreSQL",
+            "type": "postgres",
+            # Probes from inside the docker network using the compose
+            # service name. Same credentials VarLens uses; password
+            # read from /etc/varlens/postgres-password on the server.
+            # `database_connection_string` carries the password — Kuma
+            # stores it as-is inside kuma.db on the same persistent
+            # volume that restic backs up, which is the standard Kuma
+            # pattern; we accept it for stage 1.
+            "url": None,
+            "method": "GET",
+            "ignore_tls": 0,
+            "hostname": None,
+            "port": None,
+            "basic_auth_user": None,
+            "basic_auth_pass": None,
+            "database_connection_string": f"postgres://varlens:{pg_password_sql}@postgres:5432/varlens",
+            "database_query": "SELECT 1",
+        },
         {
             "name": "HTTPS welcome page",
             "type": "http",
@@ -409,6 +478,12 @@ def main() -> None:
             cols.append("auth_method"); vals.append("'basic'")
         if m['basic_auth_pass']:
             cols.append("basic_auth_pass"); vals.append(f"'{m['basic_auth_pass']}'")
+        if m.get('database_connection_string'):
+            cols.append("database_connection_string")
+            vals.append(f"'{m['database_connection_string']}'")
+        if m.get('database_query'):
+            cols.append("database_query")
+            vals.append(f"'{m['database_query']}'")
         sql = f"INSERT INTO monitor ({', '.join(cols)}) VALUES ({', '.join(vals)});"
         rc, out = ssh_with_stdin(
             ip, ssh_key,

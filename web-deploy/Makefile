@@ -390,8 +390,13 @@ pilot-recover:
 	./scripts/pilot-recover.sh
 
 smoke:
-	@if [ -z "$(call IPV4)" ]; then echo "No server present."; exit 1; fi
-	@IP=$(call IPV4); \
+	@# Allow `IP=...` from the environment to override the tofu lookup.
+	@# Local operator runs (`make pilot-smoke`) have tofu state and use
+	@# the macro; CI runs (release-web.yml) don't and pass IP via the
+	@# DEPLOY_HOST repo secret.
+	@RESOLVED_IP="$${IP:-$(call IPV4)}"; \
+	if [ -z "$$RESOLVED_IP" ]; then echo "No server present (set IP=... or run from a checkout with tofu state)."; exit 1; fi; \
+	IP="$$RESOLVED_IP"; \
 	echo "=== Smoke tests against $$IP ==="; \
 	check() { local label="$$1"; local expected="$$2"; local got="$$3"; \
 		if [ "$$got" = "$$expected" ]; then echo "  ok   $$label  ($$got)"; \

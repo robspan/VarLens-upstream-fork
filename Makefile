@@ -1,4 +1,4 @@
-.PHONY: help rebuild dev build preview lint lint-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-reset web-gate web-gate-static web-gate-integration web-gate-parity sync-upstream install-hooks pilot pilot-down pilot-status pilot-smoke pilot-ssh
+.PHONY: help rebuild dev build preview lint lint-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-reset web-gate web-gate-static web-gate-integration web-gate-parity sync-upstream install-hooks pilot pilot-down pilot-status pilot-smoke pilot-ssh web-release-enable web-release
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -398,6 +398,25 @@ pilot-recover: ## Recover from latest restic snapshot onto a freshly-provisioned
 pilot-restore-list: ## List restic snapshots in the configured bucket (read-only)
 	$(require_web_mode)
 	$(MAKE) -C web-deploy restore-list
+
+web-release-enable: ## Configure GitHub repo secrets so release-web.yml can deploy on a published release
+	$(require_web_mode)
+	@web-deploy/scripts/enable-github-release.sh $(WEB_RELEASE_ENABLE_ARGS)
+
+web-release: ## Cut and publish a versioned web release (usage: make web-release VERSION=v1.2.3 [NOTES_FROM=auto])
+	$(require_web_mode)
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Usage: make web-release VERSION=vX.Y.Z [NOTES_FROM=auto]"; \
+		echo "  VERSION must match vMAJOR.MINOR.PATCH (the same regex release-web.yml validates)."; \
+		exit 1; \
+	fi
+	@command -v gh >/dev/null 2>&1 || { echo "gh CLI not found. Install: https://cli.github.com"; exit 1; }
+	@if ! echo "$(VERSION)" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+([-.][A-Za-z0-9._-]+)?$$'; then \
+		echo "VERSION '$(VERSION)' is not a valid semver tag (expected vX.Y.Z[-suffix])"; exit 1; \
+	fi
+	@echo "==> Cutting release $(VERSION) — release-web.yml will build, deploy, and smoke."
+	@if [ "$(NOTES_FROM)" = "auto" ]; then NOTES_FLAG="--generate-notes"; else NOTES_FLAG=""; fi; \
+	gh release create "$(VERSION)" --target VarLens-Web --title "$(VERSION)" $$NOTES_FLAG
 
 install-hooks: ## Install repo git hooks into .git/hooks/ (currently: pre-commit)
 	@mkdir -p .git/hooks

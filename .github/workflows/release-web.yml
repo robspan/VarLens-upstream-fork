@@ -1,0 +1,271 @@
+# Release a versioned VarLens web image and deploy it to the running
+# pilot server.
+#
+# Triggers:
+#   - `release: published` — the canonical "ship it" event. Cut a
+#     release on the GitHub UI (or via `gh release create vX.Y.Z`) and
+#     the workflow handles the rest end-to-end.
+#   - `workflow_dispatch` — manual button on the Actions tab. Useful
+#     when smoke flakes for environmental reasons or when you want to
+#     redeploy a previous version (input: `version`, e.g. `v1.2.2`).
+#
+# Two jobs, sequential:
+#
+#   1. build-and-push: builds the Docker image from the release commit,
+#      pushes to GHCR with the version tag, `latest`, the short SHA,
+#      and `release` (a moving alias to whatever the most recent
+#      release is — useful for compose pins that should track the
+#      latest GA release rather than `:edge`).
+#
+#   2. deploy: SSHes to the pilot server, pins
+#      VARLENS_IMAGE=ghcr.io/<owner>/varlens-web:vX.Y.Z in
+#      /mnt/data/app/.env, recreates the `app` container only (Caddy,
+#      Postgres, Kuma, Dozzle stay up — no LE rate-limit churn, no DB
+#      bounce), then runs the smoke probes from the runner against
+#      the live IP. Smoke failure fails the job red on the release
+#      page; rollback is `gh workflow run release-web.yml -f
+#      version=v1.2.2` (or re-publish a previous release).
+#
+# Required repo secrets (set up via `make web-release-enable`):
+#   - DEPLOY_SSH_KEY: the deploy@server SSH private key
+#                     (matches ~/.ssh/varlens-tofu locally)
+#   - DEPLOY_HOST:    server IPv4 (matches `tofu output -raw ipv4`)
+#
+# Why no Hetzner token / restic creds in CI: this workflow assumes a
+# pilot is already provisioned. Provisioning involves much higher
+# blast-radius credentials (full hcloud control, S3 backup write) and
+# stays operator-only via `make pilot`. The deploy step here only
+# touches the app container.
+
+name: release-web
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag to deploy (e.g. v1.2.3). Image must already exist in GHCR.'
+        required: true
+        type: string
+      skip_build:
+        description: 'Skip rebuild and only redeploy an existing tag (for rollbacks).'
+        required: false
+        type: boolean
+        default: false
+
+# Don't let two release deploys clobber each other on the same server.
+# `cancel-in-progress: false` is deliberate — we'd rather queue a second
+# deploy than abandon a half-applied first one.
+concurrency:
+  group: release-web-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/varlens-web
+
+jobs:
+  resolve-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      should_build: ${{ steps.v.outputs.should_build }}
+    steps:
+      - name: Resolve target version
+        id: v
+        env:
+          EVENT: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          DISPATCH_VERSION: ${{ inputs.version }}
+          DISPATCH_SKIP: ${{ inputs.skip_build }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT" == "release" ]]; then
+            VERSION="$RELEASE_TAG"
+            SHOULD_BUILD="true"
+          else
+            VERSION="$DISPATCH_VERSION"
+            SHOULD_BUILD="$([[ "$DISPATCH_SKIP" == "true" ]] && echo false || echo true)"
+          fi
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9._-]+)?$ ]]; then
+            echo "::error::version '$VERSION' does not match vMAJOR.MINOR.PATCH[-suffix]"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "should_build=$SHOULD_BUILD" >> "$GITHUB_OUTPUT"
+          echo "## Release deploy" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Version:** \`$VERSION\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Build:** $SHOULD_BUILD" >> "$GITHUB_STEP_SUMMARY"
+
+  build-and-push:
+    needs: resolve-version
+    if: needs.resolve-version.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # actions/checkout@v4.1.7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d70bba72b1f3fd22344832f00baa16ece964efeb # docker/setup-buildx-action@v3.3.0
+
+      - name: Login to GHCR
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # docker/login-action@v3.3.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image metadata
+        id: meta
+        uses: docker/metadata-action@8e5442c4ef9f78752691e2d8f8d19755c6f78e81 # docker/metadata-action@v5.5.1
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ env.VERSION }}
+            type=raw,value=latest
+            type=raw,value=release
+            type=sha,format=short
+
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75 # docker/build-push-action@v6.6.1
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summarise
+        run: |
+          {
+            echo "## Image published"
+            echo ""
+            echo "**Digest:** \`${{ steps.push.outputs.digest }}\`"
+            echo ""
+            echo "**Tags:**"
+            echo "${{ steps.meta.outputs.tags }}" | sed 's/^/- `/' | sed 's/$/`/'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: [resolve-version, build-and-push]
+    # Run deploy whether build ran or was skipped (rollback path).
+    # `if: !cancelled() && (build skipped OR build succeeded)` keeps the
+    # job alive across the conditional build dependency.
+    if: |
+      always()
+      && needs.resolve-version.result == 'success'
+      && (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment:
+      name: pilot
+      url: https://${{ vars.DEPLOY_HOST_PUBLIC || secrets.DEPLOY_HOST }}/varlens/
+    steps:
+      - name: Checkout (for the smoke probe definitions)
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # actions/checkout@v4.1.7
+
+      - name: Validate required secrets
+        env:
+          HAS_KEY: ${{ secrets.DEPLOY_SSH_KEY != '' }}
+          HAS_HOST: ${{ secrets.DEPLOY_HOST != '' }}
+        run: |
+          set -euo pipefail
+          if [[ "$HAS_KEY" != "true" || "$HAS_HOST" != "true" ]]; then
+            echo "::error::Missing repo secrets DEPLOY_SSH_KEY and/or DEPLOY_HOST."
+            echo "::error::Run 'make web-release-enable' locally to upload them via gh."
+            exit 1
+          fi
+
+      - name: Stage SSH key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          set -euo pipefail
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 0600 ~/.ssh/deploy_key
+          ssh-keyscan -T 8 -t ed25519,rsa "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Pin VARLENS_IMAGE and recreate the app container
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+          IMAGE_REF: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.resolve-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Idempotent server-side update:
+          #   1. Replace VARLENS_IMAGE in /mnt/data/app/.env (insert if
+          #      absent — older .env files predate the var).
+          #   2. `docker compose pull app` to fetch the pinned tag.
+          #   3. `docker compose up -d --no-deps app` so we recreate
+          #      ONLY the app container; postgres/caddy/kuma/dozzle
+          #      stay up. --no-deps avoids touching postgres on a
+          #      release that didn't change schema.
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+              -i ~/.ssh/deploy_key deploy@"$DEPLOY_HOST" \
+              VERSION="$VERSION" IMAGE_REF="$IMAGE_REF" bash <<'REMOTE'
+          set -euo pipefail
+          cd /mnt/data/app
+          if grep -q '^VARLENS_IMAGE=' .env; then
+            sudo sed -i "s|^VARLENS_IMAGE=.*|VARLENS_IMAGE=${IMAGE_REF}|" .env
+          else
+            printf 'VARLENS_IMAGE=%s\n' "$IMAGE_REF" | sudo tee -a .env >/dev/null
+          fi
+          echo "VARLENS_IMAGE pinned to: $IMAGE_REF"
+          sudo docker compose pull app
+          sudo docker compose up -d --no-deps app
+          # Wait up to 60s for the new container to report healthy.
+          for i in $(seq 1 12); do
+            STATE=$(sudo docker inspect --format '{{.State.Health.Status}}' varlens-dev 2>/dev/null || echo "missing")
+            if [[ "$STATE" == "healthy" ]]; then
+              echo "app container healthy after ${i}0s"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::app container did not reach healthy within 60s; current state: $STATE"
+          sudo docker logs --tail=50 varlens-dev || true
+          exit 1
+          REMOTE
+
+      - name: Smoke probes against the live deployment
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          set -euo pipefail
+          # Use the existing make target, overriding IP and SSH_KEY
+          # (the Makefile honours both as env / argument overrides).
+          IP="$DEPLOY_HOST" SSH_KEY=~/.ssh/deploy_key \
+            make -C web-deploy smoke
+
+      - name: Summarise deploy
+        if: always()
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          {
+            echo "## Deploy"
+            echo ""
+            echo "- **Version:** \`$VERSION\`"
+            echo "- **Host:** \`$DEPLOY_HOST\`"
+            echo "- **App URL:** https://$DEPLOY_HOST/varlens/"
+            echo "- **Status:** ${{ job.status }}"
+            echo ""
+            echo "Roll back via:"
+            echo ""
+            echo '```'
+            echo "gh workflow run release-web.yml -f version=v<previous> -f skip_build=true"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

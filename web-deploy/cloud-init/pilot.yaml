@@ -134,15 +134,30 @@ runcmd:
   # device under /dev/disk/by-id/scsi-0HC_Volume_<id> may not yet be present
   # when cloud-init's `mounts` module runs. With `nofail` the mount silently
   # skips on miss and /mnt/data ends up empty. Wait up to 60s for the link,
-  # then mount-a until success. This makes provisioning reliable end-to-end.
+  # then mount-a until success.
+  #
+  # CRITICAL: this step MUST fail bootstrap if the volume cannot be mounted.
+  # The previous version logged a WARN and continued — the next runcmds
+  # (mkdir + chown of /mnt/data) then wrote to the OS disk, those entries
+  # got hidden when the volume eventually mounted on top, and the operator
+  # ended up with a half-broken server (looks healthy at SSH, but
+  # /mnt/data/app does not exist when stack-up tries to rsync into it).
+  # Failing loud here is the right trade-off: a fresh bring-up that needs
+  # 5 minutes is fine; a half-broken server that fails on rsync 30 minutes
+  # later is not.
   - |
     for i in $(seq 1 30); do
       if [ -b /dev/disk/by-id/scsi-0HC_Volume_${volume_id} ]; then break; fi
       sleep 2
     done
     mountpoint -q /mnt/data || mount /mnt/data || mount -a
-    mountpoint -q /mnt/data && echo "[cloud-init] /mnt/data mounted OK" \
-      || echo "[cloud-init] WARN: /mnt/data still not mounted after retry"
+    if ! mountpoint -q /mnt/data; then
+      echo "[cloud-init] BOOTSTRAP_FAIL: /mnt/data is not mounted after volume-attach retry"
+      echo "[cloud-init] device check: $(ls -la /dev/disk/by-id/scsi-0HC_Volume_${volume_id} 2>&1)"
+      echo "[cloud-init] lsblk: $(lsblk 2>&1)"
+      exit 1
+    fi
+    echo "[cloud-init] /mnt/data mounted OK ($(df -h /mnt/data | tail -1))"
 
   # Set up the official Docker repository and install the engine plus Compose plugin.
   - install -m 0755 -d /etc/apt/keyrings
@@ -174,8 +189,27 @@ runcmd:
     chmod +x /usr/local/bin/restic
 
   # Directories for the Compose stack components on the data volume.
-  - mkdir -p /mnt/data/postgres /mnt/data/caddy /mnt/data/app /mnt/data/backup
-  - chown -R ${deploy_user}:${deploy_user} /mnt/data
+  # Re-assert /mnt/data is mounted before writing — the earlier mount step
+  # already exited 1 if the volume failed to mount, but a defensive
+  # assertion here catches any edge case where /mnt/data is somehow not
+  # the volume (e.g., race with systemd remount). Without this, mkdir
+  # silently writes to the OS disk and gets hidden when the volume
+  # mounts on top — produces /mnt/data/app missing when rsync needs it.
+  - |
+    if ! mountpoint -q /mnt/data; then
+      echo "[cloud-init] BOOTSTRAP_FAIL: /mnt/data is not mounted at mkdir step"
+      exit 1
+    fi
+    mkdir -p /mnt/data/postgres /mnt/data/caddy /mnt/data/app /mnt/data/backup
+    chown -R ${deploy_user}:${deploy_user} /mnt/data
+    # /mnt/data/app/data is the container-writable subdir (uid 1001 inside
+    # the varlens image). Create it pre-chowned so the first stack-up
+    # does not race with rsync --delete.
+    install -d -m 0755 -o 1001 -g 1001 /mnt/data/app/data
+    # Sanity: persist a marker noting the volume layout, useful for the
+    # bootstrap success check and post-mortems.
+    df -h /mnt/data > /var/log/varlens-volume-layout.txt
+    ls -la /mnt/data/ >> /var/log/varlens-volume-layout.txt
 
   # Install the backup script. Placed in /usr/local/bin and invoked by the systemd service.
   # Phase 2: Postgres-aware. pg_dump → restic snapshot of the dump (NOT

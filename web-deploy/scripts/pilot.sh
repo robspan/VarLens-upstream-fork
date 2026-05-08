@@ -72,11 +72,31 @@ trap 'on_interrupt SIGTERM' TERM
 detect_healthy_pilot() {
   local ip="$1"
   [[ -z "$ip" ]] && return 1
-  # Both probes use -k (allow self-signed) — the goal is "is the stack
-  # actually serving HTTP", not "is the cert browser-trusted." The TLS
-  # trust check happens later, after we know we are bringing it up.
-  curl -kfsS --max-time 5 -o /dev/null "https://$ip/varlens/healthz" 2>/dev/null || return 1
-  curl -kfsS --max-time 5 -o /dev/null "https://$ip/welcome" 2>/dev/null || return 1
+  # Refuse-to-re-run requires *every* stateful step done, not just the
+  # stack. Otherwise a partial bring-up that died after step 2 (e.g. LE
+  # rate-limit at first, backup not yet configured) would be wrongly
+  # detected as "fully healthy" and operators would lose the ability to
+  # resume via `make pilot`.
+  #
+  # Liveness layer: prefer HTTPS, but accept plain HTTP /healthz as the
+  # liveness fallback. TLS may be unhealthy (Caddy mid-ACME, LE prod
+  # rate-limit, LE-staging fallback in flight, or self-healed to
+  # tls-internal) while the stack itself is fine — the Caddyfile :80
+  # block serves `/healthz` plainly regardless of TLS state.
+  if ! ( curl -kfsS --max-time 5 -o /dev/null "https://$ip/varlens/healthz" 2>/dev/null \
+         && curl -kfsS --max-time 5 -o /dev/null "https://$ip/welcome" 2>/dev/null ); then
+    curl -fsS --max-time 5 -o /dev/null "http://$ip/healthz" 2>/dev/null || return 1
+  fi
+  # Step 3: restic configured + ≥1 snapshot.
+  _ssh "$ip" 'sudo grep -q "^RESTIC_PASSWORD=." /etc/restic/env 2>/dev/null && \
+              sudo bash -c "set -a; . /etc/restic/env; restic snapshots --no-lock --json 2>/dev/null | head -c 1" \
+              | grep -qF "["' \
+    >/dev/null 2>&1 || return 1
+  # Step 4: Kuma admin user + varlens-backup monitor present.
+  _ssh "$ip" '
+    sudo docker exec uptime-kuma sqlite3 /app/data/kuma.db \
+      "SELECT (SELECT COUNT(*) FROM user) || \" \" || (SELECT COUNT(*) FROM monitor WHERE name=\"varlens-backup\");" 2>/dev/null
+  ' 2>/dev/null | grep -qE '^[1-9][0-9]* [1-9]' || return 1
   return 0
 }
 
@@ -513,29 +533,119 @@ step1_verify() {
 }
 
 # Step 2: Compose stack up.
+#
+# Health model: container health (docker compose ps --status=running with
+# `healthy` healthchecks) is the SOURCE OF TRUTH. TLS reachability is
+# observability — Caddy may be mid-ACME, falling back from LE prod to LE
+# staging, or rate-limited (HTTP 429: 5 certs/IP/168h). During those
+# windows Caddy aborts the handshake with `tlsv1 alert internal_error`
+# even for `curl -k`, but the app behind it is fine.
+#
+# So verify in three layers, cheapest first:
+#   1. all 5 containers running and healthy
+#   2. /healthz reachable on plain HTTP :80 (Caddyfile serves it without TLS)
+#   3. /varlens/healthz reachable on HTTPS (best-effort; warning, not fatal)
+_step2_containers_healthy() {
+  local ip="$1"
+  # `docker compose ps --format json` prints one JSON line per service.
+  # We need (Service ∈ {caddy,uptime-kuma,dozzle,app,postgres}, State=running,
+  # Health ∈ {healthy,""}) — empty Health is OK for services without a
+  # healthcheck (dozzle has none; the others do).
+  local out
+  out=$(_ssh "$ip" 'cd /mnt/data/app 2>/dev/null && sudo docker compose ps --format json 2>/dev/null' 2>/dev/null) || return 1
+  [[ -n "$out" ]] || return 1
+  local svc state health count=0
+  while IFS= read -r line; do
+    svc=$(printf '%s' "$line"   | sed -n 's/.*"Service":"\([^"]*\)".*/\1/p')
+    state=$(printf '%s' "$line" | sed -n 's/.*"State":"\([^"]*\)".*/\1/p')
+    health=$(printf '%s' "$line"| sed -n 's/.*"Health":"\([^"]*\)".*/\1/p')
+    case "$svc" in
+      caddy|uptime-kuma|dozzle|app|postgres)
+        [[ "$state" = "running" ]] || return 1
+        [[ -z "$health" || "$health" = "healthy" ]] || return 1
+        count=$((count + 1))
+        ;;
+    esac
+  done <<< "$out"
+  [[ "$count" = "5" ]]
+}
 step2_check() {
-  # Done iff: all 5 services are running healthy AND /healthz returns 200.
   local ip; ip="$(_pilot_ipv4)" || return 1
-  local count
-  count=$(_ssh "$ip" 'cd /mnt/data/app 2>/dev/null && sudo docker compose ps --status running --services 2>/dev/null | grep -cE "^(caddy|uptime-kuma|dozzle|app|postgres)$"' 2>/dev/null || echo 0)
-  [[ "$count" = "5" ]] || return 1
-  curl -kfsS --max-time 5 -o /dev/null "https://$ip/varlens/healthz" 2>/dev/null
+  _step2_containers_healthy "$ip" || return 1
+  # Plain-HTTP healthz served by Caddy on :80 — does not depend on ACME.
+  curl -fsS --max-time 5 -o /dev/null "http://$ip/healthz" 2>/dev/null
 }
 step2_run() {
   ( cd "$WEB_DEPLOY" && make stack-up )
 }
 step2_verify() {
   local ip; ip="$(_pilot_ipv4)" || return 1
-  # Allow up to 30s for healthz to come up post-recreate.
+  # Wait up to 90s for all containers to converge to healthy after
+  # `docker compose up -d`. Fresh-pull boots take longer than the old
+  # 30s window allowed, especially on first migration runs.
   local attempts=0
-  while (( attempts < 6 )); do
-    if curl -kfsS --max-time 5 -o /dev/null "https://$ip/varlens/healthz" 2>/dev/null; then
-      return 0
-    fi
+  while (( attempts < 18 )); do
+    if _step2_containers_healthy "$ip"; then break; fi
     sleep 5
     attempts=$((attempts + 1))
   done
-  return 1
+  _step2_containers_healthy "$ip" || return 1
+  # Plain-HTTP /healthz on :80 is the protocol-independent liveness probe.
+  # Caddyfile serves `respond "ok" 200` for path=/healthz before any TLS.
+  if ! curl -fsS --max-time 5 -o /dev/null "http://$ip/healthz" 2>/dev/null; then
+    printf '%s    ✗ http://%s/healthz did not respond%s\n' "$RED" "$ip" "$RESET" >&2
+    return 1
+  fi
+  # HTTPS reachability — give Caddy ~15s to settle, then check.
+  local https_ok=0
+  for _ in 1 2 3; do
+    if curl -kfsS --max-time 5 -o /dev/null "https://$ip/varlens/healthz" 2>/dev/null; then
+      https_ok=1
+      break
+    fi
+    sleep 5
+  done
+  if (( https_ok == 1 )); then
+    return 0
+  fi
+  # HTTPS not reachable. Inspect Caddy logs: if LE prod returned 429
+  # (5 certs/IP/168h rate limit), self-heal by flipping to tls-internal
+  # and recreating Caddy. Caddy will not auto-fall-back to its internal
+  # CA on its own — it falls back to LE staging, which serves an
+  # untrusted cert and still leaves browsers showing ERR_CERT_*. The
+  # operator-visible behaviour the heads-up promised ("falls back to a
+  # self-signed cert") only happens if we wire it ourselves.
+  if _ssh "$ip" 'sudo docker logs caddy 2>&1 | grep -q "urn:ietf:params:acme:error:rateLimited"' 2>/dev/null; then
+    printf '%s    ⚠ Let'\''s Encrypt prod is rate-limited for this IP (5 certs/168h).%s\n' "$YELLOW" "$RESET"
+    printf '%s      Self-healing: flipping CADDY_TLS_PROFILE=tls-internal and recreating Caddy.%s\n' "$YELLOW" "$RESET"
+    printf '%s      Browsers will show a one-time cert warning on first visit; acceptable for%s\n' "$YELLOW" "$RESET"
+    printf '%s      the rate-limit window (LE prod will be retryable on the next cycle).%s\n' "$YELLOW" "$RESET"
+    if ! _ssh "$ip" 'cd /mnt/data/app && \
+        sudo sed -i "s|^CADDY_TLS_PROFILE=.*|CADDY_TLS_PROFILE=tls-internal|" .env && \
+        grep -q "^CADDY_TLS_PROFILE=tls-internal" .env && \
+        sudo docker compose up -d --force-recreate caddy' >/dev/null 2>&1; then
+      printf '%s    ✗ self-heal failed — could not recreate Caddy with tls-internal%s\n' "$RED" "$RESET" >&2
+      return 1
+    fi
+    # Re-probe HTTPS — internal CA cert is served immediately.
+    local attempts=0
+    while (( attempts < 6 )); do
+      if curl -kfsS --max-time 5 -o /dev/null "https://$ip/varlens/healthz" 2>/dev/null; then
+        printf '%s    ✓ self-heal succeeded — Caddy now serving its internal-CA certificate%s\n' "$GREEN" "$RESET"
+        return 0
+      fi
+      sleep 5
+      attempts=$((attempts + 1))
+    done
+    printf '%s    ✗ HTTPS still not reachable after tls-internal self-heal%s\n' "$RED" "$RESET" >&2
+    return 1
+  fi
+  # Not rate-limited — Caddy may simply still be mid-ACME. Containers are
+  # healthy, so this is observability, not a hard fail.
+  printf '%s    ⚠ HTTPS not reachable yet — Caddy is likely still obtaining a%s\n' "$YELLOW" "$RESET"
+  printf '%s      certificate. Containers are healthy; bring-up continues. Tail logs%s\n' "$YELLOW" "$RESET"
+  printf '%s      with `make -C web-deploy stack-logs` if it persists past a few minutes.%s\n' "$YELLOW" "$RESET"
+  return 0
 }
 
 # Step 3: Restic backup configured + first snapshot taken.
@@ -543,7 +653,8 @@ step3_check() {
   # Done iff: /etc/restic/env exists with RESTIC_PASSWORD AND ≥1 snapshot.
   local ip; ip="$(_pilot_ipv4)" || return 1
   _ssh "$ip" 'sudo grep -q "^RESTIC_PASSWORD=." /etc/restic/env 2>/dev/null && \
-              sudo bash -c "set -a; . /etc/restic/env; restic snapshots --no-lock --json 2>/dev/null | head -c 5 | grep -q ^\\["' \
+              sudo bash -c "set -a; . /etc/restic/env; restic snapshots --no-lock --json 2>/dev/null | head -c 1" \
+              | grep -qF "["' \
     >/dev/null 2>&1
 }
 step3_run() {

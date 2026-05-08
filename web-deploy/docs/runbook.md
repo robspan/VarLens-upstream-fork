@@ -12,6 +12,8 @@ Day-to-day. All commands run from the repo root. Web mode is auto-on whenever `w
 | Get a shell on the server     | `make pilot-ssh`                                              |
 | Smoke test the live system    | `make pilot-smoke`                                            |
 | Tail all container logs       | `make -C web-deploy stack-logs`                               |
+| Ship a new app version (CI)   | `make web-release VERSION=v0.x.y NOTES_FROM=auto`             |
+| Roll back the last release    | `gh workflow run release-web.yml -f version=<previous> -f skip_build=true` |
 
 ⚠ `make pilot-down` deletes the server + 50 GB volume (you must type `pilot` to confirm). Restic snapshots survive.
 
@@ -20,3 +22,4 @@ Day-to-day. All commands run from the repo root. Web mode is auto-on whenever `w
 | Something is broken  | [`incident-runbook.md`](incident-runbook.md)   |
 | Full command list    | [`operations.md`](operations.md)               |
 | Smoke probe failures | [`smoke-remediation.md`](smoke-remediation.md) |
+| Releases (CI deploy) | [`releases.md`](releases.md)                   |

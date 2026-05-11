@@ -9,8 +9,8 @@ If you DO see one of these tests failing (because you ran `make web-gate-static`
 | Layer | What it pins | When it runs |
 |---|---|---|
 | **Layer 1 — Static** (`*.test.ts` at root) | Structural rules: no DB-factory leaks, no direct argon2 imports, every domain table has `user_id`, no Electron in `src/shared/`, etc. | `npm run test:web-gate` or `make web-gate-static`. **Not** part of default `npm run test`. |
-| **Layer 2 — Integration** (`integration/`) | `/healthz`, JSON logs, SIGTERM, idempotent migrations against the Fastify server. | Same trigger as Layer 1. All inner tests `skipIf(!existsSync('out/web/server.cjs'))` — inert until the web build target exists. |
-| **Layer 3 — Parity** (`parity/`) | Same scenario through Electron and (later) the web stack returns equivalent results. | `make web-gate-parity` only. Boots a real Electron app and switches the native-module ABI. |
+| **Layer 2 — Integration** (`integration/`) | `/healthz`, JSON logs, SIGTERM, idempotent migrations against the Fastify server. | Same trigger as Layer 1. Tests that need a built web server and `VARLENS_PG_URL` skip in the fast/default lane; a future opt-in Postgres web lane should make those prerequisites fail-loud. |
+| **Layer 3 — Parity** (`parity/`) | Structural parity sentinels plus behavioral scenarios as they are implemented. | `make web-gate-parity` only. Boots a real Electron app and switches the native-module ABI. |
 
 ## For desktop-only contributors (researchers, clinicians, default workflow)
 
@@ -25,10 +25,8 @@ Following these patterns benefits desktop too (cleaner abstractions, multi-user-
 
 ## For web-track contributors
 
-The "expected fail" tests (`test.fails(...)`) are the visible Phase 1 backlog. When your refactor PR makes the inner assertion pass, flip `test.fails()` → `test()` in the same PR. Three of these exist today:
+The "expected fail" tests (`test.fails(...)`) are the visible web-track backlog. When your refactor PR makes the inner assertion pass, flip `test.fails()` -> `test()` in the same PR. One remains today:
 
-- `db-seam.test.ts` — StorageSession declares zero escape-hatch methods
-- `auth-isolation.test.ts` — no direct argon2 imports outside `src/main/auth/providers/`
 - `user-id-schema.test.ts` — `EXPECTED_MISSING_USER_ID` is empty
 
 The allowlists (`ALLOWLIST_LOOPHOLE_IMPORTERS` in `db-seam`, `EXPECTED_MISSING_USER_ID` in `user-id-schema`) are the **escape hatch for accepted divergence**. If desktop ships a feature that the web variant chooses not to mirror, the corresponding entry stays in the allowlist with a comment in the PR explaining why. The web variant runs with that feature absent.
@@ -38,12 +36,14 @@ The allowlists (`ALLOWLIST_LOOPHOLE_IMPORTERS` in `db-seam`, `EXPECTED_MISSING_U
 ```bash
 npm run test:web-gate     # Layer 1 + Layer 2, fast
 make web-gate-static      # same
-make web-gate-integration # Layer 2 alone (currently all skipped — no web build yet)
+make web-gate-integration # Layer 2 alone; Postgres-backed tests need out/web + VARLENS_PG_URL
 make web-gate-parity      # Layer 3 — boots Electron, switches native ABI
 make web-gate             # static + integration (parity is intentionally separate)
 ```
 
 None of these run during `make ci` or default `npm run test`. They are a parallel CI lane the web-track contributor invokes explicitly.
+
+Desktop remains the default path. Do not add Postgres, Docker, browser, or web-image prerequisites to default desktop CI. Web release/deploy validation should use an explicit web command that builds the web app, requires/provisions Postgres, and fails loudly if those prerequisites are absent.
 
 `make web-gate-parity` rebuilds `better-sqlite3-multiple-ciphers` for the Electron ABI. After running it, you'll need `make rebuild-node` before running the regular Vitest suite again. This is the same dual-rebuild gotcha documented in `AGENTS.md`.
 

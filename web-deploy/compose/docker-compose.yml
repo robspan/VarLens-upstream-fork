@@ -110,12 +110,13 @@ services:
       VARLENS_RECOVERY_KEY_DIR: ${VARLENS_RECOVERY_KEY_DIR:-/data}
       VARLENS_WEB_PORT: ${APP_PORT:-8080}
       VARLENS_LOG_LEVEL: ${VARLENS_LOG_LEVEL:-info}
-      # Optional one-shot bootstrap. If all three are set on first boot
-      # and no admin exists, the app creates an Argon2 admin and writes
-      # /data/admin-recovery-key.txt (mode 0600). Capture and delete on
-      # the host, then unset these in compose/.env to avoid leaving the
-      # plaintext password in the container env.
+      # Optional one-shot bootstrap. Prefer VARLENS_ADMIN_PASSWORD_HASH:
+      # a pre-computed Argon2id PHC string generated outside the server.
+      # VARLENS_ADMIN_PASSWORD remains temporarily supported but is
+      # deprecated. After first login/rotation, unset the bootstrap value
+      # in compose/.env so it is not reused on the next bring-up.
       VARLENS_ADMIN_USERNAME: ${VARLENS_ADMIN_USERNAME-}
+      VARLENS_ADMIN_PASSWORD_HASH: ${VARLENS_ADMIN_PASSWORD_HASH-}
       VARLENS_ADMIN_PASSWORD: ${VARLENS_ADMIN_PASSWORD-}
       VARLENS_ADMIN_DISPLAY_NAME: ${VARLENS_ADMIN_DISPLAY_NAME-}
     depends_on:

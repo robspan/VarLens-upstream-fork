@@ -163,6 +163,10 @@ describe.skipIf(!existsSync(DEPLOY))('deploy-stack wiring gate', () => {
       appBlock,
       'VARLENS_DB_PATH must NOT survive on the app service (Phase 2 dropped SQLite)'
     ).not.toMatch(/VARLENS_DB_PATH/)
+    expect(
+      appBlock,
+      'VARLENS_ADMIN_PASSWORD_HASH must be wired so hash bootstrap works in deploy'
+    ).toContain('VARLENS_ADMIN_PASSWORD_HASH')
   })
 
   test('Phase 2: postgres service is unconditional (no profile gate)', () => {

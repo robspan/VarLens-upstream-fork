@@ -1,4 +1,4 @@
-.PHONY: help rebuild dev build preview lint lint-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-reset web-gate web-gate-static web-gate-integration web-gate-parity sync-upstream install-hooks pilot pilot-down pilot-status pilot-smoke pilot-ssh web-release-enable web-release
+.PHONY: help rebuild dev build preview lint lint-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-reset build-web web-ci web-gate web-gate-static web-gate-integration web-gate-postgres web-gate-parity sync-upstream install-hooks pilot pilot-down pilot-status pilot-smoke pilot-ssh web-release-enable web-release
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -23,21 +23,11 @@ endef
 # web-only invocations.
 #---------------------------------------------------------------------------
 
-# Web mode is opt-in (AGENTS.md > Mode toggle). The signal that "this
-# checkout operates the web pilot" is the existence of
-# `web-deploy/.env` — the operator-secrets file the deploy CLI needs.
-# If you've populated it (hcloud token, S3 creds, admin password, …)
-# you're already in web-deploy context; the toggle just reflects that.
-#
-# Override either way with an explicit env var:
-#   VARLENS_WEB=1 make <target>     # force on (no .env yet, e.g. CI)
-#   VARLENS_WEB=0 make <target>     # force off (.env exists but you
-#                                   #   want desktop mode this command)
-ifneq ($(wildcard web-deploy/.env),)
-    VARLENS_WEB ?= 1
-else
-    VARLENS_WEB ?= 0
-endif
+# Web mode is opt-in only. A populated web-deploy/.env is operator
+# context for deploy commands, but it must not change the default
+# desktop developer/test lane. Set VARLENS_WEB=1 explicitly when a
+# target should extend itself with web checks.
+VARLENS_WEB ?= 0
 
 # Export so it propagates to sub-makes and child processes — the deploy
 # CLI (web-deploy/bin/varlens) reads VARLENS_WEB from os.environ to gate
@@ -154,10 +144,17 @@ test-coverage: ## Run tests with coverage report
 # Phase 1 web-migration gate (see .planning/web/testing/desktop-to-web-parity.md)
 #---------------------------------------------------------------------------
 
+build-web: ## Build the opt-in web server + browser bundle
+	npm run build:web
+
 web-gate-static: ## Run Layer 1 static gate tests (assumes Node ABI — run `make rebuild-node` first if needed)
 	npx vitest run --project web-gate
 
 web-gate-integration: ## Run Layer 2 web-only integration tests (skipped until out/web/ exists)
+	npx vitest run --project web-gate tests/web-gate/integration
+
+web-gate-postgres: build-web ## Run fail-loud Postgres-backed web integration tests (requires VARLENS_PG_URL)
+	@if [ -z "$$VARLENS_PG_URL" ]; then echo "VARLENS_PG_URL is required for web-gate-postgres. This is intentionally opt-in and never part of default desktop CI."; exit 2; fi
 	npx vitest run --project web-gate tests/web-gate/integration
 
 web-gate-parity: ## Run Layer 3 parity scenarios (opt-in; boots Electron, switches native ABI)
@@ -168,6 +165,8 @@ web-gate-parity: ## Run Layer 3 parity scenarios (opt-in; boots Electron, switch
 
 web-gate: web-gate-static ## Run the Phase 1 gate fast tests (parity is opt-in via web-gate-parity)
 	@echo "Static + integration done. Run 'make web-gate-parity' to validate the desktop↔web parity path (opt-in)."
+
+web-ci: rebuild-node build-web web-gate-static web-gate-postgres ## Opt-in web readiness gate; requires VARLENS_PG_URL
 
 #---------------------------------------------------------------------------
 # CI / Full Checks

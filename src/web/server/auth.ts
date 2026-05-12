@@ -2,11 +2,11 @@
  * Web-mode session + auth gate.
  *
  * Stateless signed-encrypted cookie sessions via @fastify/secure-session.
- * The cookie holds `{ user: { id, username, role } }` and nothing else;
- * there is no server-side session store. This matches the project's
- * "single-user-style auth, no roles" stance — every authenticated
- * request is treated identically; the only access decision is "do you
- * have a valid session cookie or not."
+ * The cookie holds `{ user: { id, username, role, passwordChangedAt } }`
+ * plus the password-rotation sticky bit; there is no server-side
+ * session store. Each protected API request revalidates the cookie
+ * against the current DB user row so deactivation or password reset
+ * invalidates stale sessions before they reach application logic.
  *
  * Secret resolution, in order:
  *
@@ -33,9 +33,11 @@ import { randomBytes } from 'crypto'
 import type { FastifyInstance } from 'fastify'
 import secureSession from '@fastify/secure-session'
 
+import type { PostgresWebAuthService } from '../auth/PostgresWebAuthService'
+
 declare module '@fastify/secure-session' {
   interface SessionData {
-    user: { id: number; username: string; role: string }
+    user: { id: number; username: string; role: string; passwordChangedAt: string | null }
     /**
      * Sticky bit set on login when the authenticated user has
      * must_change_password=TRUE in the DB; cleared by the
@@ -79,6 +81,28 @@ function isProductionMode(): boolean {
 }
 
 const PUBLIC_API_PATHS = new Set<string>(['/api/auth/login', '/api/auth/isAccountsEnabled'])
+const UNSAFE_METHODS = new Set<string>(['POST', 'PUT', 'PATCH', 'DELETE'])
+
+function headerValue(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) return value[0]
+  return value
+}
+
+export function isAllowedApiOrigin(params: {
+  origin: string | undefined
+  host: string | undefined
+  protocol: string
+}): boolean {
+  if (params.origin === undefined || params.origin.trim() === '') return true
+  if (params.host === undefined || params.host.trim() === '') return false
+
+  try {
+    const origin = new URL(params.origin)
+    return origin.host === params.host && origin.protocol === `${params.protocol}:`
+  } catch {
+    return false
+  }
+}
 
 function resolveRecoveryKeyDir(): string {
   const raw = process.env.VARLENS_RECOVERY_KEY_DIR
@@ -124,7 +148,10 @@ function loadOrCreateSessionKey(): Buffer {
   return generated
 }
 
-export async function registerSessions(app: FastifyInstance): Promise<void> {
+export async function registerSessions(
+  app: FastifyInstance,
+  options: { authService: PostgresWebAuthService }
+): Promise<void> {
   const key = loadOrCreateSessionKey()
   const production = isProductionMode()
 
@@ -160,6 +187,23 @@ export async function registerSessions(app: FastifyInstance): Promise<void> {
     const path = url.split('?', 1)[0]
 
     if (!path.startsWith('/api/')) return
+
+    if (
+      UNSAFE_METHODS.has(request.method) &&
+      !isAllowedApiOrigin({
+        origin: headerValue(request.headers.origin),
+        host: headerValue(request.headers.host),
+        protocol: headerValue(request.headers['x-forwarded-proto']) ?? request.protocol
+      })
+    ) {
+      reply.code(403)
+      return reply.send({
+        code: 'FORBIDDEN_ORIGIN',
+        message: 'request origin is not allowed',
+        userMessage: 'Request origin is not allowed.'
+      })
+    }
+
     if (PUBLIC_API_PATHS.has(path)) return
 
     if (request.session.user === undefined) {
@@ -169,6 +213,31 @@ export async function registerSessions(app: FastifyInstance): Promise<void> {
         message: 'authentication required',
         userMessage: 'Please log in to continue.'
       })
+    }
+
+    const sessionUser = request.session.user
+    const liveUser = await options.authService.getUser(sessionUser.username)
+    if (
+      liveUser === undefined ||
+      liveUser.id !== sessionUser.id ||
+      liveUser.is_active !== 1 ||
+      liveUser.password_changed_at !== sessionUser.passwordChangedAt
+    ) {
+      request.session.delete()
+      reply.code(401)
+      return reply.send({
+        code: 'UNAUTHENTICATED',
+        message: 'session no longer valid',
+        userMessage: 'Please log in again.'
+      })
+    }
+
+    request.session.mustChangePassword = liveUser.must_change_password === 1
+    request.session.user = {
+      id: liveUser.id,
+      username: liveUser.username,
+      role: liveUser.role,
+      passwordChangedAt: liveUser.password_changed_at
     }
   })
 }

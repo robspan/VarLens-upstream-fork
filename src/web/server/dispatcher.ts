@@ -22,13 +22,27 @@
  * authenticated for everything except the few public overrides
  * marked `public: true`.
  */
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import { isAbsolute } from 'path'
 
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import { z } from 'zod'
+
+import { startImport, type VcfImportOptions } from '../../main/ipc/handlers/import-logic'
 import type { StorageSession } from '../../main/storage/session'
 import type { StorageReadTask } from '../../main/storage/read-executor'
 import type { StorageWriteTask } from '../../main/storage/write-executor'
 import { PasswordPolicyError, type PostgresWebAuthService } from '../auth/PostgresWebAuthService'
+import type { WebEventHub } from './events'
 import { isReadTaskType, isWriteTaskType, toTaskDomain } from './task-types'
+import type { SortItem, VariantFilter } from '../../shared/types/database'
+import {
+  CaseIdSchema,
+  CohortSearchParamsSchema,
+  LimitSchema,
+  OffsetSchema,
+  SortItemSchema,
+  VariantFilterPartialSchema
+} from '../../shared/types/ipc-schemas'
 
 /**
  * Methods reachable to a session that still has
@@ -42,10 +56,30 @@ import { isReadTaskType, isWriteTaskType, toTaskDomain } from './task-types'
  * flow can drop their session and start over.
  */
 const PRE_ROTATION_ALLOWED = new Set<string>(['auth:changePassword', 'auth:logout'])
+const SERVER_PATH_IMPORT_ENV = 'VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT'
+const CohortCarriersParamsSchema = z.object({
+  chr: z.string().min(1),
+  pos: z.number().int().positive(),
+  ref: z.string().min(1),
+  alt: z.string().min(1)
+})
+
+function requireAdmin(
+  request: FastifyRequest,
+  reply: FastifyReply
+): { id: number; username: string; role: string; passwordChangedAt: string | null } | undefined {
+  const user = request.session?.user
+  if (user === undefined || user.role !== 'admin') {
+    reply.code(403)
+    return undefined
+  }
+  return user
+}
 
 export interface DispatcherDeps {
   session: StorageSession
   authService: PostgresWebAuthService
+  events: WebEventHub
 }
 
 export interface InvokeBody {
@@ -82,12 +116,12 @@ function buildOverrides(): Record<string, OverrideHandler> {
         }
         const result = await authService.authenticate(username, password)
         if (result.success && result.user !== null) {
-          const { id, username: name, role } = result.user
+          const { id, username: name, role, password_changed_at: passwordChangedAt } = result.user
           // Persist mustChangePassword on the session so the
           // pre-rotation gate (in the dispatcher route handler) can
           // enforce it without re-querying the DB on every request.
           // Cleared by the auth:changePassword override on success.
-          request.session.user = { id, username: name, role }
+          request.session.user = { id, username: name, role, passwordChangedAt }
           request.session.mustChangePassword = result.mustChangePassword === true
         }
         return result
@@ -95,22 +129,20 @@ function buildOverrides(): Record<string, OverrideHandler> {
     },
     'auth:logout': {
       async handle(_args, request) {
-        await request.session.destroy()
+        request.session.delete()
         return { ok: true }
       }
     },
     'auth:currentUser': {
-      // Session is the source of truth for the cookie's lifetime.
-      // Deactivation mid-session is intentionally not handled here —
-      // the next /api/auth/login or session expiry resyncs.
+      // Session identity has already been revalidated by the auth preHandler.
       async handle(_args, request) {
         return request.session?.user ?? null
       }
     },
     'auth:isAccountsEnabled': {
       public: true,
-      async handle() {
-        return true
+      async handle(_args, _request, _reply, { authService }) {
+        return await authService.isAccountsEnabled()
       }
     },
 
@@ -142,6 +174,15 @@ function buildOverrides(): Record<string, OverrideHandler> {
             reply.code(401)
             return { success: false, error: 'old-password-invalid' }
           }
+          const refreshed = await authService.getUser(sessionUser.username)
+          if (refreshed !== undefined) {
+            session.user = {
+              id: refreshed.id,
+              username: refreshed.username,
+              role: refreshed.role,
+              passwordChangedAt: refreshed.password_changed_at
+            }
+          }
           session.mustChangePassword = false
           return { success: true }
         } catch (err) {
@@ -154,9 +195,131 @@ function buildOverrides(): Record<string, OverrideHandler> {
       }
     },
 
+    'auth:createUser': {
+      async handle(args, request, reply, { authService }) {
+        const admin = requireAdmin(request, reply)
+        if (admin === undefined) return { error: 'admin-required' }
+
+        const [username, displayName, tempPassword] = args
+        if (
+          typeof username !== 'string' ||
+          typeof displayName !== 'string' ||
+          typeof tempPassword !== 'string'
+        ) {
+          reply.code(400)
+          return { error: 'invalid-user-payload' }
+        }
+
+        return await authService.createUser(username, displayName, tempPassword, admin.username)
+      }
+    },
+
+    'auth:listUsers': {
+      async handle(_args, request, reply, { authService }) {
+        const admin = requireAdmin(request, reply)
+        if (admin === undefined) return { error: 'admin-required' }
+        return await authService.listUsers()
+      }
+    },
+
+    'auth:deactivateUser': {
+      async handle(args, request, reply, { authService }) {
+        const admin = requireAdmin(request, reply)
+        if (admin === undefined) return { error: 'admin-required' }
+
+        const [username] = args
+        if (typeof username !== 'string') {
+          reply.code(400)
+          return { error: 'invalid-username' }
+        }
+        if (username === admin.username) {
+          reply.code(400)
+          return { error: 'cannot-deactivate-self' }
+        }
+
+        await authService.deactivateUser(username)
+        return undefined
+      }
+    },
+
+    'auth:resetPassword': {
+      async handle(args, request, reply, { authService }) {
+        const admin = requireAdmin(request, reply)
+        if (admin === undefined) return { error: 'admin-required' }
+
+        const [username, newPassword] = args
+        if (typeof username !== 'string' || typeof newPassword !== 'string') {
+          reply.code(400)
+          return { error: 'invalid-reset-payload' }
+        }
+
+        await authService.resetPassword(username, newPassword)
+        return undefined
+      }
+    },
+
     'cases:list': {
       async handle(_args, _request, _reply, { session }) {
         return await session.listCases()
+      }
+    },
+
+    'cohort:getVariants': {
+      async handle(args, _request, reply, { session }) {
+        const [params] = args
+        const validated = CohortSearchParamsSchema.safeParse(params)
+        if (!validated.success) {
+          reply.code(400)
+          return { error: 'invalid-cohort-params', message: 'Invalid cohort search parameters' }
+        }
+
+        return await session.getReadExecutor().execute({
+          type: 'cohort:query',
+          params: [validated.data]
+        })
+      }
+    },
+
+    'cohort:getColumnMeta': {
+      async handle(_args, _request, _reply, { session }) {
+        return await session.getReadExecutor().execute({
+          type: 'cohort:columnMeta',
+          params: []
+        })
+      }
+    },
+
+    'cohort:getSummary': {
+      async handle(_args, _request, _reply, { session }) {
+        return await session.getReadExecutor().execute({
+          type: 'cohort:summary',
+          params: []
+        })
+      }
+    },
+
+    'cohort:getCarriers': {
+      async handle(args, _request, reply, { session }) {
+        const [chr, pos, ref, alt] = args
+        const validated = CohortCarriersParamsSchema.safeParse({ chr, pos, ref, alt })
+        if (!validated.success) {
+          reply.code(400)
+          return { error: 'invalid-carrier-params', message: 'Invalid carrier query parameters' }
+        }
+
+        return await session.getReadExecutor().execute({
+          type: 'cohort:carriers',
+          params: [validated.data.chr, validated.data.pos, validated.data.ref, validated.data.alt]
+        })
+      }
+    },
+
+    'cohort:getGeneBurden': {
+      async handle(_args, _request, _reply, { session }) {
+        return await session.getReadExecutor().execute({
+          type: 'cohort:geneBurden',
+          params: []
+        })
       }
     },
 
@@ -169,6 +332,143 @@ function buildOverrides(): Record<string, OverrideHandler> {
     'database:health': {
       async handle(_args, _request, _reply, { session }) {
         return await session.health()
+      }
+    },
+
+    'database:info': {
+      handle(_args, _request, _reply, { session }) {
+        return {
+          path: `web:${session.capabilities.backend}`,
+          name: 'VarLens Web',
+          encrypted: false
+        }
+      }
+    },
+
+    'database:recentList': {
+      handle() {
+        return []
+      }
+    },
+
+    'import:start': {
+      async handle(args, request, reply, { session, events }) {
+        if (process.env.NODE_ENV !== 'test' && process.env[SERVER_PATH_IMPORT_ENV] !== '1') {
+          reply.code(403)
+          return {
+            error: 'server-path-import-disabled',
+            message:
+              'Server-path import is disabled. Browser upload support must use a dedicated upload route.'
+          }
+        }
+
+        const [filePath, caseName, vcfOptions] = args
+        if (typeof filePath !== 'string' || filePath.trim() === '' || !isAbsolute(filePath)) {
+          reply.code(400)
+          return { error: 'invalid-file-path', message: 'filePath must be an absolute path' }
+        }
+        if (typeof caseName !== 'string' || caseName.trim() === '') {
+          reply.code(400)
+          return { error: 'invalid-case-name', message: 'caseName must be a non-empty string' }
+        }
+
+        const normalizedOptions: VcfImportOptions | undefined =
+          vcfOptions !== null && typeof vcfOptions === 'object'
+            ? {
+                selectedSample:
+                  typeof (vcfOptions as { selectedSample?: unknown }).selectedSample === 'string'
+                    ? (vcfOptions as { selectedSample: string }).selectedSample
+                    : undefined,
+                genomeBuild:
+                  typeof (vcfOptions as { genomeBuild?: unknown }).genomeBuild === 'string'
+                    ? (vcfOptions as { genomeBuild: string }).genomeBuild
+                    : undefined
+              }
+            : undefined
+
+        return await startImport(filePath, caseName, normalizedOptions, () => session, {
+          onProgress: (progress) => {
+            const userId = request.session.user?.id
+            if (userId !== undefined) {
+              events.publish(userId, 'import:progress', progress)
+            }
+          }
+        })
+      }
+    },
+
+    'variants:query': {
+      async handle(args, _request, reply, { session }) {
+        const [caseId, filters, offset, limit, sortBy, skipCount, includeUnfilteredCount] = args
+
+        const validatedCaseId = CaseIdSchema.safeParse(caseId)
+        if (!validatedCaseId.success) {
+          reply.code(400)
+          return { error: 'invalid-case-id', message: 'Invalid case ID' }
+        }
+
+        const validatedFilters = VariantFilterPartialSchema.safeParse(filters)
+        if (!validatedFilters.success) {
+          reply.code(400)
+          return { error: 'invalid-filters', message: 'Invalid filter parameters' }
+        }
+
+        const offsetResult =
+          offset === undefined || offset === null ? { data: 0 } : OffsetSchema.safeParse(offset)
+        if ('success' in offsetResult && !offsetResult.success) {
+          reply.code(400)
+          return { error: 'invalid-offset', message: 'Invalid offset parameter' }
+        }
+
+        const limitResult =
+          limit === undefined || limit === null ? { data: 50 } : LimitSchema.safeParse(limit)
+        if ('success' in limitResult && !limitResult.success) {
+          reply.code(400)
+          return { error: 'invalid-limit', message: 'Invalid limit parameter' }
+        }
+
+        let validatedSortBy: SortItem[] | undefined
+        if (sortBy !== undefined && sortBy !== null) {
+          const sortByResult = z.array(SortItemSchema).safeParse(sortBy)
+          if (!sortByResult.success) {
+            reply.code(400)
+            return { error: 'invalid-sort', message: 'Invalid sort parameters' }
+          }
+          validatedSortBy = sortByResult.data
+        }
+
+        const fullFilter: VariantFilter = {
+          case_id: validatedCaseId.data,
+          ...validatedFilters.data
+        }
+
+        return await session.getReadExecutor().execute({
+          type: 'variants:query',
+          params: [
+            fullFilter,
+            limitResult.data,
+            offsetResult.data,
+            validatedSortBy,
+            skipCount === true,
+            includeUnfilteredCount === true
+          ]
+        })
+      }
+    },
+
+    'variants:getFilterOptions': {
+      async handle(args, _request, reply, { session }) {
+        const [caseId] = args
+        const validatedCaseId = CaseIdSchema.safeParse(caseId)
+        if (!validatedCaseId.success) {
+          reply.code(400)
+          return { error: 'invalid-case-id', message: 'Invalid case ID' }
+        }
+
+        return await session.getReadExecutor().execute({
+          type: 'variants:filterOptions',
+          params: [validatedCaseId.data]
+        })
       }
     }
   }

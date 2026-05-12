@@ -7,6 +7,7 @@ import {
   dismissDisclaimerIfPresent,
   type LaunchElectronAppResult
 } from '../../e2e/helpers/electron-app'
+import { startWebDriver } from '../helpers/web-driver'
 
 /**
  * Phase 1 gate — Layer 3 parity scenario #1.
@@ -31,6 +32,7 @@ const ELECTRON_BUILD = resolve(process.cwd(), 'out/main/index.js')
 const isElectronBuilt = existsSync(ELECTRON_BUILD)
 const WEB_BUILD = resolve(process.cwd(), 'out/web/server.cjs')
 const isWebBuilt = existsSync(WEB_BUILD)
+const HAS_PG = typeof process.env.VARLENS_PG_URL === 'string' && process.env.VARLENS_PG_URL !== ''
 
 const VCF_FIXTURE = resolve(process.cwd(), 'tests/test-data/vcf/synthetic-unit-test.vcf')
 
@@ -278,20 +280,20 @@ describe.skipIf(!SHOULD_RUN_PARITY || !isElectronBuilt)('parity: cases.list on a
     expect(electronResult.ids).toEqual([])
   })
 
-  test.skipIf(!isWebBuilt)('Web path: cases.list returns identical normalized result', async () => {
-    // Activates only when the web build target lands. Until then this
-    // test is part of the visible Phase 1 backlog.
-    const { buildApp } = await import('../../../src/web/server')
-    const app = await buildApp()
-    try {
-      const res = await app.inject({ method: 'GET', url: '/api/cases' })
-      expect(res.statusCode).toBe(200)
-      const webResult = normalizeCasesResult(res.json())
-      expect(webResult).toEqual(electronResult ?? { count: 0, ids: [] })
-    } finally {
-      await app.close()
+  test.skipIf(!isWebBuilt || !HAS_PG)(
+    'Web path: cases.list returns identical normalized result',
+    async () => {
+      const driver = await startWebDriver()
+      try {
+        const res = await driver.api('cases', 'list')
+        expect(res.statusCode).toBe(200)
+        const webResult = normalizeCasesResult(res.json())
+        expect(webResult).toEqual(electronResult ?? { count: 0, ids: [] })
+      } finally {
+        await driver.close()
+      }
     }
-  })
+  )
 
   afterAll(() => {
     // Electron sessions clean themselves up via launchElectronApp's
@@ -299,6 +301,44 @@ describe.skipIf(!SHOULD_RUN_PARITY || !isElectronBuilt)('parity: cases.list on a
     // future scenarios can attach shared tear-down without restructuring.
   })
 })
+
+async function runImportScenarioOnWeb(vcfPath: string): Promise<ImportAndFilterRaw> {
+  const driver = await startWebDriver()
+  try {
+    const importRes = await driver.api('import', 'start', vcfPath, 'parity-test-case', {
+      genomeBuild: 'hg38'
+    })
+    expect(importRes.statusCode).toBe(200)
+    const importResult = importRes.json() as { caseId: number; variantCount: number }
+    const caseId = importResult.caseId
+
+    const queryAll = await driver.api('variants', 'query', caseId, {}, 0, 200)
+    expect(queryAll.statusCode).toBe(200)
+
+    const queryChr22 = await driver.api('variants', 'query', caseId, { chr: 'chr22' }, 0, 200)
+    expect(queryChr22.statusCode).toBe(200)
+
+    const queryHighImpact = await driver.api(
+      'variants',
+      'query',
+      caseId,
+      { consequences: ['HIGH'] },
+      0,
+      200
+    )
+    expect(queryHighImpact.statusCode).toBe(200)
+
+    return {
+      caseId,
+      variantCount: importResult.variantCount,
+      all: queryAll.json(),
+      chr22: queryChr22.json(),
+      high_impact: queryHighImpact.json()
+    }
+  } finally {
+    await driver.close()
+  }
+}
 
 describe.skipIf(!SHOULD_RUN_PARITY || !isElectronBuilt)(
   'parity: VCF import + 3 filter queries',
@@ -337,19 +377,16 @@ describe.skipIf(!SHOULD_RUN_PARITY || !isElectronBuilt)(
       expect(electronSnapshot, driftMessage()).toEqual(existing)
     })
 
-    test.skipIf(!isWebBuilt)('Web path: VCF import + filters match Electron snapshot', async () => {
-      // Mirrors the existing cases.list web stub. The HTTP shape will be
-      // pinned in a follow-up once `src/web/server` exposes import + query
-      // routes; for today this test activates only when the web build is
-      // present and is intentionally minimal: it asserts the snapshot file
-      // exists, so the parity assertion has a baseline to match against.
-      const existing = loadSnapshot()
-      expect(existing, 'Run the Electron half first to seed the snapshot.').not.toBeNull()
-      // Once `src/web/server` ships an import + query surface, replace the
-      // line below with a fastify.inject-driven scenario that builds the
-      // same `ImportAndFilterSnapshot` shape and `expect().toEqual(existing)`.
-      expect(electronSnapshot ?? existing).toEqual(existing)
-    })
+    test.skipIf(!isWebBuilt || !HAS_PG)(
+      'Web path: VCF import + filters match Electron snapshot',
+      async () => {
+        const existing = loadSnapshot()
+        expect(existing, 'Run the Electron half first to seed the snapshot.').not.toBeNull()
+        const raw = await runImportScenarioOnWeb(VCF_FIXTURE)
+        const webSnapshot = buildSnapshot(raw)
+        expect(webSnapshot).toEqual(electronSnapshot ?? existing)
+      }
+    )
   }
 )
 

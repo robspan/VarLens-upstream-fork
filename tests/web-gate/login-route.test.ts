@@ -99,8 +99,8 @@ describe('renderLoginPage — placeholder interpolation', () => {
     const html = renderLoginPage('/varlens', '/varlens/cases?id=1')
     expect(html).not.toContain('__APP_PATH_PREFIX__')
     expect(html).not.toContain('__REDIRECT_TO__')
-    expect(html).toContain('"/varlens"')
-    expect(html).toContain('"/varlens/cases?id=1"')
+    expect(html).toMatch(/var APP_PATH_PREFIX = ['"]\/varlens['"]/)
+    expect(html).toMatch(/var REDIRECT_TO = ['"]\/varlens\/cases\?id=1['"]/)
   })
 
   test('escapes embedded </script> sequences in the redirect target', () => {

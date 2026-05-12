@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'vitest'
-import { existsSync, mkdtempSync, rmSync } from 'fs'
-import { tmpdir } from 'os'
+import { existsSync } from 'fs'
 import { join, resolve } from 'path'
+
+import { startIsolatedWebSchema } from '../helpers/web-driver'
 
 /**
  * Web admin bootstrap — observable via /api/auth/login round-trip.
@@ -32,8 +33,7 @@ const ADMIN_DISPLAY = 'Concept Pilot Admin'
 
 describe.skipIf(!isWebBuilt || !HAS_PG)('admin bootstrap', () => {
   test('plaintext (deprecated) bootstrap: login succeeds with mustChangePassword=true', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'varlens-web-gate-admin-'))
-    process.env.VARLENS_RECOVERY_KEY_DIR = dir
+    const isolated = await startIsolatedWebSchema('admin_plaintext')
     try {
       const { buildApp } = await import('../../../src/web/server')
       const app = await buildApp({
@@ -61,23 +61,20 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('admin bootstrap', () => {
         // 2026-security: bootstrap admin must rotate before any access.
         expect(body.mustChangePassword).toBe(true)
         // Plaintext recovery-key file is no longer written — assert absence.
-        expect(existsSync(join(dir, 'admin-recovery-key.txt'))).toBe(false)
+        expect(existsSync(join(isolated.recoveryDir, 'admin-recovery-key.txt'))).toBe(false)
       } finally {
         await app.close()
       }
     } finally {
-      delete process.env.VARLENS_RECOVERY_KEY_DIR
-      rmSync(dir, { recursive: true, force: true })
+      await isolated.close()
     }
   })
 
   test('hash bootstrap: login succeeds with mustChangePassword=true and no plaintext on disk', async () => {
-    const { defaultPasswordProvider } = await import(
-      '../../../src/main/auth/providers/argon2-provider'
-    )
+    const { defaultPasswordProvider } =
+      await import('../../../src/main/auth/providers/argon2-provider')
     const passwordHash = await defaultPasswordProvider.hashPassword(ADMIN_PASSWORD)
-    const dir = mkdtempSync(join(tmpdir(), 'varlens-web-gate-admin-'))
-    process.env.VARLENS_RECOVERY_KEY_DIR = dir
+    const isolated = await startIsolatedWebSchema('admin_hash')
     try {
       const { buildApp } = await import('../../../src/web/server')
       const app = await buildApp({
@@ -97,19 +94,17 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('admin bootstrap', () => {
         const body = res.json() as { success: boolean; mustChangePassword?: boolean }
         expect(body.success).toBe(true)
         expect(body.mustChangePassword).toBe(true)
-        expect(existsSync(join(dir, 'admin-recovery-key.txt'))).toBe(false)
+        expect(existsSync(join(isolated.recoveryDir, 'admin-recovery-key.txt'))).toBe(false)
       } finally {
         await app.close()
       }
     } finally {
-      delete process.env.VARLENS_RECOVERY_KEY_DIR
-      rmSync(dir, { recursive: true, force: true })
+      await isolated.close()
     }
   })
 
   test('second boot with same env is a no-op — admin row not duplicated', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'varlens-web-gate-admin-'))
-    process.env.VARLENS_RECOVERY_KEY_DIR = dir
+    const isolated = await startIsolatedWebSchema('admin_second_boot')
     try {
       const { buildApp } = await import('../../../src/web/server')
 
@@ -133,14 +128,12 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('admin bootstrap', () => {
         await app2.close()
       }
     } finally {
-      delete process.env.VARLENS_RECOVERY_KEY_DIR
-      rmSync(dir, { recursive: true, force: true })
+      await isolated.close()
     }
   })
 
   test('hash with malformed shape is rejected at build time', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'varlens-web-gate-admin-'))
-    process.env.VARLENS_RECOVERY_KEY_DIR = dir
+    const isolated = await startIsolatedWebSchema('admin_bad_hash')
     try {
       const { buildApp } = await import('../../../src/web/server')
       await expect(
@@ -153,14 +146,12 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('admin bootstrap', () => {
         })
       ).rejects.toThrow(/argon2id/i)
     } finally {
-      delete process.env.VARLENS_RECOVERY_KEY_DIR
-      rmSync(dir, { recursive: true, force: true })
+      await isolated.close()
     }
   })
 
   test('opt-in: no admin is created when admin env is absent', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'varlens-web-gate-admin-'))
-    process.env.VARLENS_RECOVERY_KEY_DIR = dir
+    const isolated = await startIsolatedWebSchema('admin_absent')
     try {
       const { buildApp } = await import('../../../src/web/server')
       const app = await buildApp()
@@ -176,8 +167,7 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('admin bootstrap', () => {
         await app.close()
       }
     } finally {
-      delete process.env.VARLENS_RECOVERY_KEY_DIR
-      rmSync(dir, { recursive: true, force: true })
+      await isolated.close()
     }
   })
 })

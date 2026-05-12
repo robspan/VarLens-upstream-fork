@@ -26,12 +26,11 @@ import type { AuthResult, User } from '../../../src/shared/auth/types'
  *     (so shape parity is type-checked, not grep-checked)
  *   - implement the same nine-method surface
  *
- * True behavioural parity (boot Electron + web, drive both transports,
- * diff outputs) is Layer 3 work behind VARLENS_RUN_WEB_GATE_PARITY and
- * needs the Electron-in-CI harness that doesn't exist yet. Two
- * scenarios that depend on Stage 3 infrastructure (multi-user
- * isolation via per-tenant schemas; session/expiry via OIDC) stay
- * skipped with explicit activation triggers.
+ * True behavioural parity (drive desktop auth logic and web HTTP
+ * endpoints, then diff observable outcomes) is separate work. The web
+ * server now has secure-session cookies, but this file does not test
+ * cookie lifetime, route authorization, admin-management endpoints, or
+ * session invalidation after DB auth-state changes.
  *
  * QA wave 6 flagged the original assertions as too ceremonial
  * (regex-grep on syntax). The current shape replaces:
@@ -205,11 +204,10 @@ describe('parity (auth): multi-user isolation — user A cannot see user B data'
   })
 })
 
-describe('parity (auth): session expiry / refresh token behavior', () => {
-  // Sessions are not implemented in Phase 2. The web /api/auth/login
-  // endpoint returns the user identity payload; no server-side session
-  // cookie or token. Session/expiry parity is Stage 3 (OIDC retrofit
-  // on the Credential discriminated union at src/main/auth/types.ts).
+describe('parity (auth): shared auth result shape does not carry tokens', () => {
+  // Web mode uses secure-session cookies outside the shared AuthResult
+  // payload. Token/expiry-bearing shared auth results remain Stage 3
+  // work tied to the Credential.token/OIDC path.
   test('the shared AuthResult type has no session/token/expiry fields', () => {
     // Reading the shared type once and asserting on its source is
     // the right place: both backends import this type, so a regression
@@ -246,7 +244,7 @@ describe('parity (auth): session expiry / refresh token behavior', () => {
     }
   })
 
-  test.skip('Stage 3: behavioural session-expiry parity — activate when src/main/auth/types.ts Credential.token branch ships', () => {
+  test.skip('Stage 3: behavioural session-expiry parity - activate when src/main/auth/types.ts Credential.token branch ships', () => {
     /* deferred */
   })
 })

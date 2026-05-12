@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'vitest'
-import { existsSync, mkdtempSync, rmSync } from 'fs'
-import { tmpdir } from 'os'
-import { join, resolve } from 'path'
+import { existsSync } from 'fs'
+import { resolve } from 'path'
+
+import { startIsolatedWebSchema } from '../helpers/web-driver'
 
 /**
  * 2026-security gate: a session that still carries
@@ -51,12 +52,10 @@ function extractCookies(res: InjectResult): string {
 
 describe.skipIf(!isWebBuilt || !HAS_PG)('must-change-password gate', () => {
   test('full lifecycle: bootstrap → login → 403-on-other → rotate → full access', async () => {
-    const { defaultPasswordProvider } = await import(
-      '../../../src/main/auth/providers/argon2-provider'
-    )
+    const { defaultPasswordProvider } =
+      await import('../../../src/main/auth/providers/argon2-provider')
     const passwordHash = await defaultPasswordProvider.hashPassword(OLD_PASSWORD)
-    const dir = mkdtempSync(join(tmpdir(), 'varlens-web-gate-rot-'))
-    process.env.VARLENS_RECOVERY_KEY_DIR = dir
+    const isolated = await startIsolatedWebSchema('must_change_lifecycle')
     try {
       const { buildApp } = await import('../../../src/web/server')
       const app = await buildApp({
@@ -73,7 +72,7 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('must-change-password gate', () => {
         const loginBody = loginRes.json() as { success: boolean; mustChangePassword?: boolean }
         expect(loginBody.success).toBe(true)
         expect(loginBody.mustChangePassword).toBe(true)
-        const cookie = extractCookies(loginRes)
+        let cookie = extractCookies(loginRes)
         expect(cookie).not.toBe('')
 
         // 3: reach for a read endpoint that's neither changePassword
@@ -133,8 +132,9 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('must-change-password gate', () => {
         })) as unknown as InjectResult
         expect(rotateRes.statusCode).toBe(200)
         expect((rotateRes.json() as { success: boolean }).success).toBe(true)
+        cookie = extractCookies(rotateRes) || cookie
 
-        // 8: same cookie now reaches the read surface.
+        // 8: the browser-updated session cookie now reaches the read surface.
         const readAllowed = (await app.inject({
           method: 'POST',
           url: '/api/database/capabilities',
@@ -158,18 +158,15 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('must-change-password gate', () => {
         await app.close()
       }
     } finally {
-      delete process.env.VARLENS_RECOVERY_KEY_DIR
-      rmSync(dir, { recursive: true, force: true })
+      await isolated.close()
     }
   })
 
   test('logout is reachable through the rotation gate', async () => {
-    const { defaultPasswordProvider } = await import(
-      '../../../src/main/auth/providers/argon2-provider'
-    )
+    const { defaultPasswordProvider } =
+      await import('../../../src/main/auth/providers/argon2-provider')
     const passwordHash = await defaultPasswordProvider.hashPassword(OLD_PASSWORD)
-    const dir = mkdtempSync(join(tmpdir(), 'varlens-web-gate-rot-'))
-    process.env.VARLENS_RECOVERY_KEY_DIR = dir
+    const isolated = await startIsolatedWebSchema('must_change_logout')
     try {
       const { buildApp } = await import('../../../src/web/server')
       const app = await buildApp({
@@ -197,8 +194,7 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('must-change-password gate', () => {
         await app.close()
       }
     } finally {
-      delete process.env.VARLENS_RECOVERY_KEY_DIR
-      rmSync(dir, { recursive: true, force: true })
+      await isolated.close()
     }
   })
 })

@@ -1,0 +1,372 @@
+import { describe, expect, test, vi } from 'vitest'
+
+import { buildDispatcher, type DispatcherDeps } from '../../src/web/server/dispatcher'
+import type { StorageReadTask } from '../../src/main/storage/read-executor'
+
+function makeDeps(): {
+  deps: DispatcherDeps
+  execute: ReturnType<typeof vi.fn>
+  importSingleFile: ReturnType<typeof vi.fn>
+  reply: { code: ReturnType<typeof vi.fn> }
+} {
+  const execute = vi.fn(async (task: StorageReadTask) => ({ task }))
+  const importSingleFile = vi.fn(async () => ({
+    caseId: 11,
+    variantCount: 2,
+    skipped: 0,
+    errors: [],
+    elapsed: 12
+  }))
+  const isAccountsEnabled = vi.fn(async () => false)
+  const createUser = vi.fn(async () => ({ id: 2, username: 'analyst' }))
+  const listUsers = vi.fn(async () => [{ id: 1, username: 'admin', role: 'admin' }])
+  const deactivateUser = vi.fn(async () => undefined)
+  const resetPassword = vi.fn(async () => undefined)
+  const publish = vi.fn()
+  const deps = {
+    session: {
+      capabilities: { backend: 'postgres' },
+      getReadExecutor: () => ({ execute }),
+      getWriteExecutor: () => ({ execute: vi.fn() }),
+      getImportExecutor: () => ({ importSingleFile, cancel: vi.fn() }),
+      listCases: vi.fn(),
+      health: vi.fn()
+    },
+    authService: {
+      isAccountsEnabled,
+      createUser,
+      listUsers,
+      deactivateUser,
+      resetPassword
+    },
+    events: {
+      publish
+    }
+  } as unknown as DispatcherDeps
+  return { deps, execute, importSingleFile, reply: { code: vi.fn() } }
+}
+
+describe('web dispatcher adapters', () => {
+  test('variants.query adapts renderer/preload args to the storage task shape', async () => {
+    const { deps, execute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    await overrides['variants:query'].handle(
+      [
+        7,
+        { consequences: ['HIGH'], chr: 'chr22' },
+        20,
+        10,
+        [{ key: 'pos', order: 'desc' }],
+        true,
+        true
+      ],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(execute).toHaveBeenCalledWith({
+      type: 'variants:query',
+      params: [
+        { case_id: 7, consequences: ['HIGH'], chr: 'chr22' },
+        10,
+        20,
+        [{ key: 'pos', order: 'desc' }],
+        true,
+        true
+      ]
+    })
+  })
+
+  test('variants.query applies desktop IPC defaults for omitted optional args', async () => {
+    const { deps, execute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    await overrides['variants:query'].handle([7, {}], {} as never, reply as never, deps)
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(execute).toHaveBeenCalledWith({
+      type: 'variants:query',
+      params: [{ case_id: 7 }, 50, 0, undefined, false, false]
+    })
+  })
+
+  test('variants.getFilterOptions maps the preload method name to variants:filterOptions', async () => {
+    const { deps, execute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    await overrides['variants:getFilterOptions'].handle([7], {} as never, reply as never, deps)
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(execute).toHaveBeenCalledWith({
+      type: 'variants:filterOptions',
+      params: [7]
+    })
+  })
+
+  test('variants.query rejects invalid renderer args before storage execution', async () => {
+    const { deps, execute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['variants:query'].handle(
+      [0, {}, 0, 50],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).toHaveBeenCalledWith(400)
+    expect(result).toEqual({ error: 'invalid-case-id', message: 'Invalid case ID' })
+    expect(execute).not.toHaveBeenCalled()
+  })
+
+  test('database.info returns a safe web workspace identity for renderer startup', async () => {
+    const { deps, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['database:info'].handle([], {} as never, reply as never, deps)
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      path: 'web:postgres',
+      name: 'VarLens Web',
+      encrypted: false
+    })
+  })
+
+  test('cohort.getVariants maps preload method name to cohort:query', async () => {
+    const { deps, execute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    await overrides['cohort:getVariants'].handle(
+      [{ limit: 25, offset: 10, search_term: 'BRCA1', sort_order: 'desc' }],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(execute).toHaveBeenCalledWith({
+      type: 'cohort:query',
+      params: [{ limit: 25, offset: 10, search_term: 'BRCA1', sort_order: 'desc' }]
+    })
+  })
+
+  test('cohort.getVariants rejects invalid renderer args before storage execution', async () => {
+    const { deps, execute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['cohort:getVariants'].handle(
+      [{ limit: -1 }],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).toHaveBeenCalledWith(400)
+    expect(result).toEqual({
+      error: 'invalid-cohort-params',
+      message: 'Invalid cohort search parameters'
+    })
+    expect(execute).not.toHaveBeenCalled()
+  })
+
+  test('cohort read helpers map preload method names to storage task names', async () => {
+    const { deps, execute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    await overrides['cohort:getSummary'].handle([], {} as never, reply as never, deps)
+    await overrides['cohort:getColumnMeta'].handle([], {} as never, reply as never, deps)
+    await overrides['cohort:getGeneBurden'].handle([], {} as never, reply as never, deps)
+    await overrides['cohort:getCarriers'].handle(
+      ['chr22', 12345, 'A', 'T'],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(execute).toHaveBeenCalledWith({ type: 'cohort:summary', params: [] })
+    expect(execute).toHaveBeenCalledWith({ type: 'cohort:columnMeta', params: [] })
+    expect(execute).toHaveBeenCalledWith({ type: 'cohort:geneBurden', params: [] })
+    expect(execute).toHaveBeenCalledWith({
+      type: 'cohort:carriers',
+      params: ['chr22', 12345, 'A', 'T']
+    })
+  })
+
+  test('database.recentList returns an empty desktop-file list in web mode', async () => {
+    const { deps, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['database:recentList'].handle(
+      [],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(result).toEqual([])
+  })
+
+  test('auth.isAccountsEnabled delegates to the web auth service', async () => {
+    const { deps, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['auth:isAccountsEnabled'].handle(
+      [],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(result).toBe(false)
+    expect(deps.authService.isAccountsEnabled).toHaveBeenCalledTimes(1)
+  })
+
+  test('import.start is disabled outside test mode unless operator enables server-path import', async () => {
+    const prevNodeEnv = process.env.NODE_ENV
+    const prevAllow = process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT
+    process.env.NODE_ENV = 'production'
+    delete process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT
+    try {
+      const { deps, importSingleFile, reply } = makeDeps()
+      const { overrides } = buildDispatcher(deps)
+
+      const result = await overrides['import:start'].handle(
+        ['/tmp/input.vcf', 'Case A'],
+        {} as never,
+        reply as never,
+        deps
+      )
+
+      expect(reply.code).toHaveBeenCalledWith(403)
+      expect(result).toMatchObject({ error: 'server-path-import-disabled' })
+      expect(importSingleFile).not.toHaveBeenCalled()
+    } finally {
+      if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = prevNodeEnv
+      if (prevAllow === undefined) delete process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT
+      else process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT = prevAllow
+    }
+  })
+
+  test('import.start routes an enabled absolute server path through shared import logic', async () => {
+    const prevNodeEnv = process.env.NODE_ENV
+    process.env.NODE_ENV = 'test'
+    try {
+      const { deps, importSingleFile, reply } = makeDeps()
+      const { overrides } = buildDispatcher(deps)
+
+      const result = await overrides['import:start'].handle(
+        ['/tmp/input.vcf', 'Case A', { genomeBuild: 'hg38' }],
+        {} as never,
+        reply as never,
+        deps
+      )
+
+      expect(reply.code).not.toHaveBeenCalled()
+      expect(result).toMatchObject({ caseId: 11, variantCount: 2 })
+      expect(importSingleFile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filePath: '/tmp/input.vcf',
+          caseName: 'Case A',
+          vcfOptions: { genomeBuild: 'hg38', selectedSample: undefined }
+        })
+      )
+    } finally {
+      if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = prevNodeEnv
+    }
+  })
+
+  test('import.start publishes web progress events to the session user', async () => {
+    const prevNodeEnv = process.env.NODE_ENV
+    process.env.NODE_ENV = 'test'
+    try {
+      const { deps, importSingleFile, reply } = makeDeps()
+      importSingleFile.mockImplementationOnce(async (params) => {
+        params.onProgress?.({ phase: 'parsing', count: 5 })
+        return {
+          caseId: 11,
+          variantCount: 2,
+          skipped: 0,
+          errors: [],
+          elapsed: 12
+        }
+      })
+      const { overrides } = buildDispatcher(deps)
+      const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
+
+      await overrides['import:start'].handle(
+        ['/tmp/input.vcf', 'Case A'],
+        request as never,
+        reply as never,
+        deps
+      )
+
+      expect(deps.events.publish).toHaveBeenCalledWith(7, 'import:progress', {
+        phase: 'parsing',
+        count: 5
+      })
+    } finally {
+      if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = prevNodeEnv
+    }
+  })
+
+  test('auth.listUsers requires an admin session and calls the auth service', async () => {
+    const { deps, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+    const request = { session: { user: { id: 1, username: 'admin', role: 'admin' } } }
+
+    const result = await overrides['auth:listUsers'].handle(
+      [],
+      request as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(result).toEqual([{ id: 1, username: 'admin', role: 'admin' }])
+    expect(deps.authService.listUsers).toHaveBeenCalledTimes(1)
+  })
+
+  test('auth.createUser rejects non-admin sessions at the web boundary', async () => {
+    const { deps, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+    const request = { session: { user: { id: 2, username: 'user', role: 'user' } } }
+
+    const result = await overrides['auth:createUser'].handle(
+      ['analyst', 'Analyst', 'temporary-password'],
+      request as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).toHaveBeenCalledWith(403)
+    expect(result).toEqual({ error: 'admin-required' })
+    expect(deps.authService.createUser).not.toHaveBeenCalled()
+  })
+
+  test('auth.deactivateUser rejects self-deactivation before calling the auth service', async () => {
+    const { deps, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+    const request = { session: { user: { id: 1, username: 'admin', role: 'admin' } } }
+
+    const result = await overrides['auth:deactivateUser'].handle(
+      ['admin'],
+      request as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).toHaveBeenCalledWith(400)
+    expect(result).toEqual({ error: 'cannot-deactivate-self' })
+    expect(deps.authService.deactivateUser).not.toHaveBeenCalled()
+  })
+})

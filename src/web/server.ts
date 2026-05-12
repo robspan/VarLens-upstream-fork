@@ -32,6 +32,7 @@ import type { StorageSession } from '../main/storage/session'
 import { AdminAlreadyExistsError, PostgresWebAuthService } from './auth/PostgresWebAuthService'
 import { buildDispatcher, registerDispatcher } from './server/dispatcher'
 import { registerSessions } from './server/auth'
+import { registerEventStream, WebEventHub } from './server/events'
 import { registerLoginRoute, resolveAppPathPrefix } from './server/login-route'
 import { registerPageGate } from './server/page-gate'
 import { registerStatic } from './server/static'
@@ -99,7 +100,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     await maybeBootstrapAdmin(authService, options.admin, app.log)
   }
 
-  await registerSessions(app)
+  await registerSessions(app, { authService })
+  const events = new WebEventHub()
 
   // Login wall: the `/login` page itself + the preHandler that redirects
   // unauthenticated GETs to it. Registered before the dispatcher and
@@ -112,10 +114,12 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
   const dispatcherDeps = {
     session: session as StorageSession,
-    authService
+    authService,
+    events
   }
   const { overrides } = buildDispatcher(dispatcherDeps)
   registerDispatcher(app, dispatcherDeps, overrides)
+  registerEventStream(app, events)
 
   app.get('/healthz', async (_request, reply) => {
     const open = await isPostgresHealthy(pool)

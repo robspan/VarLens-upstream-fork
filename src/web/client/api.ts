@@ -8,10 +8,9 @@
  *
  * Three behaviours the renderer relies on that don't map to plain RPC:
  *
- *   - Event subscribers (`onAnnotationChanged`, `onProgress`, ...).
- *     Web mode has no IPC events yet; subscribers receive a no-op
- *     unsubscribe and never fire. Real-time push (websockets) is a
- *     follow-up — the call site doesn't crash today.
+ *   - Event subscribers. Import progress is bridged over server-sent
+ *     events; unsupported event sources still receive a no-op
+ *     unsubscribe so call sites don't crash.
  *   - `perf.isEnabled` / `perf.reportInteractive`. Synchronous
  *     boolean / fire-and-forget; stubbed locally.
  *   - `shell.openExternal`. Browser equivalent is `window.open`.
@@ -41,6 +40,31 @@ async function httpInvoke(domain: string, method: string, args: unknown[]): Prom
   // Server returns JSON for both success and error (SerializableError).
   // Non-2xx with non-JSON body is a transport failure — surface it.
   const text = await res.text()
+  if (!res.ok) {
+    let detail = text
+    try {
+      const parsed = JSON.parse(text) as {
+        code?: unknown
+        error?: unknown
+        message?: unknown
+        userMessage?: unknown
+      }
+      const message =
+        typeof parsed.userMessage === 'string'
+          ? parsed.userMessage
+          : typeof parsed.message === 'string'
+            ? parsed.message
+            : typeof parsed.error === 'string'
+              ? parsed.error
+              : typeof parsed.code === 'string'
+                ? parsed.code
+                : text
+      detail = message
+    } catch {
+      // Keep the raw body for non-JSON error responses.
+    }
+    throw new Error(`web rpc ${domain}.${method}: ${res.status} ${res.statusText}: ${detail}`)
+  }
   if (text === '') return undefined
   try {
     return JSON.parse(text)
@@ -50,6 +74,20 @@ async function httpInvoke(domain: string, method: string, args: unknown[]): Prom
 }
 
 const NOOP_UNSUBSCRIBE = (): void => {}
+
+function subscribeWebEvent<T>(type: string, callback: (payload: T) => void): () => void {
+  if (typeof EventSource === 'undefined') return NOOP_UNSUBSCRIBE
+
+  const source = new EventSource(`${API_BASE}/events`, { withCredentials: true })
+  const listener = (event: MessageEvent<string>): void => {
+    callback(JSON.parse(event.data) as T)
+  }
+  source.addEventListener(type, listener as EventListener)
+  return () => {
+    source.removeEventListener(type, listener as EventListener)
+    source.close()
+  }
+}
 
 function buildDomainProxy(domain: string): unknown {
   return new Proxy(
@@ -83,7 +121,24 @@ const SHELL_API = {
   updateDomains: (domains: string[]) => httpInvoke('shell', 'updateUserDomains', [domains])
 }
 
+function buildImportApi(): unknown {
+  const rpc = buildDomainProxy('import') as Record<string, unknown>
+  return new Proxy(
+    {},
+    {
+      get(_target, prop: string | symbol) {
+        if (prop === 'onProgress') {
+          return (callback: (progress: unknown) => void) =>
+            subscribeWebEvent('import:progress', callback)
+        }
+        return typeof prop === 'string' ? rpc[prop] : undefined
+      }
+    }
+  )
+}
+
 const DOMAIN_OVERRIDES: Record<string, unknown> = {
+  import: buildImportApi(),
   perf: PERF_API,
   shell: SHELL_API
 }

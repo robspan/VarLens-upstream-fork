@@ -1,7 +1,7 @@
 // Scope: this helper is for refactor-checkpoint tests only. Scenario-specific
 // snapshot logic in parity tests (e.g. tests/web-gate/parity/) intentionally
 // duplicates the I/O pattern until the third instance triggers extraction
-// (rule of three — see .planning/web/testing/desktop-to-web-parity.md).
+// (rule of three — see .planning/web/completed/testing/desktop-to-web-parity.md).
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'

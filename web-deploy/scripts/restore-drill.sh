@@ -26,10 +26,10 @@ set -uo pipefail
 
 IP="${IP:?IP variable must be set, for example IP=178.104.176.148}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/varlens-tofu}"
-# Default lands at the repo-root .planning/web/restore-log.md regardless
+# Default lands at the repo-root .planning/web/operations/restore-log.md regardless
 # of CWD: invoked via `make restore-drill` from web-deploy/, so the
 # script's own path provides a stable anchor up to the repo root.
-DEFAULT_PROTOCOL="$(cd "$(dirname "$0")/../.." && pwd)/.planning/web/restore-log.md"
+DEFAULT_PROTOCOL="$(cd "$(dirname "$0")/../.." && pwd)/.planning/web/operations/restore-log.md"
 PROTOCOL_FILE="${PROTOCOL_FILE:-$DEFAULT_PROTOCOL}"
 # SSH_STRICT=no for e2e (recycled IPs, host-key collision possible).
 SSH_STRICT="${SSH_STRICT:-accept-new}"

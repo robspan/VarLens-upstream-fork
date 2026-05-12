@@ -1,7 +1,7 @@
 /**
  * Postgres migrations — real-instance idempotency check.
  *
- * Web ships on Postgres (see .planning/web/decision-postgres-as-web-backend.md).
+ * Web ships on Postgres (see .planning/web/context/decisions/postgres-backend.md).
  * Migration correctness against a real Postgres engine is therefore load-bearing
  * and the existing migration tests (mock-only) do not cover it.
  *

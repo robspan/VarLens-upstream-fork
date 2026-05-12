@@ -12,7 +12,7 @@ import { openMigratedTmpDb, tableColumns } from './helpers/tmp-db'
  * fails the test — forcing alignment with the planned Stage 2 schema
  * before the audit table grows in incompatible directions.
  *
- * Cheap insurance, lexical only. See `.planning/web/testing/desktop-to-web-parity.md`
+ * Cheap insurance, lexical only. See `.planning/web/completed/testing/desktop-to-web-parity.md`
  * §audit-shape and `VarLens-IaC/.internalplanning/betrieb/app.html` §app2.4.
  */
 

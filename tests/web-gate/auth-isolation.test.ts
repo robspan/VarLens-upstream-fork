@@ -51,7 +51,7 @@ describe('auth-isolation gate', () => {
   })
 
   test('Credential discriminated union is shaped for OIDC retrofit', () => {
-    // Bridge-Clause type bet (per `.planning/web/testing/desktop-to-web-parity.md`):
+    // Bridge-Clause type bet (per `.planning/web/completed/testing/desktop-to-web-parity.md`):
     // even though Phase 1 only implements password auth, the Credential
     // type must already declare a `kind: 'token'` arm so OIDC plugs in
     // without touching call sites.

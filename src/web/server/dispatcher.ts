@@ -45,6 +45,7 @@ import type { WebEventHub } from './events'
 import { isReadTaskType, isWriteTaskType, toTaskDomain } from './task-types'
 import type { SortItem, VariantFilter } from '../../shared/types/database'
 import type { MultiFileImportSpec } from '../../shared/types/api'
+import type { StorageCapabilities } from '../../shared/types/storage-capabilities'
 import {
   CaseIdSchema,
   CohortSearchParamsSchema,
@@ -73,6 +74,33 @@ const CohortCarriersParamsSchema = z.object({
   ref: z.string().min(1),
   alt: z.string().min(1)
 })
+
+function webCapabilities(base: StorageCapabilities): StorageCapabilities {
+  return {
+    ...base,
+    export: {
+      variants: false,
+      cohort: false,
+      streaming: false
+    }
+  }
+}
+
+function unsupportedWebCapability(
+  reply: FastifyReply,
+  capability: string
+): {
+  error: string
+  capability: string
+  message: string
+} {
+  reply.code(501)
+  return {
+    error: 'unsupported-web-capability',
+    capability,
+    message: `${capability} is not available in web mode yet.`
+  }
+}
 
 function requireAdmin(
   request: FastifyRequest,
@@ -308,6 +336,30 @@ function buildOverrides(): Record<string, OverrideHandler> {
       }
     },
 
+    'cohort:getSummaryStatus': {
+      handle() {
+        return { is_stale: false, last_rebuilt_at: 0 }
+      }
+    },
+
+    'cohort:rebuildSummary': {
+      handle(_args, _request, reply) {
+        return unsupportedWebCapability(reply, 'cohort.rebuildSummary')
+      }
+    },
+
+    'cohort:runAssociation': {
+      handle(_args, _request, reply) {
+        return unsupportedWebCapability(reply, 'cohort.runAssociation')
+      }
+    },
+
+    'cohort:cancelAssociation': {
+      handle(_args, _request, reply) {
+        return unsupportedWebCapability(reply, 'cohort.cancelAssociation')
+      }
+    },
+
     'cohort:getCarriers': {
       async handle(args, _request, reply, { session }) {
         const [chr, pos, ref, alt] = args
@@ -335,7 +387,7 @@ function buildOverrides(): Record<string, OverrideHandler> {
 
     'database:capabilities': {
       async handle(_args, _request, _reply, { session }) {
-        return session.capabilities
+        return webCapabilities(session.capabilities)
       }
     },
 
@@ -358,6 +410,18 @@ function buildOverrides(): Record<string, OverrideHandler> {
     'database:recentList': {
       handle() {
         return []
+      }
+    },
+
+    'export:variants': {
+      handle(_args, _request, reply) {
+        return unsupportedWebCapability(reply, 'export.variants')
+      }
+    },
+
+    'export:cohort': {
+      handle(_args, _request, reply) {
+        return unsupportedWebCapability(reply, 'export.cohort')
       }
     },
 

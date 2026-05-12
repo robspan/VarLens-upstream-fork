@@ -2,7 +2,7 @@
 # Reverse proxy + monitoring tools + the VarLens app container.
 # Phase 2: Postgres is the only supported web backend. The varlens
 # service depends_on the postgres service; both are unconditional.
-# (See .planning/web/phase2-execution-plan.md.)
+# (See .planning/web/completed/phase2-execution-plan.md.)
 
 services:
   caddy:

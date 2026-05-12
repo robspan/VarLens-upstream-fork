@@ -13,7 +13,7 @@
  *   VARLENS_RUN_POSTGRES_E2E=1 npx vitest run --project main \
  *     tests/main/storage/storage-session-contract.test.ts
  *
- * Plan: .planning/web/testing/desktop-preservation.md
+ * Plan: .planning/web/completed/testing/desktop-preservation.md
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'

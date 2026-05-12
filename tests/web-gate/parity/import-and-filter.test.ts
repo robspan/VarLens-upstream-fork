@@ -22,7 +22,7 @@ import { startWebDriver } from '../helpers/web-driver'
  *      transport can later be asserted against the same baseline.
  *
  * When the third parity scenario lands, this is the trigger to extract
- * the `BackendDriver` abstraction (see `.planning/web/testing/desktop-to-web-parity.md`
+ * the `BackendDriver` abstraction (see `.planning/web/completed/testing/desktop-to-web-parity.md`
  * §rule-of-three).
  *
  * Skipped if `out/main/index.js` is missing — run `make build` first.

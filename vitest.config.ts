@@ -123,7 +123,7 @@ export default defineConfig({
         // Layer 3 parity (heavy, boots Electron) is its own project below
         // and additionally requires VARLENS_RUN_WEB_GATE_PARITY=1.
         //
-        // See .planning/web/testing/desktop-to-web-parity.md.
+        // See .planning/web/completed/testing/desktop-to-web-parity.md.
         extends: true,
         test: {
           name: 'web-gate',

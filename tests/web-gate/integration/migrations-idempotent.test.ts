@@ -11,7 +11,7 @@ import { describe, it } from 'vitest'
  * (gated by VARLENS_RUN_POSTGRES_E2E=1, requires `make pg-up`).
  *
  * The Phase 1 SQLite path is gone — the web variant is Postgres-only
- * (see .planning/web/phase2-execution-plan.md). Kept as a placeholder
+ * (see .planning/web/completed/phase2-execution-plan.md). Kept as a placeholder
  * so the suite count stays stable until the static gate lands a
  * permanent replacement test.
  */

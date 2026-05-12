@@ -383,7 +383,7 @@ preflight() {
     printf '  %s⚠%s  VARLENS_DB_PATH is set in your env (%s) — Phase 2 ignores it.\n' \
       "$YELLOW" "$RESET" "$_legacy_db_path"
     printf '    %sThe web variant is now Postgres-only (see\n' "$DIM"
-    printf '    .planning/web/phase2-execution-plan.md). The recovery-key\n'
+    printf '    .planning/web/completed/phase2-execution-plan.md). The recovery-key\n'
     printf '    file path comes from VARLENS_RECOVERY_KEY_DIR (default /data).\n'
     printf '    Drop VARLENS_DB_PATH from web-deploy/.env to silence this warning.%s\n' "$RESET"
   fi

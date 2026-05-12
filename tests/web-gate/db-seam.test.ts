@@ -115,7 +115,7 @@ describe('db-seam gate', () => {
     expect(
       newViolators,
       newViolators.length
-        ? `New files import the loophole symbols. Either inject StorageSession instead, or add the file to ALLOWLIST_LOOPHOLE_IMPORTERS in this test (and document why in the PR). Context: .planning/web/testing/desktop-to-web-parity.md §db-seam\n  ${newViolators.join('\n  ')}`
+        ? `New files import the loophole symbols. Either inject StorageSession instead, or add the file to ALLOWLIST_LOOPHOLE_IMPORTERS in this test (and document why in the PR). Context: .planning/web/completed/testing/desktop-to-web-parity.md §db-seam\n  ${newViolators.join('\n  ')}`
         : 'no new loophole importers'
     ).toEqual([])
   })

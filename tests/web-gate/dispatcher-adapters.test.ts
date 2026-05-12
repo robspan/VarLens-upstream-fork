@@ -212,6 +212,79 @@ describe('web dispatcher adapters', () => {
     expect(result).toEqual([])
   })
 
+  test('database.capabilities overlays browser-only unsupported features', async () => {
+    const { deps, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['database:capabilities'].handle(
+      [],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(result).toMatchObject({
+      backend: 'postgres',
+      export: { variants: false, cohort: false, streaming: false }
+    })
+  })
+
+  test('web-only unsupported cohort actions fail explicitly', async () => {
+    const { deps, execute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['cohort:runAssociation'].handle(
+      [{}],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).toHaveBeenCalledWith(501)
+    expect(result).toEqual({
+      error: 'unsupported-web-capability',
+      capability: 'cohort.runAssociation',
+      message: 'cohort.runAssociation is not available in web mode yet.'
+    })
+    expect(execute).not.toHaveBeenCalled()
+  })
+
+  test('cohort.getSummaryStatus returns a stable non-rebuild status for web Postgres', async () => {
+    const { deps, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['cohort:getSummaryStatus'].handle(
+      [],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(result).toEqual({ is_stale: false, last_rebuilt_at: 0 })
+  })
+
+  test('browser-incompatible exports fail explicitly instead of returning row streams', async () => {
+    const { deps, execute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['export:variants'].handle(
+      [{ case_id: 7 }],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).toHaveBeenCalledWith(501)
+    expect(result).toEqual({
+      error: 'unsupported-web-capability',
+      capability: 'export.variants',
+      message: 'export.variants is not available in web mode yet.'
+    })
+    expect(execute).not.toHaveBeenCalled()
+  })
+
   test('auth.isAccountsEnabled delegates to the web auth service', async () => {
     const { deps, reply } = makeDeps()
     const { overrides } = buildDispatcher(deps)

@@ -128,7 +128,7 @@ describe('user-id-schema gate', () => {
     expect(
       missing,
       missing.length
-        ? `Tables added without user_id. Add 'user_id INTEGER NOT NULL DEFAULT 1' to the migration, OR if the table is shared/junction/reference data, add it to EXEMPT_TABLES in this test. Context: .planning/web/testing/desktop-to-web-parity.md §user-id-schema\n  ${missing.join('\n  ')}`
+        ? `Tables added without user_id. Add 'user_id INTEGER NOT NULL DEFAULT 1' to the migration, OR if the table is shared/junction/reference data, add it to EXEMPT_TABLES in this test. Context: .planning/web/completed/testing/desktop-to-web-parity.md §user-id-schema\n  ${missing.join('\n  ')}`
         : 'no surprise missing user_id'
     ).toEqual([])
 

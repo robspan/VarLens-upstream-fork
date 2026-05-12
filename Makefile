@@ -1,4 +1,4 @@
-.PHONY: help rebuild dev build preview lint lint-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-reset build-web web-ci web-gate web-gate-static web-gate-integration web-gate-postgres web-gate-parity web-parity-e2e web-data-gather web-data-prepare web-data-verify sync-upstream install-hooks pilot pilot-down pilot-status pilot-smoke pilot-ssh web-release-enable web-release
+.PHONY: help rebuild dev build preview lint lint-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-reset build-web web-ci web-gate web-gate-static web-gate-integration web-gate-postgres web-gate-parity web-parity-e2e web-test-report web-data-gather web-data-prepare web-data-verify sync-upstream install-hooks pilot pilot-down pilot-status pilot-smoke pilot-ssh web-release-enable web-release
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -64,7 +64,7 @@ rebuild-node: ## Rebuild native modules for Node.js (needed before running tests
 dev: rebuild ## Start development server with hot reload (set VARLENS_WEB=1 for web mode)
 ifeq ($(VARLENS_WEB),1)
 	@echo "Web dev mode is not yet implemented — no web build target exists."
-	@echo "See .planning/web/testing/desktop-to-web-parity.md for status."
+	@echo "See .planning/web/completed/testing/desktop-to-web-parity.md for status."
 	@exit 1
 else
 	npm run dev
@@ -141,7 +141,7 @@ test-coverage: ## Run tests with coverage report
 	npm run test:coverage
 
 #---------------------------------------------------------------------------
-# Phase 1 web-migration gate (see .planning/web/testing/desktop-to-web-parity.md)
+# Phase 1 web-migration gate (see .planning/web/completed/testing/desktop-to-web-parity.md)
 #---------------------------------------------------------------------------
 
 build-web: ## Build the opt-in web server + browser bundle
@@ -170,13 +170,16 @@ web-parity-e2e: web-data-verify ## Run manifest-backed desktop↔web parity E2E 
 	npm run build
 	VARLENS_RUN_WEB_GATE_PARITY=1 VARLENS_RUN_WEB_PARITY_E2E=1 npx vitest run --project web-gate-parity tests/web-gate/parity/data-manifest-parity.test.ts
 
+web-test-report: ## Generate opt-in web test report artifacts (set VARLENS_WEB_REPORT_PARITY=1 / VARLENS_WEB_REPORT_PARITY_E2E=1 for heavy parity)
+	node scripts/reports/run-web-test-report.mjs
+
 web-gate: web-gate-static ## Run the Phase 1 gate fast tests (parity is opt-in via web-gate-parity)
 	@echo "Static + integration done. Run 'make web-gate-parity' to validate the desktop↔web parity path (opt-in)."
 
 web-ci: rebuild-node build-web web-gate-static web-gate-postgres ## Opt-in web readiness gate; requires VARLENS_PG_URL
 
 #---------------------------------------------------------------------------
-# Web parity data gathering (opt-in; see .planning/web/data/)
+# Web parity data gathering (opt-in; see .planning/web/completed/data/)
 #---------------------------------------------------------------------------
 
 DATA_ARGS ?=

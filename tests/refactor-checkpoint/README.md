@@ -25,4 +25,4 @@ The PR diff is the structural-change artifact. Reviewers read it.
 
 ## Plan
 
-`.planning/web/testing/desktop-preservation.md`
+`.planning/web/completed/testing/desktop-preservation.md`

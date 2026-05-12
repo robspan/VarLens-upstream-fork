@@ -74,8 +74,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   if (pgConfig === null) {
     throw new Error(
       'VARLENS_PG_URL must be set. The web server is Postgres-only; ' +
-        'see .planning/web/decision-postgres-as-web-backend.md and ' +
-        '.planning/web/phase2-execution-plan.md for context.'
+        'see .planning/web/context/decisions/postgres-backend.md and ' +
+        '.planning/web/completed/phase2-execution-plan.md for context.'
     )
   }
 

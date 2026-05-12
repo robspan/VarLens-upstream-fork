@@ -10,6 +10,7 @@
  */
 import type { WindowAPI } from '../shared/types/api'
 import { createApi } from './client/api'
+;(window as Window & { api: WindowAPI; __VARLENS_WEB__: true }).__VARLENS_WEB__ = true
 ;(window as Window & { api: WindowAPI }).api = createApi()
 
 await import('../renderer/src/main')

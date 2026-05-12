@@ -78,7 +78,7 @@ interface ImportAndFilterSnapshot {
 async function runScenarioOnElectron(): Promise<NormalizedCases> {
   let session: LaunchElectronAppResult | undefined
   try {
-    session = await launchElectronApp()
+    session = await launchElectronApp({ hideWindow: true })
     await waitForAppShell(session.window)
     await dismissDisclaimerIfPresent(session.window)
 
@@ -113,7 +113,7 @@ interface ImportAndFilterRaw {
 async function runImportScenarioOnElectron(vcfPath: string): Promise<ImportAndFilterRaw> {
   let session: LaunchElectronAppResult | undefined
   try {
-    session = await launchElectronApp()
+    session = await launchElectronApp({ hideWindow: true })
     await waitForAppShell(session.window)
     await dismissDisclaimerIfPresent(session.window)
 

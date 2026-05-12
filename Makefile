@@ -1,4 +1,4 @@
-.PHONY: help rebuild dev build preview lint lint-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-reset build-web web-ci web-gate web-gate-static web-gate-integration web-gate-postgres web-gate-parity sync-upstream install-hooks pilot pilot-down pilot-status pilot-smoke pilot-ssh web-release-enable web-release
+.PHONY: help rebuild dev build preview lint lint-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-reset build-web web-ci web-gate web-gate-static web-gate-integration web-gate-postgres web-gate-parity web-parity-e2e web-data-gather web-data-prepare web-data-verify sync-upstream install-hooks pilot pilot-down pilot-status pilot-smoke pilot-ssh web-release-enable web-release
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -163,10 +163,32 @@ web-gate-parity: ## Run Layer 3 parity scenarios (opt-in; boots Electron, switch
 	npm run rebuild:electron
 	VARLENS_RUN_WEB_GATE_PARITY=1 npx vitest run --project web-gate-parity
 
+web-parity-e2e: web-data-verify ## Run manifest-backed desktop↔web parity E2E (requires VARLENS_PG_URL)
+	@if [ -z "$$VARLENS_PG_URL" ]; then echo "VARLENS_PG_URL is required for web-parity-e2e. This is opt-in and never part of default desktop CI."; exit 2; fi
+	@echo "=== web-parity-e2e (opt-in; switches native module to Electron ABI) ==="
+	npm run rebuild:electron
+	npm run build
+	VARLENS_RUN_WEB_GATE_PARITY=1 VARLENS_RUN_WEB_PARITY_E2E=1 npx vitest run --project web-gate-parity tests/web-gate/parity/data-manifest-parity.test.ts
+
 web-gate: web-gate-static ## Run the Phase 1 gate fast tests (parity is opt-in via web-gate-parity)
 	@echo "Static + integration done. Run 'make web-gate-parity' to validate the desktop↔web parity path (opt-in)."
 
 web-ci: rebuild-node build-web web-gate-static web-gate-postgres ## Opt-in web readiness gate; requires VARLENS_PG_URL
+
+#---------------------------------------------------------------------------
+# Web parity data gathering (opt-in; see .planning/web/data/)
+#---------------------------------------------------------------------------
+
+DATA_ARGS ?=
+
+web-data-gather: ## Gather/verify public parity data sources into gitignored cache (use DATA_ARGS='--fixture ID --allow-large')
+	node scripts/data-fixtures/download-fixtures.mjs $(DATA_ARGS)
+
+web-data-prepare: web-data-gather ## Transform gathered data into VarLens-ready generated fixtures
+	node scripts/data-fixtures/prepare-fixtures.mjs $(DATA_ARGS)
+
+web-data-verify: web-data-prepare ## Verify generated parity fixtures and source contracts
+	node scripts/data-fixtures/verify-fixtures.mjs $(DATA_ARGS)
 
 #---------------------------------------------------------------------------
 # CI / Full Checks

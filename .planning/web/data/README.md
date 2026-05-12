@@ -26,6 +26,30 @@ Desktop remains the default. These data pipelines and parity E2E gates are opt-i
 - `02-transform-flows.md` describes how external files become small VarLens-ready fixtures.
 - `03-parity-e2e-plan.md` describes the E2E parity harness that consumes those fixtures.
 
+## Implemented Command Surface
+
+The first implementation slice lives under `scripts/data-fixtures/`:
+
+- `sources.json` is the manifest for source artifacts, transforms, generated outputs, checksums, and coverage tags.
+- `download-fixtures.mjs` gathers or verifies source artifacts.
+- `prepare-fixtures.mjs` creates generated VarLens-ready artifacts.
+- `verify-fixtures.mjs` verifies sources and generated outputs.
+- `transform-vcf-to-varlens-json.mjs` translates VCF rows into VarLens simple/object/columnar JSON.
+
+Canonical Makefile targets:
+
+```bash
+make web-data-gather
+make web-data-prepare
+make web-data-verify
+```
+
+Pass manifest selection arguments with `DATA_ARGS`, for example:
+
+```bash
+make web-data-gather DATA_ARGS="--fixture public-giab-hg002-wgs --allow-large"
+```
+
 ## Non-Goals
 
 - Do not require a developer to understand clinical genetics before they can run or update parity tests.

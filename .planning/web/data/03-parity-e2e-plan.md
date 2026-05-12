@@ -21,6 +21,17 @@ make web-data-prepare
 make web-parity-e2e
 ```
 
+Implemented so far:
+
+```bash
+make web-data-gather
+make web-data-prepare
+make web-data-verify
+make web-parity-e2e
+```
+
+`web-parity-e2e` is opt-in, requires `VARLENS_PG_URL`, rebuilds the native SQLite module for Electron ABI, builds the desktop and web bundles, and runs the manifest-backed desktop SQLite vs web PostgreSQL parity harness headlessly.
+
 Or one combined command:
 
 ```bash

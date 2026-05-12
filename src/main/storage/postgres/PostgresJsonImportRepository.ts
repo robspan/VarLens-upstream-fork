@@ -159,6 +159,42 @@ function hasExtensions(row: Record<string, unknown>): boolean {
   )
 }
 
+function normalizeRecordsetValue(type: string, value: unknown): unknown {
+  if (value === null || value === undefined || value === '') return null
+
+  if (type === 'double precision') {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null
+    if (typeof value === 'string') {
+      const parsed = Number(value)
+      return Number.isFinite(parsed) ? parsed : null
+    }
+    return null
+  }
+
+  if (type === 'bigint' || type === 'integer') {
+    if (typeof value === 'number') return Number.isFinite(value) ? Math.trunc(value) : null
+    if (typeof value === 'string') {
+      const parsed = Number(value)
+      return Number.isFinite(parsed) ? Math.trunc(parsed) : null
+    }
+    return null
+  }
+
+  return value
+}
+
+function normalizeRecordsetPayload(
+  row: Record<string, unknown>,
+  typeMap: Record<string, string>
+): Record<string, unknown> {
+  const normalized: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(row)) {
+    normalized[key] =
+      typeMap[key] === undefined ? value : normalizeRecordsetValue(typeMap[key], value)
+  }
+  return normalized
+}
+
 export class PostgresJsonImportRepository {
   private readonly schemaName: string
 
@@ -346,7 +382,7 @@ export class PostgresJsonImportRepository {
       if (picked.variant_type === null) {
         picked.variant_type = 'snv'
       }
-      return picked
+      return normalizeRecordsetPayload(picked, VARIANT_BATCH_RECORDSET_TYPES)
     })
 
     // Embed case_id into the JSON payload so the batch INSERT has exactly one
@@ -374,7 +410,10 @@ export class PostgresJsonImportRepository {
       .map((col) => `"${col}" ${VARIANT_BATCH_RECORDSET_TYPES[col]}`)
       .join(', ')
 
-    const picked = pickColumns(row, batchCols as readonly string[])
+    const picked = normalizeRecordsetPayload(
+      pickColumns(row, batchCols as readonly string[]),
+      VARIANT_BATCH_RECORDSET_TYPES
+    )
     if (picked.variant_type === null) picked.variant_type = 'snv'
     const payload = [{ case_id: caseId, ...picked }]
 
@@ -408,7 +447,9 @@ export class PostgresJsonImportRepository {
       SELECT ${columns.map((c) => `v."${c}"`).join(', ')}
       FROM jsonb_to_recordset($1::jsonb) AS v(${recordsetSignature})`
 
-    await client.query(sql, [JSON.stringify(rows)])
+    await client.query(sql, [
+      JSON.stringify(rows.map((row) => normalizeRecordsetPayload(row, recordsetTypes)))
+    ])
   }
 }
 

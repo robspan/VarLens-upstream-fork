@@ -5,7 +5,7 @@ The transformation layer is the missing developer affordance. It should turn pub
 ## Proposed Directory Layout
 
 ```text
-scripts/test-data/
+scripts/data-fixtures/
   sources.json
   download-fixtures.mjs
   transform-vcf-subset.mjs
@@ -22,6 +22,14 @@ tests/test-data/generated/
 tests/web-gate/parity/__snapshots__/
   <fixture-id>.json
 ```
+
+Current implementation status:
+
+- `download-fixtures.mjs` exists and verifies local sources or downloads remote sources into cache.
+- `prepare-fixtures.mjs` exists and supports `copy` plus `vcf-to-varlens-json` transforms.
+- `transform-vcf-to-varlens-json.mjs` exists and emits simple/object/columnar JSON from VCF rows.
+- `verify-fixtures.mjs` exists and checks sources/generated outputs.
+- `transform-vcf-subset.mjs` and `transform-longread-bundle.mjs` are still future work.
 
 Raw downloads should go to a gitignored cache path, for example:
 
@@ -52,7 +60,7 @@ source manifest
 Expected command:
 
 ```bash
-node scripts/test-data/download-fixtures.mjs --fixture giab-chinese-trio-chr22-vep
+node scripts/data-fixtures/download-fixtures.mjs --fixture giab-chinese-trio-chr22-vep
 ```
 
 The downloader should:
@@ -86,7 +94,7 @@ Use for:
 Expected script behavior:
 
 ```bash
-node scripts/test-data/transform-vcf-subset.mjs --fixture giab-chinese-trio-chr22-vep
+node scripts/data-fixtures/transform-vcf-subset.mjs --fixture giab-chinese-trio-chr22-vep
 ```
 
 The script should fail if:

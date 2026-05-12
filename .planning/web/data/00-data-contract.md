@@ -32,7 +32,7 @@ Each fixture must have one manifest entry with this shape:
     "samples": ["HG005"]
   },
   "transform": {
-    "command": "node scripts/test-data/transform-vcf-subset.mjs --fixture giab-chinese-trio-chr22-vep",
+    "command": "node scripts/data-fixtures/transform-vcf-subset.mjs --fixture giab-chinese-trio-chr22-vep",
     "inputs": ["cache/raw/input.vcf.gz"],
     "outputs": ["tests/test-data/generated/giab-chinese-trio-chr22-vep.vcf.gz"]
   },
@@ -158,7 +158,7 @@ Do not compare:
 
 Commit:
 
-- `scripts/test-data/` source manifests and transform scripts
+- `scripts/data-fixtures/` source manifests and transform scripts
 - tiny generated verification fixtures under `tests/test-data/generated/` when needed for offline smoke coverage
 - small hand-authored edge-case fixtures when a public source cannot cover the type
 - normalized parity snapshots under `tests/web-gate/parity/__snapshots__/`

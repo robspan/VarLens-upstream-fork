@@ -6,6 +6,7 @@ import { InterProApiClient } from '../../services/api/InterProApiClient'
 import { AlphaFoldApiClient } from '../../services/api/AlphaFoldApiClient'
 import { EnsemblApiClient } from '../../services/api/EnsemblApiClient'
 import { ApiCache } from '../../services/api/ApiCache'
+import { apiFixturesEnabled } from '../../services/api/ApiFixtureLoader'
 import { networkStatus } from '../../services/network/NetworkStatus'
 import { mainLogger } from '../../services/MainLogger'
 
@@ -26,13 +27,11 @@ let interproClient: InterProApiClient | null = null
 let alphafoldClient: AlphaFoldApiClient | null = null
 let ensemblClient: EnsemblApiClient | null = null
 let apiCache: ApiCache | null = null
-const API_FIXTURES_DIR_ENV = 'VARLENS_API_FIXTURES_DIR'
 
 export function registerProteinHandlers({ ipcMain, getDb }: HandlerDependencies): void {
   function getSharedCache(): ApiCache | null {
     if (!apiCache) {
-      const fixtureDir = process.env[API_FIXTURES_DIR_ENV]
-      if (fixtureDir !== undefined && fixtureDir.trim() !== '') return null
+      if (apiFixturesEnabled()) return null
       apiCache = new ApiCache(getDb().database)
     }
     return apiCache

@@ -159,16 +159,17 @@ web-gate-postgres: build-web ## Run fail-loud Postgres-backed web integration te
 
 web-gate-parity: ## Run Layer 3 parity scenarios (opt-in; boots Electron, switches native ABI)
 	@echo "=== web-gate-parity (opt-in; switches native module to Electron ABI) ==="
+	@if [ -z "$$VARLENS_PG_URL" ]; then echo "VARLENS_PG_URL is required for web-gate-parity. This validates desktop↔web parity against PostgreSQL."; exit 2; fi
 	@if [ ! -f out/main/index.js ]; then echo "out/main/index.js missing — running 'make build' first"; npm run build; fi
 	npm run rebuild:electron
-	VARLENS_RUN_WEB_GATE_PARITY=1 npx vitest run --project web-gate-parity
+	VARLENS_RUN_WEB_GATE_PARITY=1 VARLENS_RUN_WEB_PARITY_E2E=1 npx vitest run --project web-gate-parity tests/web-gate/parity/data-manifest-parity.test.ts tests/web-gate/parity/ipc-fixture-parity.test.ts
 
 web-parity-e2e: web-data-verify ## Run manifest-backed desktop↔web parity E2E (requires VARLENS_PG_URL)
 	@if [ -z "$$VARLENS_PG_URL" ]; then echo "VARLENS_PG_URL is required for web-parity-e2e. This is opt-in and never part of default desktop CI."; exit 2; fi
 	@echo "=== web-parity-e2e (opt-in; switches native module to Electron ABI) ==="
 	npm run rebuild:electron
 	npm run build
-	VARLENS_RUN_WEB_GATE_PARITY=1 VARLENS_RUN_WEB_PARITY_E2E=1 npx vitest run --project web-gate-parity tests/web-gate/parity/data-manifest-parity.test.ts
+	VARLENS_RUN_WEB_GATE_PARITY=1 VARLENS_RUN_WEB_PARITY_E2E=1 npx vitest run --project web-gate-parity tests/web-gate/parity/data-manifest-parity.test.ts tests/web-gate/parity/ipc-fixture-parity.test.ts
 
 web-test-report: ## Generate web test report artifacts (VARLENS_WEB=1 runs full parity; uses VARLENS_PG_URL or .env.postgres.local)
 	node scripts/reports/run-web-test-report.mjs

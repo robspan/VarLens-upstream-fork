@@ -24,8 +24,17 @@ import type {
 import type { HpoSearchResult, VepFetchResult } from '../../shared/types/api-enrichment'
 
 const API_FIXTURE_DIR_ENV = 'VARLENS_API_FIXTURES_DIR'
+const WEB_PARITY_FIXTURE_ENV = 'VARLENS_WEB_PARITY_FIXTURES'
+
+export function webParityFixturesEnabled(): boolean {
+  const root = process.env[API_FIXTURE_DIR_ENV]
+  return process.env[WEB_PARITY_FIXTURE_ENV] === '1' && root !== undefined && root.trim() !== ''
+}
 
 function readFixture(path: string): unknown {
+  if (!webParityFixturesEnabled()) {
+    throw new Error(`${WEB_PARITY_FIXTURE_ENV}=1 is required for web reference API parity`)
+  }
   const root = process.env[API_FIXTURE_DIR_ENV]
   if (root === undefined || root.trim() === '') {
     throw new Error(`${API_FIXTURE_DIR_ENV} is required for web reference API parity`)

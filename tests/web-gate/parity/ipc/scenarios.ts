@@ -23,6 +23,32 @@ import { variantsScenario } from './variants'
 import { vepScenario } from './vep'
 import type { IpcScenario } from './shared'
 
+export const REQUIRED_IPC_AREAS = [
+  'analysis-groups',
+  'annotations',
+  'audit',
+  'batch-import',
+  'case-comments',
+  'case-metadata',
+  'case-metrics',
+  'cases',
+  'cohort',
+  'database',
+  'export',
+  'presets',
+  'gene-lists',
+  'gene-ref',
+  'hpo',
+  'import',
+  'panels',
+  'protein',
+  'region-files',
+  'tags',
+  'transcripts',
+  'variants',
+  'vep'
+] as const
+
 export const IPC_SCENARIOS: IpcScenario[] = [
   analysisGroupsScenario,
   annotationsScenario,
@@ -48,5 +74,3 @@ export const IPC_SCENARIOS: IpcScenario[] = [
   variantsScenario,
   vepScenario
 ]
-
-export const REQUIRED_IPC_AREAS = IPC_SCENARIOS.map((scenario) => scenario.area)

@@ -143,6 +143,7 @@ async function createElectronRuntime(): Promise<{
         VARLENS_EXPERIMENTAL_STORAGE_BACKEND: 'postgres',
         VARLENS_PG_SCHEMA: isolated.schema,
         VARLENS_API_FIXTURES_DIR: API_FIXTURES_DIR,
+        VARLENS_ALLOW_API_FIXTURES: '1',
         VARLENS_AUTOMATED_EXPORT_DIR: exportDir
       }
     })
@@ -162,7 +163,9 @@ async function createWebRuntime(): Promise<{
   cleanup: () => Promise<void>
 }> {
   const previousFixturesDir = process.env.VARLENS_API_FIXTURES_DIR
+  const previousWebParityFixtures = process.env.VARLENS_WEB_PARITY_FIXTURES
   process.env.VARLENS_API_FIXTURES_DIR = API_FIXTURES_DIR
+  process.env.VARLENS_WEB_PARITY_FIXTURES = '1'
   const exportDir = mkdtempSync(resolve(tmpdir(), 'varlens-web-export-'))
   let driver: WebDriver | undefined
 
@@ -173,6 +176,8 @@ async function createWebRuntime(): Promise<{
       rmSync(exportDir, { recursive: true, force: true })
       if (previousFixturesDir === undefined) delete process.env.VARLENS_API_FIXTURES_DIR
       else process.env.VARLENS_API_FIXTURES_DIR = previousFixturesDir
+      if (previousWebParityFixtures === undefined) delete process.env.VARLENS_WEB_PARITY_FIXTURES
+      else process.env.VARLENS_WEB_PARITY_FIXTURES = previousWebParityFixtures
     }
   }
 
@@ -229,7 +234,6 @@ function normalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(normalize).sort(compareStable)
 
   const drop = new Set([
-    'id',
     'case_id',
     'variant_id',
     'created_at',
@@ -242,13 +246,15 @@ function normalize(value: unknown): unknown {
     'cachedAt',
     'file_path',
     'path',
-    'name',
     'connectionLabel',
     'connectionUrlRedacted'
   ])
   const normalized: Record<string, unknown> = {}
-  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+  const source = value as Record<string, unknown>
+  for (const [key, entry] of Object.entries(source)) {
     if (drop.has(key)) continue
+    if (key === 'id' && typeof entry === 'number') continue
+    if (key === 'name' && typeof source.encrypted === 'boolean') continue
     normalized[key] = normalize(entry)
   }
   return normalized
@@ -365,8 +371,16 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+function assertRequiredIpcScenarios(): void {
+  const expected = [...REQUIRED_IPC_AREAS].sort()
+  const actual = IPC_SCENARIOS.map((scenario) => scenario.area).sort()
+  expect(actual).toEqual(expected)
+  expect(new Set(actual).size).toBe(REQUIRED_IPC_AREAS.length)
+}
+
 describe.skipIf(!SHOULD_RUN || !existsSync(ELECTRON_BUILD) || !HAS_PG)('IPC parity E2E', () => {
   test('validates all 23 IPC areas against fixture-backed desktop and web runtimes', async () => {
+    assertRequiredIpcScenarios()
     const startedAt = new Date()
     const report: IpcParityReport = {
       schemaVersion: 1,

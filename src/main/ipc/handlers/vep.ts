@@ -2,6 +2,7 @@ import { wrapHandler } from '../errorHandler'
 import type { HandlerDependencies } from '../types'
 import { VepApiClient, normalizeChromosome } from '../../services/api/VepApiClient'
 import { ApiCache } from '../../services/api/ApiCache'
+import { apiFixturesEnabled } from '../../services/api/ApiFixtureLoader'
 import { networkStatus } from '../../services/network/NetworkStatus'
 import { VariantCoordsSchema } from '../../../shared/types/ipc-schemas'
 import { mainLogger } from '../../services/MainLogger'
@@ -14,13 +15,11 @@ import { mainLogger } from '../../services/MainLogger'
 // Singleton instances - lazy initialization
 let vepClient: VepApiClient | null = null
 let apiCache: ApiCache | null = null
-const API_FIXTURES_DIR_ENV = 'VARLENS_API_FIXTURES_DIR'
 
 export function registerVepHandlers({ ipcMain, getDb }: HandlerDependencies): void {
   function getVepClient(): VepApiClient {
     if (!vepClient) {
-      const fixtureDir = process.env[API_FIXTURES_DIR_ENV]
-      if (fixtureDir === undefined || fixtureDir.trim() === '') {
+      if (!apiFixturesEnabled()) {
         const db = getDb().database
         apiCache = new ApiCache(db)
       }
@@ -116,8 +115,7 @@ export function registerVepHandlers({ ipcMain, getDb }: HandlerDependencies): vo
   ipcMain.handle('vep:getCacheStats', async () => {
     return wrapHandler(async () => {
       if (!apiCache) {
-        const fixtureDir = process.env[API_FIXTURES_DIR_ENV]
-        if (fixtureDir !== undefined && fixtureDir.trim() !== '') {
+        if (apiFixturesEnabled()) {
           return { vepCount: 0, hpoCount: 0, totalBytes: 0 }
         }
         // Initialize cache to get stats

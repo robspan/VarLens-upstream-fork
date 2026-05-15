@@ -68,7 +68,8 @@ import {
   buildProteinDomainsFixtureResponse,
   buildProteinMappingFixtureResponse,
   buildProteinStructureFixtureResponse,
-  buildVepFixtureResponse
+  buildVepFixtureResponse,
+  webParityFixturesEnabled
 } from './api-fixture-responses'
 import { getWebGeneReferenceDb } from './web-gene-reference'
 
@@ -93,7 +94,15 @@ const CohortCarriersParamsSchema = z.object({
 })
 
 function webCapabilities(base: StorageCapabilities): StorageCapabilities {
-  return base
+  if (webParityFixturesEnabled()) return base
+  return {
+    ...base,
+    export: {
+      variants: false,
+      cohort: false,
+      streaming: false
+    }
+  }
 }
 
 function unsupportedWebCapability(
@@ -552,6 +561,7 @@ function buildOverrides(): Record<string, OverrideHandler> {
 
     'export:variants': {
       async handle(args, _request, reply, { session }) {
+        if (!webParityFixturesEnabled()) return unsupportedWebCapability(reply, 'export.variants')
         const [caseId, filters, caseName] = args
         const validated = z
           .object({
@@ -579,6 +589,7 @@ function buildOverrides(): Record<string, OverrideHandler> {
 
     'export:cohort': {
       async handle(args, _request, reply, { session }) {
+        if (!webParityFixturesEnabled()) return unsupportedWebCapability(reply, 'export.cohort')
         const [params] = args
         const validated = CohortSearchParamsSchema.safeParse(params)
         if (!validated.success) {
@@ -596,19 +607,24 @@ function buildOverrides(): Record<string, OverrideHandler> {
     },
 
     'gene-ref:info': {
-      handle() {
+      handle(_args, _request, reply) {
+        if (!webParityFixturesEnabled()) return unsupportedWebCapability(reply, 'geneRef.info')
         return getWebGeneReferenceDb().getInfo()
       }
     },
 
     'gene-ref:assemblies': {
-      handle() {
+      handle(_args, _request, reply) {
+        if (!webParityFixturesEnabled()) {
+          return unsupportedWebCapability(reply, 'geneRef.assemblies')
+        }
         return getWebGeneReferenceDb().getAssemblies()
       }
     },
 
     'hpo:search': {
-      handle(args) {
+      handle(args, _request, reply) {
+        if (!webParityFixturesEnabled()) return unsupportedWebCapability(reply, 'hpo.search')
         const [query, maxResults] = args
         if (typeof query !== 'string') throw new Error('hpo.search query must be a string')
         return buildHpoFixtureResponse(
@@ -619,13 +635,15 @@ function buildOverrides(): Record<string, OverrideHandler> {
     },
 
     'hpo:clearCache': {
-      handle() {
+      handle(_args, _request, reply) {
+        if (!webParityFixturesEnabled()) return unsupportedWebCapability(reply, 'hpo.clearCache')
         return { success: true }
       }
     },
 
     'vep:fetch': {
-      handle(args) {
+      handle(args, _request, reply) {
+        if (!webParityFixturesEnabled()) return unsupportedWebCapability(reply, 'vep.fetch')
         const [chr, pos, ref, alt] = args
         if (
           typeof chr !== 'string' ||
@@ -640,25 +658,31 @@ function buildOverrides(): Record<string, OverrideHandler> {
     },
 
     'vep:getCacheStats': {
-      handle() {
+      handle(_args, _request, reply) {
+        if (!webParityFixturesEnabled()) return unsupportedWebCapability(reply, 'vep.getCacheStats')
         return { vepCount: 0, hpoCount: 0, totalBytes: 0 }
       }
     },
 
     'vep:clearCache': {
-      handle() {
+      handle(_args, _request, reply) {
+        if (!webParityFixturesEnabled()) return unsupportedWebCapability(reply, 'vep.clearCache')
         return { success: true }
       }
     },
 
     'vep:cancel': {
-      handle() {
+      handle(_args, _request, reply) {
+        if (!webParityFixturesEnabled()) return unsupportedWebCapability(reply, 'vep.cancel')
         return { success: true }
       }
     },
 
     'protein:getMapping': {
-      handle(args) {
+      handle(args, _request, reply) {
+        if (!webParityFixturesEnabled()) {
+          return unsupportedWebCapability(reply, 'protein.getMapping')
+        }
         const [geneSymbol] = args
         if (typeof geneSymbol !== 'string') throw new Error('gene symbol must be a string')
         return buildProteinMappingFixtureResponse(geneSymbol)
@@ -666,7 +690,10 @@ function buildOverrides(): Record<string, OverrideHandler> {
     },
 
     'protein:getDomains': {
-      handle(args) {
+      handle(args, _request, reply) {
+        if (!webParityFixturesEnabled()) {
+          return unsupportedWebCapability(reply, 'protein.getDomains')
+        }
         const [accession] = args
         if (typeof accession !== 'string') throw new Error('UniProt accession must be a string')
         return buildProteinDomainsFixtureResponse(accession)
@@ -674,7 +701,10 @@ function buildOverrides(): Record<string, OverrideHandler> {
     },
 
     'protein:getStructure': {
-      handle(args) {
+      handle(args, _request, reply) {
+        if (!webParityFixturesEnabled()) {
+          return unsupportedWebCapability(reply, 'protein.getStructure')
+        }
         const [accession] = args
         if (typeof accession !== 'string') throw new Error('UniProt accession must be a string')
         return buildProteinStructureFixtureResponse(accession)
@@ -682,7 +712,10 @@ function buildOverrides(): Record<string, OverrideHandler> {
     },
 
     'protein:getGeneStructure': {
-      handle(args) {
+      handle(args, _request, reply) {
+        if (!webParityFixturesEnabled()) {
+          return unsupportedWebCapability(reply, 'protein.getGeneStructure')
+        }
         const [geneSymbol] = args
         if (typeof geneSymbol !== 'string') throw new Error('gene symbol must be a string')
         return buildGeneStructureFixtureResponse(geneSymbol)

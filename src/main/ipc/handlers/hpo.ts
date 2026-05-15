@@ -3,6 +3,7 @@ import { wrapHandler } from '../errorHandler'
 import type { HandlerDependencies } from '../types'
 import { HpoApiClient } from '../../services/api/HpoApiClient'
 import { ApiCache } from '../../services/api/ApiCache'
+import { apiFixturesEnabled } from '../../services/api/ApiFixtureLoader'
 import { networkStatus } from '../../services/network/NetworkStatus'
 import { mainLogger } from '../../services/MainLogger'
 
@@ -20,13 +21,11 @@ const HpoSearchParamsSchema = z.object({
 // Singleton instances - lazy initialization
 let hpoClient: HpoApiClient | null = null
 let apiCache: ApiCache | null = null
-const API_FIXTURES_DIR_ENV = 'VARLENS_API_FIXTURES_DIR'
 
 export function registerHpoHandlers({ ipcMain, getDb }: HandlerDependencies): void {
   function getHpoClient(): HpoApiClient {
     if (!hpoClient) {
-      const fixtureDir = process.env[API_FIXTURES_DIR_ENV]
-      if (fixtureDir === undefined || fixtureDir.trim() === '') {
+      if (!apiFixturesEnabled()) {
         const db = getDb().database
         apiCache = new ApiCache(db)
       }

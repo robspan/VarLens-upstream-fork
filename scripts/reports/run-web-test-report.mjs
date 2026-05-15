@@ -45,14 +45,6 @@ const stakeholderIpcAreas = [
   { id: 'variants', label: 'Variants' },
   { id: 'vep', label: 'VEP' }
 ]
-const exactParityIpcEvidence = {
-  'batch-import': 'ZIP fixture exercises extractZip and cleanupZipTemp on desktop and web.',
-  cases: 'Parity smoke exercises cases.list on desktop and web.',
-  import:
-    'Manifest fixtures exercise single-file, multi-file, BED-filtered, and ZIP-backed import.',
-  variants:
-    'Manifest fixtures exercise variants.query and variants.typeCounts with matching hashes.'
-}
 const stakeholderIpcSharedIds = {
   audit: 'audit-log',
   presets: 'filter-presets'
@@ -438,30 +430,40 @@ function ipcContractInventory() {
   }
 }
 
-function buildIpcParityMatrix(ipcInventory, parityScenarios, paritySuite) {
+function buildIpcParityMatrix(ipcInventory, ipcParityReport, paritySuite) {
   const sharedSet = new Set(ipcInventory.shared)
   const preloadSet = new Set(ipcInventory.preload)
   const mainSet = new Set(ipcInventory.main)
+  const ipcResults = Array.isArray(ipcParityReport?.results) ? ipcParityReport.results : []
+  const resultByArea = new Map(ipcResults.map((result) => [result.area, result]))
   const hasExactParityRun =
     paritySuite !== undefined &&
     suitePassed(paritySuite) &&
-    parityScenarios.length > 0 &&
-    parityScenarios.every((scenario) => scenario.status === 'passed' && scenario.hashMatch === true)
+    ipcParityReport?.status === 'passed' &&
+    ipcParityReport?.validatedIpcAreas === stakeholderIpcAreas.length &&
+    ipcParityReport?.passedIpcAreas === stakeholderIpcAreas.length &&
+    ipcParityReport?.failedIpcAreas === 0
 
   return stakeholderIpcAreas.map((area) => {
     const sharedId = stakeholderIpcSharedIds[area.id] ?? area.id
     const surfacePassed =
       sharedSet.has(sharedId) && preloadSet.has(sharedId) && mainSet.has(sharedId)
-    const exactEvidence = exactParityIpcEvidence[area.id]
-    const exactParity = hasExactParityRun && exactEvidence !== undefined
+    const ipcResult = resultByArea.get(area.id)
+    const hashMatch =
+      ipcResult?.desktopHash !== null &&
+      ipcResult?.desktopHash !== undefined &&
+      ipcResult.desktopHash === ipcResult.webHash
+    const exactParity = hasExactParityRun && ipcResult?.status === 'passed' && hashMatch
     return {
       ...area,
       surfacePassed,
       exactParity,
       result: exactParity ? 'Exact parity passed' : 'Parity test needed',
-      evidence:
-        exactEvidence ??
-        'IPC surface is wired, but this run does not yet include a domain-specific desktop/web result parity scenario.'
+      evidence: exactParity
+        ? `Scenario passed with matching result hash ${shortHash(ipcResult.desktopHash)} across ${ipcResult.operationCount ?? 0} operation(s).`
+        : ipcResult === undefined
+          ? 'No domain-specific desktop/web result parity scenario was recorded in this report.'
+          : `Scenario ${ipcResult.status}; desktop hash ${shortHash(ipcResult.desktopHash)}, web hash ${shortHash(ipcResult.webHash)}.`
     }
   })
 }
@@ -486,10 +488,14 @@ async function buildReportAssessment(manifest) {
   const parityReport = await readJsonIfExists(
     resolve(repoRoot, '.planning/artifacts/web/parity/latest.json')
   )
+  const ipcParityReport = await readJsonIfExists(
+    resolve(repoRoot, '.planning/artifacts/web/parity/latest-ipc.json')
+  )
   const parityScenarios = Array.isArray(parityReport?.scenarios) ? parityReport.scenarios : []
   const ipcInventory = ipcContractInventory()
-  const paritySuite = suiteById(manifest, 'web-gate-parity')
-  const ipcParityMatrix = buildIpcParityMatrix(ipcInventory, parityScenarios, paritySuite)
+  const paritySuite =
+    suiteById(manifest, 'web-parity-e2e') ?? suiteById(manifest, 'web-gate-parity')
+  const ipcParityMatrix = buildIpcParityMatrix(ipcInventory, ipcParityReport, paritySuite)
   const exactIpcParityCount = ipcParityMatrix.filter((row) => row.exactParity).length
   const hasIpcParityGaps = exactIpcParityCount < stakeholderIpcAreas.length
   const requiredFailure = manifest.suites.some(suiteFailed)
@@ -505,6 +511,7 @@ async function buildReportAssessment(manifest) {
     status,
     label,
     parityScenarios,
+    ipcParityReport,
     ipcInventory,
     ipcParityMatrix,
     exactIpcParityCount,
@@ -530,7 +537,8 @@ async function renderStakeholderReport(manifest, ctrf, reportAssessment) {
     0
   )
   const staticSuite = suiteById(manifest, 'web-gate-static')
-  const paritySuite = suiteById(manifest, 'web-gate-parity')
+  const paritySuite =
+    suiteById(manifest, 'web-parity-e2e') ?? suiteById(manifest, 'web-gate-parity')
   const dataParitySuite = suiteById(manifest, 'web-parity-e2e')
   const status =
     manifest.status === 'passed'
@@ -856,6 +864,7 @@ async function writeStakeholderPdf(runDir, stakeholderReport) {
       error instanceof Error ? (error.stack ?? error.message) : String(error),
       'utf8'
     )
+    throw error
   }
 }
 
@@ -1041,6 +1050,12 @@ async function main() {
   )
 
   manifest.suites.push(
+    await runCommandSuite(runDir, 'rebuild-node-for-static', 'npm', ['run', 'rebuild:node'], {
+      required: true
+    })
+  )
+
+  manifest.suites.push(
     await runVitestSuite(runDir, 'web-gate-static', ['--project', 'web-gate'], {
       required: true
     })
@@ -1156,7 +1171,12 @@ async function main() {
           await runVitestSuite(
             runDir,
             'web-parity-e2e',
-            ['--project', 'web-gate-parity', 'tests/web-gate/parity/data-manifest-parity.test.ts'],
+            [
+              '--project',
+              'web-gate-parity',
+              'tests/web-gate/parity/data-manifest-parity.test.ts',
+              'tests/web-gate/parity/ipc-fixture-parity.test.ts'
+            ],
             {
               required: true,
               env: {

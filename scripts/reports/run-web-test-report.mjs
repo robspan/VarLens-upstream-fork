@@ -458,6 +458,9 @@ function buildIpcParityMatrix(ipcInventory, ipcParityReport, paritySuite) {
       ...area,
       surfacePassed,
       exactParity,
+      desktopHash: ipcResult?.desktopHash ?? null,
+      webHash: ipcResult?.webHash ?? null,
+      operationCount: ipcResult?.operationCount ?? 0,
       result: exactParity ? 'Exact parity passed' : 'Parity test needed',
       evidence: exactParity
         ? `Scenario passed with matching result hash ${shortHash(ipcResult.desktopHash)} across ${ipcResult.operationCount ?? 0} operation(s).`
@@ -553,45 +556,71 @@ async function renderStakeholderReport(manifest, ctrf, reportAssessment) {
     ipcInventory.missingMain.length === 0 &&
     ipcInventory.orphanPreload.length === 0 &&
     ipcInventory.orphanMain.length === 0
+  const conclusion =
+    manifest.status === 'passed'
+      ? `Within the validation scope described in this report, the VarLens web implementation produced equivalent normalized results to the desktop baseline for all ${stakeholderIpcAreas.length} stakeholder-facing IPC areas and all manifest-backed domain data scenarios exercised by this run.`
+      : manifest.status === 'incomplete'
+        ? `Within the validation scope described in this report, the required harness completed, but exact IPC parity evidence is incomplete: ${exactIpcParityCount} of ${stakeholderIpcAreas.length} stakeholder-facing IPC areas are supported by matching result evidence.`
+        : 'The validation evidence is not sufficient for release reassurance because at least one required validation suite did not complete successfully.'
 
   const lines = [
     '# VarLens Web Validation Report',
     '',
-    `Overall result: ${status}`,
+    `Validation result: ${status}`,
     '',
     `Run completed: ${manifest.finishedAt ?? 'not finished'}`,
     `Code version: ${manifest.git.branch ?? 'unknown'} @ ${manifest.git.sha ?? 'unknown'}${
       manifest.git.dirty ? ' (local changes present)' : ''
     }`,
     '',
-    '## Executive Summary',
+    '## Abstract',
     '',
     manifest.status === 'passed'
-      ? 'The web validation run completed successfully. Required web checks, PostgreSQL-backed behavior checks, desktop-to-web parity checks, and per-IPC parity checks all passed.'
+      ? `This report evaluates whether the VarLens web implementation preserves desktop behavior for the covered clinical-variant workflows. The validation run executed static web checks, PostgreSQL-backed web checks, manifest-backed desktop-to-web data parity checks, and exact result parity checks across ${stakeholderIpcAreas.length} stakeholder-facing IPC areas. All required suites completed successfully, with ${exactIpcParityCount} of ${stakeholderIpcAreas.length} IPC areas producing matching desktop and web result fingerprints.`
       : manifest.status === 'incomplete'
-        ? 'The web validation harness completed without required suite failures, but the report is incomplete because exact desktop/web parity is only proven for a subset of stakeholder IPC areas.'
-        : 'The web validation run did not complete successfully. At least one required validation area needs review before this result should be used as release evidence.',
+        ? `This report evaluates whether the VarLens web implementation preserves desktop behavior for the covered clinical-variant workflows. The validation harness completed without required suite failures, but exact IPC result parity is only proven for ${exactIpcParityCount} of ${stakeholderIpcAreas.length} stakeholder-facing IPC areas.`
+        : 'This report evaluates whether the VarLens web implementation preserves desktop behavior for the covered clinical-variant workflows. The validation run did not complete successfully; at least one required validation area needs review before this result should be used as release evidence.',
     '',
-    `The run evaluated ${summary.tests} checks: ${summary.passed} passed, ${summary.failed} failed, and ${summary.skipped} were marked as non-blocking or not applicable by the harness.`,
+    `The run evaluated ${summary.tests} checks: ${summary.passed} passed, ${summary.failed} failed, and ${summary.skipped} were marked as non-blocking or not applicable by the harness. Hashes in this report are SHA-256 fingerprints of normalized result objects and are used as compact evidence, not as a replacement for the underlying equality assertions.`,
     '',
-    '## What Was Validated',
+    '## Validation Scope',
     '',
-    '| Area | Result | What it means |',
+    '| Boundary | Included In This Report | Rationale |',
     '| --- | --- | --- |'
   ]
+
+  lines.push(
+    `| Desktop baseline | Electron desktop application at ${manifest.git.sha ?? 'unknown'} | Desktop remains the reference implementation for local variant-analysis behavior. |`,
+    '| Web target | Web server backed by PostgreSQL | This is the deployment mode whose behavior is being compared against the desktop baseline. |',
+    `| IPC areas | ${stakeholderIpcAreas.length} stakeholder-facing areas | IPC means the typed bridge between renderer consumers and main-process/domain handlers. |`,
+    `| Domain data fixtures | ${parityScenarios.length} manifest-backed fixture scenario(s) | Fixture inputs cover representative import/query workflows across supported data shapes. |`,
+    '| External network APIs | Fixture-backed during parity validation | Network-dependent services are stabilized so parity tests compare application behavior instead of third-party availability. |',
+    '| Release decision | Evidence for the covered validation scope only | This report does not claim exhaustive correctness for every possible user dataset or workflow. |',
+    '',
+    '## Methodology',
+    '',
+    'The validation run applies the same fixture inputs to desktop and web execution paths, captures the returned result objects, applies deterministic normalization for known runtime-specific fields, and compares the normalized objects directly. A SHA-256 fingerprint is then recorded for each compared result as compact evidence that can be reviewed in the report.',
+    '',
+    'The method separates three evidence classes: IPC surface wiring, exact per-IPC result parity, and domain data parity. Surface wiring confirms that a shared contract, preload binding, and main/web handler path exist. Exact IPC parity confirms that representative operations for an IPC area return equivalent normalized results. Domain data parity confirms that manifest-backed fixture imports and queries produce equivalent normalized outputs across desktop SQLite and web PostgreSQL.',
+    '',
+    '## Results Summary',
+    '',
+    '| Validation Area | Result | Interpretation |',
+    '| --- | --- | --- |'
+  )
 
   const dataSuites = ['web-data-gather', 'web-data-prepare', 'web-data-verify'].map((id) =>
     suiteById(manifest, id)
   )
   const dataPassed = dataSuites.every((suite) => suite !== undefined && suitePassed(suite))
   lines.push(
-    `| Test data preparation | ${dataPassed ? 'Passed' : 'Needs attention'} | Public/local fixture sources were gathered, transformed, and verified before application tests ran. |`
+    `| Test data preparation | ${dataPassed ? 'Passed' : 'Needs attention'} | Fixture sources were gathered, transformed, and verified before application tests ran. |`
   )
 
   lines.push(
     `| IPC/API surface checks | ${suiteStatusLabel(staticSuite)} | ${suiteStatusSentence(
       staticSuite,
-      `${stakeholderIpcAreas.length} stakeholder-facing IPC areas are listed separately from domain data parity.`,
+      `${stakeholderIpcAreas.length} stakeholder-facing IPC areas were inventoried separately from domain data parity.`,
       'Static web checks were not part of this run.',
       'IPC/API surface checks reported failures.'
     )} |`
@@ -601,7 +630,7 @@ async function renderStakeholderReport(manifest, ctrf, reportAssessment) {
   lines.push(
     `| PostgreSQL-backed web behavior | ${suiteStatusLabel(postgresSuite)} | ${suiteStatusSentence(
       postgresSuite,
-      'The web server ran against PostgreSQL and passed its required integration checks.',
+      'The web server ran against PostgreSQL and passed the required integration checks.',
       'PostgreSQL-backed checks were not run.',
       'PostgreSQL-backed web checks reported failures.'
     )} |`
@@ -614,7 +643,7 @@ async function renderStakeholderReport(manifest, ctrf, reportAssessment) {
       paritySuite,
       hasIpcParityGaps
         ? `Representative workflows matched, but exact parity is only proven for ${exactIpcParityCount} of ${stakeholderIpcAreas.length} stakeholder-facing IPC areas.`
-        : 'Representative desktop and web behavior matched for the covered workflows.',
+        : 'Desktop and web behavior matched for the covered parity workflows.',
       'Behavior parity checks were not run.',
       'Desktop-to-web behavior parity reported failures.'
     )} |`
@@ -637,25 +666,25 @@ async function renderStakeholderReport(manifest, ctrf, reportAssessment) {
 
   lines.push(
     '',
-    '## IPC Parity Coverage',
+    '## IPC Traceability Matrix',
     '',
-    'IPC in this report means the typed Electron bridge from renderer code to main-process handlers: shared contract, preload binding, and main handler. This section lists the 23 stakeholder-facing IPC areas separately from the domain data fixture scenarios.',
+    'IPC in this report means the typed application bridge used by renderer consumers to call domain handlers. In the desktop application this crosses the Electron renderer/main boundary; in web validation, the same domain intent is exercised through the web dispatcher against PostgreSQL.',
     '',
     `${exactIpcParityCount} of ${stakeholderIpcAreas.length} stakeholder-facing IPC areas have exact desktop/web result parity evidence in this run. Rows marked "Parity test needed" have their communication surface checked, but still need a domain-specific parity scenario before they should be treated as exact-result parity.`,
     '',
-    '| IPC Area | Surface Wiring | Exact Result Parity | Evidence |',
-    '| --- | --- | --- | --- |'
+    '| IPC Area | Surface Wiring | Result Parity | Operations | Desktop Hash | Web Hash | Evidence |',
+    '| --- | --- | --- | ---: | --- | --- | --- |'
   )
 
   for (const row of ipcParityMatrix) {
     lines.push(
-      `| ${row.label} | ${row.surfacePassed ? 'Passed' : 'Needs attention'} | ${row.result} | ${row.evidence} |`
+      `| ${row.label} | ${row.surfacePassed ? 'Passed' : 'Needs attention'} | ${row.result} | ${row.operationCount} | ${shortHash(row.desktopHash)} | ${shortHash(row.webHash)} | ${row.evidence} |`
     )
   }
 
   lines.push(
     '',
-    '### Technical IPC Contract Inventory',
+    '### IPC Contract Inventory',
     '',
     '| IPC Surface | Expected From Shared Contract | Verified In This Run | Result |',
     '| --- | ---: | --- | --- |',
@@ -673,7 +702,7 @@ async function renderStakeholderReport(manifest, ctrf, reportAssessment) {
   if (parityScenarios.length > 0) {
     lines.push(
       `${passedParityScenarios.length} of ${parityScenarios.length} manifest-backed scenarios passed. Desktop produced ${totalDesktopVariants} variants and web produced ${totalWebVariants} variants across the compared fixtures.`,
-      `${matchedParityHashes.length} of ${parityScenarios.length} scenarios produced matching SHA-256 fingerprints over the normalized desktop and web results. The assertion also compares the normalized result objects directly; the hash is included as compact stakeholder evidence.`,
+      `${matchedParityHashes.length} of ${parityScenarios.length} scenarios produced matching SHA-256 fingerprints over the normalized desktop and web results. The test also compares the normalized result objects directly; the hash is included here as compact review evidence.`,
       '',
       '| Fixture Set | Data Type / Mode | Result | Variant Match | Query Match | Result Fingerprint |',
       '| --- | --- | --- | --- | --- | --- |'
@@ -697,7 +726,32 @@ async function renderStakeholderReport(manifest, ctrf, reportAssessment) {
     lines.push('No manifest-backed data parity report was produced for this run.')
   }
 
-  lines.push('', '## Remaining Notes', '')
+  lines.push(
+    '',
+    '## Limitations',
+    '',
+    '- The conclusion is bounded by the fixture scenarios and IPC operations exercised in this run; it does not prove equivalence for every possible user dataset.',
+    '- Result fingerprints are computed after deterministic normalization of runtime-specific fields such as generated identifiers, timestamps, file paths, and environment-specific connection labels.',
+    '- Network-backed resources are fixture-backed during parity validation so the comparison remains deterministic and independent of external service availability.',
+    '- The report distinguishes communication-surface coverage from exact result parity. A surface check alone is not treated as proof of equivalent behavior.',
+    '- Skipped checks are counted as non-blocking or not applicable only when the harness marks them that way; required-suite skips still fail or incomplete the report.',
+    '',
+    '## Conclusion',
+    '',
+    conclusion,
+    '',
+    '## Evidence Package',
+    '',
+    'The handoff package is intentionally compact. It keeps the stakeholder PDF, the technical summary, and per-suite logs:',
+    '',
+    `- Technical summary: \`${relative(resolve(latestDir, 'summary.md'))}\``,
+    `- PDF validation report: \`${relative(resolve(latestDir, 'stakeholder-report.pdf'))}\``,
+    `- Per-suite logs: \`${relative(resolve(latestDir, 'logs'))}\``,
+    `- Data parity detail: \`${relative(resolve(repoRoot, '.planning/artifacts/web/parity/latest.md'))}\``,
+    '',
+    '## Run Notes',
+    ''
+  )
 
   if (failedSuites.length === 0) {
     lines.push('- No required validation suite failed.')
@@ -712,18 +766,6 @@ async function renderStakeholderReport(manifest, ctrf, reportAssessment) {
       `- ${nonBlockingSkipped} checks were skipped by the harness as non-blocking or not applicable for this run.`
     )
   }
-
-  lines.push(
-    '',
-    '## Evidence Package',
-    '',
-    'The handoff package is intentionally compact. It keeps the stakeholder PDF, the technical summary, and per-suite logs:',
-    '',
-    `- Technical summary: \`${relative(resolve(latestDir, 'summary.md'))}\``,
-    `- PDF handoff report: \`${relative(resolve(latestDir, 'stakeholder-report.pdf'))}\``,
-    `- Per-suite logs: \`${relative(resolve(latestDir, 'logs'))}\``,
-    `- Data parity detail: \`${relative(resolve(repoRoot, '.planning/artifacts/web/parity/latest.md'))}\``
-  )
 
   return `${lines.join('\n')}\n`
 }
@@ -762,26 +804,25 @@ function renderStakeholderHtml(markdown) {
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      color: #17212b;
+      color: #1d2730;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 11px;
       line-height: 1.45;
       background: #ffffff;
     }
     h1 {
-      margin: 0 0 14px;
-      padding: 18px 20px;
-      color: #ffffff;
-      background: #143d59;
-      border-radius: 8px;
-      font-size: 24px;
+      margin: 0 0 6px;
+      padding: 0 0 10px;
+      color: #102f43;
+      border-bottom: 3px solid #102f43;
+      font-size: 25px;
       letter-spacing: 0;
     }
     h2 {
-      margin: 22px 0 8px;
-      color: #143d59;
+      margin: 20px 0 8px;
+      color: #102f43;
       font-size: 16px;
-      border-bottom: 2px solid #dce8ef;
+      border-bottom: 1px solid #b8cbd6;
       padding-bottom: 5px;
     }
     h3 {

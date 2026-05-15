@@ -13,6 +13,9 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const artifactRoot = resolve(repoRoot, '.planning/artifacts/web/test-reporting')
 const latestDir = resolve(artifactRoot, 'latest')
 const runsDir = resolve(artifactRoot, 'runs')
+const dataFixtureManifestPath = resolve(repoRoot, 'scripts/data-fixtures/sources.json')
+const generatedFixtureRoot = resolve(repoRoot, 'tests/.cache/public-data/generated')
+const apiFixtureRoot = resolve(repoRoot, 'tests/fixtures/api')
 const webMode = process.env.VARLENS_WEB === '1'
 const ipcDomainDirs = {
   shared: 'src/shared/ipc/domains',
@@ -368,6 +371,7 @@ function renderSummary(manifest, ctrf, reportAssessment) {
     '',
     `- Stakeholder PDF: \`${relative(resolve(latestDir, 'stakeholder-report.pdf'))}\``,
     `- Technical summary: \`${relative(resolve(latestDir, 'summary.md'))}\``,
+    `- Test data evidence: \`${relative(resolve(latestDir, 'test-data'))}\``,
     `- Logs: \`${relative(resolve(latestDir, 'logs'))}\``
   )
 
@@ -746,6 +750,7 @@ async function renderStakeholderReport(manifest, ctrf, reportAssessment) {
     '',
     `- Technical summary: \`${relative(resolve(latestDir, 'summary.md'))}\``,
     `- PDF validation report: \`${relative(resolve(latestDir, 'stakeholder-report.pdf'))}\``,
+    `- Test data evidence: \`${relative(resolve(latestDir, 'test-data'))}\``,
     `- Per-suite logs: \`${relative(resolve(latestDir, 'logs'))}\``,
     `- Data parity detail: \`${relative(resolve(repoRoot, '.planning/artifacts/web/parity/latest.md'))}\``,
     '',
@@ -909,6 +914,112 @@ async function writeStakeholderPdf(runDir, stakeholderReport) {
   }
 }
 
+function formatBytes(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 'unknown'
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KiB`
+  return `${(value / (1024 * 1024)).toFixed(1)} MiB`
+}
+
+function fixtureSourceSummary(fixture) {
+  if (fixture.source?.kind === 'local-set') {
+    return (fixture.source.files ?? []).map((file) => file.path).join(', ')
+  }
+  return fixture.source?.path ?? fixture.source?.url ?? 'unknown'
+}
+
+function fixtureArtifactSummary(fixture) {
+  const target = fixture.varlensTarget ?? {}
+  if (typeof target.artifact === 'string') return target.artifact
+  if (Array.isArray(target.files)) {
+    return target.files.map((file) => file.filePath).join(', ')
+  }
+  return 'not directly imported'
+}
+
+function renderTestDataCatalog(dataManifest, manifest) {
+  const fixtures = Array.isArray(dataManifest?.fixtures)
+    ? dataManifest.fixtures.filter((fixture) => fixture.enabledByDefault === true)
+    : []
+  const lines = [
+    '# Web Parity Test Data Catalog',
+    '',
+    `Run ID: ${manifest.runId}`,
+    `Git: ${manifest.git.branch ?? 'unknown'} @ ${manifest.git.sha ?? 'unknown'}${
+      manifest.git.dirty ? ' (dirty)' : ''
+    }`,
+    `Generated: ${manifest.finishedAt ?? new Date().toISOString()}`,
+    '',
+    'This catalog describes the fixture inputs used by the web validation report. The folder next to this file contains the exact generated artifacts consumed by the parity tests plus API response fixtures used to stabilize external-service calls.',
+    '',
+    '## Folder Contents',
+    '',
+    '- `source-manifest.json` is the canonical machine-readable fixture manifest, including origin paths, checksums, transforms, and intended coverage.',
+    '- `source-catalog.md` is this human-readable catalog.',
+    '- `generated/` contains the generated VarLens-ready data artifacts used by import and query parity tests.',
+    '- `api-fixtures/` contains deterministic API responses used by HPO, VEP, protein, and related network-backed checks.',
+    '',
+    '## Fixture Inventory',
+    '',
+    '| Fixture | Purpose | Source | Test Artifact | Mode | Size | Coverage |',
+    '| --- | --- | --- | --- | --- | ---: | --- |'
+  ]
+
+  for (const fixture of fixtures) {
+    const coverage = Array.isArray(fixture.expectedCoverage)
+      ? fixture.expectedCoverage.join(', ')
+      : 'not specified'
+    const sourceSize =
+      typeof fixture.source?.sizeBytes === 'number'
+        ? fixture.source.sizeBytes
+        : Array.isArray(fixture.source?.files)
+          ? fixture.source.files.reduce((total, file) => total + (file.sizeBytes ?? 0), 0)
+          : undefined
+    lines.push(
+      `| ${fixture.id} | ${fixture.purpose ?? ''} | \`${fixtureSourceSummary(fixture)}\` | \`${fixtureArtifactSummary(
+        fixture
+      )}\` | ${fixture.varlensTarget?.importMode ?? 'supporting fixture'} | ${formatBytes(
+        sourceSize
+      )} | ${coverage} |`
+    )
+  }
+
+  lines.push(
+    '',
+    '## Verification',
+    '',
+    'The report runner verifies every selected source and generated artifact before application tests run. Verification includes checksum/size checks from `source-manifest.json` and cheap container checks for VCF, JSON, BED, and ZIP fixtures.',
+    '',
+    '## Scope Note',
+    '',
+    'These fixtures are intentionally compact and representative. They are evidence for the validation scope in the report, not a replacement for broad clinical dataset validation.'
+  )
+
+  return `${lines.join('\n')}\n`
+}
+
+async function writeTestDataEvidencePackage(runDir, manifest) {
+  const evidenceDir = resolve(runDir, 'test-data')
+  await rm(evidenceDir, { recursive: true, force: true })
+  await mkdir(evidenceDir, { recursive: true })
+
+  const dataManifest = await readJsonIfExists(dataFixtureManifestPath)
+  await copyFile(dataFixtureManifestPath, resolve(evidenceDir, 'source-manifest.json'))
+  await writeFile(
+    resolve(evidenceDir, 'source-catalog.md'),
+    renderTestDataCatalog(dataManifest, manifest),
+    'utf8'
+  )
+
+  if (existsSync(generatedFixtureRoot)) {
+    await cp(generatedFixtureRoot, resolve(evidenceDir, 'generated'), { recursive: true })
+  }
+
+  if (existsSync(apiFixtureRoot)) {
+    await cp(apiFixtureRoot, resolve(evidenceDir, 'api-fixtures'), { recursive: true })
+  }
+}
+
 async function compactReportPackage(runDir) {
   const removablePaths = [
     'ctrf-report.json',
@@ -944,6 +1055,11 @@ async function publishLatestReport(runDir) {
   const logsDir = resolve(runDir, 'logs')
   if (existsSync(logsDir)) {
     await cp(logsDir, resolve(latestDir, 'logs'), { recursive: true })
+  }
+
+  const testDataDir = resolve(runDir, 'test-data')
+  if (existsSync(testDataDir)) {
+    await cp(testDataDir, resolve(latestDir, 'test-data'), { recursive: true })
   }
 }
 
@@ -1276,6 +1392,7 @@ async function main() {
   await writeFile(resolve(runDir, 'summary.md'), summary, 'utf8')
   await writeFile(resolve(runDir, 'stakeholder-report.md'), stakeholderReport, 'utf8')
   await writeStakeholderPdf(runDir, stakeholderReport)
+  await writeTestDataEvidencePackage(runDir, manifest)
 
   await compactReportPackage(runDir)
   await publishLatestReport(runDir)

@@ -131,7 +131,7 @@ typecheck: ## Run TypeScript type checking
 # Testing
 #---------------------------------------------------------------------------
 
-test: ## Run tests once (set VARLENS_WEB=1 to also run web-gate static + integration)
+test: ## Run tests once (set VARLENS_WEB=1 to include web-gate project)
 	npm run test $(VITEST_EXTRA_ARGS)
 
 test-watch: ## Run tests in watch mode
@@ -170,7 +170,7 @@ web-parity-e2e: web-data-verify ## Run manifest-backed desktop↔web parity E2E 
 	npm run build
 	VARLENS_RUN_WEB_GATE_PARITY=1 VARLENS_RUN_WEB_PARITY_E2E=1 npx vitest run --project web-gate-parity tests/web-gate/parity/data-manifest-parity.test.ts
 
-web-test-report: ## Generate opt-in web test report artifacts (set VARLENS_WEB_REPORT_PARITY=1 / VARLENS_WEB_REPORT_PARITY_E2E=1 for heavy parity)
+web-test-report: ## Generate web test report artifacts (VARLENS_WEB=1 runs full parity; uses VARLENS_PG_URL or .env.postgres.local)
 	node scripts/reports/run-web-test-report.mjs
 
 web-gate: web-gate-static ## Run the Phase 1 gate fast tests (parity is opt-in via web-gate-parity)

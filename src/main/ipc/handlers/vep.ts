@@ -14,12 +14,16 @@ import { mainLogger } from '../../services/MainLogger'
 // Singleton instances - lazy initialization
 let vepClient: VepApiClient | null = null
 let apiCache: ApiCache | null = null
+const API_FIXTURES_DIR_ENV = 'VARLENS_API_FIXTURES_DIR'
 
 export function registerVepHandlers({ ipcMain, getDb }: HandlerDependencies): void {
   function getVepClient(): VepApiClient {
     if (!vepClient) {
-      const db = getDb().database
-      apiCache = new ApiCache(db)
+      const fixtureDir = process.env[API_FIXTURES_DIR_ENV]
+      if (fixtureDir === undefined || fixtureDir.trim() === '') {
+        const db = getDb().database
+        apiCache = new ApiCache(db)
+      }
       vepClient = new VepApiClient(apiCache)
     }
     return vepClient
@@ -112,6 +116,10 @@ export function registerVepHandlers({ ipcMain, getDb }: HandlerDependencies): vo
   ipcMain.handle('vep:getCacheStats', async () => {
     return wrapHandler(async () => {
       if (!apiCache) {
+        const fixtureDir = process.env[API_FIXTURES_DIR_ENV]
+        if (fixtureDir !== undefined && fixtureDir.trim() !== '') {
+          return { vepCount: 0, hpoCount: 0, totalBytes: 0 }
+        }
         // Initialize cache to get stats
         const db = getDb().database
         apiCache = new ApiCache(db)

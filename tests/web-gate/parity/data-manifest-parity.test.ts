@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, dirname, resolve } from 'node:path'
 
@@ -93,6 +94,7 @@ interface ScenarioTask {
 
 interface ScenarioSideReport {
   completed: boolean
+  resultHash: string | null
   caseCount: number
   totalVariants: number
   queryCounts: {
@@ -110,6 +112,7 @@ interface ScenarioRunReport {
   startedAt: string
   finishedAt: string
   durationMs: number
+  hashMatch: boolean | null
   desktop: ScenarioSideReport
   web: ScenarioSideReport
   error?: string
@@ -410,10 +413,30 @@ function getGitSha(): string | null {
   }
 }
 
+function stableStringify(value: unknown): string {
+  if (value === undefined) return 'null'
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null'
+  if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(',')}]`
+
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, entryValue]) => entryValue !== undefined)
+    .sort(([left], [right]) => left.localeCompare(right))
+
+  return `{${entries
+    .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`)
+    .join(',')}}`
+}
+
+function resultHash(snapshot: ScenarioSnapshot | undefined): string | null {
+  if (snapshot === undefined) return null
+  return createHash('sha256').update(stableStringify(snapshot)).digest('hex')
+}
+
 function summarizeScenarioSide(snapshot: ScenarioSnapshot | undefined): ScenarioSideReport {
   if (snapshot === undefined) {
     return {
       completed: false,
+      resultHash: null,
       caseCount: 0,
       totalVariants: 0,
       queryCounts: { all: 0, highImpact: 0, clinvarPathogenic: 0 },
@@ -430,6 +453,7 @@ function summarizeScenarioSide(snapshot: ScenarioSnapshot | undefined): Scenario
 
   return {
     completed: true,
+    resultHash: resultHash(snapshot),
     caseCount: snapshot.cases.length,
     totalVariants: snapshot.cases.reduce((sum, entry) => sum + entry.variantCount, 0),
     queryCounts: {
@@ -454,6 +478,8 @@ function buildScenarioReport(
   web: ScenarioSnapshot | undefined,
   error?: unknown
 ): ScenarioRunReport {
+  const desktopReport = summarizeScenarioSide(desktop)
+  const webReport = summarizeScenarioSide(web)
   return {
     id: task.id,
     importMode: desktop?.importMode ?? web?.importMode ?? task.importMode,
@@ -461,8 +487,12 @@ function buildScenarioReport(
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
     durationMs: finishedAt.getTime() - startedAt.getTime(),
-    desktop: summarizeScenarioSide(desktop),
-    web: summarizeScenarioSide(web),
+    hashMatch:
+      desktopReport.resultHash === null || webReport.resultHash === null
+        ? null
+        : desktopReport.resultHash === webReport.resultHash,
+    desktop: desktopReport,
+    web: webReport,
     ...(error === undefined ? {} : { error: errorMessage(error) })
   }
 }
@@ -474,6 +504,7 @@ function writeReport(report: ParityRunReport): void {
 }
 
 function renderReportMarkdown(report: ParityRunReport): string {
+  const shortHash = (hash: string | null): string => (hash === null ? 'n/a' : hash.slice(0, 12))
   const lines = [
     '# Web Parity E2E Report',
     '',
@@ -485,8 +516,8 @@ function renderReportMarkdown(report: ParityRunReport): string {
     `Manifest: ${report.manifestPath}`,
     `Snapshot: ${report.snapshotPath}`,
     '',
-    '| Scenario | Mode | Status | Desktop variants | Web variants | Queries | Duration ms |',
-    '| --- | --- | --- | ---: | ---: | --- | ---: |'
+    '| Scenario | Mode | Status | Desktop variants | Web variants | Result hash | Hash match | Queries | Duration ms |',
+    '| --- | --- | --- | ---: | ---: | --- | --- | --- | ---: |'
   ]
 
   for (const scenario of report.scenarios) {
@@ -497,6 +528,8 @@ function renderReportMarkdown(report: ParityRunReport): string {
         scenario.status,
         String(scenario.desktop.totalVariants),
         String(scenario.web.totalVariants),
+        shortHash(scenario.desktop.resultHash),
+        scenario.hashMatch === null ? 'n/a' : scenario.hashMatch ? 'yes' : 'no',
         `all ${scenario.desktop.queryCounts.all}/${scenario.web.queryCounts.all}, high ${scenario.desktop.queryCounts.highImpact}/${scenario.web.queryCounts.highImpact}, clinvar ${scenario.desktop.queryCounts.clinvarPathogenic}/${scenario.web.queryCounts.clinvarPathogenic}`,
         String(scenario.durationMs)
       ].join(' | ')} |`

@@ -7,6 +7,10 @@ Status: implemented first reporting runner (2026-05-12).
 - Default `make ci` does not run web reporting.
 - `VARLENS_WEB=1 make ci` still only extends the web gate as currently designed.
 - `web-test-report` is a separate explicit target.
+- `VARLENS_WEB=1 make web-test-report` runs the full web reporting lane, including parity, and
+  fails if required prerequisites such as `VARLENS_PG_URL` are missing.
+- In local web mode, the runner loads `.env.postgres.local` when `VARLENS_PG_URL` is not already
+  exported and creates a per-run `VARLENS_RECOVERY_KEY_DIR` under the report artifact directory.
 
 Acceptance:
 
@@ -42,6 +46,9 @@ Acceptance:
 - `make web-test-report` attempts all configured non-Postgres suites.
 - `VARLENS_PG_URL=... make web-test-report` includes Postgres-backed integration.
 - `VARLENS_WEB_REPORT_PARITY_E2E=1 VARLENS_PG_URL=... make web-test-report` includes data parity.
+- `VARLENS_WEB=1 VARLENS_PG_URL=... make web-test-report` includes all of the above by default.
+- `VARLENS_WEB=1 make web-test-report` can use the checked-in local Postgres profile when
+  `.env.postgres.local` exists.
 - Later suites still run if an earlier suite fails.
 
 ## Phase 2: Normalize to CTRF
@@ -52,7 +59,7 @@ Responsibilities:
 
 - parses Vitest JSON outputs
 - parses VarLens parity evidence from `.planning/artifacts/web/parity/latest.json`
-- emits `.planning/artifacts/web/test-reporting/latest/ctrf-report.json`
+- compacts `.planning/artifacts/web/test-reporting/latest/` to summary, logs, and stakeholder PDF
 - keeps VarLens-specific data in CTRF `extra`
 
 Acceptance:
@@ -67,11 +74,24 @@ Implemented:
 
 ```text
 .planning/artifacts/web/test-reporting/latest/summary.md
+.planning/artifacts/web/test-reporting/latest/stakeholder-report.pdf
+.planning/artifacts/web/test-reporting/latest/logs/
 ```
 
 Acceptance:
 
 - A developer can identify failed suites without opening JSON.
+- A stakeholder can read a plain-language validation report without command-level implementation
+  detail.
+- A color-coded PDF handoff report is produced next to the technical summary and logs.
+- Raw reporter outputs and temporary render files are removed from the handoff artifact after the
+  summary and PDF are produced.
+- A harness-green run with incomplete exact IPC parity is reported as `INCOMPLETE`, not `PASSED`,
+  and exits non-zero until all 23 stakeholder-facing IPC areas have exact parity evidence.
+- IPC parity evidence is listed as 23 stakeholder-facing IPC areas separately from domain data parity
+  evidence.
+- Parity results show expected/actual counts, query summaries, and per-scenario SHA-256 fingerprints
+  over normalized desktop/web result payloads.
 - Parity failures show expected/actual counts and mismatch summaries.
 - Cleanup success/failure is visible per parity scenario.
 

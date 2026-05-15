@@ -46,29 +46,20 @@ Planned location:
 ```text
 .planning/artifacts/web/test-reporting/
   latest/
-    manifest.json
     summary.md
-    ctrf-report.json
-    junit/
-      web-gate.xml
-      web-gate-parity.xml
-      web-parity-e2e.xml
-    vitest/
-      web-gate.json
-      web-gate-parity.json
-      web-parity-e2e.json
-    parity/
-      latest.json
-      latest.md
-    allure-results/
-    allure-report/
+    stakeholder-report.pdf
+    logs/
   runs/
     <utc-timestamp>-<short-sha>/
-      ...
+      summary.md
+      stakeholder-report.pdf
+      logs/
 ```
 
-`latest/` is disposable. `runs/` is useful for comparing a short sequence of local attempts and
-should still be gitignored.
+`latest/` is disposable. `runs/` keeps the same compact handoff shape for a short sequence of local
+attempts and should still be gitignored. Raw Vitest JSON, JUnit XML, CTRF JSON, temporary
+HTML/Markdown render inputs, and generated secret material are intermediate files only; the runner
+uses them to build the summary/PDF and then removes them from the report package.
 
 ## Report Boundaries
 
@@ -81,4 +72,3 @@ There are two report classes:
 
 Keeping these separate prevents a broad "web gate failed" from hiding the more specific question:
 "Did the same imported data produce the same observable result?"
-

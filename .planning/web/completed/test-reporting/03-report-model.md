@@ -1,10 +1,11 @@
 # Report Model
 
-The canonical report should be stable enough for future CI, local comparison, and PR discussion.
+The canonical report should be stable enough for future CI, local comparison, and PR discussion,
+while the retained local artifact stays small enough to hand to non-technical stakeholders.
 
 ## Top-Level Manifest
 
-`manifest.json` describes the run:
+The runner builds an in-memory manifest that describes the run:
 
 ```json
 {
@@ -35,6 +36,15 @@ The canonical report should be stable enough for future CI, local comparison, an
   }
 }
 ```
+
+The manifest is an intermediate model. It is not retained in the final handoff artifact; the
+published report package keeps `summary.md`, `stakeholder-report.pdf`, and `logs/`.
+
+The report status is intentionally stricter than the command harness status:
+
+- `passed`: required suites passed and exact IPC parity is complete.
+- `incomplete`: required suites passed, but exact IPC parity is not complete.
+- `failed`: at least one required suite failed or was skipped.
 
 ## Suite Record
 
@@ -112,4 +122,3 @@ Real-data parity scenarios need more than pass/fail:
 7. Artifact index.
 
 The summary should avoid dumping full JSON. Full raw files stay linked by path.
-

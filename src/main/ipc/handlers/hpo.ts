@@ -20,12 +20,16 @@ const HpoSearchParamsSchema = z.object({
 // Singleton instances - lazy initialization
 let hpoClient: HpoApiClient | null = null
 let apiCache: ApiCache | null = null
+const API_FIXTURES_DIR_ENV = 'VARLENS_API_FIXTURES_DIR'
 
 export function registerHpoHandlers({ ipcMain, getDb }: HandlerDependencies): void {
   function getHpoClient(): HpoApiClient {
     if (!hpoClient) {
-      const db = getDb().database
-      apiCache = new ApiCache(db)
+      const fixtureDir = process.env[API_FIXTURES_DIR_ENV]
+      if (fixtureDir === undefined || fixtureDir.trim() === '') {
+        const db = getDb().database
+        apiCache = new ApiCache(db)
+      }
       hpoClient = new HpoApiClient(apiCache)
     }
     return hpoClient

@@ -22,7 +22,10 @@
  * authenticated for everything except the few public overrides
  * marked `public: true`.
  */
-import { isAbsolute } from 'path'
+import { randomUUID } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { isAbsolute, join } from 'node:path'
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
@@ -40,12 +43,14 @@ import {
 import type { StorageSession } from '../../main/storage/session'
 import type { StorageReadTask } from '../../main/storage/read-executor'
 import type { StorageWriteTask } from '../../main/storage/write-executor'
+import type { AuditAppendParams } from '../../main/storage/audit-log-types'
 import { PasswordPolicyError, type PostgresWebAuthService } from '../auth/PostgresWebAuthService'
 import type { WebEventHub } from './events'
 import { isReadTaskType, isWriteTaskType, toTaskDomain } from './task-types'
 import type { SortItem, VariantFilter } from '../../shared/types/database'
 import type { MultiFileImportSpec } from '../../shared/types/api'
 import type { StorageCapabilities } from '../../shared/types/storage-capabilities'
+import type { TranscriptInsertRow } from '../../shared/types/transcript'
 import {
   CaseIdSchema,
   CohortSearchParamsSchema,
@@ -54,6 +59,18 @@ import {
   SortItemSchema,
   VariantFilterPartialSchema
 } from '../../shared/types/ipc-schemas'
+import { exportPostgresCohort, exportPostgresVariants } from '../../main/ipc/handlers/export-logic'
+import { quoteIdentifier } from '../../main/storage/postgres/identifiers'
+import type { Pool } from 'pg'
+import {
+  buildGeneStructureFixtureResponse,
+  buildHpoFixtureResponse,
+  buildProteinDomainsFixtureResponse,
+  buildProteinMappingFixtureResponse,
+  buildProteinStructureFixtureResponse,
+  buildVepFixtureResponse
+} from './api-fixture-responses'
+import { getWebGeneReferenceDb } from './web-gene-reference'
 
 /**
  * Methods reachable to a session that still has
@@ -76,14 +93,7 @@ const CohortCarriersParamsSchema = z.object({
 })
 
 function webCapabilities(base: StorageCapabilities): StorageCapabilities {
-  return {
-    ...base,
-    export: {
-      variants: false,
-      cohort: false,
-      streaming: false
-    }
-  }
+  return base
 }
 
 function unsupportedWebCapability(
@@ -112,6 +122,124 @@ function requireAdmin(
     return undefined
   }
   return user
+}
+
+function postgresContext(session: StorageSession): { pool: Pool; schemaName: string } {
+  if (session.workspace.kind !== 'postgres') {
+    throw new Error('Postgres storage session is required for web IPC parity route')
+  }
+  const maybePool = (session as { getPool?: () => Pool }).getPool
+  if (maybePool === undefined) {
+    throw new Error('Postgres storage session does not expose a pg pool')
+  }
+  return {
+    pool: maybePool.call(session),
+    schemaName: quoteIdentifier(session.workspace.schema)
+  }
+}
+
+function normalizeBedLine(
+  line: string
+): { chr: string; start: number; end: number; label?: string } | null {
+  const trimmed = line.trim()
+  if (trimmed === '' || trimmed.startsWith('#')) return null
+  const [chr, startRaw, endRaw, label] = trimmed.split(/\s+/u)
+  const start = Number(startRaw)
+  const end = Number(endRaw)
+  if (chr === undefined || !Number.isInteger(start) || !Number.isInteger(end)) {
+    throw new Error(`Invalid BED row: ${line}`)
+  }
+  return {
+    chr,
+    start,
+    end,
+    ...(label !== undefined && label !== '' ? { label } : {})
+  }
+}
+
+function globalAuditEntries(
+  coords: { chr: string; pos: number; ref: string; alt: string },
+  updates: Record<string, unknown>,
+  oldAnnotation: Record<string, unknown> | null
+): AuditAppendParams[] {
+  const entityKey = `${coords.chr}:${coords.pos}:${coords.ref}:${coords.alt}`
+  const entries: AuditAppendParams[] = []
+  if (updates.acmg_classification !== undefined) {
+    entries.push({
+      action_type: 'acmg_classify',
+      entity_type: 'variant_annotation',
+      entity_key: entityKey,
+      old_value:
+        oldAnnotation === null
+          ? null
+          : JSON.stringify({ acmg_classification: oldAnnotation.acmg_classification }),
+      new_value: JSON.stringify({ acmg_classification: updates.acmg_classification }),
+      user_name: typeof updates.user_name === 'string' ? updates.user_name : null
+    })
+  }
+  if (updates.acmg_evidence !== undefined) {
+    entries.push({
+      action_type: 'acmg_evidence_update',
+      entity_type: 'variant_annotation',
+      entity_key: entityKey,
+      old_value:
+        oldAnnotation === null
+          ? null
+          : JSON.stringify({ acmg_evidence: oldAnnotation.acmg_evidence }),
+      new_value: JSON.stringify({ acmg_evidence: updates.acmg_evidence }),
+      user_name: typeof updates.user_name === 'string' ? updates.user_name : null
+    })
+  }
+  if (updates.starred !== undefined) {
+    entries.push({
+      action_type: updates.starred === true ? 'star' : 'unstar',
+      entity_type: 'variant_annotation',
+      entity_key: entityKey,
+      old_value: oldAnnotation === null ? null : JSON.stringify({ starred: oldAnnotation.starred }),
+      new_value: JSON.stringify({ starred: updates.starred === true ? 1 : 0 }),
+      user_name: typeof updates.user_name === 'string' ? updates.user_name : null
+    })
+  }
+  return entries
+}
+
+function perCaseAuditEntries(
+  caseId: number,
+  variantId: number,
+  updates: Record<string, unknown>,
+  oldAnnotation: Record<string, unknown> | null
+): AuditAppendParams[] {
+  return globalAuditEntries(
+    { chr: 'case', pos: caseId, ref: 'variant', alt: String(variantId) },
+    updates,
+    oldAnnotation
+  ).map((entry) => ({
+    ...entry,
+    entity_type: 'case_variant_annotation',
+    entity_key: `case:${caseId}:variant:${variantId}`
+  }))
+}
+
+async function appendAuditEntries(
+  session: StorageSession,
+  entries: AuditAppendParams[]
+): Promise<void> {
+  for (const entry of entries) {
+    await session.getWriteExecutor().execute({ type: 'audit:append', params: [entry] })
+  }
+}
+
+async function readBedEntries(
+  filePath: string
+): Promise<Array<{ chr: string; start: number; end: number; label?: string }>> {
+  const content = await readFile(filePath, 'utf8')
+  return content
+    .split(/\r?\n/u)
+    .map(normalizeBedLine)
+    .filter(
+      (entry): entry is { chr: string; start: number; end: number; label?: string } =>
+        entry !== null
+    )
 }
 
 export interface DispatcherDeps {
@@ -407,6 +535,15 @@ function buildOverrides(): Record<string, OverrideHandler> {
       }
     },
 
+    'database:getOverview': {
+      async handle(_args, _request, _reply, { session }) {
+        return await session.getReadExecutor().execute({
+          type: 'database:overview',
+          params: []
+        })
+      }
+    },
+
     'database:recentList': {
       handle() {
         return []
@@ -414,14 +551,141 @@ function buildOverrides(): Record<string, OverrideHandler> {
     },
 
     'export:variants': {
-      handle(_args, _request, reply) {
-        return unsupportedWebCapability(reply, 'export.variants')
+      async handle(args, _request, reply, { session }) {
+        const [caseId, filters, caseName] = args
+        const validated = z
+          .object({
+            caseId: CaseIdSchema,
+            filters: VariantFilterPartialSchema,
+            caseName: z.string().min(1).max(500)
+          })
+          .safeParse({ caseId, filters, caseName })
+        if (!validated.success) {
+          reply.code(400)
+          return { error: 'invalid-export-variants-params' }
+        }
+
+        const rows = (await session.getReadExecutor().execute({
+          type: 'export:variants',
+          params: [{ ...validated.data.filters, case_id: validated.data.caseId }]
+        })) as AsyncIterable<Record<string, unknown>>
+        const filePath = join(
+          tmpdir(),
+          `${validated.data.caseName.replace(/[^a-z0-9]/gi, '_')}_web_${randomUUID()}.csv`
+        )
+        return await exportPostgresVariants(rows, filePath, {})
       }
     },
 
     'export:cohort': {
-      handle(_args, _request, reply) {
-        return unsupportedWebCapability(reply, 'export.cohort')
+      async handle(args, _request, reply, { session }) {
+        const [params] = args
+        const validated = CohortSearchParamsSchema.safeParse(params)
+        if (!validated.success) {
+          reply.code(400)
+          return { error: 'invalid-export-cohort-params' }
+        }
+
+        const rows = (await session.getReadExecutor().execute({
+          type: 'export:cohort',
+          params: [validated.data]
+        })) as AsyncIterable<Record<string, unknown>>
+        const filePath = join(tmpdir(), `cohort_variants_web_${randomUUID()}.csv`)
+        return await exportPostgresCohort(rows, filePath, {})
+      }
+    },
+
+    'gene-ref:info': {
+      handle() {
+        return getWebGeneReferenceDb().getInfo()
+      }
+    },
+
+    'gene-ref:assemblies': {
+      handle() {
+        return getWebGeneReferenceDb().getAssemblies()
+      }
+    },
+
+    'hpo:search': {
+      handle(args) {
+        const [query, maxResults] = args
+        if (typeof query !== 'string') throw new Error('hpo.search query must be a string')
+        return buildHpoFixtureResponse(
+          query,
+          typeof maxResults === 'number' ? maxResults : undefined
+        )
+      }
+    },
+
+    'hpo:clearCache': {
+      handle() {
+        return { success: true }
+      }
+    },
+
+    'vep:fetch': {
+      handle(args) {
+        const [chr, pos, ref, alt] = args
+        if (
+          typeof chr !== 'string' ||
+          typeof pos !== 'number' ||
+          typeof ref !== 'string' ||
+          typeof alt !== 'string'
+        ) {
+          throw new Error('Invalid vep.fetch parameters')
+        }
+        return buildVepFixtureResponse(chr, pos, ref, alt)
+      }
+    },
+
+    'vep:getCacheStats': {
+      handle() {
+        return { vepCount: 0, hpoCount: 0, totalBytes: 0 }
+      }
+    },
+
+    'vep:clearCache': {
+      handle() {
+        return { success: true }
+      }
+    },
+
+    'vep:cancel': {
+      handle() {
+        return { success: true }
+      }
+    },
+
+    'protein:getMapping': {
+      handle(args) {
+        const [geneSymbol] = args
+        if (typeof geneSymbol !== 'string') throw new Error('gene symbol must be a string')
+        return buildProteinMappingFixtureResponse(geneSymbol)
+      }
+    },
+
+    'protein:getDomains': {
+      handle(args) {
+        const [accession] = args
+        if (typeof accession !== 'string') throw new Error('UniProt accession must be a string')
+        return buildProteinDomainsFixtureResponse(accession)
+      }
+    },
+
+    'protein:getStructure': {
+      handle(args) {
+        const [accession] = args
+        if (typeof accession !== 'string') throw new Error('UniProt accession must be a string')
+        return buildProteinStructureFixtureResponse(accession)
+      }
+    },
+
+    'protein:getGeneStructure': {
+      handle(args) {
+        const [geneSymbol] = args
+        if (typeof geneSymbol !== 'string') throw new Error('gene symbol must be a string')
+        return buildGeneStructureFixtureResponse(geneSymbol)
       }
     },
 
@@ -604,6 +868,337 @@ function buildOverrides(): Record<string, OverrideHandler> {
     'batch-import:cleanupZipTemp': {
       handle() {
         cleanupZipTemp()
+      }
+    },
+
+    'case-metadata:createCohort': {
+      async handle(args, _request, reply, { session }) {
+        const [name, description] = args
+        if (typeof name !== 'string') {
+          reply.code(400)
+          return { error: 'invalid-cohort-name' }
+        }
+        return await session.getWriteExecutor().execute({
+          type: 'case-metadata:createCohort',
+          params: [{ name, description: typeof description === 'string' ? description : null }]
+        })
+      }
+    },
+
+    'analysis-groups:create': {
+      async handle(args, _request, reply, { session }) {
+        const [params] = args
+        if (params === null || typeof params !== 'object') {
+          reply.code(400)
+          return { error: 'invalid-analysis-group' }
+        }
+        const raw = params as { name?: unknown; groupType?: unknown; description?: unknown }
+        if (typeof raw.name !== 'string') {
+          reply.code(400)
+          return { error: 'invalid-analysis-group-name' }
+        }
+        return await session.getWriteExecutor().execute({
+          type: 'analysis-groups:create',
+          params: [
+            raw.name,
+            raw.groupType === 'tumor_normal' ? raw.groupType : 'family',
+            typeof raw.description === 'string' ? raw.description : undefined
+          ]
+        })
+      }
+    },
+
+    'analysis-groups:addMember': {
+      async handle(args, _request, reply, { session }) {
+        const [params] = args
+        if (params === null || typeof params !== 'object') {
+          reply.code(400)
+          return { error: 'invalid-analysis-group-member' }
+        }
+        const raw = params as {
+          groupId?: unknown
+          caseId?: unknown
+          role?: unknown
+          affectedStatus?: unknown
+          individualId?: unknown
+        }
+        if (
+          typeof raw.groupId !== 'number' ||
+          typeof raw.caseId !== 'number' ||
+          typeof raw.role !== 'string'
+        ) {
+          reply.code(400)
+          return { error: 'invalid-analysis-group-member' }
+        }
+        return await session.getWriteExecutor().execute({
+          type: 'analysis-groups:addMember',
+          params: [
+            raw.groupId,
+            raw.caseId,
+            raw.role as never,
+            typeof raw.affectedStatus === 'string' ? (raw.affectedStatus as never) : undefined,
+            typeof raw.individualId === 'string' ? raw.individualId : undefined
+          ]
+        })
+      }
+    },
+
+    'annotations:getGlobal': {
+      async handle(args, _request, reply, { session }) {
+        const [chr, pos, ref, alt] = args
+        if (
+          typeof chr !== 'string' ||
+          typeof pos !== 'number' ||
+          typeof ref !== 'string' ||
+          typeof alt !== 'string'
+        ) {
+          reply.code(400)
+          return { error: 'invalid-annotation-coordinates' }
+        }
+        return await session.getReadExecutor().execute({
+          type: 'annotations:getGlobal',
+          params: [{ chr, pos, ref, alt }]
+        })
+      }
+    },
+
+    'annotations:upsertGlobal': {
+      async handle(args, _request, reply, { session }) {
+        const [chr, pos, ref, alt, updates] = args
+        if (
+          typeof chr !== 'string' ||
+          typeof pos !== 'number' ||
+          typeof ref !== 'string' ||
+          typeof alt !== 'string' ||
+          updates === null ||
+          typeof updates !== 'object'
+        ) {
+          reply.code(400)
+          return { error: 'invalid-annotation-upsert' }
+        }
+        const coords = { chr, pos, ref, alt }
+        const oldAnnotation = (await session.getReadExecutor().execute({
+          type: 'annotations:getGlobal',
+          params: [coords]
+        })) as Record<string, unknown> | null
+        const result = await session.getWriteExecutor().execute({
+          type: 'annotations:upsertGlobal',
+          params: [coords, updates as never]
+        })
+        await appendAuditEntries(
+          session,
+          globalAuditEntries(coords, updates as Record<string, unknown>, oldAnnotation)
+        )
+        return result
+      }
+    },
+
+    'annotations:upsertPerCase': {
+      async handle(args, _request, reply, { session }) {
+        const [caseId, variantId, updates] = args
+        if (
+          typeof caseId !== 'number' ||
+          typeof variantId !== 'number' ||
+          updates === null ||
+          typeof updates !== 'object'
+        ) {
+          reply.code(400)
+          return { error: 'invalid-per-case-annotation-upsert' }
+        }
+        const oldAnnotation = (await session.getReadExecutor().execute({
+          type: 'annotations:getPerCase',
+          params: [caseId, variantId]
+        })) as Record<string, unknown> | null
+        const result = await session.getWriteExecutor().execute({
+          type: 'annotations:upsertPerCase',
+          params: [caseId, variantId, updates as never]
+        })
+        await appendAuditEntries(
+          session,
+          perCaseAuditEntries(caseId, variantId, updates as Record<string, unknown>, oldAnnotation)
+        )
+        return result
+      }
+    },
+
+    'annotations:getForVariant': {
+      async handle(args, _request, reply, { session }) {
+        const [caseId, chr, pos, ref, alt] = args
+        if (
+          typeof caseId !== 'number' ||
+          typeof chr !== 'string' ||
+          typeof pos !== 'number' ||
+          typeof ref !== 'string' ||
+          typeof alt !== 'string'
+        ) {
+          reply.code(400)
+          return { error: 'invalid-annotation-query' }
+        }
+        return await session.getReadExecutor().execute({
+          type: 'annotations:getForVariant',
+          params: [caseId, { chr, pos, ref, alt }]
+        })
+      }
+    },
+
+    'region-files:importBed': {
+      async handle(args, _request, reply, { session }) {
+        const [fileId, filePath] = args
+        if (typeof fileId !== 'number' || typeof filePath !== 'string' || !isAbsolute(filePath)) {
+          reply.code(400)
+          return { error: 'invalid-bed-import' }
+        }
+        return await session.getWriteExecutor().execute({
+          type: 'region-files:importBed',
+          params: [fileId, await readBedEntries(filePath)]
+        })
+      }
+    },
+
+    'gene-lists:setGenes': {
+      async handle(args, _request, reply, { session }) {
+        const [listId, genes] = args
+        if (
+          typeof listId !== 'number' ||
+          !Array.isArray(genes) ||
+          !genes.every((gene) => typeof gene === 'string')
+        ) {
+          reply.code(400)
+          return { error: 'invalid-gene-list-genes' }
+        }
+        await session.getWriteExecutor().execute({
+          type: 'gene-lists:setGenes',
+          params: [listId, genes]
+        })
+        return await session.getReadExecutor().execute({
+          type: 'gene-lists:getGenes',
+          params: [listId]
+        })
+      }
+    },
+
+    'variants:search': {
+      async handle(args, _request, reply, { session }) {
+        const [caseId, query, limit] = args
+        if (typeof caseId !== 'number' || typeof query !== 'string') {
+          reply.code(400)
+          return { error: 'invalid-variant-search' }
+        }
+        return await session.getReadExecutor().execute({
+          type: 'variants:query',
+          params: [
+            { case_id: caseId, gene_symbol: query },
+            typeof limit === 'number' ? limit : 20,
+            0,
+            undefined,
+            true,
+            false
+          ]
+        })
+      }
+    },
+
+    'variants:columnMeta': {
+      async handle(args, _request, reply, { session }) {
+        const [payload] = args
+        if (payload === null || typeof payload !== 'object') {
+          reply.code(400)
+          return { error: 'invalid-column-meta-payload' }
+        }
+        const value = payload as { caseId?: unknown; caseIds?: unknown; columnKey?: unknown }
+        if (
+          typeof value.columnKey !== 'string' ||
+          (typeof value.caseId !== 'number' &&
+            (!Array.isArray(value.caseIds) ||
+              !value.caseIds.every((caseId) => typeof caseId === 'number')))
+        ) {
+          reply.code(400)
+          return { error: 'invalid-column-meta-payload' }
+        }
+        const scope =
+          typeof value.caseId === 'number'
+            ? { caseId: value.caseId }
+            : { caseIds: value.caseIds as number[] }
+        return await session.getReadExecutor().execute({
+          type: 'variants:columnMeta',
+          params: [scope, value.columnKey]
+        })
+      }
+    },
+
+    'transcripts:list': {
+      async handle(args, _request, reply, { session }) {
+        const [variantId] = args
+        if (typeof variantId !== 'number') {
+          reply.code(400)
+          return { error: 'invalid-transcript-variant-id' }
+        }
+        const { pool, schemaName } = postgresContext(session)
+        const result = await pool.query(
+          `SELECT id, variant_id, transcript_id, gene_symbol, consequence, cdna, aa_change,
+                  hpo_sim_score, moi, is_selected, is_mane_select, is_canonical
+             FROM ${schemaName}.variant_transcripts
+            WHERE variant_id = $1
+            ORDER BY is_selected DESC, transcript_id ASC`,
+          [variantId]
+        )
+        return result.rows
+      }
+    },
+
+    'transcripts:insertAndSwitch': {
+      async handle(args, _request, reply, { session }) {
+        const [variantId, transcript] = args
+        if (
+          typeof variantId !== 'number' ||
+          transcript === null ||
+          typeof transcript !== 'object'
+        ) {
+          reply.code(400)
+          return { error: 'invalid-transcript-insert' }
+        }
+        const row = transcript as TranscriptInsertRow
+        const { pool, schemaName } = postgresContext(session)
+        const client = await pool.connect()
+        try {
+          await client.query('BEGIN')
+          await client.query(
+            `UPDATE ${schemaName}.variant_transcripts SET is_selected = 0 WHERE variant_id = $1`,
+            [variantId]
+          )
+          await client.query(
+            `INSERT INTO ${schemaName}.variant_transcripts
+               (variant_id, transcript_id, gene_symbol, consequence, cdna, aa_change,
+                hpo_sim_score, moi, is_selected, is_mane_select, is_canonical)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, NULL, NULL)
+             ON CONFLICT (variant_id, transcript_id)
+             DO UPDATE SET
+               gene_symbol = EXCLUDED.gene_symbol,
+               consequence = EXCLUDED.consequence,
+               cdna = EXCLUDED.cdna,
+               aa_change = EXCLUDED.aa_change,
+               hpo_sim_score = EXCLUDED.hpo_sim_score,
+               moi = EXCLUDED.moi,
+               is_selected = 1`,
+            [
+              variantId,
+              row.transcript_id,
+              row.gene_symbol,
+              row.consequence,
+              row.cdna,
+              row.aa_change,
+              row.hpo_sim_score,
+              row.moi
+            ]
+          )
+          await client.query('COMMIT')
+          return { success: true }
+        } catch (error) {
+          await client.query('ROLLBACK')
+          throw error
+        } finally {
+          client.release()
+        }
       }
     },
 

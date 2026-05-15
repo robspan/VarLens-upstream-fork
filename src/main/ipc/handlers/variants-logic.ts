@@ -204,7 +204,10 @@ export async function searchVariants(
 ): Promise<unknown> {
   const deps = resolveReadDependencies(getSessionOrDb, getDbOrPool, getDbPool)
   if (deps.session?.capabilities.backend === 'postgres') {
-    throw new Error('PostgreSQL variants:search is deferred from Phase 7')
+    return await deps.session.getReadExecutor().execute({
+      type: 'variants:query',
+      params: [{ case_id: caseId, gene_symbol: query }, limit, 0, undefined, true, false]
+    })
   }
 
   const pool = deps.getDbPool?.()

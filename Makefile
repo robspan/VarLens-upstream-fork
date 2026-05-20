@@ -1,10 +1,16 @@
-.PHONY: help rebuild dev build preview lint lint-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-reset build-web web-ci web-gate web-gate-static web-gate-integration web-gate-postgres web-gate-parity web-parity-e2e web-test-report web-data-gather web-data-prepare web-data-verify sync-upstream install-hooks pilot pilot-down pilot-status pilot-smoke pilot-ssh web-release-enable web-release
+.PHONY: help rebuild dev web-dev build preview lint lint-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-reset build-web web-ci web-gate web-gate-static web-gate-integration web-gate-postgres web-gate-parity web-parity-e2e web-test-report web-data-gather web-data-prepare web-data-verify sync-upstream install-hooks pilot pilot-down pilot-status pilot-smoke pilot-ssh web-release-enable web-release
 
 # Default target - show help
 .DEFAULT_GOAL := help
 
 CI_NODE_VERSION ?= $(shell tr -d '\n' < .nvmrc)
 XVFB_RUN ?= $(shell if command -v xvfb-run >/dev/null 2>&1; then printf 'xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" '; fi)
+WEB_DEV_PORT ?= 8787
+WEB_DEV_SCHEMA ?= web_dev
+WEB_DEV_RECOVERY_KEY_DIR ?= /tmp/varlens-web-dev
+WEB_DEV_API_LATENCY_MS ?= 75
+WEB_DEV_ADMIN_USERNAME ?= admin
+WEB_DEV_ADMIN_PASSWORD ?= varlens-dev-password-2026
 
 define ensure_ci_node
 	@current_node="$$(node -v | sed 's/^v//')"; \
@@ -61,14 +67,38 @@ rebuild: ## Rebuild native modules for Electron (fixes native module version mis
 rebuild-node: ## Rebuild native modules for Node.js (needed before running tests)
 	npm run rebuild:node
 
-dev: rebuild ## Start development server with hot reload (set VARLENS_WEB=1 for web mode)
 ifeq ($(VARLENS_WEB),1)
-	@echo "Web dev mode is not yet implemented — no web build target exists."
-	@echo "See .planning/web/completed/testing/desktop-to-web-parity.md for status."
-	@exit 1
+dev: web-dev ## Start development server (set VARLENS_WEB=1 for web mode)
 else
+dev: rebuild ## Start development server (set VARLENS_WEB=1 for web mode)
 	npm run dev
 endif
+
+web-dev: ## Start local Postgres-backed web mode at http://localhost:$(WEB_DEV_PORT)/
+	@if [ ! -f .env.postgres.local ]; then echo "Missing .env.postgres.local. Copy .env.postgres.example first."; exit 1; fi
+	$(MAKE) pg-up
+	VARLENS_WEB_BASE=/ npm run build:web
+	@echo ""
+	@echo "Starting VarLens web mode:"
+	@echo "  URL:      http://localhost:$(WEB_DEV_PORT)/"
+	@echo "  Health:   http://localhost:$(WEB_DEV_PORT)/healthz"
+	@echo "  Postgres: .env.postgres.local"
+	@echo "  Schema:   $(WEB_DEV_SCHEMA)"
+	@echo "  Secrets:  $${VARLENS_RECOVERY_KEY_DIR:-$(WEB_DEV_RECOVERY_KEY_DIR)}"
+	@echo "  API delay: $${VARLENS_WEB_API_LATENCY_MS:-$(WEB_DEV_API_LATENCY_MS)}ms"
+	@echo "  Dev admin bootstrap (first run only): $(WEB_DEV_ADMIN_USERNAME) / $(WEB_DEV_ADMIN_PASSWORD)"
+	@echo ""
+	@set -a; . ./.env.postgres.local; set +a; \
+		NODE_ENV=development \
+		APP_PATH_PREFIX=/ \
+		VARLENS_WEB_HOST="$${VARLENS_WEB_HOST:-127.0.0.1}" \
+		VARLENS_WEB_PORT="$${VARLENS_WEB_PORT:-$(WEB_DEV_PORT)}" \
+		VARLENS_WEB_API_LATENCY_MS="$${VARLENS_WEB_API_LATENCY_MS:-$(WEB_DEV_API_LATENCY_MS)}" \
+		VARLENS_PG_SCHEMA="$(WEB_DEV_SCHEMA)" \
+		VARLENS_RECOVERY_KEY_DIR="$${VARLENS_RECOVERY_KEY_DIR:-$(WEB_DEV_RECOVERY_KEY_DIR)}" \
+		VARLENS_ADMIN_USERNAME="$${VARLENS_ADMIN_USERNAME:-$(WEB_DEV_ADMIN_USERNAME)}" \
+		VARLENS_ADMIN_PASSWORD="$${VARLENS_ADMIN_PASSWORD:-$(WEB_DEV_ADMIN_PASSWORD)}" \
+		node out/web/server.cjs
 
 dev-postgres: ## Start development server with PostgreSQL backend enabled
 	@if [ ! -f .env.postgres.local ]; then echo "Missing .env.postgres.local. Copy .env.postgres.example first."; exit 1; fi

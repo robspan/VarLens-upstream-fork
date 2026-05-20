@@ -334,10 +334,11 @@ async function main(): Promise<void> {
       `VARLENS_WEB_PORT must be an integer in [0, 65535]; got: ${JSON.stringify(portRaw)}`
     )
   }
+  const host = process.env.VARLENS_WEB_HOST ?? '0.0.0.0'
 
   const app = await buildApp({ admin: readAdminEnv() })
 
-  await app.listen({ port, host: '0.0.0.0' })
+  await app.listen({ port, host })
 
   const address = app.server.address()
   const boundPort = address !== null && typeof address === 'object' ? address.port : port

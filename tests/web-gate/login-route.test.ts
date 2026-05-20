@@ -41,9 +41,9 @@ describe('resolveAppPathPrefix', () => {
     expect(resolveAppPathPrefix()).toBe('/app')
   })
 
-  test('preserves the bare /', () => {
+  test('maps the bare / to a root mount prefix', () => {
     process.env.APP_PATH_PREFIX = '/'
-    expect(resolveAppPathPrefix()).toBe('/')
+    expect(resolveAppPathPrefix()).toBe('')
   })
 
   test('whitespace-only env reverts to default', () => {
@@ -91,6 +91,12 @@ describe('sanitizeNextParam — open-redirect defence', () => {
   test('non-default prefix accepts paths inside it and rejects siblings', () => {
     expect(sanitizeNextParam('/labor/cases', '/labor')).toBe('/labor/cases')
     expect(sanitizeNextParam('/laboratory/x', '/labor')).toBe('/labor/')
+  })
+
+  test('root mount accepts safe relative paths', () => {
+    expect(sanitizeNextParam('/cases', '')).toBe('/cases')
+    expect(sanitizeNextParam(undefined, '')).toBe('/')
+    expect(sanitizeNextParam('//evil.example/', '')).toBe('/')
   })
 })
 

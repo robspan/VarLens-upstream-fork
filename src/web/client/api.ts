@@ -19,6 +19,9 @@
  * methods actually exist; the Proxy is permissive on purpose.
  */
 import type { WindowAPI } from '../../shared/types/api'
+import type { UpdateStatus } from '../../shared/types/api'
+
+declare const __APP_VERSION__: string
 
 interface InvokeBody {
   args: unknown[]
@@ -118,7 +121,26 @@ const SHELL_API = {
     return Promise.resolve({ ok: true } as unknown)
   },
   showItemInFolder: () => Promise.resolve({ ok: false } as unknown),
-  updateDomains: (domains: string[]) => httpInvoke('shell', 'updateUserDomains', [domains])
+  updateDomains: (_domains: string[]) => Promise.resolve(undefined)
+}
+
+const SYSTEM_API = {
+  getVersion: () => Promise.resolve({ app: __APP_VERSION__, electron: 'web' }),
+  getUserDataPath: () => Promise.resolve('web'),
+  getCpuCount: () => Promise.resolve(navigator.hardwareConcurrency || 1),
+  setWorkerThreads: (_count: number) => Promise.resolve(undefined),
+  getWorkerThreads: () => Promise.resolve(0),
+  getLogFilePath: () => Promise.resolve('')
+}
+
+const idleUpdateStatus: UpdateStatus = { state: 'idle' }
+
+const UPDATER_API = {
+  checkForUpdate: () => Promise.resolve(undefined),
+  downloadUpdate: () => Promise.resolve(undefined),
+  installUpdate: () => Promise.resolve(undefined),
+  getStatus: () => Promise.resolve(idleUpdateStatus),
+  onStatusChange: (_callback: (status: UpdateStatus) => void) => NOOP_UNSUBSCRIBE
 }
 
 function buildImportApi(): unknown {
@@ -140,7 +162,9 @@ function buildImportApi(): unknown {
 const DOMAIN_OVERRIDES: Record<string, unknown> = {
   import: buildImportApi(),
   perf: PERF_API,
-  shell: SHELL_API
+  shell: SHELL_API,
+  system: SYSTEM_API,
+  updater: UPDATER_API
 }
 
 export function createApi(): WindowAPI {

@@ -105,7 +105,8 @@ make ci                      # desktop CI gate
 VARLENS_WEB=1 make ci        # desktop + web
 
 make dev                     # Electron dev server
-VARLENS_WEB=1 make dev       # web dev (placeholder; web build target not yet implemented)
+VARLENS_WEB=1 make dev       # local Postgres-backed web server at http://localhost:8787/
+make web-dev                 # same web server target without setting VARLENS_WEB
 ```
 
 This matches the §app2.1 "desktop is default; web is opt-in" model. A desktop-only contributor never needs to set the var; a web-track contributor sets it once per shell.

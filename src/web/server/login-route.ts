@@ -39,12 +39,14 @@ export const DEFAULT_APP_PATH_PREFIX = '/varlens'
  * Resolve the URL prefix the SPA is mounted under. Reads `APP_PATH_PREFIX`
  * from the environment to match the Caddy + renderer-build convention.
  * Empty / unset → default `/varlens` (the value baked into the Caddyfile).
- * The leading slash is enforced, the trailing slash is stripped, so
- * concatenation (`prefix + '/'`, `prefix + '/api/...'`) is unambiguous.
+ * A literal `/` means root mount and resolves to an empty prefix, so
+ * concatenation (`prefix + '/'`, `prefix + '/api/...'`) stays unambiguous.
+ * Otherwise the leading slash is enforced and the trailing slash is stripped.
  */
 export function resolveAppPathPrefix(): string {
   const raw = process.env.APP_PATH_PREFIX
   const value = typeof raw === 'string' && raw.trim() !== '' ? raw.trim() : DEFAULT_APP_PATH_PREFIX
+  if (value === '/') return ''
   const withLeading = value.startsWith('/') ? value : '/' + value
   return withLeading.length > 1 && withLeading.endsWith('/')
     ? withLeading.slice(0, -1)
@@ -57,15 +59,20 @@ export function resolveAppPathPrefix(): string {
  * abuse via a crafted `?next=https://evil.example/...`.
  */
 export function sanitizeNextParam(next: unknown, appPathPrefix: string): string {
-  if (typeof next !== 'string' || next === '') return appPathPrefix + '/'
+  const defaultTarget = appPathPrefix === '' ? '/' : appPathPrefix + '/'
+  if (typeof next !== 'string' || next === '') return defaultTarget
   // Reject anything containing scheme, authority, backslashes, or
   // protocol-relative prefixes. Must start with a single `/` followed
   // by something other than `/` or `\`.
-  if (!/^\/[^/\\]/.test(next)) return appPathPrefix + '/'
+  if (!/^\/[^/\\]/.test(next)) return defaultTarget
   // Must remain inside the configured app prefix so we never bounce
   // the browser to an unrelated route on the same origin.
-  if (next !== appPathPrefix && !next.startsWith(appPathPrefix + '/')) {
-    return appPathPrefix + '/'
+  if (
+    appPathPrefix !== '' &&
+    next !== appPathPrefix &&
+    !next.startsWith(appPathPrefix + '/')
+  ) {
+    return defaultTarget
   }
   return next
 }

@@ -16,12 +16,21 @@ import { resolve } from 'node:path'
 
 import pkg from './package.json'
 
+function normalizeBase(value: string | undefined): string {
+  const raw = value?.trim()
+  if (raw === undefined || raw === '') return '/varlens/'
+  if (raw === '/') return '/'
+  const withLeading = raw.startsWith('/') ? raw : '/' + raw
+  return withLeading.endsWith('/') ? withLeading : withLeading + '/'
+}
+
 export default defineConfig({
   root: resolve(__dirname, 'src/web'),
   // Caddy mounts the app at /varlens/* and handle_paths strips the prefix.
   // The browser still loads index.html from /varlens/, so asset URLs and
-  // API calls must include the prefix to hit Caddy correctly.
-  base: '/varlens/',
+  // API calls must include the prefix to hit Caddy correctly. Local web-dev
+  // overrides this to `/` because there is no prefix-stripping Caddy layer.
+  base: normalizeBase(process.env.VARLENS_WEB_BASE),
   publicDir: resolve(__dirname, 'src/renderer/src/assets'),
   resolve: {
     alias: {

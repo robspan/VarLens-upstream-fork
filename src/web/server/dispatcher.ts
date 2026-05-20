@@ -86,6 +86,7 @@ import { getWebGeneReferenceDb } from './web-gene-reference'
  */
 const PRE_ROTATION_ALLOWED = new Set<string>(['auth:changePassword', 'auth:logout'])
 const SERVER_PATH_IMPORT_ENV = 'VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT'
+const DEV_API_LATENCY_ENV = 'VARLENS_WEB_API_LATENCY_MS'
 const CohortCarriersParamsSchema = z.object({
   chr: z.string().min(1),
   pos: z.number().int().positive(),
@@ -145,6 +146,25 @@ function postgresContext(session: StorageSession): { pool: Pool; schemaName: str
     pool: maybePool.call(session),
     schemaName: quoteIdentifier(session.workspace.schema)
   }
+}
+
+export function resolveDevApiLatencyMs(env: NodeJS.ProcessEnv = process.env): number {
+  if (env.NODE_ENV !== 'development') return 0
+
+  const raw = env[DEV_API_LATENCY_ENV]
+  if (raw === undefined || raw.trim() === '') return 0
+
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value < 0 || value > 5000) {
+    throw new Error(`${DEV_API_LATENCY_ENV} must be an integer between 0 and 5000; got ${raw}`)
+  }
+  return value
+}
+
+async function applyDevApiLatency(): Promise<void> {
+  const delayMs = resolveDevApiLatencyMs()
+  if (delayMs <= 0) return
+  await new Promise((resolve) => setTimeout(resolve, delayMs))
 }
 
 function normalizeBedLine(
@@ -1344,6 +1364,8 @@ export function registerDispatcher(
     Params: { domain: string; method: string }
     Body: InvokeBody
   }>('/api/:domain/:method', async (request, reply) => {
+    await applyDevApiLatency()
+
     const { domain, method } = request.params
     const args = (request.body?.args ?? []) as unknown[]
 

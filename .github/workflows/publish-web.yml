@@ -20,6 +20,13 @@
 #
 # The published digest goes into the workflow summary so VarLens-IaC can
 # pin the image by sha256 (per its §vertrag2.3 reproducibility rule).
+#
+# Fork note: `GITHUB_TOKEN` can only push to an existing GHCR package when
+# that package grants this repository write access. The disposable
+# upstream-fork repo should still run the web gate, but it must not fail just
+# because `ghcr.io/<owner>/varlens-web` is owned by a different repository.
+# Set repository variable `VARLENS_WEB_PUBLISH_GHCR=1` after granting package
+# access if a fork intentionally needs to publish an edge image.
 
 name: publish-web
 
@@ -79,6 +86,10 @@ jobs:
 
   build-and-push:
     needs: web-ci
+    if: |
+      github.repository == 'robspan/VarLens'
+      || github.repository == 'berntpopp/VarLens'
+      || vars.VARLENS_WEB_PUBLISH_GHCR == '1'
     runs-on: ubuntu-latest
     outputs:
       digest: ${{ steps.push.outputs.digest }}
@@ -119,21 +130,46 @@ jobs:
 
       - name: Summarise digest
         run: |
-          echo "## Published image" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Digest:** \`${{ steps.push.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.meta.outputs.tags }}" | sed 's/^/- `/' | sed 's/$/`/' >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Pin in VarLens-IaC \`compose/docker-compose.yml\`:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`yaml" >> $GITHUB_STEP_SUMMARY
-          echo "image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.push.outputs.digest }}" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Published image"
+            echo ""
+            echo "**Digest:** \`${{ steps.push.outputs.digest }}\`"
+            echo ""
+            echo "**Tags:**"
+            echo "${{ steps.meta.outputs.tags }}" | sed 's/^/- `/' | sed 's/$/`/'
+            echo ""
+            echo "Pin in VarLens-IaC \`compose/docker-compose.yml\`:"
+            echo ""
+            echo "\`\`\`yaml"
+            echo "image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.push.outputs.digest }}"
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish-skipped:
+    needs: web-ci
+    if: |
+      github.repository != 'robspan/VarLens'
+      && github.repository != 'berntpopp/VarLens'
+      && vars.VARLENS_WEB_PUBLISH_GHCR != '1'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain skipped GHCR publish
+        run: |
+          {
+            echo "## GHCR publish skipped"
+            echo ""
+            echo "The web gate passed, but this repository is not configured to publish"
+            echo "\`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:edge\`."
+            echo ""
+            echo "This avoids fork-only 403 failures when the existing GHCR package"
+            echo "is owned by another repository. To publish from this repository,"
+            echo "grant it write access to the GHCR package and set repository"
+            echo "variable \`VARLENS_WEB_PUBLISH_GHCR=1\`."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   trivy-scan:
     needs: build-and-push
+    if: needs.build-and-push.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read

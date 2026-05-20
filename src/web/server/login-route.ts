@@ -67,11 +67,7 @@ export function sanitizeNextParam(next: unknown, appPathPrefix: string): string 
   if (!/^\/[^/\\]/.test(next)) return defaultTarget
   // Must remain inside the configured app prefix so we never bounce
   // the browser to an unrelated route on the same origin.
-  if (
-    appPathPrefix !== '' &&
-    next !== appPathPrefix &&
-    !next.startsWith(appPathPrefix + '/')
-  ) {
+  if (appPathPrefix !== '' && next !== appPathPrefix && !next.startsWith(appPathPrefix + '/')) {
     return defaultTarget
   }
   return next

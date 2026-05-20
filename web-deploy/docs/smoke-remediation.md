@@ -214,14 +214,15 @@ make -C web-deploy stack-up
 
 ### 9. Logs with auth ok
 
-**What it tests:** `authenticated request to https://$IP/logs/`
-returns `200`.
+**What it tests:** authenticated access to `https://$IP/logs/` using
+`KUMA_ADMIN_USER` and `KUMA_ADMIN_PASSWORD` from the operator environment or
+`web-deploy/.env` returns `200`.
 
 **Failure modes:**
 
-- `got: 401` — password rotated. The smoke target hardcodes
-  `<configured credentials>`; if the deployment uses a different password
-  the check needs updating.
+- `got: 401` — password drift. The smoke target reads
+  `KUMA_ADMIN_USER` and `KUMA_ADMIN_PASSWORD`; confirm they match the
+  Caddy `/logs/` basic-auth gate.
 - `got: 502` — Dozzle container is down.
 
 **Diagnose:**

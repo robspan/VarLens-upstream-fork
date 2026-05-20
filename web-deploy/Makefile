@@ -419,7 +419,10 @@ smoke:
 		if [ "$$got" = "$$expected" ]; then echo "  ok   $$label  ($$got)"; \
 		elif [ "$$got" = "000" ]; then echo "  WARN $$label  HTTPS unreachable (got 000) — likely TLS not ready (LE rate limit on recycled IP, ACME still issuing, or self-signed fallback); not failing the run"; WARNED=1; \
 		else echo "  FAIL $$label  expected $$expected, got $$got"; FAILED=1; fi; }; \
-	FAILED=0; WARNED=0; \
+		if [ -f .env ]; then set -a; . ./.env; set +a; fi; \
+		LOGS_AUTH_USER="$${KUMA_ADMIN_USER:-admin}"; \
+		LOGS_AUTH_PASSWORD="$${KUMA_ADMIN_PASSWORD:-}"; \
+		FAILED=0; WARNED=0; \
 	check     "SSH reachable"            "yes" "$$(ssh -i $(SSH_KEY) -o BatchMode=yes -o ConnectTimeout=5 deploy@$$IP echo yes 2>/dev/null)"; \
 	check     "HTTP redirect to HTTPS"   "308" "$$(curl -s -o /dev/null -w '%{http_code}' http://$$IP/)"; \
 	check_tls "Welcome page 200"         "200" "$$(curl -ks -o /dev/null -w '%{http_code}' https://$$IP/welcome)"; \
@@ -428,7 +431,9 @@ smoke:
 	check_tls "Kuma /manifest.json 200"  "200" "$$(curl -ks -o /dev/null -w '%{http_code}' https://$$IP/manifest.json)"; \
 	check_tls "Old /monitor redirects"   "301" "$$(curl -ks -o /dev/null -w '%{http_code}' https://$$IP/monitor/)"; \
 	check_tls "Logs without auth 401"    "401" "$$(curl -ks -o /dev/null -w '%{http_code}' https://$$IP/logs/)"; \
-	check_tls "Logs with auth ok"        "200" "$$(curl -ks -o /dev/null -w '%{http_code}' -u <configured credentials> https://$$IP/logs/)"; \
+		if [ -z "$$LOGS_AUTH_PASSWORD" ]; then echo "  FAIL Logs with auth ok  KUMA_ADMIN_PASSWORD not set"; FAILED=1; \
+		else LOGS_AUTH_HEADER="$$(printf '%s:%s' "$$LOGS_AUTH_USER" "$$LOGS_AUTH_PASSWORD" | base64 | tr -d '\n')"; \
+			check_tls "Logs with auth ok"        "200" "$$(curl -ks -o /dev/null -w '%{http_code}' -H "Authorization: Basic $$LOGS_AUTH_HEADER" https://$$IP/logs/)"; fi; \
 	check_tls "VarLens /varlens/healthz" "200" "$$(curl -ks -o /dev/null -w '%{http_code}' https://$$IP/varlens/healthz)"; \
 	check_tls "Login wall: anon /varlens/ → 302 /login" "302" "$$(curl -ks -o /dev/null -w '%{http_code}' https://$$IP/varlens/)"; \
 	check_tls "Login page reachable"     "200" "$$(curl -ks -o /dev/null -w '%{http_code}' https://$$IP/varlens/login)"; \

@@ -131,6 +131,20 @@ A linter enforces formatting and generic TypeScript rules. What follows is what 
 - **Vue components** use `<script setup lang="ts">` with Composition API. Props via `defineProps<T>()`, emits via `defineEmits<{...}>()`. Prefer composables in `src/renderer/src/composables/` for shared logic — do **not** put shared logic in components.
 - **Don't add try/catch for control flow in main-process IPC paths** — `wrapHandler` already converts thrown errors into `SerializableError` with structured fields. Let errors throw.
 
+## LLM-Sustainable Development
+
+VarLens should stay easy for coding agents and humans to inspect in bounded context. Treat these as review gates for all new or substantially changed code:
+
+- **Keep source files under 600 lines** whenever practical. Prefer 150-400 lines. If a touched file exceeds 600 lines, either split it by responsibility or explain in the PR why the boundary would be worse. Generated code, static fixtures, migrations, snapshots, and lockfiles are exempt.
+- **Keep functions small and purpose-built.** A function over ~80 lines or with several unrelated branches should usually become smaller named helpers. The helper names should explain the domain step, not just the syntax.
+- **One module, one reason to change.** Do not mix UI rendering, IPC calls, parsing, persistence, and business rules in one file unless the surrounding pattern already does so and the file remains small.
+- **Make boundaries explicit.** Shared behavior belongs in typed contracts, composables, services, or parser modules with clear inputs and outputs. Avoid hidden global state and cross-layer imports that force agents to read half the repository to make a local change.
+- **Prefer narrow context and narrow edits.** Before changing code, identify the owning module, nearest tests, and public contract. Do not perform opportunistic rewrites outside that scope.
+- **Add or update tests at the behavior boundary.** For parser, IPC, storage, import/export, classification, and filtering changes, test the externally visible behavior rather than private implementation details.
+- **Leave durable breadcrumbs only where useful.** If a repeated agent mistake needs prevention, add a short rule here or to the relevant `.planning/` note. Do not add broad advice like "write clean code"; if removing the sentence would not cause mistakes, cut it.
+- **Split large work into reviewable PRs.** If a task touches more than one major boundary (for example import pipeline + storage + renderer), prefer staged PRs with `.planning/` specs or plans unless atomicity is required.
+- **Preserve agent context hygiene.** Keep `AGENTS.md` lean and stable: commands, non-obvious architecture, project-specific rules, and gotchas belong here; long explanations, inventories, and volatile research belong in `.planning/`.
+
 ## UI / Vuetify Rules
 
 Full pattern catalog in `.planning/docs/UI-PATTERNS.md`. The two that bite hardest:

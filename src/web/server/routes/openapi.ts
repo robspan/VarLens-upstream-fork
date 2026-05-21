@@ -19,6 +19,7 @@ import {
   AuthSuccessSchema,
   AuthUserSchema
 } from '../../../shared/api/schemas/auth'
+import { CaseInvokeBodySchemas, CaseUnknownResponseSchema } from '../../../shared/api/schemas/cases'
 import {
   CohortInvokeBodySchemas,
   CohortSummaryStatusSchema,
@@ -205,6 +206,17 @@ function buildAuthOpenApiPaths(): Record<string, OpenApiPathItem> {
   }
 }
 
+function buildCaseOpenApiPaths(): Record<string, OpenApiPathItem> {
+  return {
+    '/api/cases/list': dispatcherMethodOperation({
+      tag: 'cases',
+      summary: 'List cases available in the current workspace',
+      body: CaseInvokeBodySchemas.list,
+      response: CaseUnknownResponseSchema
+    })
+  }
+}
+
 function buildVariantOpenApiPaths(): Record<string, OpenApiPathItem> {
   return {
     '/api/variants/search': dispatcherMethodOperation({
@@ -296,6 +308,7 @@ function appendDocumentedDispatcherPaths(document: OpenApiDocument): OpenApiDocu
     paths: {
       ...document.paths,
       ...buildAuthOpenApiPaths(),
+      ...buildCaseOpenApiPaths(),
       ...buildCohortOpenApiPaths(),
       ...buildVariantOpenApiPaths()
     }

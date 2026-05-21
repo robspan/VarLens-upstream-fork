@@ -7,6 +7,13 @@ import {
   CaseCommentSchema
 } from '../../src/shared/api/schemas/case-comments'
 import {
+  CaseMetricSchema,
+  CaseMetricInvokeBodySchemas,
+  CaseMetricWithDefinitionListResponseSchema,
+  MetricDefinitionSchema,
+  MetricDefinitionListResponseSchema
+} from '../../src/shared/api/schemas/case-metrics'
+import {
   TagsInvokeBodySchemas,
   TagsListResponseSchema,
   TagsUsageCountResponseSchema
@@ -60,6 +67,20 @@ function requestSchema(path: string): JsonObject | undefined {
     >
   }
   return document.paths?.[path]?.post?.requestBody?.content?.['application/json']?.schema
+}
+
+function propertiesOf(schema: JsonObject): JsonObject {
+  return schema.properties as JsonObject
+}
+
+function requiredOf(schema: JsonObject): string[] {
+  return schema.required as string[]
+}
+
+function nullableSchema(type: string): JsonObject {
+  return expect.objectContaining({
+    anyOf: [expect.objectContaining({ type }), expect.objectContaining({ type: 'null' })]
+  }) as unknown as JsonObject
 }
 
 describe('shared API schemas', () => {
@@ -269,5 +290,255 @@ describe('shared API schemas', () => {
       expect.objectContaining({ type: 'object' })
     )
     expect(responseSchema('/api/case-comments/delete', '200')).toBeUndefined()
+  })
+
+  test('documents case metric request and response contracts', () => {
+    expect(argsItems(CaseMetricInvokeBodySchemas.createDefinition)).toEqual([
+      expect.objectContaining({ type: 'string', minLength: 1, maxLength: 200 }),
+      expect.objectContaining({ type: 'string', enum: ['numeric', 'text', 'date'] }),
+      expect.objectContaining({ type: 'string' }),
+      expect.objectContaining({ type: 'string', minLength: 1 })
+    ])
+    expect(argsItems(CaseMetricInvokeBodySchemas.listForCase)).toEqual([
+      expect.objectContaining({ type: 'integer', exclusiveMinimum: 0 })
+    ])
+    expect(argsItems(CaseMetricInvokeBodySchemas.upsert)).toEqual([
+      expect.objectContaining({ type: 'integer', exclusiveMinimum: 0 }),
+      expect.objectContaining({ type: 'integer', exclusiveMinimum: 0 }),
+      expect.objectContaining({
+        type: 'object',
+        properties: expect.objectContaining({
+          numeric_value: expect.objectContaining({ anyOf: expect.any(Array) }),
+          text_value: expect.objectContaining({ anyOf: expect.any(Array) }),
+          date_value: expect.objectContaining({ anyOf: expect.any(Array) })
+        })
+      })
+    ])
+    expect(argsItems(CaseMetricInvokeBodySchemas.delete)).toEqual([
+      expect.objectContaining({ type: 'integer', exclusiveMinimum: 0 }),
+      expect.objectContaining({ type: 'integer', exclusiveMinimum: 0 })
+    ])
+
+    const definitions = toJsonSchema(MetricDefinitionListResponseSchema)
+    const definition = (definitions.items as JsonObject).properties as JsonObject
+    const definitionSchema = toJsonSchema(MetricDefinitionSchema)
+    expect(definition).toEqual(
+      expect.objectContaining({
+        id: expect.objectContaining({ type: 'integer', exclusiveMinimum: 0 }),
+        name: expect.objectContaining({ type: 'string' }),
+        value_type: expect.objectContaining({ type: 'string', enum: ['numeric', 'text', 'date'] }),
+        unit: expect.objectContaining({ type: 'string' }),
+        category: expect.objectContaining({ type: 'string' }),
+        is_predefined: expect.objectContaining({ type: 'integer' }),
+        created_at: expect.objectContaining({ type: 'integer', minimum: 0 })
+      })
+    )
+    expect(requiredOf(definitionSchema)).toEqual([
+      'id',
+      'name',
+      'value_type',
+      'unit',
+      'category',
+      'is_predefined',
+      'created_at'
+    ])
+
+    const metrics = toJsonSchema(CaseMetricWithDefinitionListResponseSchema)
+    const metric = (metrics.items as JsonObject).properties as JsonObject
+    const metricSchema = toJsonSchema(CaseMetricSchema)
+    expect(metric).toEqual(
+      expect.objectContaining({
+        id: expect.objectContaining({ type: 'integer', exclusiveMinimum: 0 }),
+        case_id: expect.objectContaining({ type: 'integer', exclusiveMinimum: 0 }),
+        metric_id: expect.objectContaining({ type: 'integer', exclusiveMinimum: 0 }),
+        numeric_value: nullableSchema('number'),
+        text_value: nullableSchema('string'),
+        date_value: nullableSchema('string'),
+        created_at: expect.objectContaining({ type: 'integer', minimum: 0 }),
+        updated_at: expect.objectContaining({ type: 'integer', minimum: 0 }),
+        name: expect.objectContaining({ type: 'string' }),
+        value_type: expect.objectContaining({ type: 'string', enum: ['numeric', 'text', 'date'] }),
+        unit: expect.objectContaining({ type: 'string' }),
+        metric_category: expect.objectContaining({ type: 'string' })
+      })
+    )
+    expect(propertiesOf(metricSchema)).toEqual(
+      expect.objectContaining({
+        numeric_value: nullableSchema('number'),
+        text_value: nullableSchema('string'),
+        date_value: nullableSchema('string'),
+        updated_at: expect.objectContaining({ type: 'integer', minimum: 0 })
+      })
+    )
+    expect(requiredOf(metricSchema)).toEqual([
+      'id',
+      'case_id',
+      'metric_id',
+      'numeric_value',
+      'text_value',
+      'date_value',
+      'created_at',
+      'updated_at'
+    ])
+
+    expect(
+      CaseMetricInvokeBodySchemas.createDefinition.safeParse({
+        args: ['Mean coverage', 'numeric', 'x', 'Sequencing QC']
+      }).success
+    ).toBe(true)
+    expect(
+      CaseMetricInvokeBodySchemas.createDefinition.safeParse({
+        args: ['Mean coverage', 'boolean', 'x', 'Sequencing QC']
+      }).success
+    ).toBe(false)
+    expect(
+      CaseMetricInvokeBodySchemas.upsert.safeParse({
+        args: [1, 2, { numeric_value: 38.5 }]
+      }).success
+    ).toBe(true)
+    expect(CaseMetricInvokeBodySchemas.delete.safeParse({ args: [1, 0] }).success).toBe(false)
+  })
+
+  test('documents generated OpenAPI case metric paths', () => {
+    expect(requestSchema('/api/case-metrics/listDefinitions')).toEqual(
+      expect.objectContaining({
+        properties: expect.objectContaining({
+          args: expect.objectContaining({
+            minItems: 0,
+            maxItems: 0,
+            'x-varlens-prefixItems': []
+          })
+        })
+      })
+    )
+    expect(requestSchema('/api/case-metrics/createDefinition')).toEqual(
+      expect.objectContaining({
+        properties: expect.objectContaining({
+          args: expect.objectContaining({
+            minItems: 4,
+            maxItems: 4,
+            items: expect.objectContaining({ anyOf: expect.any(Array) }),
+            'x-varlens-prefixItems': [
+              expect.objectContaining({ type: 'string', minLength: 1, maxLength: 200 }),
+              expect.objectContaining({ type: 'string', enum: ['numeric', 'text', 'date'] }),
+              expect.objectContaining({ type: 'string' }),
+              expect.objectContaining({ type: 'string', minLength: 1 })
+            ]
+          })
+        })
+      })
+    )
+    expect(requestSchema('/api/case-metrics/listForCase')).toEqual(
+      expect.objectContaining({
+        properties: expect.objectContaining({
+          args: expect.objectContaining({
+            minItems: 1,
+            maxItems: 1,
+            'x-varlens-prefixItems': [
+              expect.objectContaining({ type: 'integer', exclusiveMinimum: 0 })
+            ]
+          })
+        })
+      })
+    )
+    expect(requestSchema('/api/case-metrics/upsert')).toEqual(
+      expect.objectContaining({
+        properties: expect.objectContaining({
+          args: expect.objectContaining({
+            minItems: 3,
+            maxItems: 3,
+            'x-varlens-prefixItems': [
+              expect.objectContaining({ type: 'integer', exclusiveMinimum: 0 }),
+              expect.objectContaining({ type: 'integer', exclusiveMinimum: 0 }),
+              expect.objectContaining({
+                type: 'object',
+                properties: expect.objectContaining({
+                  numeric_value: nullableSchema('number'),
+                  text_value: nullableSchema('string'),
+                  date_value: nullableSchema('string')
+                })
+              })
+            ]
+          })
+        })
+      })
+    )
+    expect(requestSchema('/api/case-metrics/delete')).toEqual(
+      expect.objectContaining({
+        properties: expect.objectContaining({
+          args: expect.objectContaining({
+            minItems: 2,
+            maxItems: 2,
+            'x-varlens-prefixItems': [
+              expect.objectContaining({ type: 'integer', exclusiveMinimum: 0 }),
+              expect.objectContaining({ type: 'integer', exclusiveMinimum: 0 })
+            ]
+          })
+        })
+      })
+    )
+    expect(responseSchema('/api/case-metrics/listDefinitions', '200')).toEqual(
+      expect.objectContaining({
+        type: 'array',
+        items: expect.objectContaining({
+          properties: expect.objectContaining({
+            id: expect.objectContaining({ type: 'integer', exclusiveMinimum: 0 }),
+            name: expect.objectContaining({ type: 'string' }),
+            value_type: expect.objectContaining({ enum: ['numeric', 'text', 'date'] }),
+            unit: expect.objectContaining({ type: 'string' }),
+            category: expect.objectContaining({ type: 'string' }),
+            is_predefined: expect.objectContaining({ type: 'integer' }),
+            created_at: expect.objectContaining({ type: 'integer', minimum: 0 })
+          })
+        })
+      })
+    )
+    expect(responseSchema('/api/case-metrics/createDefinition', '200')).toEqual(
+      expect.objectContaining({
+        type: 'object',
+        properties: expect.objectContaining({
+          id: expect.objectContaining({ type: 'integer', exclusiveMinimum: 0 }),
+          name: expect.objectContaining({ type: 'string' }),
+          value_type: expect.objectContaining({ enum: ['numeric', 'text', 'date'] }),
+          unit: expect.objectContaining({ type: 'string' }),
+          category: expect.objectContaining({ type: 'string' }),
+          is_predefined: expect.objectContaining({ type: 'integer' }),
+          created_at: expect.objectContaining({ type: 'integer', minimum: 0 })
+        })
+      })
+    )
+    expect(responseSchema('/api/case-metrics/listForCase', '200')).toEqual(
+      expect.objectContaining({
+        type: 'array',
+        items: expect.objectContaining({
+          properties: expect.objectContaining({
+            case_id: expect.objectContaining({ type: 'integer', exclusiveMinimum: 0 }),
+            numeric_value: nullableSchema('number'),
+            text_value: nullableSchema('string'),
+            date_value: nullableSchema('string'),
+            updated_at: expect.objectContaining({ type: 'integer', minimum: 0 }),
+            name: expect.objectContaining({ type: 'string' }),
+            unit: expect.objectContaining({ type: 'string' }),
+            metric_category: expect.objectContaining({ type: 'string' })
+          })
+        })
+      })
+    )
+    expect(responseSchema('/api/case-metrics/upsert', '200')).toEqual(
+      expect.objectContaining({
+        type: 'object',
+        properties: expect.objectContaining({
+          id: expect.objectContaining({ type: 'integer', exclusiveMinimum: 0 }),
+          case_id: expect.objectContaining({ type: 'integer', exclusiveMinimum: 0 }),
+          metric_id: expect.objectContaining({ type: 'integer', exclusiveMinimum: 0 }),
+          numeric_value: nullableSchema('number'),
+          text_value: nullableSchema('string'),
+          date_value: nullableSchema('string'),
+          created_at: expect.objectContaining({ type: 'integer', minimum: 0 }),
+          updated_at: expect.objectContaining({ type: 'integer', minimum: 0 })
+        })
+      })
+    )
+    expect(responseSchema('/api/case-metrics/delete', '200')).toBeUndefined()
   })
 })

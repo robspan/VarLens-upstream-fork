@@ -51,6 +51,7 @@ import { buildCasesOverrides } from './routes/cases'
 import { buildCohortOverrides } from './routes/cohort'
 import { unsupportedWebCapability } from './routes/common'
 import { buildDatabaseOverrides } from './routes/database'
+import { buildReferenceApiOverrides } from './routes/reference-api'
 import type { DispatcherDeps, InvokeBody, OverrideHandler } from './routes/types'
 import type { SortItem, VariantFilter } from '../../shared/types/database'
 import type { MultiFileImportSpec } from '../../shared/types/api'
@@ -71,16 +72,7 @@ import {
 import { exportPostgresCohort, exportPostgresVariants } from '../../main/ipc/handlers/export-logic'
 import { quoteIdentifier } from '../../main/storage/postgres/identifiers'
 import type { Pool } from 'pg'
-import {
-  buildGeneStructureFixtureResponse,
-  buildHpoFixtureResponse,
-  buildProteinDomainsFixtureResponse,
-  buildProteinMappingFixtureResponse,
-  buildProteinStructureFixtureResponse,
-  buildVepFixtureResponse,
-  webParityFixturesEnabled
-} from './api-fixture-responses'
-import { getWebGeneReferenceDb } from './web-gene-reference'
+import { webParityFixturesEnabled } from './api-fixture-responses'
 
 /**
  * Methods reachable to a session that still has
@@ -247,6 +239,7 @@ function buildOverrides(): Record<string, OverrideHandler> {
     ...buildCasesOverrides(),
     ...buildCohortOverrides(),
     ...buildDatabaseOverrides(),
+    ...buildReferenceApiOverrides(),
 
     'export:variants': {
       async handle(args, _request, reply, { session }) {
@@ -292,122 +285,6 @@ function buildOverrides(): Record<string, OverrideHandler> {
         })) as AsyncIterable<Record<string, unknown>>
         const filePath = join(tmpdir(), `cohort_variants_web_${randomUUID()}.csv`)
         return await exportPostgresCohort(rows, filePath, {})
-      }
-    },
-
-    'gene-ref:info': {
-      handle(_args, _request, reply) {
-        if (!webParityFixturesEnabled()) return unsupportedWebCapability(reply, 'geneRef.info')
-        return getWebGeneReferenceDb().getInfo()
-      }
-    },
-
-    'gene-ref:assemblies': {
-      handle(_args, _request, reply) {
-        if (!webParityFixturesEnabled()) {
-          return unsupportedWebCapability(reply, 'geneRef.assemblies')
-        }
-        return getWebGeneReferenceDb().getAssemblies()
-      }
-    },
-
-    'hpo:search': {
-      handle(args, _request, reply) {
-        if (!webParityFixturesEnabled()) return unsupportedWebCapability(reply, 'hpo.search')
-        const [query, maxResults] = args
-        if (typeof query !== 'string') throw new Error('hpo.search query must be a string')
-        return buildHpoFixtureResponse(
-          query,
-          typeof maxResults === 'number' ? maxResults : undefined
-        )
-      }
-    },
-
-    'hpo:clearCache': {
-      handle(_args, _request, reply) {
-        if (!webParityFixturesEnabled()) return unsupportedWebCapability(reply, 'hpo.clearCache')
-        return { success: true }
-      }
-    },
-
-    'vep:fetch': {
-      handle(args, _request, reply) {
-        if (!webParityFixturesEnabled()) return unsupportedWebCapability(reply, 'vep.fetch')
-        const [chr, pos, ref, alt] = args
-        if (
-          typeof chr !== 'string' ||
-          typeof pos !== 'number' ||
-          typeof ref !== 'string' ||
-          typeof alt !== 'string'
-        ) {
-          throw new Error('Invalid vep.fetch parameters')
-        }
-        return buildVepFixtureResponse(chr, pos, ref, alt)
-      }
-    },
-
-    'vep:getCacheStats': {
-      handle(_args, _request, reply) {
-        if (!webParityFixturesEnabled()) return unsupportedWebCapability(reply, 'vep.getCacheStats')
-        return { vepCount: 0, hpoCount: 0, totalBytes: 0 }
-      }
-    },
-
-    'vep:clearCache': {
-      handle(_args, _request, reply) {
-        if (!webParityFixturesEnabled()) return unsupportedWebCapability(reply, 'vep.clearCache')
-        return { success: true }
-      }
-    },
-
-    'vep:cancel': {
-      handle(_args, _request, reply) {
-        if (!webParityFixturesEnabled()) return unsupportedWebCapability(reply, 'vep.cancel')
-        return { success: true }
-      }
-    },
-
-    'protein:getMapping': {
-      handle(args, _request, reply) {
-        if (!webParityFixturesEnabled()) {
-          return unsupportedWebCapability(reply, 'protein.getMapping')
-        }
-        const [geneSymbol] = args
-        if (typeof geneSymbol !== 'string') throw new Error('gene symbol must be a string')
-        return buildProteinMappingFixtureResponse(geneSymbol)
-      }
-    },
-
-    'protein:getDomains': {
-      handle(args, _request, reply) {
-        if (!webParityFixturesEnabled()) {
-          return unsupportedWebCapability(reply, 'protein.getDomains')
-        }
-        const [accession] = args
-        if (typeof accession !== 'string') throw new Error('UniProt accession must be a string')
-        return buildProteinDomainsFixtureResponse(accession)
-      }
-    },
-
-    'protein:getStructure': {
-      handle(args, _request, reply) {
-        if (!webParityFixturesEnabled()) {
-          return unsupportedWebCapability(reply, 'protein.getStructure')
-        }
-        const [accession] = args
-        if (typeof accession !== 'string') throw new Error('UniProt accession must be a string')
-        return buildProteinStructureFixtureResponse(accession)
-      }
-    },
-
-    'protein:getGeneStructure': {
-      handle(args, _request, reply) {
-        if (!webParityFixturesEnabled()) {
-          return unsupportedWebCapability(reply, 'protein.getGeneStructure')
-        }
-        const [geneSymbol] = args
-        if (typeof geneSymbol !== 'string') throw new Error('gene symbol must be a string')
-        return buildGeneStructureFixtureResponse(geneSymbol)
       }
     },
 

@@ -261,6 +261,20 @@ describe('web dispatcher adapters', () => {
     expect(execute).not.toHaveBeenCalled()
   })
 
+  test('reference API fixture-backed methods fail explicitly when fixtures are disabled', async () => {
+    const { deps, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['hpo:search'].handle(['BRCA'], {} as never, reply as never, deps)
+
+    expect(reply.code).toHaveBeenCalledWith(501)
+    expect(result).toEqual({
+      error: 'unsupported-web-capability',
+      capability: 'hpo.search',
+      message: 'hpo.search is not available in web mode yet.'
+    })
+  })
+
   test('cohort.getSummaryStatus returns a stable non-rebuild status for web Postgres', async () => {
     const { deps, reply } = makeDeps()
     const { overrides } = buildDispatcher(deps)

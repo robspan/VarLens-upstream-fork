@@ -400,6 +400,21 @@ describe('web dispatcher adapters', () => {
     expect(execute).not.toHaveBeenCalled()
   })
 
+  test('browser-incompatible cohort exports fail explicitly instead of returning row streams', async () => {
+    const { deps, execute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['export:cohort'].handle([{}], {} as never, reply as never, deps)
+
+    expect(reply.code).toHaveBeenCalledWith(501)
+    expect(result).toEqual({
+      error: 'unsupported-web-capability',
+      capability: 'export.cohort',
+      message: 'export.cohort is not available in web mode yet.'
+    })
+    expect(execute).not.toHaveBeenCalled()
+  })
+
   test('auth.isAccountsEnabled delegates to the web auth service', async () => {
     const { deps, reply } = makeDeps()
     const { overrides } = buildDispatcher(deps)

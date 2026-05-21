@@ -22,10 +22,6 @@
  * authenticated for everything except the few public overrides
  * marked `public: true`.
  */
-import { randomUUID } from 'node:crypto'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-
 import type { FastifyInstance } from 'fastify'
 import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
@@ -39,8 +35,8 @@ import { buildAssetOverrides } from './routes/assets'
 import { buildAuthOverrides } from './routes/auth'
 import { buildCasesOverrides } from './routes/cases'
 import { buildCohortOverrides } from './routes/cohort'
-import { unsupportedWebCapability } from './routes/common'
 import { buildDatabaseOverrides } from './routes/database'
+import { buildExportOverrides } from './routes/export'
 import { buildImportOverrides } from './routes/import'
 import { buildReferenceApiOverrides } from './routes/reference-api'
 import type { DispatcherDeps, InvokeBody, OverrideHandler } from './routes/types'
@@ -48,7 +44,6 @@ import type { SortItem, VariantFilter } from '../../shared/types/database'
 import type { TranscriptInsertRow } from '../../shared/types/transcript'
 import {
   CaseIdSchema,
-  CohortSearchParamsSchema,
   LimitSchema,
   OffsetSchema,
   SortItemSchema,
@@ -59,10 +54,8 @@ import {
   DispatcherInvokeBodySchema,
   DispatcherParamsSchema
 } from '../../shared/api/schemas/dispatcher'
-import { exportPostgresCohort, exportPostgresVariants } from '../../main/ipc/handlers/export-logic'
 import { quoteIdentifier } from '../../main/storage/postgres/identifiers'
 import type { Pool } from 'pg'
-import { webParityFixturesEnabled } from './api-fixture-responses'
 
 /**
  * Methods reachable to a session that still has
@@ -126,55 +119,9 @@ function buildOverrides(): Record<string, OverrideHandler> {
     ...buildCasesOverrides(),
     ...buildCohortOverrides(),
     ...buildDatabaseOverrides(),
+    ...buildExportOverrides(),
     ...buildImportOverrides(),
     ...buildReferenceApiOverrides(),
-
-    'export:variants': {
-      async handle(args, _request, reply, { session }) {
-        if (!webParityFixturesEnabled()) return unsupportedWebCapability(reply, 'export.variants')
-        const [caseId, filters, caseName] = args
-        const validated = z
-          .object({
-            caseId: CaseIdSchema,
-            filters: VariantFilterPartialSchema,
-            caseName: z.string().min(1).max(500)
-          })
-          .safeParse({ caseId, filters, caseName })
-        if (!validated.success) {
-          reply.code(400)
-          return { error: 'invalid-export-variants-params' }
-        }
-
-        const rows = (await session.getReadExecutor().execute({
-          type: 'export:variants',
-          params: [{ ...validated.data.filters, case_id: validated.data.caseId }]
-        })) as AsyncIterable<Record<string, unknown>>
-        const filePath = join(
-          tmpdir(),
-          `${validated.data.caseName.replace(/[^a-z0-9]/gi, '_')}_web_${randomUUID()}.csv`
-        )
-        return await exportPostgresVariants(rows, filePath, {})
-      }
-    },
-
-    'export:cohort': {
-      async handle(args, _request, reply, { session }) {
-        if (!webParityFixturesEnabled()) return unsupportedWebCapability(reply, 'export.cohort')
-        const [params] = args
-        const validated = CohortSearchParamsSchema.safeParse(params)
-        if (!validated.success) {
-          reply.code(400)
-          return { error: 'invalid-export-cohort-params' }
-        }
-
-        const rows = (await session.getReadExecutor().execute({
-          type: 'export:cohort',
-          params: [validated.data]
-        })) as AsyncIterable<Record<string, unknown>>
-        const filePath = join(tmpdir(), `cohort_variants_web_${randomUUID()}.csv`)
-        return await exportPostgresCohort(rows, filePath, {})
-      }
-    },
 
     'variants:search': {
       async handle(args, _request, reply, { session }) {

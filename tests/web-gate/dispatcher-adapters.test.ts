@@ -108,6 +108,24 @@ describe('web dispatcher adapters', () => {
     })
   })
 
+  test('variants.columnMeta preserves caseId precedence when both scopes are present', async () => {
+    const { deps, execute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    await overrides['variants:columnMeta'].handle(
+      [{ caseId: 7, caseIds: ['ignored'], columnKey: 'cadd' }],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(execute).toHaveBeenCalledWith({
+      type: 'variants:columnMeta',
+      params: [{ caseId: 7 }, 'cadd']
+    })
+  })
+
   test('variants.query rejects invalid renderer args before storage execution', async () => {
     const { deps, execute, reply } = makeDeps()
     const { overrides } = buildDispatcher(deps)

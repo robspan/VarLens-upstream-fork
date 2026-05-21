@@ -19,6 +19,10 @@ import {
   AuthSuccessSchema,
   AuthUserSchema
 } from '../../../shared/api/schemas/auth'
+import {
+  VariantInvokeBodySchemas,
+  VariantUnknownResponseSchema
+} from '../../../shared/api/schemas/variants'
 
 type JsonSchema = Record<string, unknown>
 type OpenApiPathItem = Record<string, unknown>
@@ -62,6 +66,39 @@ function authOperation(options: {
                 description: 'OK',
                 ...jsonContent(options.response)
               },
+        400: {
+          description: 'Invalid request',
+          ...jsonContent(AuthErrorSchema)
+        },
+        401: {
+          description: 'Authentication required',
+          ...jsonContent(AuthErrorSchema)
+        },
+        403: {
+          description: 'Forbidden',
+          ...jsonContent(AuthErrorSchema)
+        }
+      }
+    }
+  }
+}
+
+function dispatcherMethodOperation(options: {
+  tag: string
+  summary: string
+  body: z.ZodType
+  response?: z.ZodType
+}): OpenApiPathItem {
+  return {
+    post: {
+      tags: [options.tag],
+      summary: options.summary,
+      requestBody: jsonContent(options.body),
+      responses: {
+        200: {
+          description: 'OK',
+          ...jsonContent(options.response ?? z.unknown())
+        },
         400: {
           description: 'Invalid request',
           ...jsonContent(AuthErrorSchema)
@@ -129,12 +166,42 @@ function buildAuthOpenApiPaths(): Record<string, OpenApiPathItem> {
   }
 }
 
+function buildVariantOpenApiPaths(): Record<string, OpenApiPathItem> {
+  return {
+    '/api/variants/search': dispatcherMethodOperation({
+      tag: 'variants',
+      summary: 'Search variants by gene symbol within a case',
+      body: VariantInvokeBodySchemas.search,
+      response: VariantUnknownResponseSchema
+    }),
+    '/api/variants/columnMeta': dispatcherMethodOperation({
+      tag: 'variants',
+      summary: 'Return variant column metadata for one case or a cohort scope',
+      body: VariantInvokeBodySchemas.columnMeta,
+      response: VariantUnknownResponseSchema
+    }),
+    '/api/variants/query': dispatcherMethodOperation({
+      tag: 'variants',
+      summary: 'Query variants for a case',
+      body: VariantInvokeBodySchemas.query,
+      response: VariantUnknownResponseSchema
+    }),
+    '/api/variants/getFilterOptions': dispatcherMethodOperation({
+      tag: 'variants',
+      summary: 'Return available filter options for a case',
+      body: VariantInvokeBodySchemas.getFilterOptions,
+      response: VariantUnknownResponseSchema
+    })
+  }
+}
+
 function appendDocumentedDispatcherPaths(document: OpenApiDocument): OpenApiDocument {
   return {
     ...document,
     paths: {
       ...document.paths,
-      ...buildAuthOpenApiPaths()
+      ...buildAuthOpenApiPaths(),
+      ...buildVariantOpenApiPaths()
     }
   }
 }

@@ -35,10 +35,19 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
       expect(spec.paths).toHaveProperty('/api/{domain}/{method}')
       expect(spec.paths).toHaveProperty('/api/auth/login')
       expect(spec.paths).toHaveProperty('/api/auth/changePassword')
+      expect(spec.paths).toHaveProperty('/api/variants/query')
+      expect(spec.paths).toHaveProperty('/api/variants/getFilterOptions')
 
-      const paths = spec.paths as Record<string, { post?: Record<string, unknown> }>
+      const paths = spec.paths as Record<
+        string,
+        { post?: { requestBody?: unknown; responses?: Record<string, unknown> } }
+      >
       expect(paths['/api/auth/login']?.post?.requestBody).toBeDefined()
       expect(paths['/api/auth/changePassword']?.post?.requestBody).toBeDefined()
+      expect(paths['/api/variants/query']?.post?.requestBody).toBeDefined()
+      expect(paths['/api/variants/query']?.post?.responses?.['200']).toBeDefined()
+      expect(paths['/api/variants/getFilterOptions']?.post?.requestBody).toBeDefined()
+      expect(paths['/api/variants/getFilterOptions']?.post?.responses?.['200']).toBeDefined()
     } finally {
       await driver.close()
     }

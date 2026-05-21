@@ -6,8 +6,9 @@ import {
   LimitSchema,
   OffsetSchema,
   SortItemSchema,
+  VariantColumnMetaPayloadSchema,
   VariantFilterPartialSchema
-} from '../../../shared/types/ipc-schemas'
+} from '../../../shared/api/schemas/variants'
 import type { OverrideHandler } from './types'
 
 export function buildVariantOverrides(): Record<string, OverrideHandler> {
@@ -36,20 +37,12 @@ export function buildVariantOverrides(): Record<string, OverrideHandler> {
     'variants:columnMeta': {
       async handle(args, _request, reply, { session }) {
         const [payload] = args
-        if (payload === null || typeof payload !== 'object') {
+        const validated = VariantColumnMetaPayloadSchema.safeParse(payload)
+        if (!validated.success) {
           reply.code(400)
           return { error: 'invalid-column-meta-payload' }
         }
-        const value = payload as { caseId?: unknown; caseIds?: unknown; columnKey?: unknown }
-        if (
-          typeof value.columnKey !== 'string' ||
-          (typeof value.caseId !== 'number' &&
-            (!Array.isArray(value.caseIds) ||
-              !value.caseIds.every((caseId) => typeof caseId === 'number')))
-        ) {
-          reply.code(400)
-          return { error: 'invalid-column-meta-payload' }
-        }
+        const value = validated.data
         const scope =
           typeof value.caseId === 'number'
             ? { caseId: value.caseId }

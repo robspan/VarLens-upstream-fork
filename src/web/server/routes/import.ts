@@ -1,15 +1,17 @@
 import { isAbsolute } from 'node:path'
 
-import {
-  startImport,
-  startMultiFileImport,
-  type VcfImportOptions
-} from '../../../main/ipc/handlers/import-logic'
+import { startImport, startMultiFileImport } from '../../../main/ipc/handlers/import-logic'
 import {
   cleanupZipTemp,
   extractZip,
   testZipPassword
 } from '../../../main/ipc/handlers/batch-import-logic'
+import {
+  ImportCaseNameArgSchema,
+  ImportServerPathArgSchema,
+  ImportVariantTypeArgSchema,
+  normalizeImportVcfOptions
+} from '../../../shared/api/schemas/import'
 import type { MultiFileImportSpec } from '../../../shared/types/api'
 import type { OverrideHandler } from './types'
 
@@ -30,21 +32,6 @@ function serverPathImportDisabledResponse(): {
   }
 }
 
-function normalizeVcfOptions(vcfOptions: unknown): VcfImportOptions | undefined {
-  return vcfOptions !== null && typeof vcfOptions === 'object'
-    ? {
-        selectedSample:
-          typeof (vcfOptions as { selectedSample?: unknown }).selectedSample === 'string'
-            ? (vcfOptions as { selectedSample: string }).selectedSample
-            : undefined,
-        genomeBuild:
-          typeof (vcfOptions as { genomeBuild?: unknown }).genomeBuild === 'string'
-            ? (vcfOptions as { genomeBuild: string }).genomeBuild
-            : undefined
-      }
-    : undefined
-}
-
 export function buildImportOverrides(): Record<string, OverrideHandler> {
   return {
     'import:start': {
@@ -55,19 +42,21 @@ export function buildImportOverrides(): Record<string, OverrideHandler> {
         }
 
         const [filePath, caseName, vcfOptions] = args
-        if (typeof filePath !== 'string' || filePath.trim() === '' || !isAbsolute(filePath)) {
+        const validatedFilePath = ImportServerPathArgSchema.safeParse(filePath)
+        if (!validatedFilePath.success || !isAbsolute(validatedFilePath.data)) {
           reply.code(400)
           return { error: 'invalid-file-path', message: 'filePath must be an absolute path' }
         }
-        if (typeof caseName !== 'string' || caseName.trim() === '') {
+        const validatedCaseName = ImportCaseNameArgSchema.safeParse(caseName)
+        if (!validatedCaseName.success) {
           reply.code(400)
           return { error: 'invalid-case-name', message: 'caseName must be a non-empty string' }
         }
 
         return await startImport(
-          filePath,
-          caseName,
-          normalizeVcfOptions(vcfOptions),
+          validatedFilePath.data,
+          validatedCaseName.data,
+          normalizeImportVcfOptions(vcfOptions),
           () => session,
           {
             onProgress: (progress) => {
@@ -89,7 +78,8 @@ export function buildImportOverrides(): Record<string, OverrideHandler> {
         }
 
         const [caseName, files, vcfOptions, filters] = args
-        if (typeof caseName !== 'string' || caseName.trim() === '') {
+        const validatedCaseName = ImportCaseNameArgSchema.safeParse(caseName)
+        if (!validatedCaseName.success) {
           reply.code(400)
           return { error: 'invalid-case-name', message: 'caseName must be a non-empty string' }
         }
@@ -105,17 +95,19 @@ export function buildImportOverrides(): Record<string, OverrideHandler> {
             return { error: 'invalid-file', message: 'Each file must be an object' }
           }
           const raw = file as Record<string, unknown>
-          if (typeof raw.filePath !== 'string' || !isAbsolute(raw.filePath)) {
+          const validatedFilePath = ImportServerPathArgSchema.safeParse(raw.filePath)
+          if (!validatedFilePath.success || !isAbsolute(validatedFilePath.data)) {
             reply.code(400)
             return { error: 'invalid-file-path', message: 'filePath must be absolute' }
           }
-          if (typeof raw.variantType !== 'string' || raw.variantType.trim() === '') {
+          const validatedVariantType = ImportVariantTypeArgSchema.safeParse(raw.variantType)
+          if (!validatedVariantType.success) {
             reply.code(400)
             return { error: 'invalid-variant-type', message: 'variantType is required' }
           }
           normalizedFiles.push({
-            filePath: raw.filePath,
-            variantType: raw.variantType,
+            filePath: validatedFilePath.data,
+            variantType: validatedVariantType.data,
             caller: typeof raw.caller === 'string' ? raw.caller : null,
             annotationFormat: typeof raw.annotationFormat === 'string' ? raw.annotationFormat : null
           })
@@ -134,9 +126,9 @@ export function buildImportOverrides(): Record<string, OverrideHandler> {
             : undefined
 
         return await startMultiFileImport(
-          caseName,
+          validatedCaseName.data,
           normalizedFiles,
-          normalizeVcfOptions(vcfOptions),
+          normalizeImportVcfOptions(vcfOptions),
           () => session,
           () => {
             throw new Error('SQLite database is not available in web mode')
@@ -162,11 +154,15 @@ export function buildImportOverrides(): Record<string, OverrideHandler> {
           return serverPathImportDisabledResponse()
         }
         const [zipPath, password] = args
-        if (typeof zipPath !== 'string' || zipPath.trim() === '' || !isAbsolute(zipPath)) {
+        const validatedZipPath = ImportServerPathArgSchema.safeParse(zipPath)
+        if (!validatedZipPath.success || !isAbsolute(validatedZipPath.data)) {
           reply.code(400)
           return { error: 'invalid-zip-path', message: 'zipPath must be an absolute path' }
         }
-        return await extractZip(zipPath, typeof password === 'string' ? password : undefined)
+        return await extractZip(
+          validatedZipPath.data,
+          typeof password === 'string' ? password : undefined
+        )
       }
     },
 
@@ -177,11 +173,12 @@ export function buildImportOverrides(): Record<string, OverrideHandler> {
           return serverPathImportDisabledResponse()
         }
         const [zipPath, password] = args
-        if (typeof zipPath !== 'string' || zipPath.trim() === '' || !isAbsolute(zipPath)) {
+        const validatedZipPath = ImportServerPathArgSchema.safeParse(zipPath)
+        if (!validatedZipPath.success || !isAbsolute(validatedZipPath.data)) {
           reply.code(400)
           return { error: 'invalid-zip-path', message: 'zipPath must be an absolute path' }
         }
-        return testZipPassword(zipPath, typeof password === 'string' ? password : '')
+        return testZipPassword(validatedZipPath.data, typeof password === 'string' ? password : '')
       }
     },
 

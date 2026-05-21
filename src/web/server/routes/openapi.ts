@@ -36,6 +36,12 @@ import {
   ExportUnknownResponseSchema
 } from '../../../shared/api/schemas/export'
 import {
+  BatchImportInvokeBodySchemas,
+  ImportInvokeBodySchemas,
+  ImportUnknownResponseSchema,
+  ServerPathImportDisabledSchema
+} from '../../../shared/api/schemas/import'
+import {
   VariantInvokeBodySchemas,
   VariantUnknownResponseSchema
 } from '../../../shared/api/schemas/variants'
@@ -111,6 +117,8 @@ function dispatcherMethodOperation(options: {
   body: z.ZodType
   response?: z.ZodType
   mayReturnUnsupported?: boolean
+  forbiddenResponse?: z.ZodType
+  forbiddenDescription?: string
 }): OpenApiPathItem {
   return {
     post: {
@@ -131,8 +139,8 @@ function dispatcherMethodOperation(options: {
           ...jsonContent(AuthErrorSchema)
         },
         403: {
-          description: 'Forbidden',
-          ...jsonContent(AuthErrorSchema)
+          description: options.forbiddenDescription ?? 'Forbidden',
+          ...jsonContent(options.forbiddenResponse ?? AuthErrorSchema)
         },
         ...(options.mayReturnUnsupported === true
           ? {
@@ -290,6 +298,52 @@ function buildExportOpenApiPaths(): Record<string, OpenApiPathItem> {
   }
 }
 
+function buildImportOpenApiPaths(): Record<string, OpenApiPathItem> {
+  const forbiddenResponse = z.union([AuthErrorSchema, ServerPathImportDisabledSchema])
+  const forbiddenDescription = 'Forbidden or server-path import disabled'
+
+  return {
+    '/api/import/start': dispatcherMethodOperation({
+      tag: 'import',
+      summary: 'Import one server-side variant file',
+      body: ImportInvokeBodySchemas.start,
+      response: ImportUnknownResponseSchema,
+      forbiddenResponse,
+      forbiddenDescription
+    }),
+    '/api/import/startMultiFile': dispatcherMethodOperation({
+      tag: 'import',
+      summary: 'Import multiple server-side variant files',
+      body: ImportInvokeBodySchemas.startMultiFile,
+      response: ImportUnknownResponseSchema,
+      forbiddenResponse,
+      forbiddenDescription
+    }),
+    '/api/batch-import/extractZip': dispatcherMethodOperation({
+      tag: 'batch-import',
+      summary: 'Extract a server-side ZIP archive for batch import',
+      body: BatchImportInvokeBodySchemas.extractZip,
+      response: ImportUnknownResponseSchema,
+      forbiddenResponse,
+      forbiddenDescription
+    }),
+    '/api/batch-import/testZipPassword': dispatcherMethodOperation({
+      tag: 'batch-import',
+      summary: 'Test a server-side ZIP archive password',
+      body: BatchImportInvokeBodySchemas.testZipPassword,
+      response: ImportUnknownResponseSchema,
+      forbiddenResponse,
+      forbiddenDescription
+    }),
+    '/api/batch-import/cleanupZipTemp': dispatcherMethodOperation({
+      tag: 'batch-import',
+      summary: 'Remove temporary files created during ZIP import',
+      body: BatchImportInvokeBodySchemas.cleanupZipTemp,
+      response: ImportUnknownResponseSchema
+    })
+  }
+}
+
 function buildVariantOpenApiPaths(): Record<string, OpenApiPathItem> {
   return {
     '/api/variants/search': dispatcherMethodOperation({
@@ -385,6 +439,7 @@ function appendDocumentedDispatcherPaths(document: OpenApiDocument): OpenApiDocu
       ...buildCohortOpenApiPaths(),
       ...buildDatabaseOpenApiPaths(),
       ...buildExportOpenApiPaths(),
+      ...buildImportOpenApiPaths(),
       ...buildVariantOpenApiPaths()
     }
   }

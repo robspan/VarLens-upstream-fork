@@ -1,4 +1,7 @@
 import { describe, expect, test, vi } from 'vitest'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { buildDispatcher, type DispatcherDeps } from '../../src/web/server/dispatcher'
 import type { StorageReadTask } from '../../src/main/storage/read-executor'
@@ -381,6 +384,100 @@ describe('web dispatcher adapters', () => {
         })
       ]
     })
+  })
+
+  test('case-metadata.createCohort maps renderer args to the storage task shape', async () => {
+    const { deps, writeExecute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    await overrides['case-metadata:createCohort'].handle(
+      ['Rare Cases', 12],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'case-metadata:createCohort',
+      params: [{ name: 'Rare Cases', description: null }]
+    })
+  })
+
+  test('analysis-groups.create preserves web defaults for optional fields', async () => {
+    const { deps, writeExecute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    await overrides['analysis-groups:create'].handle(
+      [{ name: 'Trio A', groupType: 'unsupported', description: 'family review' }],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'analysis-groups:create',
+      params: ['Trio A', 'family', 'family review']
+    })
+  })
+
+  test('analysis-groups.addMember maps member args to the storage task shape', async () => {
+    const { deps, writeExecute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    await overrides['analysis-groups:addMember'].handle(
+      [
+        {
+          groupId: 2,
+          caseId: 7,
+          role: 'proband',
+          affectedStatus: 'affected',
+          individualId: 'P1'
+        }
+      ],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'analysis-groups:addMember',
+      params: [2, 7, 'proband', 'affected', 'P1']
+    })
+  })
+
+  test('region-files.importBed reads BED rows before writing the import task', async () => {
+    const { deps, writeExecute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+    const dir = await mkdtemp(join(tmpdir(), 'varlens-bed-'))
+
+    try {
+      const filePath = join(dir, 'regions.bed')
+      await writeFile(filePath, 'chr1\t0\t10\tRegionA\n# ignored\nchr2\t5\t9\n')
+
+      await overrides['region-files:importBed'].handle(
+        [4, filePath],
+        {} as never,
+        reply as never,
+        deps
+      )
+
+      expect(reply.code).not.toHaveBeenCalled()
+      expect(writeExecute).toHaveBeenCalledWith({
+        type: 'region-files:importBed',
+        params: [
+          4,
+          [
+            { chr: 'chr1', start: 0, end: 10, label: 'RegionA' },
+            { chr: 'chr2', start: 5, end: 9 }
+          ]
+        ]
+      })
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 
   test('gene-lists.setGenes writes genes and returns the refreshed list', async () => {

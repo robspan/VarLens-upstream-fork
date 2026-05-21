@@ -1,6 +1,13 @@
 import { readFile } from 'node:fs/promises'
 import { isAbsolute } from 'node:path'
 
+import {
+  AssetAnalysisGroupCreateArgsSchema,
+  AssetAnalysisGroupMemberAddArgsSchema,
+  AssetCohortCreateArgsSchema,
+  AssetGeneListSetGenesArgsSchema,
+  AssetRegionFileImportBedArgsSchema
+} from '../../../shared/api/schemas/assets'
 import type { OverrideHandler } from './types'
 
 function normalizeBedLine(
@@ -39,11 +46,12 @@ export function buildAssetOverrides(): Record<string, OverrideHandler> {
   return {
     'case-metadata:createCohort': {
       async handle(args, _request, reply, { session }) {
-        const [name, description] = args
-        if (typeof name !== 'string') {
+        const parsed = AssetCohortCreateArgsSchema.safeParse(args)
+        if (!parsed.success) {
           reply.code(400)
           return { error: 'invalid-cohort-name' }
         }
+        const [name, description] = parsed.data
         return await session.getWriteExecutor().execute({
           type: 'case-metadata:createCohort',
           params: [{ name, description: typeof description === 'string' ? description : null }]
@@ -58,11 +66,12 @@ export function buildAssetOverrides(): Record<string, OverrideHandler> {
           reply.code(400)
           return { error: 'invalid-analysis-group' }
         }
-        const raw = params as { name?: unknown; groupType?: unknown; description?: unknown }
-        if (typeof raw.name !== 'string') {
+        const parsed = AssetAnalysisGroupCreateArgsSchema.safeParse(args)
+        if (!parsed.success) {
           reply.code(400)
           return { error: 'invalid-analysis-group-name' }
         }
+        const [raw] = parsed.data
         return await session.getWriteExecutor().execute({
           type: 'analysis-groups:create',
           params: [
@@ -76,26 +85,12 @@ export function buildAssetOverrides(): Record<string, OverrideHandler> {
 
     'analysis-groups:addMember': {
       async handle(args, _request, reply, { session }) {
-        const [params] = args
-        if (params === null || typeof params !== 'object') {
+        const parsed = AssetAnalysisGroupMemberAddArgsSchema.safeParse(args)
+        if (!parsed.success) {
           reply.code(400)
           return { error: 'invalid-analysis-group-member' }
         }
-        const raw = params as {
-          groupId?: unknown
-          caseId?: unknown
-          role?: unknown
-          affectedStatus?: unknown
-          individualId?: unknown
-        }
-        if (
-          typeof raw.groupId !== 'number' ||
-          typeof raw.caseId !== 'number' ||
-          typeof raw.role !== 'string'
-        ) {
-          reply.code(400)
-          return { error: 'invalid-analysis-group-member' }
-        }
+        const [raw] = parsed.data
         return await session.getWriteExecutor().execute({
           type: 'analysis-groups:addMember',
           params: [
@@ -111,8 +106,13 @@ export function buildAssetOverrides(): Record<string, OverrideHandler> {
 
     'region-files:importBed': {
       async handle(args, _request, reply, { session }) {
-        const [fileId, filePath] = args
-        if (typeof fileId !== 'number' || typeof filePath !== 'string' || !isAbsolute(filePath)) {
+        const parsed = AssetRegionFileImportBedArgsSchema.safeParse(args)
+        if (!parsed.success) {
+          reply.code(400)
+          return { error: 'invalid-bed-import' }
+        }
+        const [fileId, filePath] = parsed.data
+        if (!isAbsolute(filePath)) {
           reply.code(400)
           return { error: 'invalid-bed-import' }
         }
@@ -125,15 +125,12 @@ export function buildAssetOverrides(): Record<string, OverrideHandler> {
 
     'gene-lists:setGenes': {
       async handle(args, _request, reply, { session }) {
-        const [listId, genes] = args
-        if (
-          typeof listId !== 'number' ||
-          !Array.isArray(genes) ||
-          !genes.every((gene) => typeof gene === 'string')
-        ) {
+        const parsed = AssetGeneListSetGenesArgsSchema.safeParse(args)
+        if (!parsed.success) {
           reply.code(400)
           return { error: 'invalid-gene-list-genes' }
         }
+        const [listId, genes] = parsed.data
         await session.getWriteExecutor().execute({
           type: 'gene-lists:setGenes',
           params: [listId, genes]

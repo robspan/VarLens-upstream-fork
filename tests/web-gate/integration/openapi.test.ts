@@ -7,6 +7,13 @@ import { startWebDriver } from '../helpers/web-driver'
 const WEB_BUILD_PATH = resolve(process.cwd(), 'out/web/server.cjs')
 const isWebBuilt = existsSync(WEB_BUILD_PATH)
 const HAS_PG = typeof process.env.VARLENS_PG_URL === 'string' && process.env.VARLENS_PG_URL !== ''
+const ASSET_PATHS = [
+  '/api/case-metadata/createCohort',
+  '/api/analysis-groups/create',
+  '/api/analysis-groups/addMember',
+  '/api/region-files/importBed',
+  '/api/gene-lists/setGenes'
+] as const
 const REFERENCE_PATHS = [
   '/api/gene-ref/info',
   '/api/gene-ref/assemblies',
@@ -49,6 +56,9 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
       expect(spec.paths).toHaveProperty('/api/{domain}/{method}')
       expect(spec.paths).toHaveProperty('/api/auth/login')
       expect(spec.paths).toHaveProperty('/api/auth/changePassword')
+      for (const path of ASSET_PATHS) {
+        expect(spec.paths).toHaveProperty(path)
+      }
       expect(spec.paths).toHaveProperty('/api/cases/list')
       expect(spec.paths).toHaveProperty('/api/cohort/getVariants')
       expect(spec.paths).toHaveProperty('/api/cohort/runAssociation')
@@ -76,6 +86,10 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
       >
       expect(paths['/api/auth/login']?.post?.requestBody).toBeDefined()
       expect(paths['/api/auth/changePassword']?.post?.requestBody).toBeDefined()
+      for (const path of ASSET_PATHS) {
+        expect(paths[path]?.post?.requestBody).toBeDefined()
+        expect(paths[path]?.post?.responses?.['200']).toBeDefined()
+      }
       expect(paths['/api/cases/list']?.post?.requestBody).toBeDefined()
       expect(paths['/api/cases/list']?.post?.responses?.['200']).toBeDefined()
       expect(paths['/api/cohort/getVariants']?.post?.requestBody).toBeDefined()

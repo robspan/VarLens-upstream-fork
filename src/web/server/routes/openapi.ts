@@ -10,6 +10,10 @@ import { z } from 'zod'
 
 import pkg from '../../../../package.json'
 import {
+  AssetInvokeBodySchemas,
+  AssetUnknownResponseSchema
+} from '../../../shared/api/schemas/assets'
+import {
   AuthBooleanSchema,
   AuthErrorSchema,
   AuthInvokeBodySchemas,
@@ -249,6 +253,41 @@ function buildCaseOpenApiPaths(): Record<string, OpenApiPathItem> {
       summary: 'List cases available in the current workspace',
       body: CaseInvokeBodySchemas.list,
       response: CaseUnknownResponseSchema
+    })
+  }
+}
+
+function buildAssetOpenApiPaths(): Record<string, OpenApiPathItem> {
+  return {
+    '/api/case-metadata/createCohort': dispatcherMethodOperation({
+      tag: 'case-metadata',
+      summary: 'Create a cohort label',
+      body: AssetInvokeBodySchemas.createCohort,
+      response: AssetUnknownResponseSchema
+    }),
+    '/api/analysis-groups/create': dispatcherMethodOperation({
+      tag: 'analysis-groups',
+      summary: 'Create an analysis group',
+      body: AssetInvokeBodySchemas.createAnalysisGroup,
+      response: AssetUnknownResponseSchema
+    }),
+    '/api/analysis-groups/addMember': dispatcherMethodOperation({
+      tag: 'analysis-groups',
+      summary: 'Add a case to an analysis group',
+      body: AssetInvokeBodySchemas.addAnalysisGroupMember,
+      response: AssetUnknownResponseSchema
+    }),
+    '/api/region-files/importBed': dispatcherMethodOperation({
+      tag: 'region-files',
+      summary: 'Import a server-side BED file',
+      body: AssetInvokeBodySchemas.importBed,
+      response: AssetUnknownResponseSchema
+    }),
+    '/api/gene-lists/setGenes': dispatcherMethodOperation({
+      tag: 'gene-lists',
+      summary: 'Replace genes in a gene list',
+      body: AssetInvokeBodySchemas.setGenes,
+      response: AssetUnknownResponseSchema
     })
   }
 }
@@ -540,6 +579,7 @@ function appendDocumentedDispatcherPaths(document: OpenApiDocument): OpenApiDocu
     paths: {
       ...document.paths,
       ...buildAuthOpenApiPaths(),
+      ...buildAssetOpenApiPaths(),
       ...buildCaseOpenApiPaths(),
       ...buildCohortOpenApiPaths(),
       ...buildDatabaseOpenApiPaths(),

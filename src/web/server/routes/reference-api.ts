@@ -7,6 +7,12 @@ import {
   buildVepFixtureResponse,
   webParityFixturesEnabled
 } from '../api-fixture-responses'
+import {
+  HpoSearchArgsSchema,
+  ProteinAccessionArgsSchema,
+  ProteinGeneArgsSchema,
+  VepFetchArgsSchema
+} from '../../../shared/api/schemas/reference'
 import { getWebGeneReferenceDb } from '../web-gene-reference'
 import { unsupportedWebCapability } from './common'
 import type { OverrideHandler } from './types'
@@ -32,8 +38,9 @@ export function buildReferenceApiOverrides(): Record<string, OverrideHandler> {
     'hpo:search': {
       handle(args, _request, reply) {
         if (!webParityFixturesEnabled()) return unsupportedWebCapability(reply, 'hpo.search')
-        const [query, maxResults] = args
-        if (typeof query !== 'string') throw new Error('hpo.search query must be a string')
+        const parsed = HpoSearchArgsSchema.safeParse(args)
+        if (!parsed.success) throw new Error('hpo.search query must be a string')
+        const [query, maxResults] = parsed.data
         return buildHpoFixtureResponse(
           query,
           typeof maxResults === 'number' ? maxResults : undefined
@@ -51,15 +58,9 @@ export function buildReferenceApiOverrides(): Record<string, OverrideHandler> {
     'vep:fetch': {
       handle(args, _request, reply) {
         if (!webParityFixturesEnabled()) return unsupportedWebCapability(reply, 'vep.fetch')
-        const [chr, pos, ref, alt] = args
-        if (
-          typeof chr !== 'string' ||
-          typeof pos !== 'number' ||
-          typeof ref !== 'string' ||
-          typeof alt !== 'string'
-        ) {
-          throw new Error('Invalid vep.fetch parameters')
-        }
+        const parsed = VepFetchArgsSchema.safeParse(args)
+        if (!parsed.success) throw new Error('Invalid vep.fetch parameters')
+        const [chr, pos, ref, alt] = parsed.data
         return buildVepFixtureResponse(chr, pos, ref, alt)
       }
     },
@@ -90,8 +91,9 @@ export function buildReferenceApiOverrides(): Record<string, OverrideHandler> {
         if (!webParityFixturesEnabled()) {
           return unsupportedWebCapability(reply, 'protein.getMapping')
         }
-        const [geneSymbol] = args
-        if (typeof geneSymbol !== 'string') throw new Error('gene symbol must be a string')
+        const parsed = ProteinGeneArgsSchema.safeParse(args)
+        if (!parsed.success) throw new Error('gene symbol must be a string')
+        const [geneSymbol] = parsed.data
         return buildProteinMappingFixtureResponse(geneSymbol)
       }
     },
@@ -101,8 +103,9 @@ export function buildReferenceApiOverrides(): Record<string, OverrideHandler> {
         if (!webParityFixturesEnabled()) {
           return unsupportedWebCapability(reply, 'protein.getDomains')
         }
-        const [accession] = args
-        if (typeof accession !== 'string') throw new Error('UniProt accession must be a string')
+        const parsed = ProteinAccessionArgsSchema.safeParse(args)
+        if (!parsed.success) throw new Error('UniProt accession must be a string')
+        const [accession] = parsed.data
         return buildProteinDomainsFixtureResponse(accession)
       }
     },
@@ -112,8 +115,9 @@ export function buildReferenceApiOverrides(): Record<string, OverrideHandler> {
         if (!webParityFixturesEnabled()) {
           return unsupportedWebCapability(reply, 'protein.getStructure')
         }
-        const [accession] = args
-        if (typeof accession !== 'string') throw new Error('UniProt accession must be a string')
+        const parsed = ProteinAccessionArgsSchema.safeParse(args)
+        if (!parsed.success) throw new Error('UniProt accession must be a string')
+        const [accession] = parsed.data
         return buildProteinStructureFixtureResponse(accession)
       }
     },
@@ -123,8 +127,9 @@ export function buildReferenceApiOverrides(): Record<string, OverrideHandler> {
         if (!webParityFixturesEnabled()) {
           return unsupportedWebCapability(reply, 'protein.getGeneStructure')
         }
-        const [geneSymbol] = args
-        if (typeof geneSymbol !== 'string') throw new Error('gene symbol must be a string')
+        const parsed = ProteinGeneArgsSchema.safeParse(args)
+        if (!parsed.success) throw new Error('gene symbol must be a string')
+        const [geneSymbol] = parsed.data
         return buildGeneStructureFixtureResponse(geneSymbol)
       }
     }

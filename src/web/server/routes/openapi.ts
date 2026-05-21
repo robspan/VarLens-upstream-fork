@@ -42,6 +42,10 @@ import {
   ServerPathImportDisabledSchema
 } from '../../../shared/api/schemas/import'
 import {
+  ReferenceInvokeBodySchemas,
+  ReferenceUnknownResponseSchema
+} from '../../../shared/api/schemas/reference'
+import {
   TranscriptInvokeBodySchemas,
   TranscriptSwitchResponseSchema,
   TranscriptUnknownResponseSchema
@@ -366,6 +370,85 @@ function buildTranscriptOpenApiPaths(): Record<string, OpenApiPathItem> {
   }
 }
 
+function referenceFixtureOperation(options: {
+  tag: string
+  summary: string
+  body: z.ZodType
+}): OpenApiPathItem {
+  return dispatcherMethodOperation({
+    tag: options.tag,
+    summary: options.summary,
+    body: options.body,
+    response: ReferenceUnknownResponseSchema,
+    mayReturnUnsupported: true
+  })
+}
+
+function buildReferenceOpenApiPaths(): Record<string, OpenApiPathItem> {
+  return {
+    '/api/gene-ref/info': referenceFixtureOperation({
+      tag: 'gene-ref',
+      summary: 'Return gene reference database information',
+      body: ReferenceInvokeBodySchemas.empty
+    }),
+    '/api/gene-ref/assemblies': referenceFixtureOperation({
+      tag: 'gene-ref',
+      summary: 'List available gene reference assemblies',
+      body: ReferenceInvokeBodySchemas.empty
+    }),
+    '/api/hpo/search': referenceFixtureOperation({
+      tag: 'hpo',
+      summary: 'Search HPO terms',
+      body: ReferenceInvokeBodySchemas.hpoSearch
+    }),
+    '/api/hpo/clearCache': referenceFixtureOperation({
+      tag: 'hpo',
+      summary: 'Clear HPO cache',
+      body: ReferenceInvokeBodySchemas.empty
+    }),
+    '/api/vep/fetch': referenceFixtureOperation({
+      tag: 'vep',
+      summary: 'Fetch VEP annotations for a variant',
+      body: ReferenceInvokeBodySchemas.vepFetch
+    }),
+    '/api/vep/getCacheStats': referenceFixtureOperation({
+      tag: 'vep',
+      summary: 'Return VEP cache statistics',
+      body: ReferenceInvokeBodySchemas.empty
+    }),
+    '/api/vep/clearCache': referenceFixtureOperation({
+      tag: 'vep',
+      summary: 'Clear VEP cache',
+      body: ReferenceInvokeBodySchemas.empty
+    }),
+    '/api/vep/cancel': referenceFixtureOperation({
+      tag: 'vep',
+      summary: 'Cancel an active VEP request',
+      body: ReferenceInvokeBodySchemas.empty
+    }),
+    '/api/protein/getMapping': referenceFixtureOperation({
+      tag: 'protein',
+      summary: 'Return protein mappings for a gene',
+      body: ReferenceInvokeBodySchemas.proteinGene
+    }),
+    '/api/protein/getDomains': referenceFixtureOperation({
+      tag: 'protein',
+      summary: 'Return protein domains for an accession',
+      body: ReferenceInvokeBodySchemas.proteinAccession
+    }),
+    '/api/protein/getStructure': referenceFixtureOperation({
+      tag: 'protein',
+      summary: 'Return protein structure metadata for an accession',
+      body: ReferenceInvokeBodySchemas.proteinAccession
+    }),
+    '/api/protein/getGeneStructure': referenceFixtureOperation({
+      tag: 'protein',
+      summary: 'Return protein structure metadata for a gene',
+      body: ReferenceInvokeBodySchemas.proteinGene
+    })
+  }
+}
+
 function buildVariantOpenApiPaths(): Record<string, OpenApiPathItem> {
   return {
     '/api/variants/search': dispatcherMethodOperation({
@@ -462,6 +545,7 @@ function appendDocumentedDispatcherPaths(document: OpenApiDocument): OpenApiDocu
       ...buildDatabaseOpenApiPaths(),
       ...buildExportOpenApiPaths(),
       ...buildImportOpenApiPaths(),
+      ...buildReferenceOpenApiPaths(),
       ...buildTranscriptOpenApiPaths(),
       ...buildVariantOpenApiPaths()
     }

@@ -7,6 +7,20 @@ import { startWebDriver } from '../helpers/web-driver'
 const WEB_BUILD_PATH = resolve(process.cwd(), 'out/web/server.cjs')
 const isWebBuilt = existsSync(WEB_BUILD_PATH)
 const HAS_PG = typeof process.env.VARLENS_PG_URL === 'string' && process.env.VARLENS_PG_URL !== ''
+const REFERENCE_PATHS = [
+  '/api/gene-ref/info',
+  '/api/gene-ref/assemblies',
+  '/api/hpo/search',
+  '/api/hpo/clearCache',
+  '/api/vep/fetch',
+  '/api/vep/getCacheStats',
+  '/api/vep/clearCache',
+  '/api/vep/cancel',
+  '/api/protein/getMapping',
+  '/api/protein/getDomains',
+  '/api/protein/getStructure',
+  '/api/protein/getGeneStructure'
+] as const
 
 describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
   test('requires an authenticated session and exposes dispatcher and auth method paths', async () => {
@@ -48,6 +62,9 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
       expect(spec.paths).toHaveProperty('/api/batch-import/extractZip')
       expect(spec.paths).toHaveProperty('/api/batch-import/testZipPassword')
       expect(spec.paths).toHaveProperty('/api/batch-import/cleanupZipTemp')
+      for (const path of REFERENCE_PATHS) {
+        expect(spec.paths).toHaveProperty(path)
+      }
       expect(spec.paths).toHaveProperty('/api/transcripts/list')
       expect(spec.paths).toHaveProperty('/api/transcripts/insertAndSwitch')
       expect(spec.paths).toHaveProperty('/api/variants/query')
@@ -83,6 +100,10 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
       expect(paths['/api/batch-import/testZipPassword']?.post?.responses?.['403']).toBeDefined()
       expect(paths['/api/batch-import/cleanupZipTemp']?.post?.requestBody).toBeDefined()
       expect(paths['/api/batch-import/cleanupZipTemp']?.post?.responses?.['200']).toBeDefined()
+      for (const path of REFERENCE_PATHS) {
+        expect(paths[path]?.post?.requestBody).toBeDefined()
+        expect(paths[path]?.post?.responses?.['501']).toBeDefined()
+      }
       expect(paths['/api/transcripts/list']?.post?.requestBody).toBeDefined()
       expect(paths['/api/transcripts/list']?.post?.responses?.['200']).toBeDefined()
       expect(paths['/api/transcripts/insertAndSwitch']?.post?.requestBody).toBeDefined()

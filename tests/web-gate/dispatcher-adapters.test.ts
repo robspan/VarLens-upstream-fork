@@ -353,6 +353,32 @@ describe('web dispatcher adapters', () => {
     }
   })
 
+  test('batch import zip extraction is disabled outside test mode unless explicitly enabled', async () => {
+    const prevNodeEnv = process.env.NODE_ENV
+    const prevAllow = process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT
+    process.env.NODE_ENV = 'production'
+    delete process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT
+    try {
+      const { deps, reply } = makeDeps()
+      const { overrides } = buildDispatcher(deps)
+
+      const result = await overrides['batch-import:extractZip'].handle(
+        ['/tmp/input.zip'],
+        {} as never,
+        reply as never,
+        deps
+      )
+
+      expect(reply.code).toHaveBeenCalledWith(403)
+      expect(result).toMatchObject({ error: 'server-path-import-disabled' })
+    } finally {
+      if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = prevNodeEnv
+      if (prevAllow === undefined) delete process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT
+      else process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT = prevAllow
+    }
+  })
+
   test('import.start routes an enabled absolute server path through shared import logic', async () => {
     const prevNodeEnv = process.env.NODE_ENV
     process.env.NODE_ENV = 'test'

@@ -31,16 +31,6 @@ import type { FastifyInstance } from 'fastify'
 import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 
-import {
-  startImport,
-  startMultiFileImport,
-  type VcfImportOptions
-} from '../../main/ipc/handlers/import-logic'
-import {
-  cleanupZipTemp,
-  extractZip,
-  testZipPassword
-} from '../../main/ipc/handlers/batch-import-logic'
 import type { StorageSession } from '../../main/storage/session'
 import type { StorageReadTask } from '../../main/storage/read-executor'
 import type { StorageWriteTask } from '../../main/storage/write-executor'
@@ -51,10 +41,10 @@ import { buildCasesOverrides } from './routes/cases'
 import { buildCohortOverrides } from './routes/cohort'
 import { unsupportedWebCapability } from './routes/common'
 import { buildDatabaseOverrides } from './routes/database'
+import { buildImportOverrides } from './routes/import'
 import { buildReferenceApiOverrides } from './routes/reference-api'
 import type { DispatcherDeps, InvokeBody, OverrideHandler } from './routes/types'
 import type { SortItem, VariantFilter } from '../../shared/types/database'
-import type { MultiFileImportSpec } from '../../shared/types/api'
 import type { TranscriptInsertRow } from '../../shared/types/transcript'
 import {
   CaseIdSchema,
@@ -86,7 +76,6 @@ import { webParityFixturesEnabled } from './api-fixture-responses'
  * flow can drop their session and start over.
  */
 const PRE_ROTATION_ALLOWED = new Set<string>(['auth:changePassword', 'auth:logout'])
-const SERVER_PATH_IMPORT_ENV = 'VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT'
 const DEV_API_LATENCY_ENV = 'VARLENS_WEB_API_LATENCY_MS'
 function postgresContext(session: StorageSession): { pool: Pool; schemaName: string } {
   if (session.workspace.kind !== 'postgres') {
@@ -239,6 +228,7 @@ function buildOverrides(): Record<string, OverrideHandler> {
     ...buildCasesOverrides(),
     ...buildCohortOverrides(),
     ...buildDatabaseOverrides(),
+    ...buildImportOverrides(),
     ...buildReferenceApiOverrides(),
 
     'export:variants': {
@@ -285,188 +275,6 @@ function buildOverrides(): Record<string, OverrideHandler> {
         })) as AsyncIterable<Record<string, unknown>>
         const filePath = join(tmpdir(), `cohort_variants_web_${randomUUID()}.csv`)
         return await exportPostgresCohort(rows, filePath, {})
-      }
-    },
-
-    'import:start': {
-      async handle(args, request, reply, { session, events }) {
-        if (process.env.NODE_ENV !== 'test' && process.env[SERVER_PATH_IMPORT_ENV] !== '1') {
-          reply.code(403)
-          return {
-            error: 'server-path-import-disabled',
-            message:
-              'Server-path import is disabled. Browser upload support must use a dedicated upload route.'
-          }
-        }
-
-        const [filePath, caseName, vcfOptions] = args
-        if (typeof filePath !== 'string' || filePath.trim() === '' || !isAbsolute(filePath)) {
-          reply.code(400)
-          return { error: 'invalid-file-path', message: 'filePath must be an absolute path' }
-        }
-        if (typeof caseName !== 'string' || caseName.trim() === '') {
-          reply.code(400)
-          return { error: 'invalid-case-name', message: 'caseName must be a non-empty string' }
-        }
-
-        const normalizedOptions: VcfImportOptions | undefined =
-          vcfOptions !== null && typeof vcfOptions === 'object'
-            ? {
-                selectedSample:
-                  typeof (vcfOptions as { selectedSample?: unknown }).selectedSample === 'string'
-                    ? (vcfOptions as { selectedSample: string }).selectedSample
-                    : undefined,
-                genomeBuild:
-                  typeof (vcfOptions as { genomeBuild?: unknown }).genomeBuild === 'string'
-                    ? (vcfOptions as { genomeBuild: string }).genomeBuild
-                    : undefined
-              }
-            : undefined
-
-        return await startImport(filePath, caseName, normalizedOptions, () => session, {
-          onProgress: (progress) => {
-            const userId = request.session.user?.id
-            if (userId !== undefined) {
-              events.publish(userId, 'import:progress', progress)
-            }
-          }
-        })
-      }
-    },
-
-    'import:startMultiFile': {
-      async handle(args, request, reply, { session, events }) {
-        if (process.env.NODE_ENV !== 'test' && process.env[SERVER_PATH_IMPORT_ENV] !== '1') {
-          reply.code(403)
-          return {
-            error: 'server-path-import-disabled',
-            message:
-              'Server-path import is disabled. Browser upload support must use a dedicated upload route.'
-          }
-        }
-
-        const [caseName, files, vcfOptions, filters] = args
-        if (typeof caseName !== 'string' || caseName.trim() === '') {
-          reply.code(400)
-          return { error: 'invalid-case-name', message: 'caseName must be a non-empty string' }
-        }
-        if (!Array.isArray(files) || files.length === 0) {
-          reply.code(400)
-          return { error: 'invalid-files', message: 'files must be a non-empty array' }
-        }
-
-        const normalizedFiles: MultiFileImportSpec[] = []
-        for (const file of files) {
-          if (file === null || typeof file !== 'object') {
-            reply.code(400)
-            return { error: 'invalid-file', message: 'Each file must be an object' }
-          }
-          const raw = file as Record<string, unknown>
-          if (typeof raw.filePath !== 'string' || !isAbsolute(raw.filePath)) {
-            reply.code(400)
-            return { error: 'invalid-file-path', message: 'filePath must be absolute' }
-          }
-          if (typeof raw.variantType !== 'string' || raw.variantType.trim() === '') {
-            reply.code(400)
-            return { error: 'invalid-variant-type', message: 'variantType is required' }
-          }
-          normalizedFiles.push({
-            filePath: raw.filePath,
-            variantType: raw.variantType,
-            caller: typeof raw.caller === 'string' ? raw.caller : null,
-            annotationFormat: typeof raw.annotationFormat === 'string' ? raw.annotationFormat : null
-          })
-        }
-
-        const normalizedOptions: VcfImportOptions | undefined =
-          vcfOptions !== null && typeof vcfOptions === 'object'
-            ? {
-                selectedSample:
-                  typeof (vcfOptions as { selectedSample?: unknown }).selectedSample === 'string'
-                    ? (vcfOptions as { selectedSample: string }).selectedSample
-                    : undefined,
-                genomeBuild:
-                  typeof (vcfOptions as { genomeBuild?: unknown }).genomeBuild === 'string'
-                    ? (vcfOptions as { genomeBuild: string }).genomeBuild
-                    : undefined
-              }
-            : undefined
-
-        const normalizedFilters =
-          filters !== null && typeof filters === 'object'
-            ? (filters as {
-                bedFile?: string | null
-                bedPadding?: number
-                passOnly?: boolean
-                minQual?: number | null
-                minGq?: number | null
-                minDp?: number | null
-              })
-            : undefined
-
-        return await startMultiFileImport(
-          caseName,
-          normalizedFiles,
-          normalizedOptions,
-          () => session,
-          () => {
-            throw new Error('SQLite database is not available in web mode')
-          },
-          {
-            onProgress: (progress) => {
-              const userId = request.session.user?.id
-              if (userId !== undefined) {
-                events.publish(userId, 'import:progress', progress)
-              }
-            }
-          },
-          undefined,
-          normalizedFilters
-        )
-      }
-    },
-
-    'batch-import:extractZip': {
-      async handle(args, _request, reply) {
-        if (process.env.NODE_ENV !== 'test' && process.env[SERVER_PATH_IMPORT_ENV] !== '1') {
-          reply.code(403)
-          return {
-            error: 'server-path-import-disabled',
-            message:
-              'Server-path import is disabled. Browser upload support must use a dedicated upload route.'
-          }
-        }
-        const [zipPath, password] = args
-        if (typeof zipPath !== 'string' || zipPath.trim() === '' || !isAbsolute(zipPath)) {
-          reply.code(400)
-          return { error: 'invalid-zip-path', message: 'zipPath must be an absolute path' }
-        }
-        return await extractZip(zipPath, typeof password === 'string' ? password : undefined)
-      }
-    },
-
-    'batch-import:testZipPassword': {
-      handle(args, _request, reply) {
-        if (process.env.NODE_ENV !== 'test' && process.env[SERVER_PATH_IMPORT_ENV] !== '1') {
-          reply.code(403)
-          return {
-            error: 'server-path-import-disabled',
-            message:
-              'Server-path import is disabled. Browser upload support must use a dedicated upload route.'
-          }
-        }
-        const [zipPath, password] = args
-        if (typeof zipPath !== 'string' || zipPath.trim() === '' || !isAbsolute(zipPath)) {
-          reply.code(400)
-          return { error: 'invalid-zip-path', message: 'zipPath must be an absolute path' }
-        }
-        return testZipPassword(zipPath, typeof password === 'string' ? password : '')
-      }
-    },
-
-    'batch-import:cleanupZipTemp': {
-      handle() {
-        cleanupZipTemp()
       }
     },
 

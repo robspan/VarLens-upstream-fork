@@ -3,9 +3,9 @@
  * dispatcher to decide which executor handles a given
  * `<domain>:<method>` call.
  *
- * The `satisfies` clauses below pin each array to the executor's
- * task-type union, so adding or renaming a task type triggers a
- * type error here until the list is updated.
+ * This is a public web allowlist, not a full storage-executor mirror:
+ * internal composite tasks can stay executor-only. The `satisfies`
+ * clauses below still pin listed values to the executor unions.
  */
 import type { StorageReadTask } from '../../main/storage/read-executor'
 import type { StorageWriteTask } from '../../main/storage/write-executor'
@@ -61,7 +61,8 @@ export const READ_TASK_TYPES = [
   'analysis-groups:get',
   'analysis-groups:getForCase',
   'audit:getByEntity',
-  'audit:query'
+  'audit:query',
+  'transcripts:list'
 ] as const satisfies readonly StorageReadTask['type'][]
 
 export const WRITE_TASK_TYPES = [
@@ -116,7 +117,9 @@ export const WRITE_TASK_TYPES = [
   'analysis-groups:delete',
   'analysis-groups:addMember',
   'analysis-groups:removeMember',
-  'audit:append'
+  'audit:append',
+  'transcripts:switch',
+  'transcripts:insertAndSwitch'
 ] as const satisfies readonly StorageWriteTask['type'][]
 
 export const READ_TASK_TYPE_SET: ReadonlySet<StorageReadTask['type']> = new Set(READ_TASK_TYPES)

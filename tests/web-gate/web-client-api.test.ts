@@ -86,18 +86,26 @@ describe('web client api', () => {
     )
   })
 
-  test('rejects non-2xx JSON errors instead of returning them as data', async () => {
+  test('returns non-2xx SerializableError JSON as the IPC result envelope', async () => {
     mockFetch({
       ok: false,
       status: 404,
       statusText: 'Not Found',
-      body: JSON.stringify({ error: 'unknown method', domain: 'variants', method: 'query' })
+      body: JSON.stringify({
+        code: 'NOT_FOUND',
+        message: 'unknown method',
+        userMessage: 'Unknown API method.',
+        details: { domain: 'variants', method: 'query' }
+      })
     })
 
     const api = createApi() as unknown as TestApi
-    await expect(api.variants.query(1, {}, 0, 50)).rejects.toThrow(
-      'web rpc variants.query: 404 Not Found: unknown method'
-    )
+    await expect(api.variants.query(1, {}, 0, 50)).resolves.toEqual({
+      code: 'NOT_FOUND',
+      message: 'unknown method',
+      userMessage: 'Unknown API method.',
+      details: { domain: 'variants', method: 'query' }
+    })
   })
 
   test('rejects non-2xx plain-text errors with the raw body', async () => {

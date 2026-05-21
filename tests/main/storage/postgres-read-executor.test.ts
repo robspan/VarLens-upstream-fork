@@ -11,7 +11,8 @@ function workflowRepositories() {
     panels: {} as never,
     filterPresets: {} as never,
     shortlist: {} as never,
-    analysisGroups: {} as never
+    analysisGroups: {} as never,
+    transcripts: {} as never
   }
 }
 

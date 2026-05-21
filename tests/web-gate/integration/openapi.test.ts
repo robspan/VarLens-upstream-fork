@@ -119,6 +119,7 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
         expect(spec.paths).toHaveProperty(path)
       }
       expect(spec.paths).toHaveProperty('/api/transcripts/list')
+      expect(spec.paths).toHaveProperty('/api/transcripts/switch')
       expect(spec.paths).toHaveProperty('/api/transcripts/insertAndSwitch')
       expect(spec.paths).toHaveProperty('/api/variants/query')
       expect(spec.paths).toHaveProperty('/api/variants/getFilterOptions')
@@ -182,6 +183,8 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
       }
       expect(paths['/api/transcripts/list']?.post?.requestBody).toBeDefined()
       expect(paths['/api/transcripts/list']?.post?.responses?.['200']).toBeDefined()
+      expect(paths['/api/transcripts/switch']?.post?.requestBody).toBeDefined()
+      expect(paths['/api/transcripts/switch']?.post?.responses?.['200']).toBeDefined()
       expect(paths['/api/transcripts/insertAndSwitch']?.post?.requestBody).toBeDefined()
       expect(paths['/api/transcripts/insertAndSwitch']?.post?.responses?.['200']).toBeDefined()
       expect(paths['/api/variants/query']?.post?.requestBody).toBeDefined()

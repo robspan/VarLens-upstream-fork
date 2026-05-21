@@ -18,6 +18,7 @@ import {
   TagsListResponseSchema,
   TagsUsageCountResponseSchema
 } from '../../src/shared/api/schemas/tags'
+import { TranscriptInvokeBodySchemas } from '../../src/shared/api/schemas/transcripts'
 import {
   appendDocumentedDispatcherPaths,
   toOpenApiJsonSchema
@@ -178,6 +179,17 @@ describe('shared API schemas', () => {
       false
     )
     expect(TagsInvokeBodySchemas.set.safeParse({ args: [1, 2, [0]] }).success).toBe(false)
+  })
+
+  test('documents transcript switch request arguments', () => {
+    expect(argsItems(TranscriptInvokeBodySchemas.switch)).toEqual([
+      expect.objectContaining({ type: 'integer', exclusiveMinimum: 0 }),
+      expect.objectContaining({ type: 'string', minLength: 1 })
+    ])
+    expect(TranscriptInvokeBodySchemas.switch.safeParse({ args: [9, 'NM_000059.4'] }).success).toBe(
+      true
+    )
+    expect(TranscriptInvokeBodySchemas.switch.safeParse({ args: [0, ''] }).success).toBe(false)
   })
 
   test('documents case comment request and response contracts', () => {

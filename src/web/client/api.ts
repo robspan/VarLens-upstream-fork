@@ -20,6 +20,7 @@
  */
 import type { WindowAPI } from '../../shared/types/api'
 import type { UpdateStatus } from '../../shared/types/api'
+import { isIpcError } from '../../shared/types/errors'
 
 declare const __APP_VERSION__: string
 
@@ -40,33 +41,18 @@ async function httpInvoke(domain: string, method: string, args: unknown[]): Prom
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body)
   })
-  // Server returns JSON for both success and error (SerializableError).
-  // Non-2xx with non-JSON body is a transport failure — surface it.
+  // Server returns JSON for both success and application errors
+  // (SerializableError). Non-2xx with non-JSON body is a transport
+  // failure — surface it.
   const text = await res.text()
   if (!res.ok) {
-    let detail = text
     try {
-      const parsed = JSON.parse(text) as {
-        code?: unknown
-        error?: unknown
-        message?: unknown
-        userMessage?: unknown
-      }
-      const message =
-        typeof parsed.userMessage === 'string'
-          ? parsed.userMessage
-          : typeof parsed.message === 'string'
-            ? parsed.message
-            : typeof parsed.error === 'string'
-              ? parsed.error
-              : typeof parsed.code === 'string'
-                ? parsed.code
-                : text
-      detail = message
+      const parsed = JSON.parse(text) as unknown
+      if (isIpcError(parsed)) return parsed
     } catch {
-      // Keep the raw body for non-JSON error responses.
+      // Throw below for non-JSON error responses.
     }
-    throw new Error(`web rpc ${domain}.${method}: ${res.status} ${res.statusText}: ${detail}`)
+    throw new Error(`web rpc ${domain}.${method}: ${res.status} ${res.statusText}: ${text}`)
   }
   if (text === '') return undefined
   try {

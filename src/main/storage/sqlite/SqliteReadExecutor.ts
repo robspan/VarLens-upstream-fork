@@ -303,6 +303,9 @@ export class SqliteReadExecutor implements StorageReadExecutor {
 
       case 'audit:query':
         return this.databaseService.auditLog.query(task.params[0])
+
+      case 'transcripts:list':
+        return this.databaseService.transcripts.getVariantTranscripts(task.params[0])
     }
 
     const _exhaustive: never = task

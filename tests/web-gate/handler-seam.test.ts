@@ -1,19 +1,13 @@
 import { describe, expect, test } from 'vitest'
-import { existsSync, readdirSync, statSync } from 'fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
 import { resolve } from 'path'
 
 /**
  * Handler-seam gate.
  *
- * Phase 1 gated each domain on a per-file `src/web/routes/<name>.ts`
- * binding that re-imported the matching `<name>-logic.ts` module.
- * Phase 3 collapsed those routes into a single typed dispatcher
- * (`src/web/server/dispatcher.ts`) that delegates to the
- * Postgres read/write executors. The shared/preload/main triple is
- * still load-bearing — the renderer call sites depend on it — so
- * those tests remain. The per-route reuse test became irrelevant
- * (there are no per-route files) and was replaced by the
- * dispatcher-existence check below.
+ * The web dispatcher is split into per-domain route override modules.
+ * This gate keeps those modules wired through dispatcher.ts and prevents
+ * route handlers from reaching around storage executors into Postgres.
  *
  * Intentionally-flat handlers (no domain-module pattern) are excluded
  * per AGENTS.md: shell, shortlist, system, updater.
@@ -24,6 +18,7 @@ const PRELOAD_DIR = 'src/preload/domains'
 const MAIN_DIR = 'src/main/ipc/domains'
 const DISPATCHER_PATH = 'src/web/server/dispatcher.ts'
 const TASK_TYPES_PATH = 'src/web/server/task-types.ts'
+const WEB_ROUTES_DIR = 'src/web/server/routes'
 
 const FLAT_HANDLERS = new Set(['shell', 'shortlist', 'system', 'updater'])
 
@@ -35,6 +30,10 @@ function listDomains(dir: string): string[] {
     .filter((f) => statSync(resolve(abs, f)).isFile())
     .map((f) => f.replace(/\.ts$/, ''))
     .sort()
+}
+
+function readRepoFile(path: string): string {
+  return readFileSync(resolve(process.cwd(), path), 'utf8')
 }
 
 describe('handler-seam gate', () => {
@@ -75,6 +74,54 @@ describe('handler-seam gate', () => {
     if (!existsSync(dispatcher)) missing.push(DISPATCHER_PATH)
     if (!existsSync(taskTypes)) missing.push(TASK_TYPES_PATH)
     expect(missing, missing.join('\n')).toEqual([])
+  })
+
+  test('web route override modules are imported by the dispatcher', () => {
+    const dispatcherSource = readRepoFile(DISPATCHER_PATH)
+    const routeDir = resolve(process.cwd(), WEB_ROUTES_DIR)
+    const missing: string[] = []
+
+    for (const file of readdirSync(routeDir)
+      .filter((name) => name.endsWith('.ts'))
+      .sort()) {
+      const routePath = `${WEB_ROUTES_DIR}/${file}`
+      const source = readRepoFile(routePath)
+      const buildFunction = source.match(/export function (build[A-Za-z]+Overrides)\(/)?.[1]
+      if (buildFunction === undefined) continue
+
+      const routeName = file.replace(/\.ts$/, '')
+      if (!dispatcherSource.includes(`from './routes/${routeName}'`)) {
+        missing.push(`${routePath} import`)
+      }
+      if (!dispatcherSource.includes(`${buildFunction}()`)) {
+        missing.push(`${routePath} ${buildFunction}()`)
+      }
+    }
+
+    expect(missing, missing.join('\n')).toEqual([])
+  })
+
+  test('web route override modules do not access Postgres directly', () => {
+    const routeDir = resolve(process.cwd(), WEB_ROUTES_DIR)
+    const offenders: string[] = []
+    const forbidden = [
+      /'pg'/,
+      /"pg"/,
+      /getPool\s*\(/,
+      /pool\.query/,
+      /pool\.connect/,
+      /quoteIdentifier/
+    ]
+
+    for (const file of readdirSync(routeDir)
+      .filter((name) => name.endsWith('.ts'))
+      .sort()) {
+      const routePath = `${WEB_ROUTES_DIR}/${file}`
+      const source = readRepoFile(routePath)
+      if (forbidden.some((pattern) => pattern.test(source))) offenders.push(routePath)
+    }
+
+    expect(offenders, offenders.join('\n')).toEqual([])
   })
 })
 

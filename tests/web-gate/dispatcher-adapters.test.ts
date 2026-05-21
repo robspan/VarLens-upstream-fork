@@ -2,8 +2,14 @@ import { describe, expect, test, vi } from 'vitest'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import fastify from 'fastify'
+import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod'
 
-import { buildDispatcher, type DispatcherDeps } from '../../src/web/server/dispatcher'
+import {
+  buildDispatcher,
+  registerDispatcher,
+  type DispatcherDeps
+} from '../../src/web/server/dispatcher'
 import type { StorageReadTask } from '../../src/main/storage/read-executor'
 
 function makeDeps(): {
@@ -129,11 +135,18 @@ describe('web dispatcher adapters', () => {
 
   test('variants.search keeps the legacy non-number limit fallback', async () => {
     const { deps, execute, reply } = makeDeps()
+    execute.mockResolvedValueOnce({ data: [{ id: 1, gene_symbol: 'BRCA1' }], total_count: 1 })
     const { overrides } = buildDispatcher(deps)
 
-    await overrides['variants:search'].handle([7, 'BRCA', '10'], {} as never, reply as never, deps)
+    const result = await overrides['variants:search'].handle(
+      [7, 'BRCA', '10'],
+      {} as never,
+      reply as never,
+      deps
+    )
 
     expect(reply.code).not.toHaveBeenCalled()
+    expect(result).toEqual([{ id: 1, gene_symbol: 'BRCA1' }])
     expect(execute).toHaveBeenCalledWith({
       type: 'variants:query',
       params: [{ case_id: 7, gene_symbol: 'BRCA' }, 20, 0, undefined, true, false]
@@ -174,13 +187,9 @@ describe('web dispatcher adapters', () => {
     expect(execute).not.toHaveBeenCalled()
   })
 
-  test('transcripts.list reads selected transcripts from the Postgres workspace schema', async () => {
-    const { deps, reply } = makeDeps()
-    const query = vi.fn(async () => ({ rows: [{ id: 1, transcript_id: 'NM_000059.4' }] }))
-    Object.assign(deps.session, {
-      workspace: { kind: 'postgres', schema: 'case_abc' },
-      getPool: () => ({ query })
-    })
+  test('transcripts.list delegates to the storage read executor', async () => {
+    const { deps, execute, reply } = makeDeps()
+    execute.mockResolvedValueOnce([{ id: 1, transcript_id: 'NM_000059.4' }])
     const { overrides } = buildDispatcher(deps)
 
     const result = await overrides['transcripts:list'].handle(
@@ -192,10 +201,147 @@ describe('web dispatcher adapters', () => {
 
     expect(reply.code).not.toHaveBeenCalled()
     expect(result).toEqual([{ id: 1, transcript_id: 'NM_000059.4' }])
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('"case_abc".variant_transcripts'),
-      [9]
+    expect(execute).toHaveBeenCalledWith({ type: 'transcripts:list', params: [9] })
+  })
+
+  test('transcripts.switch maps renderer args to the storage write task shape', async () => {
+    const { deps, writeExecute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    await overrides['transcripts:switch'].handle(
+      [9, 'NM_000059.4'],
+      {} as never,
+      reply as never,
+      deps
     )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'transcripts:switch',
+      params: [9, 'NM_000059.4']
+    })
+  })
+
+  test('transcripts.insertAndSwitch maps renderer args to the storage write task shape', async () => {
+    const { deps, writeExecute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+    const transcript = {
+      transcript_id: 'NM_000059.4',
+      gene_symbol: 'BRCA2',
+      consequence: 'HIGH',
+      cdna: 'c.1A>G',
+      aa_change: 'p.M1V',
+      hpo_sim_score: 0.8,
+      moi: 'AD',
+      is_selected: 0
+    }
+
+    await overrides['transcripts:insertAndSwitch'].handle(
+      [9, transcript],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'transcripts:insertAndSwitch',
+      params: [9, transcript]
+    })
+  })
+
+  test('dispatcher normalizes non-2xx override payloads to SerializableError', async () => {
+    const { deps } = makeDeps()
+    const app = fastify()
+    app.setValidatorCompiler(validatorCompiler)
+    app.setSerializerCompiler(serializerCompiler)
+    registerDispatcher(app, deps, {
+      'variants:query': {
+        async handle(_args, _request, reply) {
+          reply.code(400)
+          return { error: 'invalid-case-id', message: 'Invalid case ID' }
+        }
+      }
+    })
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/variants/query',
+      payload: { args: [0, {}] }
+    })
+
+    expect(response.statusCode).toBe(400)
+    expect(response.json()).toEqual({
+      code: 'UNKNOWN',
+      message: 'Invalid case ID',
+      userMessage: 'Invalid case ID',
+      details: { error: 'invalid-case-id', message: 'Invalid case ID' }
+    })
+    await app.close()
+  })
+
+  test('dispatcher normalizes thrown errors to SerializableError', async () => {
+    const { deps } = makeDeps()
+    const app = fastify()
+    app.setValidatorCompiler(validatorCompiler)
+    app.setSerializerCompiler(serializerCompiler)
+    registerDispatcher(app, deps, {
+      'variants:query': {
+        async handle() {
+          throw new Error('database unavailable')
+        }
+      }
+    })
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/variants/query',
+      payload: { args: [1, {}] }
+    })
+
+    expect(response.statusCode).toBe(500)
+    expect(response.json()).toEqual({
+      code: 'UNKNOWN',
+      message: 'database unavailable',
+      userMessage: 'An unexpected error occurred. Please try again.'
+    })
+    await app.close()
+  })
+
+  test('panels.get returns the desktop panel-plus-genes shape', async () => {
+    const { deps, execute, reply } = makeDeps()
+    execute.mockResolvedValueOnce({ id: 5, name: 'Cancer panel' })
+    execute.mockResolvedValueOnce([{ symbol: 'BRCA1', hgnc_id: 'HGNC:1100' }])
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['panels:get'].handle([5], {} as never, reply as never, deps)
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      id: 5,
+      name: 'Cancer panel',
+      genes: [{ symbol: 'BRCA1', hgnc_id: 'HGNC:1100' }]
+    })
+    expect(execute).toHaveBeenNthCalledWith(1, { type: 'panels:get', params: [5] })
+    expect(execute).toHaveBeenNthCalledWith(2, { type: 'panels:getGenes', params: [5] })
+  })
+
+  test('panels.update maps renderer object args to the storage task shape', async () => {
+    const { deps, writeExecute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    await overrides['panels:update'].handle(
+      [{ id: 5, name: 'Updated panel', description: null }],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'panels:update',
+      params: [5, { name: 'Updated panel', description: null, version: undefined }]
+    })
   })
 
   test('database.info returns a safe web workspace identity for renderer startup', async () => {
@@ -351,13 +497,8 @@ describe('web dispatcher adapters', () => {
     })
   })
 
-  test('annotations.upsertGlobal writes annotation and audit entries', async () => {
+  test('annotations.upsertGlobal delegates annotation and audit to one storage task', async () => {
     const { deps, execute, writeExecute, reply } = makeDeps()
-    execute.mockResolvedValueOnce({
-      acmg_classification: 'VUS',
-      acmg_evidence: 'old',
-      starred: 0
-    })
     const { overrides } = buildDispatcher(deps)
 
     const result = await overrides['annotations:upsertGlobal'].handle(
@@ -380,40 +521,14 @@ describe('web dispatcher adapters', () => {
     expect(reply.code).not.toHaveBeenCalled()
     expect(result).toEqual({
       task: {
-        type: 'annotations:upsertGlobal',
+        type: 'annotations:upsertGlobalWithAudit',
         params: [
           { chr: 'chr22', pos: 12345, ref: 'A', alt: 'T' },
           { acmg_classification: 'Uncertain significance', starred: true, user_name: 'admin' }
         ]
       }
     })
-    expect(execute).toHaveBeenCalledWith({
-      type: 'annotations:getGlobal',
-      params: [{ chr: 'chr22', pos: 12345, ref: 'A', alt: 'T' }]
-    })
-    expect(writeExecute).toHaveBeenCalledWith({
-      type: 'audit:append',
-      params: [
-        expect.objectContaining({
-          action_type: 'acmg_classify',
-          entity_type: 'variant_annotation',
-          entity_key: 'chr22:12345:A:T',
-          user_name: 'admin',
-          new_value: JSON.stringify({ acmg_classification: 'Uncertain significance' })
-        })
-      ]
-    })
-    expect(writeExecute).toHaveBeenCalledWith({
-      type: 'audit:append',
-      params: [
-        expect.objectContaining({
-          action_type: 'star',
-          entity_type: 'variant_annotation',
-          entity_key: 'chr22:12345:A:T',
-          user_name: 'admin'
-        })
-      ]
-    })
+    expect(execute).not.toHaveBeenCalled()
   })
 
   test('annotations.upsertGlobal rejects non-canonical ACMG casing like desktop IPC', async () => {
@@ -441,9 +556,8 @@ describe('web dispatcher adapters', () => {
     expect(writeExecute).not.toHaveBeenCalled()
   })
 
-  test('annotations.upsertPerCase normalizes ACMG shorthand before storage and audit', async () => {
-    const { deps, execute, writeExecute, reply } = makeDeps()
-    execute.mockResolvedValueOnce({ acmg_classification: 'Benign', starred: 0 })
+  test('annotations.upsertPerCase normalizes ACMG shorthand before audited storage write', async () => {
+    const { deps, execute, reply } = makeDeps()
     const { overrides } = buildDispatcher(deps)
 
     const result = await overrides['annotations:upsertPerCase'].handle(
@@ -456,22 +570,11 @@ describe('web dispatcher adapters', () => {
     expect(reply.code).not.toHaveBeenCalled()
     expect(result).toEqual({
       task: {
-        type: 'annotations:upsertPerCase',
+        type: 'annotations:upsertPerCaseWithAudit',
         params: [3, 9, { acmg_classification: 'Likely pathogenic', user_name: 'reviewer' }]
       }
     })
-    expect(writeExecute).toHaveBeenCalledWith({
-      type: 'audit:append',
-      params: [
-        expect.objectContaining({
-          action_type: 'acmg_classify',
-          entity_type: 'case_variant_annotation',
-          entity_key: 'case:3:variant:9',
-          user_name: 'reviewer',
-          new_value: JSON.stringify({ acmg_classification: 'Likely pathogenic' })
-        })
-      ]
-    })
+    expect(execute).not.toHaveBeenCalled()
   })
 
   test('case-metadata.createCohort maps renderer args to the storage task shape', async () => {

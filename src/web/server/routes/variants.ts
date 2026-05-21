@@ -10,6 +10,17 @@ import {
 } from '../../../shared/api/schemas/variants'
 import type { OverrideHandler } from './types'
 
+function unwrapVariantSearchResult(result: unknown): unknown {
+  if (
+    result !== null &&
+    typeof result === 'object' &&
+    Array.isArray((result as { data?: unknown }).data)
+  ) {
+    return (result as { data: unknown[] }).data
+  }
+  return result
+}
+
 export function buildVariantOverrides(): Record<string, OverrideHandler> {
   return {
     'variants:search': {
@@ -20,7 +31,7 @@ export function buildVariantOverrides(): Record<string, OverrideHandler> {
           return { error: 'invalid-variant-search' }
         }
         const [caseId, query, limit] = parsed.data
-        return await session.getReadExecutor().execute({
+        const result = await session.getReadExecutor().execute({
           type: 'variants:query',
           params: [
             { case_id: caseId, gene_symbol: query },
@@ -31,6 +42,7 @@ export function buildVariantOverrides(): Record<string, OverrideHandler> {
             false
           ]
         })
+        return unwrapVariantSearchResult(result)
       }
     },
 

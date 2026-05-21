@@ -86,7 +86,10 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('must-change-password gate', () => {
           headers: { ...SAME_ORIGIN_HEADERS, cookie }
         })) as unknown as InjectResult
         expect(readBlocked.statusCode).toBe(403)
-        expect((readBlocked.json() as { error: string }).error).toBe('password-rotation-required')
+        expect(readBlocked.json()).toMatchObject({
+          code: 'UNKNOWN',
+          message: 'password-rotation-required'
+        })
 
         // 4: wrong old password → 401, gate still active.
         const wrongOld = (await app.inject({
@@ -112,7 +115,10 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('must-change-password gate', () => {
           headers: { ...SAME_ORIGIN_HEADERS, cookie }
         })) as unknown as InjectResult
         expect(tooShort.statusCode).toBe(422)
-        expect((tooShort.json() as { error: string }).error).toBe('too-short')
+        expect(tooShort.json()).toMatchObject({
+          code: 'UNKNOWN',
+          details: { error: 'too-short' }
+        })
 
         // 6: new === old → 422.
         const sameAsOld = (await app.inject({
@@ -122,7 +128,10 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('must-change-password gate', () => {
           headers: { ...SAME_ORIGIN_HEADERS, cookie }
         })) as unknown as InjectResult
         expect(sameAsOld.statusCode).toBe(422)
-        expect((sameAsOld.json() as { error: string }).error).toBe('same-as-old')
+        expect(sameAsOld.json()).toMatchObject({
+          code: 'UNKNOWN',
+          details: { error: 'same-as-old' }
+        })
 
         // 7: valid rotation.
         const rotateRes = (await app.inject({

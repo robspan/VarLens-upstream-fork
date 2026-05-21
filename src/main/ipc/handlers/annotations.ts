@@ -11,8 +11,6 @@ import {
 } from '../../../shared/api/schemas/annotations'
 import { mainLogger } from '../../services/MainLogger'
 import type { AnnotationChangeEvent } from '../../../shared/types/api'
-import type { AuditAppendParams } from '../../storage/audit-log-types'
-import type { StorageWriteExecutor } from '../../storage/write-executor'
 import {
   getGlobalAnnotation,
   upsertGlobalAnnotation,
@@ -54,88 +52,6 @@ function detectAnnotationChangeKind(updates: {
   if (updates.acmg_classification !== undefined) return 'acmg'
   if (updates.acmg_evidence !== undefined) return 'evidence'
   return 'comment'
-}
-
-async function appendAuditEntries(
-  writeExecutor: StorageWriteExecutor,
-  entries: AuditAppendParams[]
-): Promise<void> {
-  for (const entry of entries) {
-    await writeExecutor.execute({ type: 'audit:append', params: [entry] })
-  }
-}
-
-function globalAuditEntries(
-  coords: { chr: string; pos: number; ref: string; alt: string },
-  updates: {
-    user_name?: string | null
-    starred?: boolean
-    acmg_classification?: unknown
-    acmg_evidence?: unknown
-  },
-  oldAnnotation: Record<string, unknown> | null
-): AuditAppendParams[] {
-  const entityKey = `${coords.chr}:${coords.pos}:${coords.ref}:${coords.alt}`
-  const entries: AuditAppendParams[] = []
-  if (updates.acmg_classification !== undefined) {
-    entries.push({
-      action_type: 'acmg_classify',
-      entity_type: 'variant_annotation',
-      entity_key: entityKey,
-      old_value:
-        oldAnnotation === null
-          ? null
-          : JSON.stringify({ acmg_classification: oldAnnotation.acmg_classification }),
-      new_value: JSON.stringify({ acmg_classification: updates.acmg_classification }),
-      user_name: updates.user_name ?? null
-    })
-  }
-  if (updates.acmg_evidence !== undefined) {
-    entries.push({
-      action_type: 'acmg_evidence_update',
-      entity_type: 'variant_annotation',
-      entity_key: entityKey,
-      old_value:
-        oldAnnotation === null
-          ? null
-          : JSON.stringify({ acmg_evidence: oldAnnotation.acmg_evidence }),
-      new_value: JSON.stringify({ acmg_evidence: updates.acmg_evidence }),
-      user_name: updates.user_name ?? null
-    })
-  }
-  if (updates.starred !== undefined) {
-    entries.push({
-      action_type: updates.starred ? 'star' : 'unstar',
-      entity_type: 'variant_annotation',
-      entity_key: entityKey,
-      old_value: oldAnnotation === null ? null : JSON.stringify({ starred: oldAnnotation.starred }),
-      new_value: JSON.stringify({ starred: updates.starred ? 1 : 0 }),
-      user_name: updates.user_name ?? null
-    })
-  }
-  return entries
-}
-
-function perCaseAuditEntries(
-  caseId: number,
-  variantId: number,
-  updates: {
-    user_name?: string | null
-    starred?: boolean
-    acmg_classification?: unknown
-    acmg_evidence?: unknown
-  },
-  oldAnnotation: Record<string, unknown> | null
-): AuditAppendParams[] {
-  return globalAuditEntries(
-    { chr: 'case', pos: caseId, ref: 'variant', alt: String(variantId) },
-    updates,
-    oldAnnotation
-  ).map((entry) => ({
-    ...entry,
-    entity_type: 'case_variant_annotation',
-    entity_key: `case:${caseId}:variant:${variantId}`
-  }))
 }
 
 /**
@@ -206,21 +122,10 @@ export function registerAnnotationHandlers({
 
         const session = getDbManager().getCurrentSession()
         if (session.capabilities.backend === 'postgres') {
-          const readExecutor = session.getReadExecutor()
-          const writeExecutor = session.getWriteExecutor()
-          const oldAnnotation = (await readExecutor.execute({
-            type: 'annotations:getGlobal',
-            params: [validatedCoords.data]
-          })) as Record<string, unknown> | null
-          const result = await writeExecutor.execute({
-            type: 'annotations:upsertGlobal',
+          return await session.getWriteExecutor().execute({
+            type: 'annotations:upsertGlobalWithAudit',
             params: [validatedCoords.data, validatedUpdates.data]
           })
-          await appendAuditEntries(
-            writeExecutor,
-            globalAuditEntries(validatedCoords.data, validatedUpdates.data, oldAnnotation)
-          )
-          return result
         }
         return upsertGlobalAnnotation(validatedCoords.data, validatedUpdates.data, getDb)
       })
@@ -313,25 +218,10 @@ export function registerAnnotationHandlers({
         const session = getDbManager().getCurrentSession()
         let result: unknown
         if (session.capabilities.backend === 'postgres') {
-          const readExecutor = session.getReadExecutor()
-          const writeExecutor = session.getWriteExecutor()
-          const oldAnnotation = (await readExecutor.execute({
-            type: 'annotations:getPerCase',
-            params: [validatedIds.data.caseId, validatedIds.data.variantId]
-          })) as Record<string, unknown> | null
-          result = await writeExecutor.execute({
-            type: 'annotations:upsertPerCase',
+          result = await session.getWriteExecutor().execute({
+            type: 'annotations:upsertPerCaseWithAudit',
             params: [validatedIds.data.caseId, validatedIds.data.variantId, validatedUpdates.data]
           })
-          await appendAuditEntries(
-            writeExecutor,
-            perCaseAuditEntries(
-              validatedIds.data.caseId,
-              validatedIds.data.variantId,
-              validatedUpdates.data,
-              oldAnnotation
-            )
-          )
         } else {
           result = upsertPerCaseAnnotation(
             validatedIds.data.caseId,

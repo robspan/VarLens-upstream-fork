@@ -76,10 +76,7 @@ describe('variants-logic exports', () => {
         getReadExecutor: () => ({ execute })
       }) as never
 
-    await expect(searchVariants(1, 'BRCA1', 20, getSession, getDb)).resolves.toEqual({
-      data: [],
-      total_count: 0
-    })
+    await expect(searchVariants(1, 'BRCA1', 20, getSession, getDb)).resolves.toEqual([])
     expect(execute).toHaveBeenCalledWith({
       type: 'variants:query',
       params: [{ case_id: 1, gene_symbol: 'BRCA1' }, 20, 0, undefined, true, false]

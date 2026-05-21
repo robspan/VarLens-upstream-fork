@@ -1,4 +1,3 @@
-import type { Pool } from 'pg'
 import { wrapHandler } from '../errorHandler'
 import type { HandlerDependencies } from '../types'
 import type { TranscriptInsertRow } from '../../../shared/types/transcript'
@@ -8,21 +7,6 @@ import {
   TranscriptVariantIdSchema
 } from '../../../shared/api/schemas/transcripts'
 import { mainLogger } from '../../services/MainLogger'
-import { quoteIdentifier } from '../../storage/postgres/identifiers'
-import type { StorageSession } from '../../storage/session'
-
-function postgresContext(session: StorageSession): {
-  pool: Pool
-  schemaName: string
-} | null {
-  if (session.workspace.kind !== 'postgres') return null
-  const maybePool = (session as { getPool?: () => Pool }).getPool
-  if (maybePool === undefined) return null
-  return {
-    pool: maybePool.call(session),
-    schemaName: quoteIdentifier(session.workspace.schema)
-  }
-}
 
 /**
  * Transcript IPC handlers
@@ -51,17 +35,11 @@ export function registerTranscriptHandlers({
       }
 
       const session = getDbManager().getCurrentSession()
-      const pg = postgresContext(session)
-      if (pg !== null) {
-        const result = await pg.pool.query(
-          `SELECT id, variant_id, transcript_id, gene_symbol, consequence, cdna, aa_change,
-                  hpo_sim_score, moi, is_selected, is_mane_select, is_canonical
-             FROM ${pg.schemaName}.variant_transcripts
-            WHERE variant_id = $1
-            ORDER BY is_selected DESC, transcript_id ASC`,
-          [validated.data]
-        )
-        return result.rows
+      if (session.capabilities.backend === 'postgres') {
+        return await session.getReadExecutor().execute({
+          type: 'transcripts:list',
+          params: [validated.data]
+        })
       }
 
       const pool = getDbPool?.()
@@ -100,19 +78,11 @@ export function registerTranscriptHandlers({
         }
 
         const session = getDbManager().getCurrentSession()
-        const pg = postgresContext(session)
-        if (pg !== null) {
-          await pg.pool.query(
-            `UPDATE ${pg.schemaName}.variant_transcripts SET is_selected = 0 WHERE variant_id = $1`,
-            [validatedVariantId.data]
-          )
-          await pg.pool.query(
-            `UPDATE ${pg.schemaName}.variant_transcripts
-                SET is_selected = 1
-              WHERE variant_id = $1 AND transcript_id = $2`,
-            [validatedVariantId.data, validatedTranscriptId.data]
-          )
-          return { success: true }
+        if (session.capabilities.backend === 'postgres') {
+          return await session.getWriteExecutor().execute({
+            type: 'transcripts:switch',
+            params: [validatedVariantId.data, validatedTranscriptId.data]
+          })
         }
 
         const db = getDb()
@@ -150,48 +120,11 @@ export function registerTranscriptHandlers({
         }
 
         const session = getDbManager().getCurrentSession()
-        const pg = postgresContext(session)
-        if (pg !== null) {
-          const client = await pg.pool.connect()
-          try {
-            await client.query('BEGIN')
-            await client.query(
-              `UPDATE ${pg.schemaName}.variant_transcripts SET is_selected = 0 WHERE variant_id = $1`,
-              [validatedVariantId.data]
-            )
-            await client.query(
-              `INSERT INTO ${pg.schemaName}.variant_transcripts
-                 (variant_id, transcript_id, gene_symbol, consequence, cdna, aa_change,
-                  hpo_sim_score, moi, is_selected, is_mane_select, is_canonical)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, NULL, NULL)
-               ON CONFLICT (variant_id, transcript_id)
-               DO UPDATE SET
-                 gene_symbol = EXCLUDED.gene_symbol,
-                 consequence = EXCLUDED.consequence,
-                 cdna = EXCLUDED.cdna,
-                 aa_change = EXCLUDED.aa_change,
-                 hpo_sim_score = EXCLUDED.hpo_sim_score,
-                 moi = EXCLUDED.moi,
-                 is_selected = 1`,
-              [
-                validatedVariantId.data,
-                validatedTranscript.data.transcript_id,
-                validatedTranscript.data.gene_symbol,
-                validatedTranscript.data.consequence,
-                validatedTranscript.data.cdna,
-                validatedTranscript.data.aa_change,
-                validatedTranscript.data.hpo_sim_score,
-                validatedTranscript.data.moi
-              ]
-            )
-            await client.query('COMMIT')
-            return { success: true }
-          } catch (error) {
-            await client.query('ROLLBACK')
-            throw error
-          } finally {
-            client.release()
-          }
+        if (session.capabilities.backend === 'postgres') {
+          return await session.getWriteExecutor().execute({
+            type: 'transcripts:insertAndSwitch',
+            params: [validatedVariantId.data, validatedTranscript.data as TranscriptInsertRow]
+          })
         }
 
         const db = getDb()

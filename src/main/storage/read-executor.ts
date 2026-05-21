@@ -87,6 +87,7 @@ export type StorageReadTask =
   | { type: 'analysis-groups:getForCase'; params: [caseId: number] }
   | { type: 'audit:getByEntity'; params: [entityKey: string] }
   | { type: 'audit:query'; params: [params: AuditQueryParams] }
+  | { type: 'transcripts:list'; params: [variantId: number] }
 
 export interface StorageReadExecutor {
   execute(task: StorageReadTask): Promise<unknown>

@@ -1,0 +1,155 @@
+import { describe, expect, it, vi } from 'vitest'
+
+import { PostgresTranscriptsRepository } from '../../../src/main/storage/postgres/PostgresTranscriptsRepository'
+
+describe('PostgresTranscriptsRepository', () => {
+  it('maps integer transcript flags to desktop boolean fields', async () => {
+    const pool = {
+      query: vi.fn().mockResolvedValue({
+        rows: [
+          {
+            id: '1',
+            variant_id: '9',
+            transcript_id: 'NM_000059.4',
+            gene_symbol: 'BRCA2',
+            consequence: 'HIGH',
+            cdna: null,
+            aa_change: null,
+            hpo_sim_score: null,
+            moi: null,
+            is_selected: 1,
+            is_mane_select: 0,
+            is_canonical: null
+          }
+        ]
+      })
+    }
+    const repository = new PostgresTranscriptsRepository(pool as never, 'case_schema')
+
+    await expect(repository.list(9)).resolves.toEqual([
+      {
+        id: 1,
+        variant_id: 9,
+        transcript_id: 'NM_000059.4',
+        gene_symbol: 'BRCA2',
+        consequence: 'HIGH',
+        cdna: null,
+        aa_change: null,
+        hpo_sim_score: null,
+        moi: null,
+        is_selected: true,
+        is_mane_select: false,
+        is_canonical: null
+      }
+    ])
+  })
+
+  it('updates the parent variant when switching the selected transcript', async () => {
+    const release = vi.fn()
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            transcript_id: 'NM_000059.4',
+            gene_symbol: 'BRCA2',
+            consequence: 'HIGH',
+            cdna: 'c.1A>G',
+            aa_change: 'p.M1V',
+            hpo_sim_score: 0.8,
+            moi: 'AD'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+    const pool = {
+      connect: vi.fn(async () => ({ query, release }))
+    }
+    const repository = new PostgresTranscriptsRepository(pool as never, 'case_schema')
+
+    await expect(repository.switchSelectedTranscript(9, 'NM_000059.4')).resolves.toEqual({
+      success: true
+    })
+
+    expect(query).toHaveBeenNthCalledWith(1, 'BEGIN')
+    expect(query).toHaveBeenNthCalledWith(3, expect.stringContaining('RETURNING'), [
+      9,
+      'NM_000059.4'
+    ])
+    expect(query).toHaveBeenNthCalledWith(
+      4,
+      expect.stringContaining('UPDATE "case_schema".variants'),
+      [9, 'NM_000059.4', 'BRCA2', 'HIGH', 'c.1A>G', 'p.M1V', 0.8, 'AD']
+    )
+    expect(query).toHaveBeenNthCalledWith(5, 'COMMIT')
+    expect(release).toHaveBeenCalledOnce()
+  })
+
+  it('inserts missing transcripts without overwriting existing rows and then switches selection', async () => {
+    const transcript = {
+      transcript_id: 'NM_000059.4',
+      gene_symbol: 'BRCA2',
+      consequence: 'HIGH',
+      cdna: 'c.1A>G',
+      aa_change: 'p.M1V',
+      hpo_sim_score: 0.8,
+      moi: 'AD',
+      is_selected: 0
+    }
+    const release = vi.fn()
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            transcript_id: 'NM_000059.4',
+            gene_symbol: 'BRCA2',
+            consequence: 'HIGH',
+            cdna: 'c.1A>G',
+            aa_change: 'p.M1V',
+            hpo_sim_score: 0.8,
+            moi: 'AD'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+    const pool = {
+      connect: vi.fn(async () => ({ query, release }))
+    }
+    const repository = new PostgresTranscriptsRepository(pool as never, 'case_schema')
+
+    await expect(repository.insertTranscriptAndSwitch(9, transcript)).resolves.toEqual({
+      success: true
+    })
+
+    expect(query).toHaveBeenNthCalledWith(1, 'BEGIN')
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('ON CONFLICT (variant_id, transcript_id)\n         DO NOTHING'),
+      [9, 'NM_000059.4', 'BRCA2', 'HIGH', 'c.1A>G', 'p.M1V', 0.8, 'AD']
+    )
+    expect(query).toHaveBeenNthCalledWith(
+      3,
+      'UPDATE "case_schema".variant_transcripts SET is_selected = 0 WHERE variant_id = $1',
+      [9]
+    )
+    expect(query).toHaveBeenNthCalledWith(4, expect.stringContaining('RETURNING'), [
+      9,
+      'NM_000059.4'
+    ])
+    expect(query).toHaveBeenNthCalledWith(
+      5,
+      expect.stringContaining('UPDATE "case_schema".variants'),
+      [9, 'NM_000059.4', 'BRCA2', 'HIGH', 'c.1A>G', 'p.M1V', 0.8, 'AD']
+    )
+    expect(query).toHaveBeenNthCalledWith(6, 'COMMIT')
+    expect(release).toHaveBeenCalledOnce()
+  })
+})

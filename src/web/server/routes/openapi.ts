@@ -19,7 +19,6 @@ import {
 } from '../../../shared/api/schemas/assets'
 import {
   AuthBooleanSchema,
-  AuthErrorSchema,
   AuthInvokeBodySchemas,
   AuthOkSchema,
   AuthResultSchema,
@@ -51,6 +50,7 @@ import {
   DatabaseRecentListSchema,
   DatabaseUnknownResponseSchema
 } from '../../../shared/api/schemas/database'
+import { DispatcherErrorResponseSchema } from '../../../shared/api/schemas/dispatcher'
 import {
   ExportInvokeBodySchemas,
   ExportUnknownResponseSchema
@@ -58,8 +58,7 @@ import {
 import {
   BatchImportInvokeBodySchemas,
   ImportInvokeBodySchemas,
-  ImportUnknownResponseSchema,
-  ServerPathImportDisabledSchema
+  ImportUnknownResponseSchema
 } from '../../../shared/api/schemas/import'
 import {
   ReferenceInvokeBodySchemas,
@@ -87,12 +86,6 @@ type OpenApiPathItem = Record<string, unknown>
 type OpenApiDocument = {
   paths?: Record<string, OpenApiPathItem>
 }
-
-const UnsupportedCapabilitySchema = z.object({
-  error: z.literal('unsupported-web-capability'),
-  capability: z.string(),
-  message: z.string()
-})
 
 const ExecutorTaskUnknownResponseSchema = z.unknown()
 
@@ -157,15 +150,15 @@ function authOperation(options: {
               },
         400: {
           description: 'Invalid request',
-          ...jsonContent(AuthErrorSchema)
+          ...jsonContent(DispatcherErrorResponseSchema)
         },
         401: {
           description: 'Authentication required',
-          ...jsonContent(AuthErrorSchema)
+          ...jsonContent(DispatcherErrorResponseSchema)
         },
         403: {
           description: 'Forbidden',
-          ...jsonContent(AuthErrorSchema)
+          ...jsonContent(DispatcherErrorResponseSchema)
         }
       }
     }
@@ -178,7 +171,6 @@ function dispatcherMethodOperation(options: {
   body: z.ZodType
   response?: z.ZodType
   mayReturnUnsupported?: boolean
-  forbiddenResponse?: z.ZodType
   forbiddenDescription?: string
 }): OpenApiPathItem {
   return {
@@ -193,21 +185,21 @@ function dispatcherMethodOperation(options: {
         },
         400: {
           description: 'Invalid request',
-          ...jsonContent(AuthErrorSchema)
+          ...jsonContent(DispatcherErrorResponseSchema)
         },
         401: {
           description: 'Authentication required',
-          ...jsonContent(AuthErrorSchema)
+          ...jsonContent(DispatcherErrorResponseSchema)
         },
         403: {
           description: options.forbiddenDescription ?? 'Forbidden',
-          ...jsonContent(options.forbiddenResponse ?? AuthErrorSchema)
+          ...jsonContent(DispatcherErrorResponseSchema)
         },
         ...(options.mayReturnUnsupported === true
           ? {
               501: {
                 description: 'Not available in web mode unless parity fixtures are enabled',
-                ...jsonContent(UnsupportedCapabilitySchema)
+                ...jsonContent(DispatcherErrorResponseSchema)
               }
             }
           : {})
@@ -229,15 +221,15 @@ function unsupportedDispatcherMethodOperation(options: {
       responses: {
         501: {
           description: 'Not available in web mode',
-          ...jsonContent(UnsupportedCapabilitySchema)
+          ...jsonContent(DispatcherErrorResponseSchema)
         },
         401: {
           description: 'Authentication required',
-          ...jsonContent(AuthErrorSchema)
+          ...jsonContent(DispatcherErrorResponseSchema)
         },
         403: {
           description: 'Forbidden',
-          ...jsonContent(AuthErrorSchema)
+          ...jsonContent(DispatcherErrorResponseSchema)
         }
       }
     }
@@ -415,7 +407,6 @@ function buildAssetOpenApiPaths(): Record<string, OpenApiPathItem> {
       summary: 'Import a server-side BED file',
       body: AssetInvokeBodySchemas.importBed,
       response: AssetUnknownResponseSchema,
-      forbiddenResponse: z.union([AuthErrorSchema, ServerPathImportDisabledSchema]),
       forbiddenDescription: 'Forbidden or server-path import disabled'
     }),
     '/api/gene-lists/setGenes': dispatcherMethodOperation({
@@ -511,7 +502,6 @@ function buildExportOpenApiPaths(): Record<string, OpenApiPathItem> {
 }
 
 function buildImportOpenApiPaths(): Record<string, OpenApiPathItem> {
-  const forbiddenResponse = z.union([AuthErrorSchema, ServerPathImportDisabledSchema])
   const forbiddenDescription = 'Forbidden or server-path import disabled'
 
   return {
@@ -520,7 +510,6 @@ function buildImportOpenApiPaths(): Record<string, OpenApiPathItem> {
       summary: 'Import one server-side variant file',
       body: ImportInvokeBodySchemas.start,
       response: ImportUnknownResponseSchema,
-      forbiddenResponse,
       forbiddenDescription
     }),
     '/api/import/startMultiFile': dispatcherMethodOperation({
@@ -528,7 +517,6 @@ function buildImportOpenApiPaths(): Record<string, OpenApiPathItem> {
       summary: 'Import multiple server-side variant files',
       body: ImportInvokeBodySchemas.startMultiFile,
       response: ImportUnknownResponseSchema,
-      forbiddenResponse,
       forbiddenDescription
     }),
     '/api/batch-import/extractZip': dispatcherMethodOperation({
@@ -536,7 +524,6 @@ function buildImportOpenApiPaths(): Record<string, OpenApiPathItem> {
       summary: 'Extract a server-side ZIP archive for batch import',
       body: BatchImportInvokeBodySchemas.extractZip,
       response: ImportUnknownResponseSchema,
-      forbiddenResponse,
       forbiddenDescription
     }),
     '/api/batch-import/testZipPassword': dispatcherMethodOperation({
@@ -544,7 +531,6 @@ function buildImportOpenApiPaths(): Record<string, OpenApiPathItem> {
       summary: 'Test a server-side ZIP archive password',
       body: BatchImportInvokeBodySchemas.testZipPassword,
       response: ImportUnknownResponseSchema,
-      forbiddenResponse,
       forbiddenDescription
     }),
     '/api/batch-import/cleanupZipTemp': dispatcherMethodOperation({
@@ -563,6 +549,12 @@ function buildTranscriptOpenApiPaths(): Record<string, OpenApiPathItem> {
       summary: 'List transcripts for a variant',
       body: TranscriptInvokeBodySchemas.list,
       response: TranscriptUnknownResponseSchema
+    }),
+    '/api/transcripts/switch': dispatcherMethodOperation({
+      tag: 'transcripts',
+      summary: 'Switch the selected transcript for a variant',
+      body: TranscriptInvokeBodySchemas.switch,
+      response: TranscriptSwitchResponseSchema
     }),
     '/api/transcripts/insertAndSwitch': dispatcherMethodOperation({
       tag: 'transcripts',

@@ -12,11 +12,9 @@ export const DispatcherInvokeBodySchema = z
   .nullable()
   .optional()
 
-export const DispatcherErrorResponseSchema = z
-  .object({
-    error: z.string().optional(),
-    code: z.string().optional(),
-    message: z.string().optional(),
-    userMessage: z.string().optional()
-  })
-  .passthrough()
+export const DispatcherErrorResponseSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+  userMessage: z.string(),
+  details: z.record(z.string(), z.unknown()).optional()
+})

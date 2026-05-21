@@ -27,6 +27,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 
 import type { StorageReadTask } from '../../main/storage/read-executor'
 import type { StorageWriteTask } from '../../main/storage/write-executor'
+import { ErrorCode, type SerializableError } from '../../shared/types/errors'
 import { isReadTaskType, isWriteTaskType, toTaskDomain } from './task-types'
 import { buildAnnotationOverrides } from './routes/annotations'
 import { buildAssetOverrides } from './routes/assets'
@@ -36,6 +37,7 @@ import { buildCohortOverrides } from './routes/cohort'
 import { buildDatabaseOverrides } from './routes/database'
 import { buildExportOverrides } from './routes/export'
 import { buildImportOverrides } from './routes/import'
+import { buildPanelOverrides } from './routes/panels'
 import { buildReferenceApiOverrides } from './routes/reference-api'
 import { buildTranscriptOverrides } from './routes/transcripts'
 import { buildVariantOverrides } from './routes/variants'
@@ -59,6 +61,58 @@ import {
  */
 const PRE_ROTATION_ALLOWED = new Set<string>(['auth:changePassword', 'auth:logout'])
 const DEV_API_LATENCY_ENV = 'VARLENS_WEB_API_LATENCY_MS'
+
+function toSerializableWebError(error: unknown): SerializableError {
+  if (
+    error !== null &&
+    typeof error === 'object' &&
+    'code' in error &&
+    'message' in error &&
+    'userMessage' in error
+  ) {
+    return error as SerializableError
+  }
+
+  if (error instanceof Error) {
+    return {
+      code: ErrorCode.UNKNOWN,
+      message: error.message,
+      userMessage: 'An unexpected error occurred. Please try again.'
+    }
+  }
+
+  const details =
+    error !== null && typeof error === 'object' ? (error as Record<string, unknown>) : undefined
+  const message =
+    details !== undefined && typeof details.message === 'string'
+      ? details.message
+      : details !== undefined && typeof details.error === 'string'
+        ? details.error
+        : String(error)
+
+  return {
+    code: ErrorCode.UNKNOWN,
+    message,
+    userMessage: message,
+    ...(details !== undefined ? { details } : {})
+  }
+}
+
+async function invokeAsIpcResult(
+  reply: { statusCode: number; code: (statusCode: number) => unknown },
+  invoke: () => Promise<unknown>
+): Promise<unknown> {
+  try {
+    const result = await invoke()
+    if (reply.statusCode >= 400) {
+      return toSerializableWebError(result)
+    }
+    return result
+  } catch (error) {
+    reply.code(500)
+    return toSerializableWebError(error)
+  }
+}
 
 export function resolveDevApiLatencyMs(env: NodeJS.ProcessEnv = process.env): number {
   if (env.NODE_ENV !== 'development') return 0
@@ -97,6 +151,7 @@ function buildOverrides(): Record<string, OverrideHandler> {
     ...buildDatabaseOverrides(),
     ...buildExportOverrides(),
     ...buildImportOverrides(),
+    ...buildPanelOverrides(),
     ...buildReferenceApiOverrides(),
     ...buildTranscriptOverrides(),
     ...buildVariantOverrides()
@@ -150,6 +205,7 @@ export function registerDispatcher(
           401: DispatcherErrorResponseSchema,
           403: DispatcherErrorResponseSchema,
           404: DispatcherErrorResponseSchema,
+          500: DispatcherErrorResponseSchema,
           501: DispatcherErrorResponseSchema
         }
       }
@@ -177,30 +233,36 @@ export function registerDispatcher(
       ) {
         reply.code(403)
         return {
-          error: 'password-rotation-required',
-          message:
+          code: ErrorCode.UNKNOWN,
+          message: 'password-rotation-required',
+          userMessage:
             'Your password must be changed before any other action. ' +
             'Call auth:changePassword first.'
-        }
+        } satisfies SerializableError
       }
 
       const override = overrides[key]
       if (override !== undefined) {
-        return await override.handle(args, request, reply, deps)
+        return await invokeAsIpcResult(reply, () => override.handle(args, request, reply, deps))
       }
 
       if (isReadTaskType(key)) {
         const task = { type: key, params: args } as StorageReadTask
-        return await deps.session.getReadExecutor().execute(task)
+        return await invokeAsIpcResult(reply, () => deps.session.getReadExecutor().execute(task))
       }
 
       if (isWriteTaskType(key)) {
         const task = { type: key, params: args } as StorageWriteTask
-        return await deps.session.getWriteExecutor().execute(task)
+        return await invokeAsIpcResult(reply, () => deps.session.getWriteExecutor().execute(task))
       }
 
       reply.code(404)
-      return { error: 'unknown method', domain, method }
+      return {
+        code: ErrorCode.NOT_FOUND,
+        message: 'unknown method',
+        userMessage: 'Unknown API method.',
+        details: { domain, method }
+      } satisfies SerializableError
     }
   )
 }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { startIsolatedWebSchema } from '../helpers/web-driver'
+import { SAME_ORIGIN_HEADERS, startIsolatedWebSchema } from '../helpers/web-driver'
 
 const HAS_PG = typeof process.env.VARLENS_PG_URL === 'string' && process.env.VARLENS_PG_URL !== ''
 
@@ -19,7 +19,8 @@ describe.skipIf(!HAS_PG)('web dev API latency route', () => {
         const res = await app.inject({
           method: 'POST',
           url: '/api/auth/isAccountsEnabled',
-          payload: { args: [] }
+          payload: { args: [] },
+          headers: SAME_ORIGIN_HEADERS
         })
         const elapsedMs = performance.now() - started
 

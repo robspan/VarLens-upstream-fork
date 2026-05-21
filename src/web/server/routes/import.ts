@@ -20,11 +20,11 @@ import type { OverrideHandler } from './types'
 
 const SERVER_PATH_IMPORT_ENV = 'VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT'
 
-function serverPathImportDisabled(): boolean {
+export function serverPathImportDisabled(): boolean {
   return process.env.NODE_ENV !== 'test' && process.env[SERVER_PATH_IMPORT_ENV] !== '1'
 }
 
-function serverPathImportDisabledResponse(): {
+export function serverPathImportDisabledResponse(): {
   error: string
   message: string
 } {

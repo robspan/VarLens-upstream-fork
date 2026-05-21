@@ -10,7 +10,6 @@ WEB_DEV_SCHEMA ?= web_dev
 WEB_DEV_RECOVERY_KEY_DIR ?= /tmp/varlens-web-dev
 WEB_DEV_API_LATENCY_MS ?= 75
 WEB_DEV_ADMIN_USERNAME ?= admin
-WEB_DEV_ADMIN_PASSWORD ?= varlens-dev-password-2026
 
 define ensure_ci_node
 	@current_node="$$(node -v | sed 's/^v//')"; \
@@ -83,7 +82,7 @@ web-dev: ## Start local Postgres-backed web mode at http://localhost:$(WEB_DEV_P
 	@echo "  Schema:   $(WEB_DEV_SCHEMA)"
 	@echo "  Secrets:  $${VARLENS_RECOVERY_KEY_DIR:-$(WEB_DEV_RECOVERY_KEY_DIR)}"
 	@echo "  API delay: $${VARLENS_WEB_API_LATENCY_MS:-$(WEB_DEV_API_LATENCY_MS)}ms"
-	@echo "  Dev admin bootstrap (first run only): $(WEB_DEV_ADMIN_USERNAME) / $(WEB_DEV_ADMIN_PASSWORD)"
+	@echo "  Dev admin bootstrap: set VARLENS_ADMIN_PASSWORD_HASH for first run"
 	@echo ""
 	@set -a; . ./.env.postgres.local; set +a; \
 		NODE_ENV=development \
@@ -94,7 +93,7 @@ web-dev: ## Start local Postgres-backed web mode at http://localhost:$(WEB_DEV_P
 		VARLENS_PG_SCHEMA="$(WEB_DEV_SCHEMA)" \
 		VARLENS_RECOVERY_KEY_DIR="$${VARLENS_RECOVERY_KEY_DIR:-$(WEB_DEV_RECOVERY_KEY_DIR)}" \
 		VARLENS_ADMIN_USERNAME="$${VARLENS_ADMIN_USERNAME:-$(WEB_DEV_ADMIN_USERNAME)}" \
-		VARLENS_ADMIN_PASSWORD="$${VARLENS_ADMIN_PASSWORD:-$(WEB_DEV_ADMIN_PASSWORD)}" \
+		VARLENS_ADMIN_PASSWORD_HASH="$${VARLENS_ADMIN_PASSWORD_HASH:-}" \
 		node out/web/server.cjs
 
 dev-postgres: ## Start development server with PostgreSQL backend enabled

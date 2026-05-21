@@ -232,11 +232,8 @@ export class PostgresWebAuthService {
   }
 
   /**
-   * Plaintext bootstrap path — DEPRECATED. Hashes server-side, then
-   * delegates to the same insert as the hash path. Retained for one
-   * migration release so existing operators with
-   * `VARLENS_ADMIN_PASSWORD=` set in `.env` still come up; expect
-   * removal in the next major.
+   * Internal test/helper path. Production web bootstrap refuses
+   * plaintext env credentials and calls createFirstUserFromHash().
    */
   async createFirstUser(
     username: string,

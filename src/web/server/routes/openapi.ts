@@ -268,10 +268,10 @@ function buildAuthOpenApiPaths(): Record<string, OpenApiPathItem> {
       response: AuthBooleanSchema,
       public: true
     }),
-    '/api/auth/createUser': authOperation({
-      summary: 'Create a user account',
-      body: AuthInvokeBodySchemas.createUser,
-      response: AuthUserSchema
+    '/api/auth/createUser': unsupportedDispatcherMethodOperation({
+      tag: 'auth',
+      summary: 'Disabled until clinical tables are scoped by user_id',
+      body: AuthInvokeBodySchemas.createUser
     }),
     '/api/auth/listUsers': authOperation({
       summary: 'List user accounts',
@@ -414,7 +414,9 @@ function buildAssetOpenApiPaths(): Record<string, OpenApiPathItem> {
       tag: 'region-files',
       summary: 'Import a server-side BED file',
       body: AssetInvokeBodySchemas.importBed,
-      response: AssetUnknownResponseSchema
+      response: AssetUnknownResponseSchema,
+      forbiddenResponse: z.union([AuthErrorSchema, ServerPathImportDisabledSchema]),
+      forbiddenDescription: 'Forbidden or server-path import disabled'
     }),
     '/api/gene-lists/setGenes': dispatcherMethodOperation({
       tag: 'gene-lists',

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { existsSync } from 'fs'
 import { resolve } from 'path'
 
-import { startIsolatedWebSchema } from '../helpers/web-driver'
+import { SAME_ORIGIN_HEADERS, startIsolatedWebSchema } from '../helpers/web-driver'
 
 /**
  * 2026-security gate: a session that still carries
@@ -66,7 +66,8 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('must-change-password gate', () => {
         const loginRes = (await app.inject({
           method: 'POST',
           url: '/api/auth/login',
-          payload: { args: [USERNAME, OLD_PASSWORD] }
+          payload: { args: [USERNAME, OLD_PASSWORD] },
+          headers: SAME_ORIGIN_HEADERS
         })) as unknown as InjectResult
         expect(loginRes.statusCode).toBe(200)
         const loginBody = loginRes.json() as { success: boolean; mustChangePassword?: boolean }
@@ -82,7 +83,7 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('must-change-password gate', () => {
           method: 'POST',
           url: '/api/database/capabilities',
           payload: { args: [] },
-          headers: { cookie }
+          headers: { ...SAME_ORIGIN_HEADERS, cookie }
         })) as unknown as InjectResult
         expect(readBlocked.statusCode).toBe(403)
         expect((readBlocked.json() as { error: string }).error).toBe('password-rotation-required')
@@ -92,14 +93,14 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('must-change-password gate', () => {
           method: 'POST',
           url: '/api/auth/changePassword',
           payload: { args: ['nope', NEW_PASSWORD] },
-          headers: { cookie }
+          headers: { ...SAME_ORIGIN_HEADERS, cookie }
         })) as unknown as InjectResult
         expect(wrongOld.statusCode).toBe(401)
         const stillGated = (await app.inject({
           method: 'POST',
           url: '/api/database/capabilities',
           payload: { args: [] },
-          headers: { cookie }
+          headers: { ...SAME_ORIGIN_HEADERS, cookie }
         })) as unknown as InjectResult
         expect(stillGated.statusCode).toBe(403)
 
@@ -108,7 +109,7 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('must-change-password gate', () => {
           method: 'POST',
           url: '/api/auth/changePassword',
           payload: { args: [OLD_PASSWORD, 'short'] },
-          headers: { cookie }
+          headers: { ...SAME_ORIGIN_HEADERS, cookie }
         })) as unknown as InjectResult
         expect(tooShort.statusCode).toBe(422)
         expect((tooShort.json() as { error: string }).error).toBe('too-short')
@@ -118,7 +119,7 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('must-change-password gate', () => {
           method: 'POST',
           url: '/api/auth/changePassword',
           payload: { args: [OLD_PASSWORD, OLD_PASSWORD] },
-          headers: { cookie }
+          headers: { ...SAME_ORIGIN_HEADERS, cookie }
         })) as unknown as InjectResult
         expect(sameAsOld.statusCode).toBe(422)
         expect((sameAsOld.json() as { error: string }).error).toBe('same-as-old')
@@ -128,7 +129,7 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('must-change-password gate', () => {
           method: 'POST',
           url: '/api/auth/changePassword',
           payload: { args: [OLD_PASSWORD, NEW_PASSWORD] },
-          headers: { cookie }
+          headers: { ...SAME_ORIGIN_HEADERS, cookie }
         })) as unknown as InjectResult
         expect(rotateRes.statusCode).toBe(200)
         expect((rotateRes.json() as { success: boolean }).success).toBe(true)
@@ -139,7 +140,7 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('must-change-password gate', () => {
           method: 'POST',
           url: '/api/database/capabilities',
           payload: { args: [] },
-          headers: { cookie }
+          headers: { ...SAME_ORIGIN_HEADERS, cookie }
         })) as unknown as InjectResult
         expect(readAllowed.statusCode).toBe(200)
 
@@ -148,7 +149,8 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('must-change-password gate', () => {
         const reloginRes = (await app.inject({
           method: 'POST',
           url: '/api/auth/login',
-          payload: { args: [USERNAME, NEW_PASSWORD] }
+          payload: { args: [USERNAME, NEW_PASSWORD] },
+          headers: SAME_ORIGIN_HEADERS
         })) as unknown as InjectResult
         expect(reloginRes.statusCode).toBe(200)
         const reloginBody = reloginRes.json() as { success: boolean; mustChangePassword?: boolean }
@@ -176,7 +178,8 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('must-change-password gate', () => {
         const loginRes = (await app.inject({
           method: 'POST',
           url: '/api/auth/login',
-          payload: { args: [USERNAME, OLD_PASSWORD] }
+          payload: { args: [USERNAME, OLD_PASSWORD] },
+          headers: SAME_ORIGIN_HEADERS
         })) as unknown as InjectResult
         const cookie = extractCookies(loginRes)
         expect(cookie).not.toBe('')
@@ -185,7 +188,7 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('must-change-password gate', () => {
           method: 'POST',
           url: '/api/auth/logout',
           payload: { args: [] },
-          headers: { cookie }
+          headers: { ...SAME_ORIGIN_HEADERS, cookie }
         })) as unknown as InjectResult
         // Logout returns 200 even pre-rotation — the user can always
         // drop their session.

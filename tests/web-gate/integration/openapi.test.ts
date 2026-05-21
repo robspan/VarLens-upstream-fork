@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { existsSync } from 'fs'
 import { resolve } from 'path'
 
-import { startWebDriver } from '../helpers/web-driver'
+import { SAME_ORIGIN_HEADERS, startWebDriver } from '../helpers/web-driver'
 
 const WEB_BUILD_PATH = resolve(process.cwd(), 'out/web/server.cjs')
 const isWebBuilt = existsSync(WEB_BUILD_PATH)
@@ -85,6 +85,7 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
       expect(spec.info?.title).toBe('VarLens Web API')
       expect(spec.paths).toHaveProperty('/api/{domain}/{method}')
       expect(spec.paths).toHaveProperty('/api/auth/login')
+      expect(spec.paths).toHaveProperty('/api/auth/createUser')
       expect(spec.paths).toHaveProperty('/api/auth/changePassword')
       for (const path of ANNOTATION_PATHS) {
         expect(spec.paths).toHaveProperty(path)
@@ -127,6 +128,9 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
         { post?: { requestBody?: unknown; responses?: Record<string, unknown> } }
       >
       expect(paths['/api/auth/login']?.post?.requestBody).toBeDefined()
+      expect(paths['/api/auth/createUser']?.post?.requestBody).toBeDefined()
+      expect(paths['/api/auth/createUser']?.post?.responses?.['501']).toBeDefined()
+      expect(paths['/api/auth/createUser']?.post?.responses?.['200']).toBeUndefined()
       expect(paths['/api/auth/changePassword']?.post?.requestBody).toBeDefined()
       for (const path of ANNOTATION_PATHS) {
         expect(paths[path]?.post?.requestBody).toBeDefined()
@@ -195,7 +199,7 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
       const res = await driver.app.inject({
         method: 'POST',
         url: '/api/auth/isAccountsEnabled',
-        headers: { cookie: driver.cookie }
+        headers: { ...SAME_ORIGIN_HEADERS, cookie: driver.cookie }
       })
 
       expect(res.statusCode, res.body).toBe(200)

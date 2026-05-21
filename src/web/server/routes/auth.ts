@@ -106,7 +106,7 @@ export function buildAuthOverrides(): Record<string, OverrideHandler> {
       }
     },
     'auth:createUser': {
-      async handle(args, request, reply, { authService }) {
+      async handle(args, request, reply) {
         const admin = requireAdmin(request, reply)
         if (admin === undefined) return { error: 'admin-required' }
 
@@ -115,9 +115,14 @@ export function buildAuthOverrides(): Record<string, OverrideHandler> {
           reply.code(400)
           return { error: 'invalid-user-payload' }
         }
-        const [username, displayName, tempPassword] = parsed.data
+        const [_username, _displayName, _tempPassword] = parsed.data
 
-        return await authService.createUser(username, displayName, tempPassword, admin.username)
+        reply.code(501)
+        return {
+          error: 'multi-user-disabled',
+          message:
+            'Creating additional web users is disabled until clinical tables are scoped by user_id.'
+        }
       }
     },
     'auth:listUsers': {

@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { existsSync, readFileSync } from 'fs'
 import { resolve } from 'path'
 
+import { defaultPasswordProvider } from '../../src/main/auth/providers/argon2-provider'
 import { startIsolatedWebSchema } from '../web-gate/helpers/web-driver'
 
 const PG_ENV_PATH = resolve(process.cwd(), '.env.postgres.local')
@@ -17,8 +18,7 @@ interface BuiltWebServer {
   buildApp: (options?: {
     admin?: {
       username: string
-      password?: string
-      passwordHash?: string
+      passwordHash: string
       displayName?: string
     }
   }) => Promise<FastifyInstance>
@@ -90,10 +90,11 @@ test('live web app handles login rotation and real API calls with dev latency', 
     setEnv('VARLENS_LOGIN_HTML_PATH', SOURCE_LOGIN_HTML, restoreEnv)
 
     const { buildApp } = (await import('../../out/web/server.cjs')) as BuiltWebServer
+    const passwordHash = await defaultPasswordProvider.hashPassword(ADMIN_PASSWORD)
     app = await buildApp({
       admin: {
         username: ADMIN_USERNAME,
-        password: ADMIN_PASSWORD,
+        passwordHash,
         displayName: 'Web Live Admin'
       }
     })

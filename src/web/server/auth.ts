@@ -93,7 +93,7 @@ export function isAllowedApiOrigin(params: {
   host: string | undefined
   protocol: string
 }): boolean {
-  if (params.origin === undefined || params.origin.trim() === '') return true
+  if (params.origin === undefined || params.origin.trim() === '') return false
   if (params.host === undefined || params.host.trim() === '') return false
 
   try {

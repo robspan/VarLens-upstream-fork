@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { existsSync } from 'fs'
 import { join, resolve } from 'path'
 
-import { startIsolatedWebSchema } from '../helpers/web-driver'
+import { SAME_ORIGIN_HEADERS, startIsolatedWebSchema } from '../helpers/web-driver'
 
 /**
  * Web admin bootstrap — observable via /api/auth/login round-trip.
@@ -17,8 +17,7 @@ import { startIsolatedWebSchema } from '../helpers/web-driver'
  * login returns mustChangePassword:true and the dispatcher's pre-
  * rotation gate gates every other endpoint. The dedicated
  * must-change-password.test.ts proves the gate is wired; this file
- * proves the bootstrap path itself works for both plaintext (legacy)
- * and hash (preferred).
+ * proves the bootstrap path itself works through the hash-only path.
  *
  * Gated on (a) the web build existing AND (b) VARLENS_PG_URL set.
  */
@@ -32,39 +31,21 @@ const ADMIN_PASSWORD = 'concept-pilot-test-pw'
 const ADMIN_DISPLAY = 'Concept Pilot Admin'
 
 describe.skipIf(!isWebBuilt || !HAS_PG)('admin bootstrap', () => {
-  test('plaintext (deprecated) bootstrap: login succeeds with mustChangePassword=true', async () => {
+  test('plaintext bootstrap is refused before boot', async () => {
     const isolated = await startIsolatedWebSchema('admin_plaintext')
     try {
       const { buildApp } = await import('../../../src/web/server')
-      const app = await buildApp({
-        admin: {
-          username: ADMIN_USERNAME,
-          password: ADMIN_PASSWORD,
-          displayName: ADMIN_DISPLAY
-        }
-      })
-      try {
-        const res = await app.inject({
-          method: 'POST',
-          url: '/api/auth/login',
-          payload: { args: [ADMIN_USERNAME, ADMIN_PASSWORD] }
+      await expect(
+        buildApp({
+          admin: {
+            username: ADMIN_USERNAME,
+            passwordHash: '',
+            password: ADMIN_PASSWORD,
+            displayName: ADMIN_DISPLAY
+          }
         })
-        expect(res.statusCode).toBe(200)
-        const body = res.json() as {
-          success: boolean
-          user: { username: string; role: string } | null
-          mustChangePassword?: boolean
-        }
-        expect(body.success).toBe(true)
-        expect(body.user?.username).toBe(ADMIN_USERNAME)
-        expect(body.user?.role).toBe('admin')
-        // 2026-security: bootstrap admin must rotate before any access.
-        expect(body.mustChangePassword).toBe(true)
-        // Plaintext recovery-key file is no longer written — assert absence.
-        expect(existsSync(join(isolated.recoveryDir, 'admin-recovery-key.txt'))).toBe(false)
-      } finally {
-        await app.close()
-      }
+      ).rejects.toThrow(/plaintext bootstrap is not supported/i)
+      expect(existsSync(join(isolated.recoveryDir, 'admin-recovery-key.txt'))).toBe(false)
     } finally {
       await isolated.close()
     }
@@ -88,7 +69,8 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('admin bootstrap', () => {
         const res = await app.inject({
           method: 'POST',
           url: '/api/auth/login',
-          payload: { args: [ADMIN_USERNAME, ADMIN_PASSWORD] }
+          payload: { args: [ADMIN_USERNAME, ADMIN_PASSWORD] },
+          headers: SAME_ORIGIN_HEADERS
         })
         expect(res.statusCode).toBe(200)
         const body = res.json() as { success: boolean; mustChangePassword?: boolean }
@@ -107,20 +89,24 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('admin bootstrap', () => {
     const isolated = await startIsolatedWebSchema('admin_second_boot')
     try {
       const { buildApp } = await import('../../../src/web/server')
+      const { defaultPasswordProvider } =
+        await import('../../../src/main/auth/providers/argon2-provider')
+      const passwordHash = await defaultPasswordProvider.hashPassword(ADMIN_PASSWORD)
 
       const app1 = await buildApp({
-        admin: { username: ADMIN_USERNAME, password: ADMIN_PASSWORD, displayName: ADMIN_DISPLAY }
+        admin: { username: ADMIN_USERNAME, passwordHash, displayName: ADMIN_DISPLAY }
       })
       await app1.close()
 
       const app2 = await buildApp({
-        admin: { username: ADMIN_USERNAME, password: ADMIN_PASSWORD, displayName: ADMIN_DISPLAY }
+        admin: { username: ADMIN_USERNAME, passwordHash, displayName: ADMIN_DISPLAY }
       })
       try {
         const res = await app2.inject({
           method: 'POST',
           url: '/api/auth/login',
-          payload: { args: [ADMIN_USERNAME, ADMIN_PASSWORD] }
+          payload: { args: [ADMIN_USERNAME, ADMIN_PASSWORD] },
+          headers: SAME_ORIGIN_HEADERS
         })
         expect(res.statusCode).toBe(200)
         expect((res.json() as { success: boolean }).success).toBe(true)
@@ -159,7 +145,8 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('admin bootstrap', () => {
         const res = await app.inject({
           method: 'POST',
           url: '/api/auth/login',
-          payload: { args: ['anyone', 'whatever'] }
+          payload: { args: ['anyone', 'whatever'] },
+          headers: SAME_ORIGIN_HEADERS
         })
         expect(res.statusCode).toBe(200)
         expect((res.json() as { success: boolean }).success).toBe(false)

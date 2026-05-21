@@ -40,19 +40,17 @@ import { registerStatic } from './server/static'
 import pkg from '../../package.json'
 
 /**
- * Admin bootstrap on first boot. Exactly one credential field must
- * be set: either a pre-computed Argon2id hash (preferred — no
- * plaintext on disk anywhere) or a plaintext password (deprecated,
- * kept for one migration release with a hard-deprecation log).
+ * Admin bootstrap on first boot. A pre-computed Argon2id hash is
+ * required; plaintext bootstrap passwords are refused before boot.
  *
  * Tests construct this directly; production reads from env via
  * `readAdminEnv()` below.
  */
 export interface AdminBootstrapOptions {
   username: string
-  /** Pre-computed Argon2id hash. Preferred path. */
-  passwordHash?: string
-  /** Plaintext password. Deprecated — emits a warn at boot. */
+  /** Pre-computed Argon2id hash. */
+  passwordHash: string
+  /** Plaintext password. Refused if passed by legacy callers. */
   password?: string
   displayName?: string
 }
@@ -175,6 +173,13 @@ async function maybeBootstrapAdmin(
 ): Promise<void> {
   validateRecoveryKeyDir()
 
+  if (typeof admin.password === 'string' && admin.password !== '') {
+    throw new Error(
+      'VARLENS_ADMIN_PASSWORD plaintext bootstrap is not supported. ' +
+        'Generate a hash with `npm run varlens:hash-password` and set VARLENS_ADMIN_PASSWORD_HASH.'
+    )
+  }
+
   // Steady-state pre-check: if an admin already exists, the env vars
   // are stale (operator forgot to blank them after first boot) — log
   // loudly that we're ignoring them and return. The partial unique
@@ -193,43 +198,22 @@ async function maybeBootstrapAdmin(
     return
   }
 
-  // Hash-preferred bootstrap. The hash path never sees plaintext at
-  // any process boundary; the plaintext path is retained for one
-  // migration release with a hard-deprecation warn.
+  // Hash-only bootstrap. The web server never needs to see the
+  // bootstrap password at any process boundary.
   const useHash = typeof admin.passwordHash === 'string' && admin.passwordHash !== ''
   if (!useHash) {
-    if (typeof admin.password !== 'string' || admin.password === '') {
-      throw new Error(
-        'admin bootstrap: neither VARLENS_ADMIN_PASSWORD_HASH nor VARLENS_ADMIN_PASSWORD provided. ' +
-          'Generate a hash with `npm run varlens:hash-password` and set VARLENS_ADMIN_PASSWORD_HASH=...'
-      )
-    }
-    log.warn(
-      {
-        event: 'admin-bootstrap',
-        action: 'plaintext-deprecated',
-        username: admin.username
-      },
-      'VARLENS_ADMIN_PASSWORD (plaintext) is DEPRECATED. ' +
-        'Replace with VARLENS_ADMIN_PASSWORD_HASH (generate via `npm run varlens:hash-password`). ' +
-        'The plaintext path will be removed in a future release.'
+    throw new Error(
+      'admin bootstrap: VARLENS_ADMIN_PASSWORD_HASH is required. ' +
+        'Generate a hash with `npm run varlens:hash-password` and set VARLENS_ADMIN_PASSWORD_HASH.'
     )
   }
 
   try {
-    if (useHash) {
-      await authService.createFirstUserFromHash(
-        admin.username,
-        admin.displayName ?? admin.username,
-        admin.passwordHash as string
-      )
-    } else {
-      await authService.createFirstUser(
-        admin.username,
-        admin.displayName ?? admin.username,
-        admin.password as string
-      )
-    }
+    await authService.createFirstUserFromHash(
+      admin.username,
+      admin.displayName ?? admin.username,
+      admin.passwordHash
+    )
   } catch (createErr) {
     // Race-loser branch: a concurrent first-user call beat us to the
     // partial unique index. The hasAdmin() pre-check above covers the
@@ -262,9 +246,9 @@ async function maybeBootstrapAdmin(
       action: 'created',
       username: admin.username,
       mustChangePassword: true,
-      via: useHash ? 'hash' : 'plaintext'
+      via: 'hash'
     },
-    `admin created — must rotate on first login (via ${useHash ? 'hash' : 'plaintext'})`
+    'admin created — must rotate on first login (via hash)'
   )
 }
 
@@ -294,10 +278,10 @@ async function isPostgresHealthy(pool: import('pg').Pool): Promise<boolean> {
 }
 
 /**
- * Resolve admin-bootstrap credentials from env. Hash takes precedence:
- * if both VARLENS_ADMIN_PASSWORD_HASH and VARLENS_ADMIN_PASSWORD are
- * set, the hash wins and the plaintext is silently ignored — the
- * operator is migrating and we shouldn't second-guess them.
+ * Resolve admin-bootstrap credentials from env. Plaintext bootstrap
+ * (`VARLENS_ADMIN_PASSWORD`) is refused even if
+ * a hash is also present, because process env is inspectable in the
+ * container runtime.
  *
  * Returns undefined when no usable credential is set, in which case
  * the boot path skips the bootstrap entirely (admin must already
@@ -308,21 +292,27 @@ function readAdminEnv(): AdminBootstrapOptions | undefined {
   const passwordHash = process.env.VARLENS_ADMIN_PASSWORD_HASH
   const password = process.env.VARLENS_ADMIN_PASSWORD
   const displayName = process.env.VARLENS_ADMIN_DISPLAY_NAME
+  const passwordSet = typeof password === 'string' && password !== ''
+
+  if (passwordSet) {
+    throw new Error(
+      'VARLENS_ADMIN_PASSWORD plaintext bootstrap is not supported. ' +
+        'Generate a hash with `npm run varlens:hash-password` and set VARLENS_ADMIN_PASSWORD_HASH.'
+    )
+  }
 
   if (typeof username !== 'string' || username.trim() === '') {
     return undefined
   }
 
   const hashSet = typeof passwordHash === 'string' && passwordHash.trim() !== ''
-  const passwordSet = typeof password === 'string' && password !== ''
-  if (!hashSet && !passwordSet) {
+  if (!hashSet) {
     return undefined
   }
 
   return {
     username: username.trim(),
-    passwordHash: hashSet ? (passwordHash as string).trim() : undefined,
-    password: !hashSet && passwordSet ? password : undefined,
+    passwordHash: (passwordHash as string).trim(),
     displayName:
       typeof displayName === 'string' && displayName.trim() !== '' ? displayName.trim() : undefined
   }

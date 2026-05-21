@@ -12,7 +12,7 @@
  *
  *   # Then in the operator environment:
  *   VARLENS_ADMIN_PASSWORD_HASH=$argon2id$v=19$...
- *   VARLENS_ADMIN_PASSWORD=                 # blank the legacy line
+ *   # VARLENS_ADMIN_PASSWORD is not supported.
  *
  * Why this CLI exists: the web track refuses plaintext credentials
  * for production. The operator generates the Argon2id hash locally
@@ -125,8 +125,7 @@ async function main(): Promise<void> {
   process.stdout.write(hash + '\n')
   process.stderr.write('\nDone. Add to your .env:\n')
   process.stderr.write('  VARLENS_ADMIN_PASSWORD_HASH=' + hash + '\n')
-  process.stderr.write('And blank the legacy plaintext line:\n')
-  process.stderr.write('  VARLENS_ADMIN_PASSWORD=\n')
+  process.stderr.write('Plaintext VARLENS_ADMIN_PASSWORD is not supported.\n')
 }
 
 main().catch((err) => {

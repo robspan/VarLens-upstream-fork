@@ -9,6 +9,7 @@ import {
   AssetRegionFileImportBedArgsSchema
 } from '../../../shared/api/schemas/assets'
 import type { OverrideHandler } from './types'
+import { serverPathImportDisabled, serverPathImportDisabledResponse } from './import'
 
 function normalizeBedLine(
   line: string
@@ -106,6 +107,11 @@ export function buildAssetOverrides(): Record<string, OverrideHandler> {
 
     'region-files:importBed': {
       async handle(args, _request, reply, { session }) {
+        if (serverPathImportDisabled()) {
+          reply.code(403)
+          return serverPathImportDisabledResponse()
+        }
+
         const parsed = AssetRegionFileImportBedArgsSchema.safeParse(args)
         if (!parsed.success) {
           reply.code(400)

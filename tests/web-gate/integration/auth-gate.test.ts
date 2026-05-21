@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { existsSync } from 'fs'
 import { resolve } from 'path'
 
-import { startIsolatedWebSchema } from '../helpers/web-driver'
+import { SAME_ORIGIN_HEADERS, startIsolatedWebSchema } from '../helpers/web-driver'
 
 const WEB_BUILD_PATH = resolve(process.cwd(), 'out/web/server.cjs')
 const isWebBuilt = existsSync(WEB_BUILD_PATH)
@@ -34,7 +34,8 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web auth gate', () => {
         const res = (await app.inject({
           method: 'POST',
           url: '/api/database/capabilities',
-          payload: { args: [] }
+          payload: { args: [] },
+          headers: SAME_ORIGIN_HEADERS
         })) as unknown as InjectResult
 
         expect(res.statusCode, res.body).toBe(401)
@@ -43,6 +44,33 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web auth gate', () => {
         expect(res.json()).toMatchObject({
           code: 'UNAUTHENTICATED',
           message: 'authentication required'
+        })
+      } finally {
+        await app.close()
+      }
+    } finally {
+      await isolated.close()
+    }
+  })
+
+  test('missing-Origin unsafe API requests return JSON 403 before auth dispatch', async () => {
+    const isolated = await startIsolatedWebSchema('auth_gate_missing_origin')
+    try {
+      const { buildApp } = await import('../../../src/web/server')
+      const app = await buildApp()
+      try {
+        const res = (await app.inject({
+          method: 'POST',
+          url: '/api/database/capabilities',
+          payload: { args: [] }
+        })) as unknown as InjectResult
+
+        expect(res.statusCode, res.body).toBe(403)
+        expect(res.headers.location).toBeUndefined()
+        expect(String(res.headers['content-type'] ?? '')).toContain('application/json')
+        expect(res.json()).toMatchObject({
+          code: 'FORBIDDEN_ORIGIN',
+          message: 'request origin is not allowed'
         })
       } finally {
         await app.close()
@@ -99,7 +127,8 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web auth gate', () => {
         const res = (await app.inject({
           method: 'POST',
           url: '/api/auth/login',
-          payload: { args: [USERNAME, PASSWORD] }
+          payload: { args: [USERNAME, PASSWORD] },
+          headers: SAME_ORIGIN_HEADERS
         })) as unknown as InjectResult
 
         expect(res.statusCode, res.body).toBe(200)

@@ -3,14 +3,14 @@ import { describe, expect, test } from 'vitest'
 import { isAllowedApiOrigin } from '../../src/web/server/auth'
 
 describe('web auth origin gate', () => {
-  test('allows missing Origin for non-browser clients and server-side tests', () => {
+  test('rejects missing Origin for unsafe API requests', () => {
     expect(
       isAllowedApiOrigin({
         origin: undefined,
         host: 'varlens.example',
         protocol: 'https'
       })
-    ).toBe(true)
+    ).toBe(false)
   })
 
   test('allows same-origin API requests', () => {

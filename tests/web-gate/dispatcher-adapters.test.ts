@@ -537,6 +537,8 @@ describe('web dispatcher adapters', () => {
   })
 
   test('region-files.importBed reads BED rows before writing the import task', async () => {
+    const prevNodeEnv = process.env.NODE_ENV
+    process.env.NODE_ENV = 'test'
     const { deps, writeExecute, reply } = makeDeps()
     const { overrides } = buildDispatcher(deps)
     const dir = await mkdtemp(join(tmpdir(), 'varlens-bed-'))
@@ -565,6 +567,35 @@ describe('web dispatcher adapters', () => {
       })
     } finally {
       await rm(dir, { recursive: true, force: true })
+      if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = prevNodeEnv
+    }
+  })
+
+  test('region-files.importBed is disabled outside test mode unless operator enables server-path import', async () => {
+    const prevNodeEnv = process.env.NODE_ENV
+    const prevAllow = process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT
+    process.env.NODE_ENV = 'production'
+    delete process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT
+    try {
+      const { deps, writeExecute, reply } = makeDeps()
+      const { overrides } = buildDispatcher(deps)
+
+      const result = await overrides['region-files:importBed'].handle(
+        [4, '/tmp/regions.bed'],
+        {} as never,
+        reply as never,
+        deps
+      )
+
+      expect(reply.code).toHaveBeenCalledWith(403)
+      expect(result).toMatchObject({ error: 'server-path-import-disabled' })
+      expect(writeExecute).not.toHaveBeenCalled()
+    } finally {
+      if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = prevNodeEnv
+      if (prevAllow === undefined) delete process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT
+      else process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT = prevAllow
     }
   })
 
@@ -855,6 +886,27 @@ describe('web dispatcher adapters', () => {
 
     expect(reply.code).toHaveBeenCalledWith(403)
     expect(result).toEqual({ error: 'admin-required' })
+    expect(deps.authService.createUser).not.toHaveBeenCalled()
+  })
+
+  test('auth.createUser is disabled for admins until user_id scoping ships', async () => {
+    const { deps, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+    const request = { session: { user: { id: 1, username: 'admin', role: 'admin' } } }
+
+    const result = await overrides['auth:createUser'].handle(
+      ['analyst', 'Analyst', 'temporary-password'],
+      request as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).toHaveBeenCalledWith(501)
+    expect(result).toEqual({
+      error: 'multi-user-disabled',
+      message:
+        'Creating additional web users is disabled until clinical tables are scoped by user_id.'
+    })
     expect(deps.authService.createUser).not.toHaveBeenCalled()
   })
 

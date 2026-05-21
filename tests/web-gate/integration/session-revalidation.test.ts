@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest'
+import { Pool } from 'pg'
 
-import { startWebDriver, type WebDriver } from '../helpers/web-driver'
+import { SAME_ORIGIN_HEADERS, startWebDriver, type WebDriver } from '../helpers/web-driver'
+import { PostgresWebAuthService } from '../../../src/web/auth/PostgresWebAuthService'
 
 const HAS_PG = typeof process.env.VARLENS_PG_URL === 'string' && process.env.VARLENS_PG_URL !== ''
 
@@ -21,7 +23,8 @@ async function loginAs(driver: WebDriver, username: string, password: string): P
   const loginRes = (await driver.app.inject({
     method: 'POST',
     url: '/api/auth/login',
-    payload: { args: [username, password] }
+    payload: { args: [username, password] },
+    headers: SAME_ORIGIN_HEADERS
   })) as unknown as InjectResult
   expect(loginRes.statusCode, loginRes.body).toBe(200)
 
@@ -41,8 +44,24 @@ async function apiWithCookie(
     method: 'POST',
     url: `/api/${domain}/${method}`,
     payload: { args },
-    headers: { cookie }
+    headers: { ...SAME_ORIGIN_HEADERS, cookie }
   })) as unknown as InjectResult
+}
+
+async function withAuthService<T>(
+  driver: WebDriver,
+  fn: (authService: PostgresWebAuthService) => Promise<T>
+): Promise<T> {
+  const pgUrl = process.env.VARLENS_PG_URL
+  if (pgUrl === undefined || pgUrl.trim() === '') {
+    throw new Error('VARLENS_PG_URL is required')
+  }
+  const pool = new Pool({ connectionString: pgUrl })
+  try {
+    return await fn(new PostgresWebAuthService({ pool, schema: driver.schema }))
+  } finally {
+    await pool.end()
+  }
 }
 
 async function createRotatedUser(
@@ -52,8 +71,9 @@ async function createRotatedUser(
   const tempPassword = `${username}-temporary-2026`
   const activePassword = `${username}-active-password-2026`
 
-  const createRes = await driver.api('auth', 'createUser', username, username, tempPassword)
-  expect(createRes.statusCode, createRes.body).toBe(200)
+  await withAuthService(driver, async (authService) => {
+    await authService.createUser(username, username, tempPassword, 'web-gate-admin')
+  })
 
   let cookie = await loginAs(driver, username, tempPassword)
   const rotateRes = await apiWithCookie(

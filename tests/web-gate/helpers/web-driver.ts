@@ -9,6 +9,11 @@ import type { buildApp as buildAppType } from '../../../src/web/server'
 
 const BOOTSTRAP_PASSWORD = 'web-gate-bootstrap-password-2026'
 const ACTIVE_PASSWORD = 'web-gate-active-password-2026'
+export const SAME_ORIGIN_HEADERS = {
+  host: 'varlens.test',
+  origin: 'http://varlens.test',
+  'x-forwarded-proto': 'http'
+} as const
 
 interface InjectResult {
   statusCode: number
@@ -125,7 +130,8 @@ export async function startWebDriver(): Promise<WebDriver> {
     const loginRes = (await app.inject({
       method: 'POST',
       url: '/api/auth/login',
-      payload: { args: ['web-gate-admin', BOOTSTRAP_PASSWORD] }
+      payload: { args: ['web-gate-admin', BOOTSTRAP_PASSWORD] },
+      headers: SAME_ORIGIN_HEADERS
     })) as unknown as InjectResult
     if (loginRes.statusCode !== 200) {
       throw new Error(`web driver login failed: ${loginRes.statusCode} ${loginRes.body}`)
@@ -140,7 +146,7 @@ export async function startWebDriver(): Promise<WebDriver> {
       method: 'POST',
       url: '/api/auth/changePassword',
       payload: { args: [BOOTSTRAP_PASSWORD, ACTIVE_PASSWORD] },
-      headers: { cookie }
+      headers: { ...SAME_ORIGIN_HEADERS, cookie }
     })) as unknown as InjectResult
     if (rotateRes.statusCode !== 200) {
       throw new Error(
@@ -158,7 +164,7 @@ export async function startWebDriver(): Promise<WebDriver> {
           method: 'POST',
           url: `/api/${domain}/${method}`,
           payload: { args },
-          headers: { cookie }
+          headers: { ...SAME_ORIGIN_HEADERS, cookie }
         })) as unknown as InjectResult,
       close
     }

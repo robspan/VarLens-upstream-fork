@@ -9,7 +9,7 @@ const isWebBuilt = existsSync(WEB_BUILD_PATH)
 const HAS_PG = typeof process.env.VARLENS_PG_URL === 'string' && process.env.VARLENS_PG_URL !== ''
 
 describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
-  test('requires an authenticated session and exposes the compatibility dispatcher route', async () => {
+  test('requires an authenticated session and exposes dispatcher and auth method paths', async () => {
     const driver = await startWebDriver()
     try {
       const unauthenticated = await driver.app.inject({
@@ -33,6 +33,28 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
       expect(spec.openapi).toMatch(/^3\./)
       expect(spec.info?.title).toBe('VarLens Web API')
       expect(spec.paths).toHaveProperty('/api/{domain}/{method}')
+      expect(spec.paths).toHaveProperty('/api/auth/login')
+      expect(spec.paths).toHaveProperty('/api/auth/changePassword')
+
+      const paths = spec.paths as Record<string, { post?: Record<string, unknown> }>
+      expect(paths['/api/auth/login']?.post?.requestBody).toBeDefined()
+      expect(paths['/api/auth/changePassword']?.post?.requestBody).toBeDefined()
+    } finally {
+      await driver.close()
+    }
+  })
+
+  test('keeps dispatcher calls with no request body compatible', async () => {
+    const driver = await startWebDriver()
+    try {
+      const res = await driver.app.inject({
+        method: 'POST',
+        url: '/api/auth/isAccountsEnabled',
+        headers: { cookie: driver.cookie }
+      })
+
+      expect(res.statusCode, res.body).toBe(200)
+      expect(res.json()).toBe(true)
     } finally {
       await driver.close()
     }

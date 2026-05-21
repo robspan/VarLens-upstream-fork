@@ -10,9 +10,11 @@ export interface DispatcherDeps {
   events: WebEventHub
 }
 
-export interface InvokeBody {
+export interface InvokeBodyPayload {
   args?: unknown[]
 }
+
+export type InvokeBody = InvokeBodyPayload | null | undefined
 
 export interface OverrideHandler {
   /** True = bypasses the auth preHandler (e.g. login). Default: false. */

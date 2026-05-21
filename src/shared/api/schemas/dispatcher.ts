@@ -5,9 +5,12 @@ export const DispatcherParamsSchema = z.object({
   method: z.string().min(1)
 })
 
-export const DispatcherInvokeBodySchema = z.object({
-  args: z.array(z.unknown()).optional()
-})
+export const DispatcherInvokeBodySchema = z
+  .object({
+    args: z.array(z.unknown()).optional()
+  })
+  .nullable()
+  .optional()
 
 export const DispatcherErrorResponseSchema = z
   .object({

@@ -9,6 +9,135 @@ import {
 import { z } from 'zod'
 
 import pkg from '../../../../package.json'
+import {
+  AuthBooleanSchema,
+  AuthErrorSchema,
+  AuthInvokeBodySchemas,
+  AuthOkSchema,
+  AuthResultSchema,
+  AuthSessionUserSchema,
+  AuthSuccessSchema,
+  AuthUserSchema
+} from '../../../shared/api/schemas/auth'
+
+type JsonSchema = Record<string, unknown>
+type OpenApiPathItem = Record<string, unknown>
+type OpenApiDocument = {
+  paths?: Record<string, OpenApiPathItem>
+}
+
+function toJsonSchema(schema: z.ZodType): JsonSchema {
+  const jsonSchema = z.toJSONSchema(schema, { target: 'draft-7' }) as JsonSchema
+  delete jsonSchema.$schema
+  return jsonSchema
+}
+
+function jsonContent(schema: z.ZodType): Record<string, unknown> {
+  return {
+    content: {
+      'application/json': {
+        schema: toJsonSchema(schema)
+      }
+    }
+  }
+}
+
+function authOperation(options: {
+  summary: string
+  body?: z.ZodType
+  response?: z.ZodType
+  public?: boolean
+}): OpenApiPathItem {
+  return {
+    post: {
+      tags: ['auth'],
+      summary: options.summary,
+      ...(options.public === true ? { security: [] } : {}),
+      ...(options.body === undefined ? {} : { requestBody: jsonContent(options.body) }),
+      responses: {
+        200:
+          options.response === undefined
+            ? { description: 'OK' }
+            : {
+                description: 'OK',
+                ...jsonContent(options.response)
+              },
+        400: {
+          description: 'Invalid request',
+          ...jsonContent(AuthErrorSchema)
+        },
+        401: {
+          description: 'Authentication required',
+          ...jsonContent(AuthErrorSchema)
+        },
+        403: {
+          description: 'Forbidden',
+          ...jsonContent(AuthErrorSchema)
+        }
+      }
+    }
+  }
+}
+
+function buildAuthOpenApiPaths(): Record<string, OpenApiPathItem> {
+  return {
+    '/api/auth/login': authOperation({
+      summary: 'Authenticate and create a web session',
+      body: AuthInvokeBodySchemas.login,
+      response: AuthResultSchema,
+      public: true
+    }),
+    '/api/auth/logout': authOperation({
+      summary: 'Clear the current web session',
+      body: AuthInvokeBodySchemas.logout,
+      response: AuthOkSchema
+    }),
+    '/api/auth/currentUser': authOperation({
+      summary: 'Return the authenticated session user',
+      body: AuthInvokeBodySchemas.currentUser,
+      response: AuthSessionUserSchema.nullable()
+    }),
+    '/api/auth/isAccountsEnabled': authOperation({
+      summary: 'Return whether web accounts are enabled',
+      body: AuthInvokeBodySchemas.isAccountsEnabled,
+      response: AuthBooleanSchema,
+      public: true
+    }),
+    '/api/auth/createUser': authOperation({
+      summary: 'Create a user account',
+      body: AuthInvokeBodySchemas.createUser,
+      response: AuthUserSchema
+    }),
+    '/api/auth/listUsers': authOperation({
+      summary: 'List user accounts',
+      body: AuthInvokeBodySchemas.listUsers,
+      response: z.array(AuthUserSchema)
+    }),
+    '/api/auth/deactivateUser': authOperation({
+      summary: 'Deactivate a user account',
+      body: AuthInvokeBodySchemas.deactivateUser
+    }),
+    '/api/auth/resetPassword': authOperation({
+      summary: 'Reset a user password',
+      body: AuthInvokeBodySchemas.resetPassword
+    }),
+    '/api/auth/changePassword': authOperation({
+      summary: 'Change the current user password',
+      body: AuthInvokeBodySchemas.changePassword,
+      response: AuthSuccessSchema
+    })
+  }
+}
+
+function appendDocumentedDispatcherPaths(document: OpenApiDocument): OpenApiDocument {
+  return {
+    ...document,
+    paths: {
+      ...document.paths,
+      ...buildAuthOpenApiPaths()
+    }
+  }
+}
 
 export async function registerOpenApi(app: FastifyInstance): Promise<void> {
   app.setValidatorCompiler(validatorCompiler)
@@ -31,7 +160,8 @@ export async function registerOpenApi(app: FastifyInstance): Promise<void> {
       },
       security: [{ sessionCookie: [] }]
     },
-    transform: jsonSchemaTransform
+    transform: jsonSchemaTransform,
+    transformObject: ({ openapiObject }) => appendDocumentedDispatcherPaths(openapiObject)
   })
 
   app.withTypeProvider<ZodTypeProvider>().get(

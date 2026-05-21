@@ -10,7 +10,7 @@
  *   Confirm:        ********
  *   $argon2id$v=19$m=65536,t=3,p=4$<salt>$<hash>
  *
- *   # Then in web-deploy/.env:
+ *   # Then in the operator environment:
  *   VARLENS_ADMIN_PASSWORD_HASH=$argon2id$v=19$...
  *   VARLENS_ADMIN_PASSWORD=                 # blank the legacy line
  *

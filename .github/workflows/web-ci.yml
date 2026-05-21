@@ -13,7 +13,6 @@ on:
       - 'src/shared/**'
       - 'tests/web-gate/**'
       - 'vite.web*.config.ts'
-      - 'web-deploy/**'
       - '.github/workflows/*web*.yml'
   push:
     branches:

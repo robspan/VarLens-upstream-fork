@@ -5,11 +5,9 @@
 #   - push to VarLens-Web (rolling :edge tag)
 #   - manual workflow_dispatch
 #
-# Versioned web releases live in `release-web.yml`, which is fired by
-# `web-v*` GitHub Releases. The `vX.Y.Z` desktop tag namespace owned
-# by `release.yml` deliberately does NOT trigger this workflow — see
-# the comment at the top of `release-web.yml` for the namespace
-# split.
+# Versioned deploy orchestration lives outside this application repo.
+# This workflow only builds, tests, scans, and optionally publishes the
+# web application image.
 #
 # Trivy posture (Stage 1, single-tenant Concept Pilot):
 #   - Gating step: CRITICAL only — fails the workflow if any non-ignored
@@ -18,8 +16,8 @@
 #     SARIF for review, never blocks. SARIF is uploaded with an explicit
 #     `category` so future scanners can coexist.
 #
-# The published digest goes into the workflow summary so VarLens-IaC can
-# pin the image by sha256 (per its §vertrag2.3 reproducibility rule).
+# The published digest goes into the workflow summary so an external
+# operator/deploy repository can pin the image by sha256.
 #
 # Fork note: `GITHUB_TOKEN` can only push to an existing GHCR package when
 # that package grants this repository write access. The disposable

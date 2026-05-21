@@ -1,4 +1,4 @@
-.PHONY: help rebuild dev web-dev build preview lint lint-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-reset build-web web-ci web-gate web-gate-static web-gate-integration web-gate-postgres web-gate-parity web-parity-e2e web-test-report web-data-gather web-data-prepare web-data-verify sync-upstream install-hooks pilot pilot-down pilot-status pilot-smoke pilot-ssh web-release-enable web-release
+.PHONY: help rebuild dev web-dev build preview lint lint-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-reset build-web web-ci web-gate web-gate-static web-gate-integration web-gate-postgres web-gate-parity web-parity-e2e web-test-report web-data-gather web-data-prepare web-data-verify sync-upstream install-hooks
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -29,15 +29,12 @@ endef
 # web-only invocations.
 #---------------------------------------------------------------------------
 
-# Web mode is opt-in only. A populated web-deploy/.env is operator
-# context for deploy commands, but it must not change the default
-# desktop developer/test lane. Set VARLENS_WEB=1 explicitly when a
-# target should extend itself with web checks.
+# Web mode is opt-in only. Set VARLENS_WEB=1 explicitly when a target
+# should extend itself with web checks.
 VARLENS_WEB ?= 0
 
-# Export so it propagates to sub-makes and child processes — the deploy
-# CLI (web-deploy/bin/varlens) reads VARLENS_WEB from os.environ to gate
-# itself, and make doesn't export variables by default.
+# Export so it propagates to sub-makes and child processes; make does
+# not export variables by default.
 export VARLENS_WEB
 
 ifeq ($(VARLENS_WEB),1)
@@ -410,84 +407,6 @@ sync-upstream: ## Fetch upstream and merge upstream/main into local main + VarLe
 	git checkout VarLens-Web
 	git merge -X ours main
 	@echo "==> Done. Review with 'git log --oneline main..HEAD' then push when ready."
-
-#---------------------------------------------------------------------------
-# Concept Pilot — one-shot Hetzner deployment.
-# Delegates to web-deploy/ which carries the OpenTofu + Compose + monitoring
-# stack. Operator workflow: edit web-deploy/tofu/environments/pilot/terraform.tfvars
-# (Hetzner token + SSH pubkey), edit web-deploy/compose/.env (set VARLENS_*
-# plus POSTGRES_PASSWORD if profile=postgres), then run `make pilot`.
-#
-
-# Web-mode gate for the pilot-* targets. The deploy CLI manages live
-# Hetzner / restic / GHCR resources; treating it as available in
-# desktop-default mode would let a typo fire a real cloud action.
-# Operators have to opt in with VARLENS_WEB=1 — same toggle that
-# extends `dev` / `test` / `ci` to include the web layer.
-require_web_mode = @if [ "$(VARLENS_WEB)" != "1" ]; then printf '\033[31mvarlens deploy CLI requires VARLENS_WEB=1.\033[0m\nWeb mode is opt-in (see AGENTS.md > Mode toggle). Re-run as:\n    VARLENS_WEB=1 make $@\n' >&2; exit 2; fi
-
-pilot: ## Concept Pilot one-shot: pre-flight, provision, stack-up, backup, monitoring, smoke (with live status)
-	$(require_web_mode)
-	@web-deploy/scripts/pilot.sh
-
-pilot-down: ## Tear down the Concept Pilot Hetzner environment (banner + interactive confirmation)
-	$(require_web_mode)
-	@web-deploy/scripts/pilot-down.sh
-
-pilot-status: ## Show Hetzner server status (running / stopped / absent)
-	$(require_web_mode)
-	$(MAKE) -C web-deploy status
-
-pilot-smoke: ## Re-run the smoke probes against the running pilot
-	$(require_web_mode)
-	$(MAKE) -C web-deploy smoke
-
-pilot-ssh: ## SSH into the pilot server as the deploy user
-	$(require_web_mode)
-	$(MAKE) -C web-deploy ssh
-
-pilot-recover: ## Recover from latest restic snapshot onto a freshly-provisioned server
-	$(require_web_mode)
-	$(MAKE) -C web-deploy pilot-recover
-
-pilot-restore-list: ## List restic snapshots in the configured bucket (read-only)
-	$(require_web_mode)
-	$(MAKE) -C web-deploy restore-list
-
-web-release-enable: ## Configure GitHub repo secrets so release-web.yml can deploy on a published release
-	$(require_web_mode)
-	@web-deploy/scripts/enable-github-release.sh $(WEB_RELEASE_ENABLE_ARGS)
-
-web-release: ## Cut and publish a versioned web release (usage: make web-release VERSION=web-v0.1.0 [NOTES_FROM=auto])
-	$(require_web_mode)
-	@if [ -z "$(VERSION)" ]; then \
-		echo "Usage: make web-release VERSION=web-vX.Y.Z [NOTES_FROM=auto]"; \
-		echo "  Web releases use the 'web-v' prefix to stay disjoint from the desktop"; \
-		echo "  installer track ('vX.Y.Z' tags). release-web.yml only fires on 'web-v*' tags;"; \
-		echo "  release.yml (desktop) only fires on bare 'v*' tags."; \
-		exit 1; \
-	fi
-	@command -v gh >/dev/null 2>&1 || { echo "gh CLI not found. Install: https://cli.github.com"; exit 1; }
-	@if ! echo "$(VERSION)" | grep -qE '^web-v[0-9]+\.[0-9]+\.[0-9]+([-.][A-Za-z0-9._-]+)?$$'; then \
-		echo "VERSION '$(VERSION)' is not a valid web release tag (expected web-vMAJOR.MINOR.PATCH[-suffix])"; \
-		echo "Hint: desktop releases use bare 'vX.Y.Z' (handled by release.yml — separate workflow)."; \
-		exit 1; \
-	fi
-	@# Sanity: don't ship a release whose commit isn't on origin yet.
-	@# `gh release create --target VarLens-Web` resolves the target on
-	@# the GitHub side, so an unpushed local HEAD would tag whatever
-	@# commit origin currently points at — almost never what you wanted.
-	@git fetch --quiet origin VarLens-Web 2>/dev/null || true
-	@LOCAL=$$(git rev-parse VarLens-Web 2>/dev/null) ; \
-	REMOTE=$$(git rev-parse origin/VarLens-Web 2>/dev/null) ; \
-	if [ -n "$$LOCAL" ] && [ -n "$$REMOTE" ] && [ "$$LOCAL" != "$$REMOTE" ]; then \
-		echo "ERROR: local VarLens-Web ($$LOCAL) is not in sync with origin/VarLens-Web ($$REMOTE)."; \
-		echo "       Push first ('git push origin VarLens-Web') so the release tags the right commit."; \
-		exit 1; \
-	fi
-	@echo "==> Cutting release $(VERSION) — release-web.yml will build, deploy, and smoke."
-	@if [ "$(NOTES_FROM)" = "auto" ]; then NOTES_FLAG="--generate-notes"; else NOTES_FLAG=""; fi; \
-	gh release create "$(VERSION)" --target VarLens-Web --title "$(VERSION)" $$NOTES_FLAG
 
 install-hooks: ## Install repo git hooks into .git/hooks/ (currently: pre-commit)
 	@mkdir -p .git/hooks

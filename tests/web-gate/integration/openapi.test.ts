@@ -20,6 +20,12 @@ const ASSET_PATHS = [
   '/api/region-files/importBed',
   '/api/gene-lists/setGenes'
 ] as const
+const CASE_COMMENT_PATHS = [
+  '/api/case-comments/list',
+  '/api/case-comments/create',
+  '/api/case-comments/update',
+  '/api/case-comments/delete'
+] as const
 const REFERENCE_PATHS = [
   '/api/gene-ref/info',
   '/api/gene-ref/assemblies',
@@ -79,6 +85,9 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
       for (const path of ASSET_PATHS) {
         expect(spec.paths).toHaveProperty(path)
       }
+      for (const path of CASE_COMMENT_PATHS) {
+        expect(spec.paths).toHaveProperty(path)
+      }
       expect(spec.paths).toHaveProperty('/api/cases/list')
       expect(spec.paths).toHaveProperty('/api/cohort/getVariants')
       expect(spec.paths).toHaveProperty('/api/cohort/runAssociation')
@@ -114,6 +123,10 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
         expect(paths[path]?.post?.responses?.['200']).toBeDefined()
       }
       for (const path of ASSET_PATHS) {
+        expect(paths[path]?.post?.requestBody).toBeDefined()
+        expect(paths[path]?.post?.responses?.['200']).toBeDefined()
+      }
+      for (const path of CASE_COMMENT_PATHS) {
         expect(paths[path]?.post?.requestBody).toBeDefined()
         expect(paths[path]?.post?.responses?.['200']).toBeDefined()
       }

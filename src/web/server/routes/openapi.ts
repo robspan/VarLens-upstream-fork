@@ -27,6 +27,11 @@ import {
   AuthSuccessSchema,
   AuthUserSchema
 } from '../../../shared/api/schemas/auth'
+import {
+  CaseCommentInvokeBodySchemas,
+  CaseCommentListResponseSchema,
+  CaseCommentSchema
+} from '../../../shared/api/schemas/case-comments'
 import { CaseInvokeBodySchemas, CaseUnknownResponseSchema } from '../../../shared/api/schemas/cases'
 import {
   CohortInvokeBodySchemas,
@@ -286,6 +291,34 @@ function buildCaseOpenApiPaths(): Record<string, OpenApiPathItem> {
       summary: 'List cases available in the current workspace',
       body: CaseInvokeBodySchemas.list,
       response: CaseUnknownResponseSchema
+    })
+  }
+}
+
+function buildCaseCommentOpenApiPaths(): Record<string, OpenApiPathItem> {
+  return {
+    '/api/case-comments/list': dispatcherMethodOperation({
+      tag: 'case-comments',
+      summary: 'List comments for a case',
+      body: CaseCommentInvokeBodySchemas.list,
+      response: CaseCommentListResponseSchema
+    }),
+    '/api/case-comments/create': dispatcherMethodOperation({
+      tag: 'case-comments',
+      summary: 'Create a case comment',
+      body: CaseCommentInvokeBodySchemas.create,
+      response: CaseCommentSchema
+    }),
+    '/api/case-comments/update': dispatcherMethodOperation({
+      tag: 'case-comments',
+      summary: 'Update a case comment',
+      body: CaseCommentInvokeBodySchemas.update,
+      response: CaseCommentSchema
+    }),
+    '/api/case-comments/delete': dispatcherMethodOperation({
+      tag: 'case-comments',
+      summary: 'Delete a case comment',
+      body: CaseCommentInvokeBodySchemas.delete
     })
   }
 }
@@ -690,7 +723,7 @@ function buildCohortOpenApiPaths(): Record<string, OpenApiPathItem> {
   }
 }
 
-function appendDocumentedDispatcherPaths(document: OpenApiDocument): OpenApiDocument {
+export function appendDocumentedDispatcherPaths(document: OpenApiDocument): OpenApiDocument {
   return {
     ...document,
     paths: {
@@ -699,6 +732,7 @@ function appendDocumentedDispatcherPaths(document: OpenApiDocument): OpenApiDocu
       ...buildAnnotationOpenApiPaths(),
       ...buildAssetOpenApiPaths(),
       ...buildCaseOpenApiPaths(),
+      ...buildCaseCommentOpenApiPaths(),
       ...buildCohortOpenApiPaths(),
       ...buildDatabaseOpenApiPaths(),
       ...buildExportOpenApiPaths(),

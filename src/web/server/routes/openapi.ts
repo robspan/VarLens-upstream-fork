@@ -32,6 +32,10 @@ import {
   DatabaseUnknownResponseSchema
 } from '../../../shared/api/schemas/database'
 import {
+  ExportInvokeBodySchemas,
+  ExportUnknownResponseSchema
+} from '../../../shared/api/schemas/export'
+import {
   VariantInvokeBodySchemas,
   VariantUnknownResponseSchema
 } from '../../../shared/api/schemas/variants'
@@ -106,6 +110,7 @@ function dispatcherMethodOperation(options: {
   summary: string
   body: z.ZodType
   response?: z.ZodType
+  mayReturnUnsupported?: boolean
 }): OpenApiPathItem {
   return {
     post: {
@@ -128,7 +133,15 @@ function dispatcherMethodOperation(options: {
         403: {
           description: 'Forbidden',
           ...jsonContent(AuthErrorSchema)
-        }
+        },
+        ...(options.mayReturnUnsupported === true
+          ? {
+              501: {
+                description: 'Not available in web mode unless parity fixtures are enabled',
+                ...jsonContent(UnsupportedCapabilitySchema)
+              }
+            }
+          : {})
       }
     }
   }
@@ -258,6 +271,25 @@ function buildDatabaseOpenApiPaths(): Record<string, OpenApiPathItem> {
   }
 }
 
+function buildExportOpenApiPaths(): Record<string, OpenApiPathItem> {
+  return {
+    '/api/export/variants': dispatcherMethodOperation({
+      tag: 'export',
+      summary: 'Export variants for a case',
+      body: ExportInvokeBodySchemas.variants,
+      response: ExportUnknownResponseSchema,
+      mayReturnUnsupported: true
+    }),
+    '/api/export/cohort': dispatcherMethodOperation({
+      tag: 'export',
+      summary: 'Export cohort variants',
+      body: ExportInvokeBodySchemas.cohort,
+      response: ExportUnknownResponseSchema,
+      mayReturnUnsupported: true
+    })
+  }
+}
+
 function buildVariantOpenApiPaths(): Record<string, OpenApiPathItem> {
   return {
     '/api/variants/search': dispatcherMethodOperation({
@@ -352,6 +384,7 @@ function appendDocumentedDispatcherPaths(document: OpenApiDocument): OpenApiDocu
       ...buildCaseOpenApiPaths(),
       ...buildCohortOpenApiPaths(),
       ...buildDatabaseOpenApiPaths(),
+      ...buildExportOpenApiPaths(),
       ...buildVariantOpenApiPaths()
     }
   }

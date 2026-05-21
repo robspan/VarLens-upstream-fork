@@ -1,4 +1,3 @@
-import { z } from 'zod'
 import { dialog, BrowserWindow } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
@@ -7,10 +6,9 @@ import { wrapHandler } from '../errorHandler'
 import type { HandlerDependencies } from '../types'
 import { mainLogger } from '../../services/MainLogger'
 import {
-  CaseIdSchema,
-  VariantFilterPartialSchema,
-  CohortSearchParamsSchema
-} from '../../../shared/types/ipc-schemas'
+  CohortSearchParamsSchema,
+  VariantExportParamsSchema
+} from '../../../shared/api/schemas/export'
 import { safeEmit } from '../utils/safeEmit'
 import {
   prepareVariantExport,
@@ -22,13 +20,6 @@ import {
 import type { ExportCallbacks } from './export-logic'
 
 const AUTOMATED_EXPORT_DIR_ENV = 'VARLENS_AUTOMATED_EXPORT_DIR'
-
-/** Schema for variant export parameters */
-const VariantExportParamsSchema = z.object({
-  caseId: CaseIdSchema,
-  filters: VariantFilterPartialSchema,
-  caseName: z.string().min(1).max(500)
-})
 
 function automatedExportPath(defaultFileName: string): string | null {
   const dir = process.env[AUTOMATED_EXPORT_DIR_ENV]

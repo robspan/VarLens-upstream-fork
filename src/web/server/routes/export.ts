@@ -2,17 +2,14 @@ import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { z } from 'zod'
-
 import {
   exportPostgresCohort,
   exportPostgresVariants
 } from '../../../main/ipc/handlers/export-logic'
 import {
-  CaseIdSchema,
   CohortSearchParamsSchema,
-  VariantFilterPartialSchema
-} from '../../../shared/types/ipc-schemas'
+  VariantExportParamsSchema
+} from '../../../shared/api/schemas/export'
 import { webParityFixturesEnabled } from '../api-fixture-responses'
 import { unsupportedWebCapability } from './common'
 import type { OverrideHandler } from './types'
@@ -23,13 +20,7 @@ export function buildExportOverrides(): Record<string, OverrideHandler> {
       async handle(args, _request, reply, { session }) {
         if (!webParityFixturesEnabled()) return unsupportedWebCapability(reply, 'export.variants')
         const [caseId, filters, caseName] = args
-        const validated = z
-          .object({
-            caseId: CaseIdSchema,
-            filters: VariantFilterPartialSchema,
-            caseName: z.string().min(1).max(500)
-          })
-          .safeParse({ caseId, filters, caseName })
+        const validated = VariantExportParamsSchema.safeParse({ caseId, filters, caseName })
         if (!validated.success) {
           reply.code(400)
           return { error: 'invalid-export-variants-params' }

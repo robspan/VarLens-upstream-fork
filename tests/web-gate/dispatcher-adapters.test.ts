@@ -341,6 +341,30 @@ describe('web dispatcher adapters', () => {
     })
   })
 
+  test('gene-lists.setGenes writes genes and returns the refreshed list', async () => {
+    const { deps, execute, writeExecute, reply } = makeDeps()
+    execute.mockResolvedValueOnce(['BRCA1', 'TP53'])
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['gene-lists:setGenes'].handle(
+      [3, ['BRCA1', 'TP53']],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'gene-lists:setGenes',
+      params: [3, ['BRCA1', 'TP53']]
+    })
+    expect(execute).toHaveBeenCalledWith({
+      type: 'gene-lists:getGenes',
+      params: [3]
+    })
+    expect(result).toEqual(['BRCA1', 'TP53'])
+  })
+
   test('cohort.getSummaryStatus returns a stable non-rebuild status for web Postgres', async () => {
     const { deps, reply } = makeDeps()
     const { overrides } = buildDispatcher(deps)

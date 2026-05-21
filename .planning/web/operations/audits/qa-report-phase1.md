@@ -84,7 +84,7 @@ Comment-only changes; no behavioral impact. Tests still 6/6 green after the edit
 
 | Commit | Claim | Verified |
 |---|---|---|
-| `99ed5c2` | Phase 1 execution plan added (additive, ~70 lines) | ✅ exists, 70 lines, references konzept |
+| `99ed5c2` | Phase 1 execution plan added (additive, ~70 lines) | ✅ exists, 70 lines, references Concept Pilot |
 | `a8feccf` | Web build target with healthz, JSON logs, SIGTERM | ✅ build works, all 4 integration tests pass |
 | `9381f13` | `cases` route via handler-seam | ✅ route serves `[]` on fresh DB; handler-seam test enforces import |
 | `16cf3ea` | Argon2 behind `PasswordProvider`; auth-isolation green | ✅ `AuthService` clean of direct argon2; 61 existing auth tests still green |
@@ -101,7 +101,7 @@ These items are intentionally out of scope:
 
 - **Postgres E2E behavioral verification.** The `postgres-migrations-idempotent` test exists but I didn't spin up the dev container during this QA. The test's structure was reviewed; it requires `make pg-up` + `VARLENS_RUN_POSTGRES_E2E=1` to actually run.
 - **`web-gate-parity`** (the Electron-boot parity scenario). Verified earlier in the PR by Agent A's run; not re-run here because rebuilding the native module for Electron ABI takes minutes and would have to be undone afterwards.
-- **Multi-OS packaging.** Phase 1 builds web on Linux only by design (per the konzept).
+- **Multi-OS packaging.** Phase 1 builds web on Linux only by design (per the Concept Pilot).
 
 ### H. Open follow-ups (not blockers, but worth noting)
 

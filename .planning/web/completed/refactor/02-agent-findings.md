@@ -26,7 +26,7 @@ Four read-only explorers audited the branch on 2026-05-12. Their combined result
    Database picker/actions, file import/export, updater, logs, several enrichment/reference workflows, and all `on*` event subscriptions need implementation, capability gating, or documented accepted divergence.
 
 8. **Deploy/docs drift includes an operational security mismatch.**
-   `DEPLOY.md` recommends hash-based admin bootstrap, but compose does not pass `VARLENS_ADMIN_PASSWORD_HASH` into the app container.
+   External deploy documentation recommends hash-based admin bootstrap, but the app container must receive `VARLENS_ADMIN_PASSWORD_HASH`.
 
 ## Agent A - API, Import, Export
 
@@ -70,13 +70,13 @@ Recommended first steps:
 - High: web-only path changes can skip existing desktop CI by design; they need a separate web workflow/path filter.
 - Medium: Makefile lacks canonical opt-in web commands (`build-web`, `web-ci`, docker smoke).
 - Medium: Docker build proves bundle load, not deploy/runtime behavior.
-- Medium: nested `web-deploy/.github/workflows/ci.yml` is not run by GitHub from this monorepo.
+- Medium: deploy/operator CI does not belong in the app repo workflow.
 
 Recommended first steps:
 
 - Add `make web-ci` / `npm run ci:web` as an opt-in fail-loud lane.
 - Add a root `web-ci.yml` on web paths.
-- Require web CI before `publish-web` / `release-web`.
+- Require web CI before `publish-web`.
 - Add built-image + Postgres compose smoke before push/deploy.
 
 ## Agent D - Renderer, Events, Docs

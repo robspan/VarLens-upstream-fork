@@ -22,7 +22,7 @@ This record documents the pass that made the `VarLens-Web` branch honest and exe
    Implementation chunks in dependency order.
 
 6. [`05-acceptance-criteria.md`](05-acceptance-criteria.md)  
-   Conditions before claiming web equality or web-release readiness.
+   Conditions before claiming web equality or release readiness.
 
 7. [`06-implementation-status.md`](06-implementation-status.md)  
    Completed implementation progress and deferred backlog links.

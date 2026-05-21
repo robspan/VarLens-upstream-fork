@@ -137,13 +137,13 @@ Tasks:
 
 - Add `make web-ci` or `make web-gate-postgres`.
 - Add root web workflow on web paths.
-- Include `Dockerfile`, `vite.web*.config.ts`, `src/web/**`, `tests/web-gate/**`, `web-deploy/**`, and `*web*.yml` paths.
+- Include `Dockerfile`, `vite.web*.config.ts`, `src/web/**`, `tests/web-gate/**`, and `*web*.yml` paths.
 - Require web CI before publish/deploy.
 - Keep root desktop build/test workflows desktop-focused unless `VARLENS_WEB=1` or a web workflow is explicitly selected.
 
 ## WP10 - Deploy Security/Wiring Cleanup
 
-Owner: `Dockerfile`, `web-deploy`, `DEPLOY.md`  
+Owner: `Dockerfile` and external deploy/operator documentation
 Depends on: WP9 decisions  
 Status: completed for security/env wiring; compose now passes `VARLENS_ADMIN_PASSWORD_HASH`, and web publish/release builds depend on `make web-ci`. Built-image smoke is deferred to `../../backlog/web-built-image-postgres-smoke.md`.  
 Outcome: release/deploy path passes the same security env and smoke checks as local web CI.
@@ -153,7 +153,7 @@ Tasks:
 - Pass `VARLENS_ADMIN_PASSWORD_HASH` through compose.
 - Remove stale recovery-key references.
 - Add built-image + Postgres smoke before push/deploy.
-- Move/adapt nested `web-deploy/.github/workflows/ci.yml` checks into root workflows.
+- Keep app-image checks in root workflows; deploy/operator checks live outside this app repo.
 
 ## WP11 - Documentation Current-State Cleanup
 

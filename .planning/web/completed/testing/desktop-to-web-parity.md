@@ -2,7 +2,7 @@
 
 Status: implemented web-gate strategy (2026-05-12)
 Branch target: `VarLens-Web`
-Source plan: `.planning/web/context/spec/konzept/app.html` §app2.1
+Source: external Concept Pilot planning
 Companion: [`desktop-preservation.md`](desktop-preservation.md) · [`README.md`](README.md)
 
 Adds an executable gate for the 12 §app2.1 criteria under `tests/web-gate/`. Opt-in (`make web-gate-*`); excluded from default `make ci`.
@@ -63,7 +63,7 @@ Deferred expansions are tracked in `../../backlog/testing-followups.md`.
 | Logs JSON to stdout | `integration/json-logs` |
 | SIGTERM clean shutdown | `integration/sigterm` |
 | ADRs 1, 2, 3 filed | Doc gate |
-| §bewertung1 / §bewertung3 | Doc gate, IaC repo |
+| §assessment1 / §assessment3 | Doc gate, IaC repo |
 | Bridge-clause structural check | `db-seam` + `auth-isolation` + `user-id-schema` + `handler-seam` |
 
 Remaining scenario expansions are not part of this completed test-strategy record; they live in `../../backlog/testing-followups.md`.

@@ -59,7 +59,7 @@ the user-flow implementation.
 | 2 | Schema constants extracted to a single module (column names, role enum, thresholds) | `src/main/services/auth/auth-constants.ts` (new) | new `tests/main/services/auth/auth-constants.test.ts` asserts both backends consume the same constants | both `AuthService` (sqlite) and `PostgresWebAuthService` import from it |
 | 3 | `PostgresWebAuthService` — full surface (createFirstUser, authenticate, createUser, listUsers, deactivate, resetPassword, changePassword, isAccountsEnabled) over `pg.Pool` | `src/web/auth/PostgresWebAuthService.ts` (new) | new `tests/web/auth/postgres-web-auth-service.test.ts` mirroring the 61 SQLite auth tests against a real pg-up container (gated by `VARLENS_RUN_POSTGRES_E2E=1`) | every mirrored test passes |
 | 4 | `src/web/server.ts` — Postgres-only path, fail-loud if `VARLENS_PG_URL` missing; recovery key path moves to `VARLENS_RECOVERY_KEY_DIR` (default `/data`) | `src/web/server.ts` | new `tests/web-gate/integration/postgres-required.test.ts` asserts buildApp throws when `VARLENS_PG_URL` is unset | the SQLite branch is removed |
-| 5 | `pilot.sh` preflight requires `VARLENS_PG_URL`; `web-deploy/Makefile` activates `postgres` profile when the var is set; compose `varlens` service receives the URL | `web-deploy/scripts/pilot.sh`, `web-deploy/Makefile`, `web-deploy/compose/docker-compose.yml`, `web-deploy/.env.example` | new `tests/web-gate/deploy-stack.test.ts` assertions: postgres profile is active when `VARLENS_PG_URL` set; pilot.sh aborts at preflight without it | live cold-start with `VARLENS_PG_URL` succeeds end-to-end |
+| 5 | Deploy/operator repo preflight requires `VARLENS_PG_URL`; compose app service receives the URL | external deploy/operator repo | deploy/operator tests live outside this app repo | live cold-start with `VARLENS_PG_URL` succeeds end-to-end |
 | 6 | Flip 4 deferred parity scenarios to live: login, lockout, multi-user isolation, session expiry | `tests/web-gate/parity/auth-scenarios.parity.test.ts` | the four `describe.skip` blocks already exist (red because skipped) | each scenario implemented against PostgresWebAuthService |
 
 ## Order of work
@@ -82,7 +82,7 @@ deliverable** to keep history bisectable.
    remove the SQLite branch and watch the gate go green. Recovery-key
    path also tested separately via the existing `integration/admin-bootstrap`
    shape.
-5. **#5 Pilot + compose** — extend `deploy-stack.test.ts` with the
+5. **#5 Pilot + compose** — keep deploy/operator coverage outside this app repo with the
    profile-activation assertion (red because compose doesn't conditionally
    activate yet), then wire pilot.sh + Makefile + compose to make it green.
    Live cold-start verifies end-to-end.

@@ -4,8 +4,8 @@ import { listTables, openMigratedTmpDb, tableColumns } from './helpers/tmp-db'
 /**
  * Phase 1 gate — every domain table must carry a `user_id` column with
  * `NOT NULL DEFAULT 1`. The Phase 1 plan freezes this as the bridge to
- * Stage 2 multi-user (per `VarLens-IaC/.internalplanning/konzept/app.html`
- * §app2.1 + §adr3): adding the column at this stage is trivial; doing it
+ * Stage 2 multi-user (per the external Concept Pilot contract):
+ * adding the column at this stage is trivial; doing it
  * later is a schema break with data migration.
  *
  * Today, ZERO tables have `user_id`. The Phase 1 work fills them in.

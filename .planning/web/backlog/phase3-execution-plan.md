@@ -2,7 +2,7 @@
 
 Status: backlog / not current execution (2026-05-07, rewritten)
 Branch: `VarLens-Web`
-Source: `.planning/web/00-spec/konzept/app.html` §app2.1 — "Argon2 login
+Source: external Concept Pilot planning — "Argon2 login
 works in the browser; multiple users can work in parallel" + "Import,
 filtering, and analysis of variant data work in the browser."
 

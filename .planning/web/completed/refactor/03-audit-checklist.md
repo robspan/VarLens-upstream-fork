@@ -250,8 +250,7 @@ Update:
 - `tests/web-gate/README.md`
 - `.planning/web/phase2-followups.md`
 - `.planning/web/04-testing/desktop-to-web-parity.md`
-- `DEPLOY.md`
-- relevant `web-deploy/docs/**`
+- external deploy/operator documentation
 
 Rules:
 

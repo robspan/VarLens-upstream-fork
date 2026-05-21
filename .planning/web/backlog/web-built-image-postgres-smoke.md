@@ -24,5 +24,5 @@ Created: 2026-05-12
 ## Acceptance Checks
 
 - `publish-web.yml` proves the image before publishing the rolling tag.
-- `release-web.yml` proves the image before deploying a versioned tag.
+- The external deploy/operator repo proves the image before deploying a versioned tag.
 - Failure output includes app logs and enough Postgres connection context to debug quickly.

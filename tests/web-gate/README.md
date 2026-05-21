@@ -50,4 +50,4 @@ Desktop remains the default path. Do not add Postgres, Docker, browser, or web-i
 ## See also
 
 - `.planning/web/completed/testing/desktop-to-web-parity.md` — full plan + named-but-deferred scenarios
-- `VarLens-IaC/.internalplanning/konzept/app.html` §app2.1 — upstream Phase 1 contract
+- External Concept Pilot planning — upstream Phase 1 contract

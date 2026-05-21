@@ -6,7 +6,7 @@ Desktop is the default VarLens product path and must stay that way.
 
 - Default `make ci`, `make test`, and `npm run test` are desktop/researcher workflows.
 - Web checks remain opt-in through `VARLENS_WEB=1` or explicit `make web-*` targets.
-- A populated `web-deploy/.env` must not silently opt default developer commands into web mode.
+- Operator environment files must not silently opt default developer commands into web mode.
 - Do not add Postgres, Docker, web image, or browser requirements to the default desktop lane.
 - Web mode is currently for a sysadmin/operator deploying VarLens on their own infrastructure and providing access to users.
 - Audit findings about skipped web tests are conditional findings: they are defects only in a web-track command, web release workflow, or deployment validation path that claims web coverage.

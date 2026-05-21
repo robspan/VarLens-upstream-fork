@@ -13,7 +13,7 @@ import { openMigratedTmpDb, tableColumns } from './helpers/tmp-db'
  * before the audit table grows in incompatible directions.
  *
  * Cheap insurance, lexical only. See `.planning/web/completed/testing/desktop-to-web-parity.md`
- * §audit-shape and `VarLens-IaC/.internalplanning/betrieb/app.html` §app2.4.
+ * and the external Concept Pilot audit contract.
  */
 
 // Column names present on the v7 baseline schema (frozen 2026-05-04).

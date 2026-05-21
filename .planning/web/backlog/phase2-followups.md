@@ -70,7 +70,7 @@ managed-DB deployments.
 - Re-introduce a `local-postgres` profile gate
 - pilot.sh detects whether VARLENS_PG_URL targets the in-stack
   service and toggles the profile accordingly
-- Document in DEPLOY.md and `web-deploy/docs/database.md`
+- Document in the external deploy/operator repo.
 
 ## What Phase 2 DID land (so this doc isn't all "later")
 
@@ -93,7 +93,7 @@ managed-DB deployments.
   not up. Cloud-init clone matches.
 - restore-drill verifies pg_dump archive presence + PGDMP magic
   bytes + PGDATA exclusion
-- Tests: 12/12 deploy-stack gates, 757/757 main-process auth/storage
+- Tests: deploy/operator gates passed before extraction, 757/757 main-process auth/storage
   tests, structural parity assertions for both backends, web-gate
   postgres-required + (gated) integration tests, fail-loud test
   flipped to assert on VARLENS_PG_URL

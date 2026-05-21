@@ -2,10 +2,10 @@
 
 Status: completed structural phase (2026-05-04); ongoing parity work lives under `../active/`
 Branch: `VarLens-Web`
-Source: `.planning/web/00-spec/konzept/app.html` §app2.1 (canonical criteria)
+Source: external Concept Pilot planning
 Companion: [`testing/`](testing/) (test vehicles), [`../context/decisions/postgres-backend.md`](../context/decisions/postgres-backend.md) (backend choice)
 
-The 12 §app2.1 criteria, mapped to: blocking dependencies · test vehicle · current status. **No criterion text restated** — read the konzept for the spec.
+The 12 app-readiness criteria, mapped to: blocking dependencies, test vehicle, and current status. **No criterion text restated** — read the external Concept Pilot planning for the spec.
 
 ## Order of work — status (2026-05-04)
 
@@ -43,7 +43,7 @@ hard Phase 1 blocker — it's the visible Stage-2 backlog.
 | 8 | Logs JSON to stdout | — | `integration/json-logs` | ✅ |
 | 9 | SIGTERM clean shutdown | — | `integration/sigterm` | ✅ |
 | 10 | ADRs 1, 2, 3 filed | — | Doc gate | ✅ `.planning/web/adr/0001..0003` |
-| 11 | §bewertung1 / §bewertung3 current | IaC repo work | Doc gate | Tracked in IaC (out of repo scope) |
+| 11 | Assessment inventory current | Deploy/operator repo work | Doc gate | Tracked outside this app repo |
 | 12 | Bridge-clause structural | — | `db-seam` + `auth-isolation` + `user-id-schema` + `handler-seam` | 3/4 ✅; `user-id-schema` tracks per-tenant prep |
 
 ## Per-criterion implementation notes (only where non-obvious)
@@ -54,7 +54,7 @@ hard Phase 1 blocker — it's the visible Stage-2 backlog.
 - **#5** — Electron half landed; web half is the activation test for the build target in #1. After web build lands, the parity scenario goes green or it's a real bug.
 - **#6** — every IPC handler must call methods on an injected `StorageSession` rather than `getDatabaseService()` / `getDbPool()`. Allowlist in `db-seam.test.ts` shrinks PR by PR. The two refactor-checkpoint snapshots will drift during this work — review the diff each PR.
 - **#7** — refactor-checkpoint covers transaction boundaries and pool routing; the 326 default-suite tests cover everything else.
-- **#10 / #11** — doc work, not code. ADR 1: backend split decision (already in `decision-postgres-as-web-backend.md`). ADR 2: parallel maintainability (Electron + web). ADR 3: per-tenant schema prep. §bewertung lives in the IaC konzept and is updated when the choice it records changes.
+- **#10 / #11** — doc work, not code. ADR 1: backend split decision (already in `decision-postgres-as-web-backend.md`). ADR 2: parallel maintainability (Electron + web). ADR 3: per-tenant schema prep. Assessment planning lives outside this app repo and is updated when the choice it records changes.
 
 ## Out of scope for Phase 1
 
@@ -82,4 +82,4 @@ The four `auth-scenarios.parity.test.ts` placeholders (login, lockout, multi-use
 
 **Out of repo scope:**
 
-`§bewertung1 / §bewertung3` (criterion #11) lives in the IaC repo and is updated by the Konzept author when the choices it records change.
+The assessment inventory (criterion #11) lives outside this app repo and is updated with the choices it records.

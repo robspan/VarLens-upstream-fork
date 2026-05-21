@@ -22,10 +22,10 @@ This file tracks the cleanup pass after the initial audit. The desktop-default c
 - Web cohort status has a stable Postgres response, while rebuild and association actions fail explicitly as unsupported web capabilities.
 - Import progress is bridged over server-sent events for `window.api.import.onProgress`.
 - `make web-ci` and `make web-gate-postgres` provide explicit Postgres-backed web gates; default `make ci` is unchanged.
-- `web-deploy/.env` no longer auto-enables `VARLENS_WEB`; web mode requires explicit `VARLENS_WEB=1` or a direct `make web-*` target.
+- operator environment files no longer auto-enable `VARLENS_WEB`; web mode requires explicit `VARLENS_WEB=1` or a direct `make web-*` target.
 - Root `.github/workflows/web-ci.yml` runs the opt-in web gate on web-relevant paths.
 - Compose now passes `VARLENS_ADMIN_PASSWORD_HASH` through to the app container.
-- `publish-web.yml` and build-path `release-web.yml` run `make web-ci` before building and publishing a web image.
+- `publish-web.yml` runs `make web-ci` before building and publishing a web image.
 
 ## Still Open
 

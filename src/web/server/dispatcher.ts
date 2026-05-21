@@ -27,7 +27,8 @@ import { readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import type { FastifyInstance, FastifyReply } from 'fastify'
+import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 
 import {
@@ -44,9 +45,9 @@ import type { StorageSession } from '../../main/storage/session'
 import type { StorageReadTask } from '../../main/storage/read-executor'
 import type { StorageWriteTask } from '../../main/storage/write-executor'
 import type { AuditAppendParams } from '../../main/storage/audit-log-types'
-import { PasswordPolicyError, type PostgresWebAuthService } from '../auth/PostgresWebAuthService'
-import type { WebEventHub } from './events'
 import { isReadTaskType, isWriteTaskType, toTaskDomain } from './task-types'
+import { buildAuthOverrides } from './routes/auth'
+import type { DispatcherDeps, InvokeBody, OverrideHandler } from './routes/types'
 import type { SortItem, VariantFilter } from '../../shared/types/database'
 import type { MultiFileImportSpec } from '../../shared/types/api'
 import type { StorageCapabilities } from '../../shared/types/storage-capabilities'
@@ -59,6 +60,11 @@ import {
   SortItemSchema,
   VariantFilterPartialSchema
 } from '../../shared/types/ipc-schemas'
+import {
+  DispatcherErrorResponseSchema,
+  DispatcherInvokeBodySchema,
+  DispatcherParamsSchema
+} from '../../shared/api/schemas/dispatcher'
 import { exportPostgresCohort, exportPostgresVariants } from '../../main/ipc/handlers/export-logic'
 import { quoteIdentifier } from '../../main/storage/postgres/identifiers'
 import type { Pool } from 'pg'
@@ -120,18 +126,6 @@ function unsupportedWebCapability(
     capability,
     message: `${capability} is not available in web mode yet.`
   }
-}
-
-function requireAdmin(
-  request: FastifyRequest,
-  reply: FastifyReply
-): { id: number; username: string; role: string; passwordChangedAt: string | null } | undefined {
-  const user = request.session?.user
-  if (user === undefined || user.role !== 'admin') {
-    reply.code(403)
-    return undefined
-  }
-  return user
 }
 
 function postgresContext(session: StorageSession): { pool: Pool; schemaName: string } {
@@ -271,27 +265,7 @@ async function readBedEntries(
     )
 }
 
-export interface DispatcherDeps {
-  session: StorageSession
-  authService: PostgresWebAuthService
-  events: WebEventHub
-}
-
-export interface InvokeBody {
-  args?: unknown[]
-}
-
-export interface OverrideHandler {
-  /** True = bypasses the auth preHandler (e.g. login). Default: false. */
-  public?: boolean
-  /** Receives raw args array + request + deps; returns the value to JSON-encode. */
-  handle: (
-    args: unknown[],
-    request: FastifyRequest,
-    reply: FastifyReply,
-    deps: DispatcherDeps
-  ) => Promise<unknown> | unknown
-}
+export type { DispatcherDeps, InvokeBody, OverrideHandler } from './routes/types'
 
 /**
  * Per-method overrides. Key shape: `<kebab-domain>:<method>`.
@@ -301,157 +275,7 @@ export interface OverrideHandler {
  */
 function buildOverrides(): Record<string, OverrideHandler> {
   return {
-    'auth:login': {
-      public: true,
-      async handle(args, request, reply, { authService }) {
-        const [username, password] = args as [unknown, unknown]
-        if (typeof username !== 'string' || typeof password !== 'string') {
-          reply.code(400)
-          return { error: 'username and password (string) required' }
-        }
-        const result = await authService.authenticate(username, password)
-        if (result.success && result.user !== null) {
-          const { id, username: name, role, password_changed_at: passwordChangedAt } = result.user
-          // Persist mustChangePassword on the session so the
-          // pre-rotation gate (in the dispatcher route handler) can
-          // enforce it without re-querying the DB on every request.
-          // Cleared by the auth:changePassword override on success.
-          request.session.user = { id, username: name, role, passwordChangedAt }
-          request.session.mustChangePassword = result.mustChangePassword === true
-        }
-        return result
-      }
-    },
-    'auth:logout': {
-      async handle(_args, request) {
-        request.session.delete()
-        return { ok: true }
-      }
-    },
-    'auth:currentUser': {
-      // Session identity has already been revalidated by the auth preHandler.
-      async handle(_args, request) {
-        return request.session?.user ?? null
-      }
-    },
-    'auth:isAccountsEnabled': {
-      public: true,
-      async handle(_args, _request, _reply, { authService }) {
-        return await authService.isAccountsEnabled()
-      }
-    },
-
-    'auth:changePassword': {
-      // Requires a session — the pre-rotation gate explicitly allows
-      // this method through even when the session still carries
-      // must_change_password. On success we clear the rotation flag
-      // on the session so subsequent requests get the full
-      // application surface without needing a re-login.
-      async handle(args, request, reply, { authService }) {
-        const session = request.session
-        const sessionUser = session?.user
-        if (sessionUser === undefined) {
-          reply.code(401)
-          return { error: 'authentication required' }
-        }
-        const [oldPassword, newPassword] = args as [unknown, unknown]
-        if (typeof oldPassword !== 'string' || typeof newPassword !== 'string') {
-          reply.code(400)
-          return { error: 'oldPassword and newPassword (string) required' }
-        }
-        try {
-          const ok = await authService.changePassword(
-            sessionUser.username,
-            oldPassword,
-            newPassword
-          )
-          if (!ok) {
-            reply.code(401)
-            return { success: false, error: 'old-password-invalid' }
-          }
-          const refreshed = await authService.getUser(sessionUser.username)
-          if (refreshed !== undefined) {
-            session.user = {
-              id: refreshed.id,
-              username: refreshed.username,
-              role: refreshed.role,
-              passwordChangedAt: refreshed.password_changed_at
-            }
-          }
-          session.mustChangePassword = false
-          return { success: true }
-        } catch (err) {
-          if (err instanceof PasswordPolicyError) {
-            reply.code(422)
-            return { success: false, error: err.code, message: err.message }
-          }
-          throw err
-        }
-      }
-    },
-
-    'auth:createUser': {
-      async handle(args, request, reply, { authService }) {
-        const admin = requireAdmin(request, reply)
-        if (admin === undefined) return { error: 'admin-required' }
-
-        const [username, displayName, tempPassword] = args
-        if (
-          typeof username !== 'string' ||
-          typeof displayName !== 'string' ||
-          typeof tempPassword !== 'string'
-        ) {
-          reply.code(400)
-          return { error: 'invalid-user-payload' }
-        }
-
-        return await authService.createUser(username, displayName, tempPassword, admin.username)
-      }
-    },
-
-    'auth:listUsers': {
-      async handle(_args, request, reply, { authService }) {
-        const admin = requireAdmin(request, reply)
-        if (admin === undefined) return { error: 'admin-required' }
-        return await authService.listUsers()
-      }
-    },
-
-    'auth:deactivateUser': {
-      async handle(args, request, reply, { authService }) {
-        const admin = requireAdmin(request, reply)
-        if (admin === undefined) return { error: 'admin-required' }
-
-        const [username] = args
-        if (typeof username !== 'string') {
-          reply.code(400)
-          return { error: 'invalid-username' }
-        }
-        if (username === admin.username) {
-          reply.code(400)
-          return { error: 'cannot-deactivate-self' }
-        }
-
-        await authService.deactivateUser(username)
-        return undefined
-      }
-    },
-
-    'auth:resetPassword': {
-      async handle(args, request, reply, { authService }) {
-        const admin = requireAdmin(request, reply)
-        if (admin === undefined) return { error: 'admin-required' }
-
-        const [username, newPassword] = args
-        if (typeof username !== 'string' || typeof newPassword !== 'string') {
-          reply.code(400)
-          return { error: 'invalid-reset-payload' }
-        }
-
-        await authService.resetPassword(username, newPassword)
-        return undefined
-      }
-    },
+    ...buildAuthOverrides(),
 
     'cases:list': {
       async handle(_args, _request, _reply, { session }) {
@@ -1360,55 +1184,76 @@ export function registerDispatcher(
   deps: DispatcherDeps,
   overrides: Record<string, OverrideHandler>
 ): void {
-  app.post<{
+  app.withTypeProvider<ZodTypeProvider>().post<{
     Params: { domain: string; method: string }
     Body: InvokeBody
-  }>('/api/:domain/:method', async (request, reply) => {
-    await applyDevApiLatency()
-
-    const { domain, method } = request.params
-    const args = (request.body?.args ?? []) as unknown[]
-
-    const taskDomain = toTaskDomain(domain)
-    const key = `${taskDomain}:${method}`
-
-    // Pre-rotation gate. A session that still carries
-    // must_change_password gets exactly two methods reachable —
-    // changePassword (the way out) and logout (the escape hatch).
-    // Everything else, including reads, is 403'd. This closes the
-    // bootstrap-credential exposure window completely: there is no
-    // moment in which a user with the bootstrap password can call
-    // any application endpoint.
-    if (
-      request.session?.user !== undefined &&
-      request.session.mustChangePassword === true &&
-      !PRE_ROTATION_ALLOWED.has(key)
-    ) {
-      reply.code(403)
-      return {
-        error: 'password-rotation-required',
-        message:
-          'Your password must be changed before any other action. ' +
-          'Call auth:changePassword first.'
+  }>(
+    '/api/:domain/:method',
+    {
+      schema: {
+        tags: ['web-dispatcher'],
+        summary: 'Invoke a VarLens API method',
+        description:
+          'Compatibility endpoint used by the web SPA. The wire contract mirrors the ' +
+          'desktop preload API: POST /api/<domain>/<method> with body { args: [...] }.',
+        params: DispatcherParamsSchema,
+        body: DispatcherInvokeBodySchema,
+        response: {
+          400: DispatcherErrorResponseSchema,
+          401: DispatcherErrorResponseSchema,
+          403: DispatcherErrorResponseSchema,
+          404: DispatcherErrorResponseSchema,
+          501: DispatcherErrorResponseSchema
+        }
       }
-    }
+    },
+    async (request, reply) => {
+      await applyDevApiLatency()
 
-    const override = overrides[key]
-    if (override !== undefined) {
-      return await override.handle(args, request, reply, deps)
-    }
+      const { domain, method } = request.params
+      const args = (request.body?.args ?? []) as unknown[]
 
-    if (isReadTaskType(key)) {
-      const task = { type: key, params: args } as StorageReadTask
-      return await deps.session.getReadExecutor().execute(task)
-    }
+      const taskDomain = toTaskDomain(domain)
+      const key = `${taskDomain}:${method}`
 
-    if (isWriteTaskType(key)) {
-      const task = { type: key, params: args } as StorageWriteTask
-      return await deps.session.getWriteExecutor().execute(task)
-    }
+      // Pre-rotation gate. A session that still carries
+      // must_change_password gets exactly two methods reachable —
+      // changePassword (the way out) and logout (the escape hatch).
+      // Everything else, including reads, is 403'd. This closes the
+      // bootstrap-credential exposure window completely: there is no
+      // moment in which a user with the bootstrap password can call
+      // any application endpoint.
+      if (
+        request.session?.user !== undefined &&
+        request.session.mustChangePassword === true &&
+        !PRE_ROTATION_ALLOWED.has(key)
+      ) {
+        reply.code(403)
+        return {
+          error: 'password-rotation-required',
+          message:
+            'Your password must be changed before any other action. ' +
+            'Call auth:changePassword first.'
+        }
+      }
 
-    reply.code(404)
-    return { error: 'unknown method', domain, method }
-  })
+      const override = overrides[key]
+      if (override !== undefined) {
+        return await override.handle(args, request, reply, deps)
+      }
+
+      if (isReadTaskType(key)) {
+        const task = { type: key, params: args } as StorageReadTask
+        return await deps.session.getReadExecutor().execute(task)
+      }
+
+      if (isWriteTaskType(key)) {
+        const task = { type: key, params: args } as StorageWriteTask
+        return await deps.session.getWriteExecutor().execute(task)
+      }
+
+      reply.code(404)
+      return { error: 'unknown method', domain, method }
+    }
+  )
 }

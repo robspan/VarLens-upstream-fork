@@ -170,6 +170,9 @@
     }
   },
   "dependencies": {
+    "@fastify/secure-session": "^8.2.0",
+    "@fastify/static": "^8.2.0",
+    "@fastify/swagger": "^9.7.0",
     "@node-rs/argon2": "^2.0.2",
     "@vueuse/core": "^14.2.0",
     "adm-zip": "^0.5.17",
@@ -178,9 +181,8 @@
     "d3": "^7.9.0",
     "electron-log": "^5.4.3",
     "electron-updater": "^6.8.3",
-    "@fastify/secure-session": "^8.2.0",
-    "@fastify/static": "^8.2.0",
     "fastify": "^5.8.5",
+    "fastify-type-provider-zod": "^6.1.0",
     "file-saver": "^2.0.5",
     "jstat": "^1.9.6",
     "kysely": "^0.28.16",

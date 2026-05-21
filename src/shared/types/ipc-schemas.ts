@@ -22,6 +22,13 @@ import { z } from 'zod'
 import { DOMAIN_CONFIG } from '../config'
 import { ACMG_CLASSIFICATIONS } from '../config/domain.config'
 import { normalizeAcmgClassification } from '../utils/acmg'
+export {
+  UsernameSchema,
+  PasswordSchema,
+  LoginParamsSchema,
+  CreateUserSchema,
+  ChangePasswordSchema
+} from '../api/schemas/auth'
 
 /**
  * Helper to create a nullish string that transforms null to undefined
@@ -483,45 +490,6 @@ export const PerCaseAnnotationUpdatesSchema = z.object({
 export const CaseVariantIdSchema = z.object({
   caseId: z.number().int().positive(),
   variantId: z.number().int().positive()
-})
-
-// ============================================================
-// Auth Schemas
-// ============================================================
-
-/**
- * Schema for username validation
- */
-export const UsernameSchema = z.string().min(1).max(100)
-
-/**
- * Schema for password validation (min 8 characters)
- */
-export const PasswordSchema = z.string().min(8).max(256)
-
-/**
- * Schema for login parameters
- */
-export const LoginParamsSchema = z.object({
-  username: UsernameSchema,
-  password: z.string().min(1).max(256) // login allows any non-empty password
-})
-
-/**
- * Schema for user creation
- */
-export const CreateUserSchema = z.object({
-  username: UsernameSchema,
-  displayName: z.string().min(1).max(200),
-  tempPassword: PasswordSchema
-})
-
-/**
- * Schema for password change
- */
-export const ChangePasswordSchema = z.object({
-  oldPassword: z.string().min(1).max(256),
-  newPassword: PasswordSchema
 })
 
 // ============================================================

@@ -35,6 +35,7 @@ import { registerSessions } from './server/auth'
 import { registerEventStream, WebEventHub } from './server/events'
 import { registerLoginRoute, resolveAppPathPrefix } from './server/login-route'
 import { registerPageGate } from './server/page-gate'
+import { registerOpenApi } from './server/routes/openapi'
 import { registerStatic } from './server/static'
 import pkg from '../../package.json'
 
@@ -101,6 +102,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   }
 
   await registerSessions(app, { authService })
+  await registerOpenApi(app)
   const events = new WebEventHub()
 
   // Login wall: the `/login` page itself + the preHandler that redirects

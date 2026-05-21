@@ -6,10 +6,12 @@ import type { StorageReadTask } from '../../src/main/storage/read-executor'
 function makeDeps(): {
   deps: DispatcherDeps
   execute: ReturnType<typeof vi.fn>
+  writeExecute: ReturnType<typeof vi.fn>
   importSingleFile: ReturnType<typeof vi.fn>
   reply: { code: ReturnType<typeof vi.fn> }
 } {
   const execute = vi.fn(async (task: StorageReadTask) => ({ task }))
+  const writeExecute = vi.fn(async (task: unknown) => ({ task }))
   const importSingleFile = vi.fn(async () => ({
     caseId: 11,
     variantCount: 2,
@@ -27,7 +29,7 @@ function makeDeps(): {
     session: {
       capabilities: { backend: 'postgres' },
       getReadExecutor: () => ({ execute }),
-      getWriteExecutor: () => ({ execute: vi.fn() }),
+      getWriteExecutor: () => ({ execute: writeExecute }),
       getImportExecutor: () => ({ importSingleFile, cancel: vi.fn() }),
       listCases: vi.fn(async () => [{ id: 1, name: 'Case A' }]),
       health: vi.fn()
@@ -43,7 +45,7 @@ function makeDeps(): {
       publish
     }
   } as unknown as DispatcherDeps
-  return { deps, execute, importSingleFile, reply: { code: vi.fn() } }
+  return { deps, execute, writeExecute, importSingleFile, reply: { code: vi.fn() } }
 }
 
 describe('web dispatcher adapters', () => {
@@ -272,6 +274,70 @@ describe('web dispatcher adapters', () => {
       error: 'unsupported-web-capability',
       capability: 'hpo.search',
       message: 'hpo.search is not available in web mode yet.'
+    })
+  })
+
+  test('annotations.upsertGlobal writes annotation and audit entries', async () => {
+    const { deps, execute, writeExecute, reply } = makeDeps()
+    execute.mockResolvedValueOnce({
+      acmg_classification: 'VUS',
+      acmg_evidence: 'old',
+      starred: 0
+    })
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['annotations:upsertGlobal'].handle(
+      [
+        'chr22',
+        12345,
+        'A',
+        'T',
+        {
+          acmg_classification: 'PATHOGENIC',
+          starred: true,
+          user_name: 'admin'
+        }
+      ],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      task: {
+        type: 'annotations:upsertGlobal',
+        params: [
+          { chr: 'chr22', pos: 12345, ref: 'A', alt: 'T' },
+          { acmg_classification: 'PATHOGENIC', starred: true, user_name: 'admin' }
+        ]
+      }
+    })
+    expect(execute).toHaveBeenCalledWith({
+      type: 'annotations:getGlobal',
+      params: [{ chr: 'chr22', pos: 12345, ref: 'A', alt: 'T' }]
+    })
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'audit:append',
+      params: [
+        expect.objectContaining({
+          action_type: 'acmg_classify',
+          entity_type: 'variant_annotation',
+          entity_key: 'chr22:12345:A:T',
+          user_name: 'admin'
+        })
+      ]
+    })
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'audit:append',
+      params: [
+        expect.objectContaining({
+          action_type: 'star',
+          entity_type: 'variant_annotation',
+          entity_key: 'chr22:12345:A:T',
+          user_name: 'admin'
+        })
+      ]
     })
   })
 

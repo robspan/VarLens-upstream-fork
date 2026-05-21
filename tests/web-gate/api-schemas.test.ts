@@ -22,6 +22,7 @@ import {
   appendDocumentedDispatcherPaths,
   toOpenApiJsonSchema
 } from '../../src/web/server/routes/openapi'
+import { READ_TASK_TYPES, WRITE_TASK_TYPES } from '../../src/web/server/task-types'
 
 type JsonObject = Record<string, unknown>
 
@@ -69,6 +70,11 @@ function requestSchema(path: string): JsonObject | undefined {
   return document.paths?.[path]?.post?.requestBody?.content?.['application/json']?.schema
 }
 
+function documentedPaths(): Record<string, unknown> {
+  const document = appendDocumentedDispatcherPaths({ paths: {} })
+  return document.paths ?? {}
+}
+
 function propertiesOf(schema: JsonObject): JsonObject {
   return schema.properties as JsonObject
 }
@@ -84,6 +90,17 @@ function nullableSchema(type: string): JsonObject {
 }
 
 describe('shared API schemas', () => {
+  test('documents every executor-backed dispatcher autoroute', () => {
+    const paths = documentedPaths()
+    const taskTypes = [...READ_TASK_TYPES, ...WRITE_TASK_TYPES]
+
+    const missing = taskTypes
+      .map((taskType) => `/api/${taskType.replace(':', '/')}`)
+      .filter((path) => paths[path] === undefined)
+
+    expect(missing).toEqual([])
+  })
+
   test('documents tag request argument tuples', () => {
     expect(argsItems(TagsInvokeBodySchemas.create)).toEqual([
       expect.objectContaining({ type: 'string', minLength: 1, maxLength: 100 }),

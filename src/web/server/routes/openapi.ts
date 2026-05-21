@@ -80,6 +80,7 @@ import {
   VariantInvokeBodySchemas,
   VariantUnknownResponseSchema
 } from '../../../shared/api/schemas/variants'
+import { READ_TASK_TYPES, WRITE_TASK_TYPES } from '../task-types'
 
 type JsonSchema = Record<string, unknown>
 type OpenApiPathItem = Record<string, unknown>
@@ -92,6 +93,8 @@ const UnsupportedCapabilitySchema = z.object({
   capability: z.string(),
   message: z.string()
 })
+
+const ExecutorTaskUnknownResponseSchema = z.unknown()
 
 function normalizeSchemaForOpenApi(schema: unknown): unknown {
   if (Array.isArray(schema)) {
@@ -289,6 +292,29 @@ function buildAuthOpenApiPaths(): Record<string, OpenApiPathItem> {
       response: AuthSuccessSchema
     })
   }
+}
+
+function pathForTaskType(taskType: string): string {
+  const [domain, method] = taskType.split(':')
+  return `/api/${domain}/${method}`
+}
+
+function buildExecutorAutorouteOpenApiPaths(): Record<string, OpenApiPathItem> {
+  const taskTypes = [...READ_TASK_TYPES, ...WRITE_TASK_TYPES]
+  return Object.fromEntries(
+    taskTypes.map((taskType) => {
+      const [domain = 'dispatcher'] = taskType.split(':')
+      return [
+        pathForTaskType(taskType),
+        dispatcherMethodOperation({
+          tag: domain,
+          summary: `Invoke ${taskType}`,
+          body: z.object({ args: z.array(z.unknown()).optional() }),
+          response: ExecutorTaskUnknownResponseSchema
+        })
+      ] as const
+    })
+  )
 }
 
 function buildCaseOpenApiPaths(): Record<string, OpenApiPathItem> {
@@ -769,6 +795,7 @@ export function appendDocumentedDispatcherPaths(document: OpenApiDocument): Open
     ...document,
     paths: {
       ...document.paths,
+      ...buildExecutorAutorouteOpenApiPaths(),
       ...buildAuthOpenApiPaths(),
       ...buildAnnotationOpenApiPaths(),
       ...buildAssetOpenApiPaths(),

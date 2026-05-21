@@ -42,6 +42,11 @@ import {
   ServerPathImportDisabledSchema
 } from '../../../shared/api/schemas/import'
 import {
+  TranscriptInvokeBodySchemas,
+  TranscriptSwitchResponseSchema,
+  TranscriptUnknownResponseSchema
+} from '../../../shared/api/schemas/transcripts'
+import {
   VariantInvokeBodySchemas,
   VariantUnknownResponseSchema
 } from '../../../shared/api/schemas/variants'
@@ -344,6 +349,23 @@ function buildImportOpenApiPaths(): Record<string, OpenApiPathItem> {
   }
 }
 
+function buildTranscriptOpenApiPaths(): Record<string, OpenApiPathItem> {
+  return {
+    '/api/transcripts/list': dispatcherMethodOperation({
+      tag: 'transcripts',
+      summary: 'List transcripts for a variant',
+      body: TranscriptInvokeBodySchemas.list,
+      response: TranscriptUnknownResponseSchema
+    }),
+    '/api/transcripts/insertAndSwitch': dispatcherMethodOperation({
+      tag: 'transcripts',
+      summary: 'Insert a transcript and make it selected',
+      body: TranscriptInvokeBodySchemas.insertAndSwitch,
+      response: TranscriptSwitchResponseSchema
+    })
+  }
+}
+
 function buildVariantOpenApiPaths(): Record<string, OpenApiPathItem> {
   return {
     '/api/variants/search': dispatcherMethodOperation({
@@ -440,6 +462,7 @@ function appendDocumentedDispatcherPaths(document: OpenApiDocument): OpenApiDocu
       ...buildDatabaseOpenApiPaths(),
       ...buildExportOpenApiPaths(),
       ...buildImportOpenApiPaths(),
+      ...buildTranscriptOpenApiPaths(),
       ...buildVariantOpenApiPaths()
     }
   }

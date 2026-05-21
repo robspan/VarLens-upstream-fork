@@ -2,6 +2,10 @@ import type { Pool } from 'pg'
 
 import type { StorageSession } from '../../../main/storage/session'
 import { quoteIdentifier } from '../../../main/storage/postgres/identifiers'
+import {
+  TranscriptInsertRowSchema,
+  TranscriptVariantIdSchema
+} from '../../../shared/api/schemas/transcripts'
 import type { TranscriptInsertRow } from '../../../shared/types/transcript'
 import type { OverrideHandler } from './types'
 
@@ -24,7 +28,8 @@ export function buildTranscriptOverrides(): Record<string, OverrideHandler> {
     'transcripts:list': {
       async handle(args, _request, reply, { session }) {
         const [variantId] = args
-        if (typeof variantId !== 'number') {
+        const validatedVariantId = TranscriptVariantIdSchema.safeParse(variantId)
+        if (!validatedVariantId.success) {
           reply.code(400)
           return { error: 'invalid-transcript-variant-id' }
         }
@@ -35,7 +40,7 @@ export function buildTranscriptOverrides(): Record<string, OverrideHandler> {
              FROM ${schemaName}.variant_transcripts
             WHERE variant_id = $1
             ORDER BY is_selected DESC, transcript_id ASC`,
-          [variantId]
+          [validatedVariantId.data]
         )
         return result.rows
       }
@@ -44,22 +49,20 @@ export function buildTranscriptOverrides(): Record<string, OverrideHandler> {
     'transcripts:insertAndSwitch': {
       async handle(args, _request, reply, { session }) {
         const [variantId, transcript] = args
-        if (
-          typeof variantId !== 'number' ||
-          transcript === null ||
-          typeof transcript !== 'object'
-        ) {
+        const validatedVariantId = TranscriptVariantIdSchema.safeParse(variantId)
+        const validatedTranscript = TranscriptInsertRowSchema.safeParse(transcript)
+        if (!validatedVariantId.success || !validatedTranscript.success) {
           reply.code(400)
           return { error: 'invalid-transcript-insert' }
         }
-        const row = transcript as TranscriptInsertRow
+        const row = validatedTranscript.data as TranscriptInsertRow
         const { pool, schemaName } = postgresContext(session)
         const client = await pool.connect()
         try {
           await client.query('BEGIN')
           await client.query(
             `UPDATE ${schemaName}.variant_transcripts SET is_selected = 0 WHERE variant_id = $1`,
-            [variantId]
+            [validatedVariantId.data]
           )
           await client.query(
             `INSERT INTO ${schemaName}.variant_transcripts
@@ -76,7 +79,7 @@ export function buildTranscriptOverrides(): Record<string, OverrideHandler> {
                moi = EXCLUDED.moi,
                is_selected = 1`,
             [
-              variantId,
+              validatedVariantId.data,
               row.transcript_id,
               row.gene_symbol,
               row.consequence,

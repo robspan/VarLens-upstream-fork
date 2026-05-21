@@ -1,29 +1,15 @@
-import { z } from 'zod'
 import type { Pool } from 'pg'
 import { wrapHandler } from '../errorHandler'
 import type { HandlerDependencies } from '../types'
 import type { TranscriptInsertRow } from '../../../shared/types/transcript'
+import {
+  TranscriptIdSchema,
+  TranscriptInsertRowSchema,
+  TranscriptVariantIdSchema
+} from '../../../shared/api/schemas/transcripts'
 import { mainLogger } from '../../services/MainLogger'
 import { quoteIdentifier } from '../../storage/postgres/identifiers'
 import type { StorageSession } from '../../storage/session'
-
-// Schema for variant ID validation
-const VariantIdSchema = z.number().int().positive()
-
-// Schema for transcript ID validation
-const TranscriptIdSchema = z.string().min(1)
-
-// Schema for transcript insert row validation
-const TranscriptInsertRowSchema = z.object({
-  transcript_id: z.string().min(1),
-  gene_symbol: z.string().nullable(),
-  consequence: z.string().nullable(),
-  cdna: z.string().nullable(),
-  aa_change: z.string().nullable(),
-  hpo_sim_score: z.number().nullable(),
-  moi: z.string().nullable(),
-  is_selected: z.number().int().min(0).max(1)
-})
 
 function postgresContext(session: StorageSession): {
   pool: Pool
@@ -55,7 +41,7 @@ export function registerTranscriptHandlers({
   ipcMain.handle('transcripts:list', async (_event, variantId: unknown) => {
     return wrapHandler(async () => {
       // ANTI-07: Runtime validation at IPC boundary
-      const validated = VariantIdSchema.safeParse(variantId)
+      const validated = TranscriptVariantIdSchema.safeParse(variantId)
       if (!validated.success) {
         mainLogger.error(
           `Invalid transcripts:list params: ${validated.error.message}`,
@@ -95,7 +81,7 @@ export function registerTranscriptHandlers({
     async (_event, variantId: unknown, transcriptId: unknown) => {
       return wrapHandler(async () => {
         // ANTI-07: Runtime validation at IPC boundary
-        const validatedVariantId = VariantIdSchema.safeParse(variantId)
+        const validatedVariantId = TranscriptVariantIdSchema.safeParse(variantId)
         if (!validatedVariantId.success) {
           mainLogger.error(
             `Invalid transcripts:switch variantId: ${validatedVariantId.error.message}`,
@@ -145,7 +131,7 @@ export function registerTranscriptHandlers({
     async (_event, variantId: unknown, transcript: unknown) => {
       return wrapHandler(async () => {
         // ANTI-07: Runtime validation at IPC boundary
-        const validatedVariantId = VariantIdSchema.safeParse(variantId)
+        const validatedVariantId = TranscriptVariantIdSchema.safeParse(variantId)
         if (!validatedVariantId.success) {
           mainLogger.error(
             `Invalid transcripts:insertAndSwitch variantId: ${validatedVariantId.error.message}`,

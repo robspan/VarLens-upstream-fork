@@ -59,6 +59,12 @@ import {
   TranscriptUnknownResponseSchema
 } from '../../../shared/api/schemas/transcripts'
 import {
+  TagSchema,
+  TagsInvokeBodySchemas,
+  TagsListResponseSchema,
+  TagsUsageCountResponseSchema
+} from '../../../shared/api/schemas/tags'
+import {
   VariantInvokeBodySchemas,
   VariantUnknownResponseSchema
 } from '../../../shared/api/schemas/variants'
@@ -75,17 +81,40 @@ const UnsupportedCapabilitySchema = z.object({
   message: z.string()
 })
 
-function toJsonSchema(schema: z.ZodType): JsonSchema {
+function normalizeSchemaForOpenApi(schema: unknown): unknown {
+  if (Array.isArray(schema)) {
+    return schema.map((item) => normalizeSchemaForOpenApi(item))
+  }
+  if (schema === null || typeof schema !== 'object') {
+    return schema
+  }
+
+  const normalized = Object.fromEntries(
+    Object.entries(schema).map(([key, value]) => [key, normalizeSchemaForOpenApi(value)])
+  ) as JsonSchema
+
+  if (Array.isArray(normalized.items)) {
+    const tupleItems = normalized.items
+    normalized['x-varlens-prefixItems'] = tupleItems
+    normalized.minItems ??= tupleItems.length
+    normalized.maxItems ??= tupleItems.length
+    normalized.items = tupleItems.length === 1 ? tupleItems[0] : { anyOf: tupleItems }
+  }
+
+  return normalized
+}
+
+export function toOpenApiJsonSchema(schema: z.ZodType): JsonSchema {
   const jsonSchema = z.toJSONSchema(schema, { target: 'draft-7' }) as JsonSchema
   delete jsonSchema.$schema
-  return jsonSchema
+  return normalizeSchemaForOpenApi(jsonSchema) as JsonSchema
 }
 
 function jsonContent(schema: z.ZodType): Record<string, unknown> {
   return {
     content: {
       'application/json': {
-        schema: toJsonSchema(schema)
+        schema: toOpenApiJsonSchema(schema)
       }
     }
   }
@@ -145,7 +174,7 @@ function dispatcherMethodOperation(options: {
       responses: {
         200: {
           description: 'OK',
-          ...jsonContent(options.response ?? z.unknown())
+          ...(options.response === undefined ? {} : jsonContent(options.response))
         },
         400: {
           description: 'Invalid request',
@@ -442,6 +471,61 @@ function buildTranscriptOpenApiPaths(): Record<string, OpenApiPathItem> {
   }
 }
 
+function buildTagsOpenApiPaths(): Record<string, OpenApiPathItem> {
+  return {
+    '/api/tags/list': dispatcherMethodOperation({
+      tag: 'tags',
+      summary: 'List tags',
+      body: TagsInvokeBodySchemas.empty,
+      response: TagsListResponseSchema
+    }),
+    '/api/tags/create': dispatcherMethodOperation({
+      tag: 'tags',
+      summary: 'Create a tag',
+      body: TagsInvokeBodySchemas.create,
+      response: TagSchema
+    }),
+    '/api/tags/update': dispatcherMethodOperation({
+      tag: 'tags',
+      summary: 'Update a tag',
+      body: TagsInvokeBodySchemas.update,
+      response: TagSchema
+    }),
+    '/api/tags/delete': dispatcherMethodOperation({
+      tag: 'tags',
+      summary: 'Delete a tag',
+      body: TagsInvokeBodySchemas.tagId
+    }),
+    '/api/tags/getUsageCount': dispatcherMethodOperation({
+      tag: 'tags',
+      summary: 'Return how often a tag is used',
+      body: TagsInvokeBodySchemas.tagId,
+      response: TagsUsageCountResponseSchema
+    }),
+    '/api/tags/getVariantTags': dispatcherMethodOperation({
+      tag: 'tags',
+      summary: 'Return tags assigned to a case variant',
+      body: TagsInvokeBodySchemas.caseVariant,
+      response: TagsListResponseSchema
+    }),
+    '/api/tags/assignVariantTag': dispatcherMethodOperation({
+      tag: 'tags',
+      summary: 'Assign a tag to a case variant',
+      body: TagsInvokeBodySchemas.assign
+    }),
+    '/api/tags/removeVariantTag': dispatcherMethodOperation({
+      tag: 'tags',
+      summary: 'Remove a tag from a case variant',
+      body: TagsInvokeBodySchemas.assign
+    }),
+    '/api/tags/setVariantTags': dispatcherMethodOperation({
+      tag: 'tags',
+      summary: 'Replace tags on a case variant',
+      body: TagsInvokeBodySchemas.set
+    })
+  }
+}
+
 function referenceFixtureOperation(options: {
   tag: string
   summary: string
@@ -620,6 +704,7 @@ function appendDocumentedDispatcherPaths(document: OpenApiDocument): OpenApiDocu
       ...buildExportOpenApiPaths(),
       ...buildImportOpenApiPaths(),
       ...buildReferenceOpenApiPaths(),
+      ...buildTagsOpenApiPaths(),
       ...buildTranscriptOpenApiPaths(),
       ...buildVariantOpenApiPaths()
     }

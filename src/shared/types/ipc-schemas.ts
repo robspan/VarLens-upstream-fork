@@ -29,6 +29,14 @@ export {
   CreateUserSchema,
   ChangePasswordSchema
 } from '../api/schemas/auth'
+export {
+  TagIdSchema,
+  TagCreateSchema,
+  TagUpdateSchema,
+  VariantTagAssignSchema,
+  VariantTagSetSchema,
+  TagCaseVariantIdSchema
+} from '../api/schemas/tags'
 
 /**
  * Helper to create a nullish string that transforms null to undefined
@@ -365,49 +373,6 @@ export const TypesPresentPayloadSchema = z
   .refine((p) => p.caseId !== undefined || (p.caseIds !== undefined && p.caseIds.length > 0), {
     message: 'Either caseId or caseIds must be provided'
   })
-
-// ============================================================
-// Tag Schemas
-// ============================================================
-
-/**
- * Schema for tag ID validation
- */
-export const TagIdSchema = z.number().int().positive()
-
-/**
- * Schema for tag creation
- */
-export const TagCreateSchema = z.object({
-  name: z.string().min(1).max(100),
-  color: z.string().min(4).max(9) // e.g., #fff or #ffffff
-})
-
-/**
- * Schema for tag update
- */
-export const TagUpdateSchema = z.object({
-  name: z.string().min(1).max(100).optional(),
-  color: z.string().min(4).max(9).optional()
-})
-
-/**
- * Schema for variant tag assignment (caseId, variantId, tagId)
- */
-export const VariantTagAssignSchema = z.object({
-  caseId: z.number().int().positive(),
-  variantId: z.number().int().positive(),
-  tagId: z.number().int().positive()
-})
-
-/**
- * Schema for setting multiple tags on a variant
- */
-export const VariantTagSetSchema = z.object({
-  caseId: z.number().int().positive(),
-  variantId: z.number().int().positive(),
-  tagIds: z.array(z.number().int().positive())
-})
 
 // ============================================================
 // Annotation Schemas

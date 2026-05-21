@@ -34,6 +34,17 @@ const REFERENCE_PATHS = [
   '/api/protein/getStructure',
   '/api/protein/getGeneStructure'
 ] as const
+const TAG_PATHS = [
+  '/api/tags/list',
+  '/api/tags/create',
+  '/api/tags/update',
+  '/api/tags/delete',
+  '/api/tags/getUsageCount',
+  '/api/tags/getVariantTags',
+  '/api/tags/assignVariantTag',
+  '/api/tags/removeVariantTag',
+  '/api/tags/setVariantTags'
+] as const
 
 describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
   test('requires an authenticated session and exposes dispatcher and auth method paths', async () => {
@@ -84,6 +95,9 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
       for (const path of REFERENCE_PATHS) {
         expect(spec.paths).toHaveProperty(path)
       }
+      for (const path of TAG_PATHS) {
+        expect(spec.paths).toHaveProperty(path)
+      }
       expect(spec.paths).toHaveProperty('/api/transcripts/list')
       expect(spec.paths).toHaveProperty('/api/transcripts/insertAndSwitch')
       expect(spec.paths).toHaveProperty('/api/variants/query')
@@ -130,6 +144,10 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
       for (const path of REFERENCE_PATHS) {
         expect(paths[path]?.post?.requestBody).toBeDefined()
         expect(paths[path]?.post?.responses?.['501']).toBeDefined()
+      }
+      for (const path of TAG_PATHS) {
+        expect(paths[path]?.post?.requestBody).toBeDefined()
+        expect(paths[path]?.post?.responses?.['200']).toBeDefined()
       }
       expect(paths['/api/transcripts/list']?.post?.requestBody).toBeDefined()
       expect(paths['/api/transcripts/list']?.post?.responses?.['200']).toBeDefined()

@@ -29,7 +29,7 @@ function makeDeps(): {
       getReadExecutor: () => ({ execute }),
       getWriteExecutor: () => ({ execute: vi.fn() }),
       getImportExecutor: () => ({ importSingleFile, cancel: vi.fn() }),
-      listCases: vi.fn(),
+      listCases: vi.fn(async () => [{ id: 1, name: 'Case A' }]),
       health: vi.fn()
     },
     authService: {
@@ -134,6 +134,17 @@ describe('web dispatcher adapters', () => {
       name: 'VarLens Web',
       encrypted: false
     })
+  })
+
+  test('cases.list delegates to the web storage session', async () => {
+    const { deps, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['cases:list'].handle([], {} as never, reply as never, deps)
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(result).toEqual([{ id: 1, name: 'Case A' }])
+    expect(deps.session.listCases).toHaveBeenCalledTimes(1)
   })
 
   test('cohort.getVariants maps preload method name to cohort:query', async () => {

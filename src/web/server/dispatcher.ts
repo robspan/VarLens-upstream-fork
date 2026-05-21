@@ -27,7 +27,7 @@ import { readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 
-import type { FastifyInstance, FastifyReply } from 'fastify'
+import type { FastifyInstance } from 'fastify'
 import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 
@@ -47,10 +47,13 @@ import type { StorageWriteTask } from '../../main/storage/write-executor'
 import type { AuditAppendParams } from '../../main/storage/audit-log-types'
 import { isReadTaskType, isWriteTaskType, toTaskDomain } from './task-types'
 import { buildAuthOverrides } from './routes/auth'
+import { buildCasesOverrides } from './routes/cases'
+import { buildCohortOverrides } from './routes/cohort'
+import { unsupportedWebCapability } from './routes/common'
+import { buildDatabaseOverrides } from './routes/database'
 import type { DispatcherDeps, InvokeBody, OverrideHandler } from './routes/types'
 import type { SortItem, VariantFilter } from '../../shared/types/database'
 import type { MultiFileImportSpec } from '../../shared/types/api'
-import type { StorageCapabilities } from '../../shared/types/storage-capabilities'
 import type { TranscriptInsertRow } from '../../shared/types/transcript'
 import {
   CaseIdSchema,
@@ -93,41 +96,6 @@ import { getWebGeneReferenceDb } from './web-gene-reference'
 const PRE_ROTATION_ALLOWED = new Set<string>(['auth:changePassword', 'auth:logout'])
 const SERVER_PATH_IMPORT_ENV = 'VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT'
 const DEV_API_LATENCY_ENV = 'VARLENS_WEB_API_LATENCY_MS'
-const CohortCarriersParamsSchema = z.object({
-  chr: z.string().min(1),
-  pos: z.number().int().positive(),
-  ref: z.string().min(1),
-  alt: z.string().min(1)
-})
-
-function webCapabilities(base: StorageCapabilities): StorageCapabilities {
-  if (webParityFixturesEnabled()) return base
-  return {
-    ...base,
-    export: {
-      variants: false,
-      cohort: false,
-      streaming: false
-    }
-  }
-}
-
-function unsupportedWebCapability(
-  reply: FastifyReply,
-  capability: string
-): {
-  error: string
-  capability: string
-  message: string
-} {
-  reply.code(501)
-  return {
-    error: 'unsupported-web-capability',
-    capability,
-    message: `${capability} is not available in web mode yet.`
-  }
-}
-
 function postgresContext(session: StorageSession): { pool: Pool; schemaName: string } {
   if (session.workspace.kind !== 'postgres') {
     throw new Error('Postgres storage session is required for web IPC parity route')
@@ -276,132 +244,9 @@ export type { DispatcherDeps, InvokeBody, OverrideHandler } from './routes/types
 function buildOverrides(): Record<string, OverrideHandler> {
   return {
     ...buildAuthOverrides(),
-
-    'cases:list': {
-      async handle(_args, _request, _reply, { session }) {
-        return await session.listCases()
-      }
-    },
-
-    'cohort:getVariants': {
-      async handle(args, _request, reply, { session }) {
-        const [params] = args
-        const validated = CohortSearchParamsSchema.safeParse(params)
-        if (!validated.success) {
-          reply.code(400)
-          return { error: 'invalid-cohort-params', message: 'Invalid cohort search parameters' }
-        }
-
-        return await session.getReadExecutor().execute({
-          type: 'cohort:query',
-          params: [validated.data]
-        })
-      }
-    },
-
-    'cohort:getColumnMeta': {
-      async handle(_args, _request, _reply, { session }) {
-        return await session.getReadExecutor().execute({
-          type: 'cohort:columnMeta',
-          params: []
-        })
-      }
-    },
-
-    'cohort:getSummary': {
-      async handle(_args, _request, _reply, { session }) {
-        return await session.getReadExecutor().execute({
-          type: 'cohort:summary',
-          params: []
-        })
-      }
-    },
-
-    'cohort:getSummaryStatus': {
-      handle() {
-        return { is_stale: false, last_rebuilt_at: 0 }
-      }
-    },
-
-    'cohort:rebuildSummary': {
-      handle(_args, _request, reply) {
-        return unsupportedWebCapability(reply, 'cohort.rebuildSummary')
-      }
-    },
-
-    'cohort:runAssociation': {
-      handle(_args, _request, reply) {
-        return unsupportedWebCapability(reply, 'cohort.runAssociation')
-      }
-    },
-
-    'cohort:cancelAssociation': {
-      handle(_args, _request, reply) {
-        return unsupportedWebCapability(reply, 'cohort.cancelAssociation')
-      }
-    },
-
-    'cohort:getCarriers': {
-      async handle(args, _request, reply, { session }) {
-        const [chr, pos, ref, alt] = args
-        const validated = CohortCarriersParamsSchema.safeParse({ chr, pos, ref, alt })
-        if (!validated.success) {
-          reply.code(400)
-          return { error: 'invalid-carrier-params', message: 'Invalid carrier query parameters' }
-        }
-
-        return await session.getReadExecutor().execute({
-          type: 'cohort:carriers',
-          params: [validated.data.chr, validated.data.pos, validated.data.ref, validated.data.alt]
-        })
-      }
-    },
-
-    'cohort:getGeneBurden': {
-      async handle(_args, _request, _reply, { session }) {
-        return await session.getReadExecutor().execute({
-          type: 'cohort:geneBurden',
-          params: []
-        })
-      }
-    },
-
-    'database:capabilities': {
-      async handle(_args, _request, _reply, { session }) {
-        return webCapabilities(session.capabilities)
-      }
-    },
-
-    'database:health': {
-      async handle(_args, _request, _reply, { session }) {
-        return await session.health()
-      }
-    },
-
-    'database:info': {
-      handle(_args, _request, _reply, { session }) {
-        return {
-          path: `web:${session.capabilities.backend}`,
-          name: 'VarLens Web',
-          encrypted: false
-        }
-      }
-    },
-
-    'database:getOverview': {
-      async handle(_args, _request, _reply, { session }) {
-        return await session.getReadExecutor().execute({
-          type: 'database:overview',
-          params: []
-        })
-      }
-    },
-
-    'database:recentList': {
-      handle() {
-        return []
-      }
-    },
+    ...buildCasesOverrides(),
+    ...buildCohortOverrides(),
+    ...buildDatabaseOverrides(),
 
     'export:variants': {
       async handle(args, _request, reply, { session }) {

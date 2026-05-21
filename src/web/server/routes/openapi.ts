@@ -26,6 +26,12 @@ import {
   CohortUnknownResponseSchema
 } from '../../../shared/api/schemas/cohort'
 import {
+  DatabaseInfoSchema,
+  DatabaseInvokeBodySchemas,
+  DatabaseRecentListSchema,
+  DatabaseUnknownResponseSchema
+} from '../../../shared/api/schemas/database'
+import {
   VariantInvokeBodySchemas,
   VariantUnknownResponseSchema
 } from '../../../shared/api/schemas/variants'
@@ -217,6 +223,41 @@ function buildCaseOpenApiPaths(): Record<string, OpenApiPathItem> {
   }
 }
 
+function buildDatabaseOpenApiPaths(): Record<string, OpenApiPathItem> {
+  return {
+    '/api/database/capabilities': dispatcherMethodOperation({
+      tag: 'database',
+      summary: 'Return web database capabilities',
+      body: DatabaseInvokeBodySchemas.empty,
+      response: DatabaseUnknownResponseSchema
+    }),
+    '/api/database/health': dispatcherMethodOperation({
+      tag: 'database',
+      summary: 'Return database health',
+      body: DatabaseInvokeBodySchemas.empty,
+      response: DatabaseUnknownResponseSchema
+    }),
+    '/api/database/info': dispatcherMethodOperation({
+      tag: 'database',
+      summary: 'Return current web database identity',
+      body: DatabaseInvokeBodySchemas.empty,
+      response: DatabaseInfoSchema
+    }),
+    '/api/database/getOverview': dispatcherMethodOperation({
+      tag: 'database',
+      summary: 'Return database overview',
+      body: DatabaseInvokeBodySchemas.empty,
+      response: DatabaseUnknownResponseSchema
+    }),
+    '/api/database/recentList': dispatcherMethodOperation({
+      tag: 'database',
+      summary: 'Return an empty recent database list in web mode',
+      body: DatabaseInvokeBodySchemas.empty,
+      response: DatabaseRecentListSchema
+    })
+  }
+}
+
 function buildVariantOpenApiPaths(): Record<string, OpenApiPathItem> {
   return {
     '/api/variants/search': dispatcherMethodOperation({
@@ -310,6 +351,7 @@ function appendDocumentedDispatcherPaths(document: OpenApiDocument): OpenApiDocu
       ...buildAuthOpenApiPaths(),
       ...buildCaseOpenApiPaths(),
       ...buildCohortOpenApiPaths(),
+      ...buildDatabaseOpenApiPaths(),
       ...buildVariantOpenApiPaths()
     }
   }

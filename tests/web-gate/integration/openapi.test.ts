@@ -39,6 +39,8 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
       expect(spec.paths).toHaveProperty('/api/cohort/getVariants')
       expect(spec.paths).toHaveProperty('/api/cohort/runAssociation')
       expect(spec.paths).toHaveProperty('/api/cohort/getSummaryStatus')
+      expect(spec.paths).toHaveProperty('/api/database/info')
+      expect(spec.paths).toHaveProperty('/api/database/recentList')
       expect(spec.paths).toHaveProperty('/api/variants/query')
       expect(spec.paths).toHaveProperty('/api/variants/getFilterOptions')
 
@@ -54,6 +56,8 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
       expect(paths['/api/cohort/getSummaryStatus']?.post?.responses?.['200']).toBeDefined()
       expect(paths['/api/cohort/runAssociation']?.post?.responses?.['501']).toBeDefined()
       expect(paths['/api/cohort/runAssociation']?.post?.responses?.['200']).toBeUndefined()
+      expect(paths['/api/database/info']?.post?.responses?.['200']).toBeDefined()
+      expect(paths['/api/database/recentList']?.post?.responses?.['200']).toBeDefined()
       expect(paths['/api/variants/query']?.post?.requestBody).toBeDefined()
       expect(paths['/api/variants/query']?.post?.responses?.['200']).toBeDefined()
       expect(paths['/api/variants/getFilterOptions']?.post?.requestBody).toBeDefined()

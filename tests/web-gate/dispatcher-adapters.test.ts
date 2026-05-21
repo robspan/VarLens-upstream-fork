@@ -338,7 +338,7 @@ describe('web dispatcher adapters', () => {
         'A',
         'T',
         {
-          acmg_classification: 'PATHOGENIC',
+          acmg_classification: 'VUS',
           starred: true,
           user_name: 'admin'
         }
@@ -354,7 +354,7 @@ describe('web dispatcher adapters', () => {
         type: 'annotations:upsertGlobal',
         params: [
           { chr: 'chr22', pos: 12345, ref: 'A', alt: 'T' },
-          { acmg_classification: 'PATHOGENIC', starred: true, user_name: 'admin' }
+          { acmg_classification: 'Uncertain significance', starred: true, user_name: 'admin' }
         ]
       }
     })
@@ -369,7 +369,8 @@ describe('web dispatcher adapters', () => {
           action_type: 'acmg_classify',
           entity_type: 'variant_annotation',
           entity_key: 'chr22:12345:A:T',
-          user_name: 'admin'
+          user_name: 'admin',
+          new_value: JSON.stringify({ acmg_classification: 'Uncertain significance' })
         })
       ]
     })
@@ -381,6 +382,64 @@ describe('web dispatcher adapters', () => {
           entity_type: 'variant_annotation',
           entity_key: 'chr22:12345:A:T',
           user_name: 'admin'
+        })
+      ]
+    })
+  })
+
+  test('annotations.upsertGlobal rejects non-canonical ACMG casing like desktop IPC', async () => {
+    const { deps, execute, writeExecute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['annotations:upsertGlobal'].handle(
+      [
+        'chr22',
+        12345,
+        'A',
+        'T',
+        {
+          acmg_classification: 'PATHOGENIC'
+        }
+      ],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).toHaveBeenCalledWith(400)
+    expect(result).toEqual({ error: 'invalid-annotation-upsert' })
+    expect(execute).not.toHaveBeenCalled()
+    expect(writeExecute).not.toHaveBeenCalled()
+  })
+
+  test('annotations.upsertPerCase normalizes ACMG shorthand before storage and audit', async () => {
+    const { deps, execute, writeExecute, reply } = makeDeps()
+    execute.mockResolvedValueOnce({ acmg_classification: 'Benign', starred: 0 })
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['annotations:upsertPerCase'].handle(
+      [3, 9, { acmg_classification: 'LP', user_name: 'reviewer' }],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      task: {
+        type: 'annotations:upsertPerCase',
+        params: [3, 9, { acmg_classification: 'Likely pathogenic', user_name: 'reviewer' }]
+      }
+    })
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'audit:append',
+      params: [
+        expect.objectContaining({
+          action_type: 'acmg_classify',
+          entity_type: 'case_variant_annotation',
+          entity_key: 'case:3:variant:9',
+          user_name: 'reviewer',
+          new_value: JSON.stringify({ acmg_classification: 'Likely pathogenic' })
         })
       ]
     })

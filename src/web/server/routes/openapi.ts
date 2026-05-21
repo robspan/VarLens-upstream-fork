@@ -10,6 +10,10 @@ import { z } from 'zod'
 
 import pkg from '../../../../package.json'
 import {
+  AnnotationInvokeBodySchemas,
+  AnnotationUnknownResponseSchema
+} from '../../../shared/api/schemas/annotations'
+import {
   AssetInvokeBodySchemas,
   AssetUnknownResponseSchema
 } from '../../../shared/api/schemas/assets'
@@ -288,6 +292,35 @@ function buildAssetOpenApiPaths(): Record<string, OpenApiPathItem> {
       summary: 'Replace genes in a gene list',
       body: AssetInvokeBodySchemas.setGenes,
       response: AssetUnknownResponseSchema
+    })
+  }
+}
+
+function buildAnnotationOpenApiPaths(): Record<string, OpenApiPathItem> {
+  return {
+    '/api/annotations/getGlobal': dispatcherMethodOperation({
+      tag: 'annotations',
+      summary: 'Return the global annotation for a variant',
+      body: AnnotationInvokeBodySchemas.getGlobal,
+      response: AnnotationUnknownResponseSchema
+    }),
+    '/api/annotations/upsertGlobal': dispatcherMethodOperation({
+      tag: 'annotations',
+      summary: 'Create or update the global annotation for a variant',
+      body: AnnotationInvokeBodySchemas.upsertGlobal,
+      response: AnnotationUnknownResponseSchema
+    }),
+    '/api/annotations/upsertPerCase': dispatcherMethodOperation({
+      tag: 'annotations',
+      summary: 'Create or update a case-specific variant annotation',
+      body: AnnotationInvokeBodySchemas.upsertPerCase,
+      response: AnnotationUnknownResponseSchema
+    }),
+    '/api/annotations/getForVariant': dispatcherMethodOperation({
+      tag: 'annotations',
+      summary: 'Return global and case-specific annotations for a variant',
+      body: AnnotationInvokeBodySchemas.getForVariant,
+      response: AnnotationUnknownResponseSchema
     })
   }
 }
@@ -579,6 +612,7 @@ function appendDocumentedDispatcherPaths(document: OpenApiDocument): OpenApiDocu
     paths: {
       ...document.paths,
       ...buildAuthOpenApiPaths(),
+      ...buildAnnotationOpenApiPaths(),
       ...buildAssetOpenApiPaths(),
       ...buildCaseOpenApiPaths(),
       ...buildCohortOpenApiPaths(),

@@ -2,13 +2,13 @@ import { BrowserWindow } from 'electron'
 import { z } from 'zod'
 import { wrapHandler } from '../errorHandler'
 import type { HandlerDependencies } from '../types'
+import { CaseIdSchema } from '../../../shared/types/ipc-schemas'
 import {
   VariantCoordsSchema,
   GlobalAnnotationUpdatesSchema,
   PerCaseAnnotationUpdatesSchema,
-  CaseVariantIdSchema,
-  CaseIdSchema
-} from '../../../shared/types/ipc-schemas'
+  CaseVariantIdSchema
+} from '../../../shared/api/schemas/annotations'
 import { mainLogger } from '../../services/MainLogger'
 import type { AnnotationChangeEvent } from '../../../shared/types/api'
 import type { AuditAppendParams } from '../../storage/audit-log-types'

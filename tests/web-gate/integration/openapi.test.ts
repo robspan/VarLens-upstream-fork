@@ -7,6 +7,12 @@ import { startWebDriver } from '../helpers/web-driver'
 const WEB_BUILD_PATH = resolve(process.cwd(), 'out/web/server.cjs')
 const isWebBuilt = existsSync(WEB_BUILD_PATH)
 const HAS_PG = typeof process.env.VARLENS_PG_URL === 'string' && process.env.VARLENS_PG_URL !== ''
+const ANNOTATION_PATHS = [
+  '/api/annotations/getGlobal',
+  '/api/annotations/upsertGlobal',
+  '/api/annotations/upsertPerCase',
+  '/api/annotations/getForVariant'
+] as const
 const ASSET_PATHS = [
   '/api/case-metadata/createCohort',
   '/api/analysis-groups/create',
@@ -56,6 +62,9 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
       expect(spec.paths).toHaveProperty('/api/{domain}/{method}')
       expect(spec.paths).toHaveProperty('/api/auth/login')
       expect(spec.paths).toHaveProperty('/api/auth/changePassword')
+      for (const path of ANNOTATION_PATHS) {
+        expect(spec.paths).toHaveProperty(path)
+      }
       for (const path of ASSET_PATHS) {
         expect(spec.paths).toHaveProperty(path)
       }
@@ -86,6 +95,10 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
       >
       expect(paths['/api/auth/login']?.post?.requestBody).toBeDefined()
       expect(paths['/api/auth/changePassword']?.post?.requestBody).toBeDefined()
+      for (const path of ANNOTATION_PATHS) {
+        expect(paths[path]?.post?.requestBody).toBeDefined()
+        expect(paths[path]?.post?.responses?.['200']).toBeDefined()
+      }
       for (const path of ASSET_PATHS) {
         expect(paths[path]?.post?.requestBody).toBeDefined()
         expect(paths[path]?.post?.responses?.['200']).toBeDefined()

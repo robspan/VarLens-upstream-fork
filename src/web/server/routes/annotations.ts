@@ -1,5 +1,11 @@
 import type { AuditAppendParams } from '../../../main/storage/audit-log-types'
 import type { StorageSession } from '../../../main/storage/session'
+import {
+  CaseVariantIdSchema,
+  GlobalAnnotationUpdatesSchema,
+  PerCaseAnnotationUpdatesSchema,
+  VariantCoordsSchema
+} from '../../../shared/api/schemas/annotations'
 import type { OverrideHandler } from './types'
 
 function globalAuditEntries(
@@ -79,18 +85,14 @@ export function buildAnnotationOverrides(): Record<string, OverrideHandler> {
     'annotations:getGlobal': {
       async handle(args, _request, reply, { session }) {
         const [chr, pos, ref, alt] = args
-        if (
-          typeof chr !== 'string' ||
-          typeof pos !== 'number' ||
-          typeof ref !== 'string' ||
-          typeof alt !== 'string'
-        ) {
+        const validated = VariantCoordsSchema.safeParse({ chr, pos, ref, alt })
+        if (!validated.success) {
           reply.code(400)
           return { error: 'invalid-annotation-coordinates' }
         }
         return await session.getReadExecutor().execute({
           type: 'annotations:getGlobal',
-          params: [{ chr, pos, ref, alt }]
+          params: [validated.data]
         })
       }
     },
@@ -98,29 +100,25 @@ export function buildAnnotationOverrides(): Record<string, OverrideHandler> {
     'annotations:upsertGlobal': {
       async handle(args, _request, reply, { session }) {
         const [chr, pos, ref, alt, updates] = args
-        if (
-          typeof chr !== 'string' ||
-          typeof pos !== 'number' ||
-          typeof ref !== 'string' ||
-          typeof alt !== 'string' ||
-          updates === null ||
-          typeof updates !== 'object'
-        ) {
+        const validatedCoords = VariantCoordsSchema.safeParse({ chr, pos, ref, alt })
+        const validatedUpdates = GlobalAnnotationUpdatesSchema.safeParse(updates)
+        if (!validatedCoords.success || !validatedUpdates.success) {
           reply.code(400)
           return { error: 'invalid-annotation-upsert' }
         }
-        const coords = { chr, pos, ref, alt }
+        const coords = validatedCoords.data
+        const annotationUpdates = validatedUpdates.data
         const oldAnnotation = (await session.getReadExecutor().execute({
           type: 'annotations:getGlobal',
           params: [coords]
         })) as Record<string, unknown> | null
         const result = await session.getWriteExecutor().execute({
           type: 'annotations:upsertGlobal',
-          params: [coords, updates as never]
+          params: [coords, annotationUpdates]
         })
         await appendAuditEntries(
           session,
-          globalAuditEntries(coords, updates as Record<string, unknown>, oldAnnotation)
+          globalAuditEntries(coords, annotationUpdates as Record<string, unknown>, oldAnnotation)
         )
         return result
       }
@@ -129,26 +127,29 @@ export function buildAnnotationOverrides(): Record<string, OverrideHandler> {
     'annotations:upsertPerCase': {
       async handle(args, _request, reply, { session }) {
         const [caseId, variantId, updates] = args
-        if (
-          typeof caseId !== 'number' ||
-          typeof variantId !== 'number' ||
-          updates === null ||
-          typeof updates !== 'object'
-        ) {
+        const validatedIds = CaseVariantIdSchema.safeParse({ caseId, variantId })
+        const validatedUpdates = PerCaseAnnotationUpdatesSchema.safeParse(updates)
+        if (!validatedIds.success || !validatedUpdates.success) {
           reply.code(400)
           return { error: 'invalid-per-case-annotation-upsert' }
         }
+        const annotationUpdates = validatedUpdates.data
         const oldAnnotation = (await session.getReadExecutor().execute({
           type: 'annotations:getPerCase',
-          params: [caseId, variantId]
+          params: [validatedIds.data.caseId, validatedIds.data.variantId]
         })) as Record<string, unknown> | null
         const result = await session.getWriteExecutor().execute({
           type: 'annotations:upsertPerCase',
-          params: [caseId, variantId, updates as never]
+          params: [validatedIds.data.caseId, validatedIds.data.variantId, annotationUpdates]
         })
         await appendAuditEntries(
           session,
-          perCaseAuditEntries(caseId, variantId, updates as Record<string, unknown>, oldAnnotation)
+          perCaseAuditEntries(
+            validatedIds.data.caseId,
+            validatedIds.data.variantId,
+            annotationUpdates as Record<string, unknown>,
+            oldAnnotation
+          )
         )
         return result
       }
@@ -157,19 +158,15 @@ export function buildAnnotationOverrides(): Record<string, OverrideHandler> {
     'annotations:getForVariant': {
       async handle(args, _request, reply, { session }) {
         const [caseId, chr, pos, ref, alt] = args
-        if (
-          typeof caseId !== 'number' ||
-          typeof chr !== 'string' ||
-          typeof pos !== 'number' ||
-          typeof ref !== 'string' ||
-          typeof alt !== 'string'
-        ) {
+        const validatedIds = CaseVariantIdSchema.shape.caseId.safeParse(caseId)
+        const validatedCoords = VariantCoordsSchema.safeParse({ chr, pos, ref, alt })
+        if (!validatedIds.success || !validatedCoords.success) {
           reply.code(400)
           return { error: 'invalid-annotation-query' }
         }
         return await session.getReadExecutor().execute({
           type: 'annotations:getForVariant',
-          params: [caseId, { chr, pos, ref, alt }]
+          params: [validatedIds.data, validatedCoords.data]
         })
       }
     }

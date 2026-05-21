@@ -124,6 +124,30 @@ describe('web dispatcher adapters', () => {
     expect(execute).not.toHaveBeenCalled()
   })
 
+  test('transcripts.list reads selected transcripts from the Postgres workspace schema', async () => {
+    const { deps, reply } = makeDeps()
+    const query = vi.fn(async () => ({ rows: [{ id: 1, transcript_id: 'NM_000059.4' }] }))
+    Object.assign(deps.session, {
+      workspace: { kind: 'postgres', schema: 'case_abc' },
+      getPool: () => ({ query })
+    })
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['transcripts:list'].handle(
+      [9],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(result).toEqual([{ id: 1, transcript_id: 'NM_000059.4' }])
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('"case_abc".variant_transcripts'),
+      [9]
+    )
+  })
+
   test('database.info returns a safe web workspace identity for renderer startup', async () => {
     const { deps, reply } = makeDeps()
     const { overrides } = buildDispatcher(deps)

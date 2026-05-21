@@ -62,7 +62,7 @@ external Postgres, but compose still spins up the in-stack
 varlens depends_on it). External-PG operators get an unused local
 container running.
 
-**Why deferred**: Single-tenant Charité pilot uses the in-stack
+**Why deferred**: The single-tenant pilot uses the in-stack
 Postgres exclusively. External-PG is a Stage 3 ops feature for
 managed-DB deployments.
 

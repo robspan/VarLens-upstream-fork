@@ -5,7 +5,7 @@ Related: ADR 0001 (backend split), [`../../../active/testing/desktop-to-web-pari
 
 ## Context
 
-Phase 1 deploys VarLens-web as **single-tenant, single-user** for the Charité environment. Stage 2 introduces multi-user (multiple analysts on one instance) and may extend to multi-tenant. Retrofitting tenant isolation into a schema designed for a single user is expensive and error-prone.
+Phase 1 deploys VarLens-web as **single-tenant, single-user** for the pilot environment. Stage 2 introduces multi-user (multiple analysts on one instance) and may extend to multi-tenant. Retrofitting tenant isolation into a schema designed for a single user is expensive and error-prone.
 
 ## Decision
 
@@ -20,5 +20,5 @@ Phase 1 schema is shaped to make Stage 2 a configuration change, not a migration
 
 - Stage 2 multi-user activation = drop `DEFAULT 1` from `user_id` columns + add scoping to repository queries. No data migration required for existing Phase 1 deployments (every row already has a valid `user_id = 1`).
 - OIDC retrofit lands behind `src/main/auth/providers/` (one new file implementing `PasswordProvider` or its sibling `TokenProvider`). Existing call sites unchanged.
-- Multi-tenant deployment (multiple Charité environments on one Postgres host) uses schema-per-tenant. The migration runner is already schema-aware (`PostgresMigrationRunner(pool, schema, migrations)`).
+- Multi-tenant deployment (multiple operator environments on one Postgres host) uses schema-per-tenant. The migration runner is already schema-aware (`PostgresMigrationRunner(pool, schema, migrations)`).
 - The forcing function — making this prep visible and enforced — is the web-gate test suite. A migration that adds a domain table without `user_id` fails CI today, even though Phase 1 ignores the column.

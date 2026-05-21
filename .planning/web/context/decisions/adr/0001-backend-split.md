@@ -10,7 +10,7 @@ VarLens runs both as an Electron desktop app (single user, file-based) and, in P
 ## Decision
 
 - **Desktop**: SQLite (`better-sqlite3-multiple-ciphers`), file-based, encrypted at rest. Unchanged.
-- **Web**: Postgres, hosted, schema-isolated per Charité environment. Production target.
+- **Web**: Postgres, hosted, schema-isolated per operator environment. Production target.
 
 Both implementations sit behind `StorageSession` (`src/main/storage/session.ts`). Domain logic depends only on the interface.
 

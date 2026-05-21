@@ -6,7 +6,7 @@ Resolves: open question in `desktop-to-web-parity.md` §"Postgres in the gate"
 
 ## Decision
 
-For the Charité web deployment, **Postgres is the only supported backend**. SQLite remains the desktop-only path.
+For the hosted web deployment, **Postgres is the only supported backend**. SQLite remains the desktop-only path.
 
 ## Rationale
 
@@ -25,7 +25,7 @@ For the Charité web deployment, **Postgres is the only supported backend**. SQL
 ## Non-goals
 
 - This decision does **not** remove the SQLite backend. Desktop ships SQLite. Both backends remain behind `StorageSession`.
-- This is **not** a commitment to a specific Postgres host (RDS vs self-managed vs Charité-hosted). Hosting is decided separately with the Charité DPO/IT.
+- This is **not** a commitment to a specific Postgres host (managed service vs self-managed). Hosting is decided separately by the deployment operator.
 
 ## Follow-ups
 

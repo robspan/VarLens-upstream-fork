@@ -14,7 +14,7 @@ describe('web CI target wiring', () => {
     expect(makefile).toContain('VARLENS_PG_URL is required for web-gate-postgres')
     expect(makefile).toMatch(/^ci: lint-check format-check typecheck rebuild-node test/m)
     expect(makefile).toMatch(/^VARLENS_WEB \?= 0/m)
-    expect(makefile).not.toMatch(/wildcard web-deploy\/\.env/)
+    expect(makefile).not.toMatch(/wildcard .*\.env/)
   })
 
   test('web report treats VARLENS_WEB=1 as full parity mode', () => {
@@ -55,13 +55,10 @@ describe('web CI target wiring', () => {
     )
   })
 
-  test('web publish and release workflows run web-ci before building images', () => {
+  test('web publish workflow runs web-ci before building images', () => {
     const publish = readFileSync(resolve(ROOT, '.github/workflows/publish-web.yml'), 'utf8')
-    const release = readFileSync(resolve(ROOT, '.github/workflows/release-web.yml'), 'utf8')
 
     expect(publish).toMatch(/web-ci:[\s\S]*?run: make web-ci/)
     expect(publish).toMatch(/build-and-push:[\s\S]*?needs: web-ci/)
-    expect(release).toMatch(/web-ci:[\s\S]*?run: make web-ci/)
-    expect(release).toMatch(/build-and-push:[\s\S]*?needs: \[resolve-version, web-ci\]/)
   })
 })

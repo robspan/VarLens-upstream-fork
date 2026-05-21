@@ -68,7 +68,6 @@ A clean rebuild from scratch (`rm -rf out/web && npm run build:web`) produced a 
 ### D. Cross-references
 
 - No dangling `.planning/web/phase1-gate-tests.md` references (all rewritten to `.planning/web/04-testing/desktop-to-web-parity.md` earlier in the day).
-- Handover checklist (`.planning/web/handover/README.md`) references the correct hook (`pre-commit`) and current file paths.
 - Memory entries point to current paths.
 
 ### E. Defects found and fixed during the audit

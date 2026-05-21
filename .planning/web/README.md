@@ -12,7 +12,7 @@ directories.
 | `completed/` | Completed execution plans only. Historical, not current truth. |
 | `active/` | Current or mixed workstreams that still contain open verification, stale claims, or implementation gaps. |
 | `backlog/` | Deferred work and next-stage plans. Important, but not in the current execution lane. |
-| `operations/` | Ongoing operator evidence, restore logs, handover notes, and audits. |
+| `operations/` | Ongoing operator evidence and audits. |
 
 ## Status Rule
 

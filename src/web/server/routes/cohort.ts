@@ -1,15 +1,9 @@
-import { z } from 'zod'
-
-import { CohortSearchParamsSchema } from '../../../shared/types/ipc-schemas'
+import {
+  CohortCarriersParamsSchema,
+  CohortSearchParamsSchema
+} from '../../../shared/api/schemas/cohort'
 import { unsupportedWebCapability } from './common'
 import type { OverrideHandler } from './types'
-
-const CohortCarriersParamsSchema = z.object({
-  chr: z.string().min(1),
-  pos: z.number().int().positive(),
-  ref: z.string().min(1),
-  alt: z.string().min(1)
-})
 
 export function buildCohortOverrides(): Record<string, OverrideHandler> {
   return {

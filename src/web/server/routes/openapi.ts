@@ -20,6 +20,11 @@ import {
   AuthUserSchema
 } from '../../../shared/api/schemas/auth'
 import {
+  CohortInvokeBodySchemas,
+  CohortSummaryStatusSchema,
+  CohortUnknownResponseSchema
+} from '../../../shared/api/schemas/cohort'
+import {
   VariantInvokeBodySchemas,
   VariantUnknownResponseSchema
 } from '../../../shared/api/schemas/variants'
@@ -29,6 +34,12 @@ type OpenApiPathItem = Record<string, unknown>
 type OpenApiDocument = {
   paths?: Record<string, OpenApiPathItem>
 }
+
+const UnsupportedCapabilitySchema = z.object({
+  error: z.literal('unsupported-web-capability'),
+  capability: z.string(),
+  message: z.string()
+})
 
 function toJsonSchema(schema: z.ZodType): JsonSchema {
   const jsonSchema = z.toJSONSchema(schema, { target: 'draft-7' }) as JsonSchema
@@ -102,6 +113,34 @@ function dispatcherMethodOperation(options: {
         400: {
           description: 'Invalid request',
           ...jsonContent(AuthErrorSchema)
+        },
+        401: {
+          description: 'Authentication required',
+          ...jsonContent(AuthErrorSchema)
+        },
+        403: {
+          description: 'Forbidden',
+          ...jsonContent(AuthErrorSchema)
+        }
+      }
+    }
+  }
+}
+
+function unsupportedDispatcherMethodOperation(options: {
+  tag: string
+  summary: string
+  body: z.ZodType
+}): OpenApiPathItem {
+  return {
+    post: {
+      tags: [options.tag],
+      summary: options.summary,
+      requestBody: jsonContent(options.body),
+      responses: {
+        501: {
+          description: 'Not available in web mode',
+          ...jsonContent(UnsupportedCapabilitySchema)
         },
         401: {
           description: 'Authentication required',
@@ -195,12 +234,69 @@ function buildVariantOpenApiPaths(): Record<string, OpenApiPathItem> {
   }
 }
 
+function buildCohortOpenApiPaths(): Record<string, OpenApiPathItem> {
+  return {
+    '/api/cohort/getVariants': dispatcherMethodOperation({
+      tag: 'cohort',
+      summary: 'Query cohort variants',
+      body: CohortInvokeBodySchemas.getVariants,
+      response: CohortUnknownResponseSchema
+    }),
+    '/api/cohort/getColumnMeta': dispatcherMethodOperation({
+      tag: 'cohort',
+      summary: 'Return cohort column metadata',
+      body: CohortInvokeBodySchemas.empty,
+      response: CohortUnknownResponseSchema
+    }),
+    '/api/cohort/getSummary': dispatcherMethodOperation({
+      tag: 'cohort',
+      summary: 'Return cohort summary',
+      body: CohortInvokeBodySchemas.empty,
+      response: CohortUnknownResponseSchema
+    }),
+    '/api/cohort/getSummaryStatus': dispatcherMethodOperation({
+      tag: 'cohort',
+      summary: 'Return cohort summary rebuild status',
+      body: CohortInvokeBodySchemas.empty,
+      response: CohortSummaryStatusSchema
+    }),
+    '/api/cohort/rebuildSummary': unsupportedDispatcherMethodOperation({
+      tag: 'cohort',
+      summary: 'Rebuild cohort summary',
+      body: CohortInvokeBodySchemas.unsupported
+    }),
+    '/api/cohort/runAssociation': unsupportedDispatcherMethodOperation({
+      tag: 'cohort',
+      summary: 'Run cohort association analysis',
+      body: CohortInvokeBodySchemas.unsupported
+    }),
+    '/api/cohort/cancelAssociation': unsupportedDispatcherMethodOperation({
+      tag: 'cohort',
+      summary: 'Cancel cohort association analysis',
+      body: CohortInvokeBodySchemas.unsupported
+    }),
+    '/api/cohort/getCarriers': dispatcherMethodOperation({
+      tag: 'cohort',
+      summary: 'Return carriers for a cohort variant coordinate',
+      body: CohortInvokeBodySchemas.getCarriers,
+      response: CohortUnknownResponseSchema
+    }),
+    '/api/cohort/getGeneBurden': dispatcherMethodOperation({
+      tag: 'cohort',
+      summary: 'Return cohort gene burden summary',
+      body: CohortInvokeBodySchemas.empty,
+      response: CohortUnknownResponseSchema
+    })
+  }
+}
+
 function appendDocumentedDispatcherPaths(document: OpenApiDocument): OpenApiDocument {
   return {
     ...document,
     paths: {
       ...document.paths,
       ...buildAuthOpenApiPaths(),
+      ...buildCohortOpenApiPaths(),
       ...buildVariantOpenApiPaths()
     }
   }

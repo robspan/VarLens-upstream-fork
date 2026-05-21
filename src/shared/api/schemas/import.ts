@@ -5,6 +5,13 @@ export interface ImportVcfOptions {
   genomeBuild?: string
 }
 
+export interface ImportMultiFileSpec {
+  filePath: string
+  variantType: string
+  caller: string | null
+  annotationFormat: string | null
+}
+
 export const ImportServerPathArgSchema = z.string().refine((value) => value.trim() !== '')
 export const ImportCaseNameArgSchema = z.string().refine((value) => value.trim() !== '')
 export const ImportVariantTypeArgSchema = z.string().refine((value) => value.trim() !== '')
@@ -26,6 +33,13 @@ export const ImportFiltersPayloadSchema = z
     minDp: z.number().nullable().optional()
   })
   .passthrough()
+
+export const ImportMultiFileSpecSchema = z.object({
+  filePath: z.string().min(1),
+  variantType: z.string().min(1),
+  caller: z.unknown().optional(),
+  annotationFormat: z.unknown().optional()
+})
 
 const ImportMultiFileSpecOpenApiSchema = z.object({
   filePath: z.string().min(1),
@@ -67,6 +81,9 @@ export const BatchImportInvokeBodySchemas = {
 
 export const ImportUnknownResponseSchema = z.unknown()
 
+export type ImportMultiFileSpecInput = z.infer<typeof ImportMultiFileSpecSchema>
+export type ImportFiltersPayload = z.infer<typeof ImportFiltersPayloadSchema>
+
 export function normalizeImportVcfOptions(vcfOptions: unknown): ImportVcfOptions | undefined {
   return vcfOptions !== null && typeof vcfOptions === 'object'
     ? {
@@ -80,4 +97,20 @@ export function normalizeImportVcfOptions(vcfOptions: unknown): ImportVcfOptions
             : undefined
       }
     : undefined
+}
+
+export function normalizeImportMultiFileSpec(input: ImportMultiFileSpecInput): ImportMultiFileSpec {
+  return {
+    filePath: input.filePath,
+    variantType: input.variantType,
+    caller: typeof input.caller === 'string' ? input.caller : null,
+    annotationFormat: typeof input.annotationFormat === 'string' ? input.annotationFormat : null
+  }
+}
+
+export function normalizeImportFiltersPayload(filters: unknown): ImportFiltersPayload | undefined {
+  if (filters === null || typeof filters !== 'object') return undefined
+
+  const parsed = ImportFiltersPayloadSchema.safeParse(filters)
+  return parsed.success ? parsed.data : (filters as ImportFiltersPayload)
 }

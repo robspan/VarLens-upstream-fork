@@ -1,13 +1,12 @@
-import { z } from 'zod'
-
 import type { SortItem, VariantFilter } from '../../../shared/types/database'
 import {
   CaseIdSchema,
   LimitSchema,
   OffsetSchema,
-  SortItemSchema,
   VariantColumnMetaPayloadSchema,
-  VariantFilterPartialSchema
+  VariantFilterPartialSchema,
+  VariantSearchArgsSchema,
+  VariantSortBySchema
 } from '../../../shared/api/schemas/variants'
 import type { OverrideHandler } from './types'
 
@@ -15,11 +14,12 @@ export function buildVariantOverrides(): Record<string, OverrideHandler> {
   return {
     'variants:search': {
       async handle(args, _request, reply, { session }) {
-        const [caseId, query, limit] = args
-        if (typeof caseId !== 'number' || typeof query !== 'string') {
+        const parsed = VariantSearchArgsSchema.safeParse(args)
+        if (!parsed.success) {
           reply.code(400)
           return { error: 'invalid-variant-search' }
         }
+        const [caseId, query, limit] = parsed.data
         return await session.getReadExecutor().execute({
           type: 'variants:query',
           params: [
@@ -86,7 +86,7 @@ export function buildVariantOverrides(): Record<string, OverrideHandler> {
 
         let validatedSortBy: SortItem[] | undefined
         if (sortBy !== undefined && sortBy !== null) {
-          const sortByResult = z.array(SortItemSchema).safeParse(sortBy)
+          const sortByResult = VariantSortBySchema.safeParse(sortBy)
           if (!sortByResult.success) {
             reply.code(400)
             return { error: 'invalid-sort', message: 'Invalid sort parameters' }

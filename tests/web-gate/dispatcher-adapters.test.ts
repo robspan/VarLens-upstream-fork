@@ -11,6 +11,7 @@ function makeDeps(): {
   execute: ReturnType<typeof vi.fn>
   writeExecute: ReturnType<typeof vi.fn>
   importSingleFile: ReturnType<typeof vi.fn>
+  importMultiFile: ReturnType<typeof vi.fn>
   reply: { code: ReturnType<typeof vi.fn> }
 } {
   const execute = vi.fn(async (task: StorageReadTask) => ({ task }))
@@ -20,6 +21,14 @@ function makeDeps(): {
     variantCount: 2,
     skipped: 0,
     errors: [],
+    elapsed: 12
+  }))
+  const importMultiFile = vi.fn(async () => ({
+    caseId: 11,
+    variantCount: 2,
+    skipped: 0,
+    errors: [],
+    files: [],
     elapsed: 12
   }))
   const isAccountsEnabled = vi.fn(async () => false)
@@ -33,7 +42,7 @@ function makeDeps(): {
       capabilities: { backend: 'postgres' },
       getReadExecutor: () => ({ execute }),
       getWriteExecutor: () => ({ execute: writeExecute }),
-      getImportExecutor: () => ({ importSingleFile, cancel: vi.fn() }),
+      getImportExecutor: () => ({ importSingleFile, importMultiFile, cancel: vi.fn() }),
       listCases: vi.fn(async () => [{ id: 1, name: 'Case A' }]),
       health: vi.fn()
     },
@@ -48,7 +57,14 @@ function makeDeps(): {
       publish
     }
   } as unknown as DispatcherDeps
-  return { deps, execute, writeExecute, importSingleFile, reply: { code: vi.fn() } }
+  return {
+    deps,
+    execute,
+    writeExecute,
+    importSingleFile,
+    importMultiFile,
+    reply: { code: vi.fn() }
+  }
 }
 
 describe('web dispatcher adapters', () => {
@@ -108,6 +124,19 @@ describe('web dispatcher adapters', () => {
     expect(execute).toHaveBeenCalledWith({
       type: 'variants:filterOptions',
       params: [7]
+    })
+  })
+
+  test('variants.search keeps the legacy non-number limit fallback', async () => {
+    const { deps, execute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    await overrides['variants:search'].handle([7, 'BRCA', '10'], {} as never, reply as never, deps)
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(execute).toHaveBeenCalledWith({
+      type: 'variants:query',
+      params: [{ case_id: 7, gene_symbol: 'BRCA' }, 20, 0, undefined, true, false]
     })
   })
 
@@ -740,6 +769,55 @@ describe('web dispatcher adapters', () => {
         phase: 'parsing',
         count: 5
       })
+    } finally {
+      if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = prevNodeEnv
+    }
+  })
+
+  test('import.startMultiFile preserves object filter payloads for import logic', async () => {
+    const prevNodeEnv = process.env.NODE_ENV
+    process.env.NODE_ENV = 'test'
+    try {
+      const { deps, importMultiFile, reply } = makeDeps()
+      const { overrides } = buildDispatcher(deps)
+      const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
+
+      await overrides['import:startMultiFile'].handle(
+        [
+          'Case A',
+          [
+            {
+              filePath: '/tmp/input.vcf',
+              variantType: 'snv',
+              caller: 42,
+              annotationFormat: null
+            }
+          ],
+          { genomeBuild: 'hg38' },
+          { bedPadding: 'legacy-string' }
+        ],
+        request as never,
+        reply as never,
+        deps
+      )
+
+      expect(reply.code).not.toHaveBeenCalled()
+      expect(importMultiFile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          caseName: 'Case A',
+          files: [
+            {
+              filePath: '/tmp/input.vcf',
+              variantType: 'snv',
+              caller: null,
+              annotationFormat: null
+            }
+          ],
+          vcfOptions: { genomeBuild: 'hg38', selectedSample: undefined },
+          filters: expect.objectContaining({ bedPadding: 'legacy-string' })
+        })
+      )
     } finally {
       if (prevNodeEnv === undefined) delete process.env.NODE_ENV
       else process.env.NODE_ENV = prevNodeEnv

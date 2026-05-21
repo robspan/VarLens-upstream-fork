@@ -12,7 +12,7 @@ export { CaseIdSchema, LimitSchema, OffsetSchema, SortItemSchema, VariantFilterP
 
 export const VariantSortBySchema = z.array(SortItemSchema)
 
-export const VariantSearchArgsSchema = z.tuple([z.number(), z.string(), z.number().optional()])
+export const VariantSearchArgsSchema = z.tuple([z.number(), z.string(), z.unknown().optional()])
 
 export const VariantColumnMetaPayloadSchema = z.union([
   z.object({
@@ -41,7 +41,7 @@ export const VariantInvokeBodySchemas = {
       VariantFilterOpenApiSchema,
       OffsetSchema.nullish().optional(),
       LimitSchema.nullish().optional(),
-      z.array(SortItemSchema).nullish().optional(),
+      VariantSortBySchema.nullish().optional(),
       z.boolean().optional(),
       z.boolean().optional()
     ])

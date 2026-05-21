@@ -8,8 +8,11 @@ import {
 } from '../../../main/ipc/handlers/batch-import-logic'
 import {
   ImportCaseNameArgSchema,
+  ImportMultiFileSpecSchema,
   ImportServerPathArgSchema,
   ImportVariantTypeArgSchema,
+  normalizeImportFiltersPayload,
+  normalizeImportMultiFileSpec,
   normalizeImportVcfOptions
 } from '../../../shared/api/schemas/import'
 import type { MultiFileImportSpec } from '../../../shared/types/api'
@@ -83,18 +86,14 @@ export function buildImportOverrides(): Record<string, OverrideHandler> {
           reply.code(400)
           return { error: 'invalid-case-name', message: 'caseName must be a non-empty string' }
         }
-        if (!Array.isArray(files) || files.length === 0) {
+        const validatedFiles = ImportMultiFileSpecSchema.array().min(1).safeParse(files)
+        if (!validatedFiles.success) {
           reply.code(400)
           return { error: 'invalid-files', message: 'files must be a non-empty array' }
         }
 
         const normalizedFiles: MultiFileImportSpec[] = []
-        for (const file of files) {
-          if (file === null || typeof file !== 'object') {
-            reply.code(400)
-            return { error: 'invalid-file', message: 'Each file must be an object' }
-          }
-          const raw = file as Record<string, unknown>
+        for (const raw of validatedFiles.data) {
           const validatedFilePath = ImportServerPathArgSchema.safeParse(raw.filePath)
           if (!validatedFilePath.success || !isAbsolute(validatedFilePath.data)) {
             reply.code(400)
@@ -105,25 +104,16 @@ export function buildImportOverrides(): Record<string, OverrideHandler> {
             reply.code(400)
             return { error: 'invalid-variant-type', message: 'variantType is required' }
           }
-          normalizedFiles.push({
-            filePath: validatedFilePath.data,
-            variantType: validatedVariantType.data,
-            caller: typeof raw.caller === 'string' ? raw.caller : null,
-            annotationFormat: typeof raw.annotationFormat === 'string' ? raw.annotationFormat : null
-          })
+          normalizedFiles.push(
+            normalizeImportMultiFileSpec({
+              ...raw,
+              filePath: validatedFilePath.data,
+              variantType: validatedVariantType.data
+            })
+          )
         }
 
-        const normalizedFilters =
-          filters !== null && typeof filters === 'object'
-            ? (filters as {
-                bedFile?: string | null
-                bedPadding?: number
-                passOnly?: boolean
-                minQual?: number | null
-                minGq?: number | null
-                minDp?: number | null
-              })
-            : undefined
+        const normalizedFilters = normalizeImportFiltersPayload(filters)
 
         return await startMultiFileImport(
           validatedCaseName.data,

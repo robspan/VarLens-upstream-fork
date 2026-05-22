@@ -38,6 +38,11 @@ const MIGRATION_FILES: readonly MigrationFile[] = [
     version: '0007',
     name: 'perf_indexes',
     fileName: '0007_perf_indexes.sql'
+  },
+  {
+    version: '0008',
+    name: 'create_users_and_settings',
+    fileName: '0008_create_users_and_settings.sql'
   }
 ]
 

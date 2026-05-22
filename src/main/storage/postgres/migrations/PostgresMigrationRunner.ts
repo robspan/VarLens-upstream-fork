@@ -29,7 +29,7 @@ export class PostgresMigrationRunner {
     try {
       await client.query('BEGIN')
       transactionStarted = true
-      await client.query('SELECT pg_advisory_xact_lock(928714, hashtext($1))', [this.schema])
+      await this.acquireMigrationLocks(client)
       await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.schemaName}`)
       await client.query(`
         CREATE TABLE IF NOT EXISTS ${this.schemaName}."schema_migrations" (
@@ -83,6 +83,21 @@ export class PostgresMigrationRunner {
     } finally {
       client.release()
     }
+  }
+
+  private async acquireMigrationLocks(client: MigrationClient): Promise<void> {
+    const lockTimeoutResult = await client.query<{ lock_timeout: string }>(
+      "SELECT current_setting('lock_timeout') AS lock_timeout"
+    )
+    const lockTimeout = lockTimeoutResult.rows[0]?.lock_timeout ?? '0'
+
+    await client.query("SELECT set_config('lock_timeout', '0', true)")
+    // Some migrations touch database-global objects such as extensions.
+    // PostgreSQL can race on concurrent CREATE EXTENSION IF NOT EXISTS calls,
+    // so keep cross-schema migration runners serialized before schema DDL.
+    await client.query('SELECT pg_advisory_xact_lock(928714, 0)')
+    await client.query('SELECT pg_advisory_xact_lock(928714, hashtext($1))', [this.schema])
+    await client.query("SELECT set_config('lock_timeout', $1, true)", [lockTimeout])
   }
 
   private validateAppliedMigrations(applied: Map<string, string>): void {

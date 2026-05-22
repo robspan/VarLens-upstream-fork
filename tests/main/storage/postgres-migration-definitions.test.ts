@@ -4,7 +4,7 @@ import { POSTGRES_MIGRATIONS } from '../../../src/main/storage/postgres/migratio
 
 describe('Postgres migration definitions', () => {
   it('loads the PostgreSQL migrations with SQL and sha256 checksums', () => {
-    expect(POSTGRES_MIGRATIONS).toHaveLength(7)
+    expect(POSTGRES_MIGRATIONS).toHaveLength(8)
     expect(POSTGRES_MIGRATIONS.map((migration) => migration.version)).toEqual([
       '0001',
       '0002',
@@ -12,7 +12,8 @@ describe('Postgres migration definitions', () => {
       '0004',
       '0005',
       '0006',
-      '0007'
+      '0007',
+      '0008'
     ])
     expect(POSTGRES_MIGRATIONS.map((migration) => migration.name)).toEqual([
       'create_cases',
@@ -21,7 +22,8 @@ describe('Postgres migration definitions', () => {
       'generated_search_documents',
       'create_workflow_tables',
       'create_audit_log',
-      'perf_indexes'
+      'perf_indexes',
+      'create_users_and_settings'
     ])
 
     for (const migration of POSTGRES_MIGRATIONS) {
@@ -36,5 +38,9 @@ describe('Postgres migration definitions', () => {
     expect(perfMigration?.sql).toContain(
       'ON "__schema__"."variants" USING GIN (gene_symbol gin_trgm_ops)'
     )
+
+    const authMigration = POSTGRES_MIGRATIONS.find((migration) => migration.version === '0008')
+    expect(authMigration?.name).toBe('create_users_and_settings')
+    expect(authMigration?.sql).toContain('CREATE TABLE IF NOT EXISTS "__schema__"."users"')
   })
 })

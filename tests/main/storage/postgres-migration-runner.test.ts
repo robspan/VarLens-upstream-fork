@@ -6,9 +6,15 @@ import type { PostgresMigration } from '../../../src/main/storage/postgres/migra
 
 function poolWithAppliedRows(appliedRows: unknown[] = []) {
   const client = {
-    query: vi.fn(async (sql: string) => ({
-      rows: sql.includes('SELECT version, checksum') ? appliedRows : []
-    })),
+    query: vi.fn(async (sql: string) => {
+      if (sql.includes("current_setting('lock_timeout')")) {
+        return { rows: [{ lock_timeout: '5s' }] }
+      }
+
+      return {
+        rows: sql.includes('SELECT version, checksum') ? appliedRows : []
+      }
+    }),
     release: vi.fn()
   }
   const connect = vi.fn(async () => client)
@@ -66,6 +72,44 @@ describe('PostgresMigrationRunner', () => {
     expect(lockOrder).toBeLessThan(createSchemaOrder)
     expect(pool.client.query).toHaveBeenCalledWith(expect.stringContaining('COMMIT'))
     expect(pool.client.release).toHaveBeenCalledTimes(1)
+  })
+
+  it('waits for advisory migration locks without the query lock timeout', async () => {
+    const pool = poolWithAppliedRows()
+    const runner = new PostgresMigrationRunner(pool as never, 'app_schema', migrations)
+
+    await runner.migrate()
+
+    expect(pool.client.query).toHaveBeenCalledWith(
+      "SELECT current_setting('lock_timeout') AS lock_timeout"
+    )
+    expect(pool.client.query).toHaveBeenCalledWith("SELECT set_config('lock_timeout', '0', true)")
+    expect(pool.client.query).toHaveBeenCalledWith("SELECT set_config('lock_timeout', $1, true)", [
+      '5s'
+    ])
+
+    const disableTimeoutOrder = pool.client.query.mock.invocationCallOrder.find((_, index) => {
+      const [sql] = pool.client.query.mock.calls[index] ?? []
+      return sql === "SELECT set_config('lock_timeout', '0', true)"
+    })
+    const schemaLockOrder = pool.client.query.mock.invocationCallOrder.find((_, index) => {
+      const [sql, params] = pool.client.query.mock.calls[index] ?? []
+      return (
+        typeof sql === 'string' && sql.includes('pg_advisory_xact_lock') && Array.isArray(params)
+      )
+    })
+    const restoreTimeoutOrder = pool.client.query.mock.invocationCallOrder.find((_, index) => {
+      const [sql] = pool.client.query.mock.calls[index] ?? []
+      return sql === "SELECT set_config('lock_timeout', $1, true)"
+    })
+    const createSchemaOrder = pool.client.query.mock.invocationCallOrder.find((_, index) => {
+      const [sql] = pool.client.query.mock.calls[index] ?? []
+      return typeof sql === 'string' && sql.includes('CREATE SCHEMA')
+    })
+
+    expect(disableTimeoutOrder).toBeLessThan(schemaLockOrder)
+    expect(schemaLockOrder).toBeLessThan(restoreTimeoutOrder)
+    expect(restoreTimeoutOrder).toBeLessThan(createSchemaOrder)
   })
 
   it.each(['workspace_a', 'Case Lab', 'clinical-1'])(

@@ -20,6 +20,7 @@ import type { VepFetchResult } from '../../../shared/types/api-enrichment'
 import { getSpliceAIMaxDelta } from './clinical-thresholds'
 import { mainLogger } from '../MainLogger'
 import { API_CONFIG } from '../../../shared/config'
+import { apiFixturePath, readApiFixture } from './ApiFixtureLoader'
 
 /**
  * Normalize chromosome identifier for consistent cache keys
@@ -57,12 +58,12 @@ export interface ExtractedScores {
 }
 
 export class VepApiClient {
-  private cache: ApiCache
+  private cache: ApiCache | null
   private limiter: Bottleneck
   private abortController: AbortController | undefined
   private readonly baseUrl = 'https://rest.ensembl.org'
 
-  constructor(cache: ApiCache) {
+  constructor(cache: ApiCache | null) {
     this.cache = cache
 
     // Configure Bottleneck for VEP rate limits
@@ -115,8 +116,28 @@ export class VepApiClient {
     const normalizedChr = normalizeChromosome(chr)
     const cacheKey = `vep:${normalizedChr}:${pos}:${ref}:${alt}`
 
+    const fixture = readApiFixture(
+      apiFixturePath([
+        'vep',
+        `chr${normalizedChr.toLowerCase()}-${pos}-${ref.toLowerCase()}-${alt.toLowerCase()}.json`
+      ])
+    )
+    if (fixture !== null) {
+      const data = VepResponseSchema.parse(fixture)
+      return {
+        success: true,
+        data,
+        cacheInfo: {
+          cached: false,
+          cachedAt: null
+        },
+        preferredTranscript: this.selectPreferredTranscript(data),
+        allTranscripts: this.getAllTranscripts(data)
+      }
+    }
+
     // Check cache first
-    const cached = this.cache.get(cacheKey)
+    const cached = this.cache?.get(cacheKey)
     if (cached) {
       try {
         const data = VepResponseSchema.parse(JSON.parse(cached.data))
@@ -154,7 +175,7 @@ export class VepApiClient {
       const data = VepResponseSchema.parse(rawResponse)
 
       // Cache response with 30-day TTL (actual 27-33 with jitter)
-      this.cache.set(cacheKey, JSON.stringify(rawResponse), 30)
+      this.cache?.set(cacheKey, JSON.stringify(rawResponse), 30)
 
       return {
         success: true,
@@ -259,7 +280,7 @@ export class VepApiClient {
    * @returns Parsed VepResponse and creation timestamp, or null if not cached
    */
   getCached(cacheKey: string): { data: VepResponse; createdAt: number } | null {
-    const cached = this.cache.get(cacheKey)
+    const cached = this.cache?.get(cacheKey)
     if (!cached) return null
 
     try {
@@ -345,6 +366,6 @@ export class VepApiClient {
    * For settings page "Clear VEP cache" button
    */
   clearCache(): void {
-    this.cache.clearByPrefix('vep:')
+    this.cache?.clearByPrefix('vep:')
   }
 }

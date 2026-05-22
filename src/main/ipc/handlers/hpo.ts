@@ -3,6 +3,7 @@ import { wrapHandler } from '../errorHandler'
 import type { HandlerDependencies } from '../types'
 import { HpoApiClient } from '../../services/api/HpoApiClient'
 import { ApiCache } from '../../services/api/ApiCache'
+import { apiFixturesEnabled } from '../../services/api/ApiFixtureLoader'
 import { networkStatus } from '../../services/network/NetworkStatus'
 import { mainLogger } from '../../services/MainLogger'
 
@@ -24,8 +25,10 @@ let apiCache: ApiCache | null = null
 export function registerHpoHandlers({ ipcMain, getDb }: HandlerDependencies): void {
   function getHpoClient(): HpoApiClient {
     if (!hpoClient) {
-      const db = getDb().database
-      apiCache = new ApiCache(db)
+      if (!apiFixturesEnabled()) {
+        const db = getDb().database
+        apiCache = new ApiCache(db)
+      }
       hpoClient = new HpoApiClient(apiCache)
     }
     return hpoClient

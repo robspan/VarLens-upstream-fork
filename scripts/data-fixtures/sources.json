@@ -1,0 +1,560 @@
+{
+  "schemaVersion": 1,
+  "cacheRoot": "tests/.cache/public-data",
+  "generatedRoot": "tests/.cache/public-data/generated",
+  "fixtures": [
+    {
+      "id": "local-synthetic-vcf",
+      "purpose": "Offline smoke fixture for VCF import and basic filter parity.",
+      "enabledByDefault": true,
+      "source": {
+        "kind": "local",
+        "path": "tests/test-data/vcf/synthetic-unit-test.vcf",
+        "licenseOrTerms": "repo test fixture",
+        "sha256": "e198476423cf2b9e842ff46dfef9bc51d072a9ab4f07ff60934e2682f3727ac4",
+        "sizeBytes": 7768
+      },
+      "sourceType": {
+        "container": "vcf",
+        "producer": "synthetic",
+        "genomeBuild": "GRCh38",
+        "samples": ["HG005", "HG006", "HG007"]
+      },
+      "transforms": [
+        {
+          "id": "copy",
+          "type": "copy",
+          "output": "tests/.cache/public-data/generated/vcf/synthetic-unit-test.vcf",
+          "sha256": "e198476423cf2b9e842ff46dfef9bc51d072a9ab4f07ff60934e2682f3727ac4",
+          "sizeBytes": 7768
+        },
+        {
+          "id": "to-json",
+          "type": "vcf-to-varlens-json",
+          "outputs": {
+            "simple": "tests/.cache/public-data/generated/json/from-vcf/synthetic-unit-test.simple.json",
+            "object": "tests/.cache/public-data/generated/json/from-vcf/synthetic-unit-test.object.json",
+            "columnar": "tests/.cache/public-data/generated/json/from-vcf/synthetic-unit-test.columnar.json"
+          },
+          "outputChecksums": {
+            "simple": {
+              "sha256": "4a1dfdec9c21c09bcdebb52dc5c75025fd59c1cda3365f419b912b987d963bfe",
+              "sizeBytes": 8104
+            },
+            "object": {
+              "sha256": "89bc386020fa1ec0f33883579e7fac386e559e0904c48851b32f4a8c892ae446",
+              "sizeBytes": 9596
+            },
+            "columnar": {
+              "sha256": "27a1585c4555676a3183fa07a52301c87b2e1c1192b0c3ae849bf359ece86b56",
+              "sizeBytes": 5508
+            }
+          }
+        }
+      ],
+      "varlensTarget": {
+        "importMode": "single-vcf",
+        "artifact": "tests/.cache/public-data/generated/vcf/synthetic-unit-test.vcf",
+        "options": {
+          "selectedSample": "HG005",
+          "genomeBuild": "GRCh38"
+        }
+      },
+      "expectedCoverage": [
+        "snv",
+        "indel",
+        "multisample",
+        "vcf-csq",
+        "vcf-ann",
+        "gnomad-af",
+        "cadd",
+        "clinvar"
+      ]
+    },
+    {
+      "id": "local-trio-unannotated-vcf",
+      "purpose": "Manifest-backed GIAB Chinese Trio region VCF without annotation fields.",
+      "enabledByDefault": true,
+      "source": {
+        "kind": "local",
+        "path": "tests/test-data/vcf/trio-region.vcf.gz",
+        "licenseOrTerms": "repo fixture derived from public GIAB Chinese Trio planning source",
+        "sha256": "82313bbd192e7c0fe7fea97163a16411b6e88be821f0445c0c11200114bce33e",
+        "sizeBytes": 127037
+      },
+      "sourceType": {
+        "container": "vcf.gz",
+        "producer": "GIAB Chinese Trio",
+        "genomeBuild": "GRCh38",
+        "samples": ["HG005", "HG006", "HG007"]
+      },
+      "transforms": [
+        {
+          "id": "copy",
+          "type": "copy",
+          "output": "tests/.cache/public-data/generated/vcf/trio-region.vcf.gz",
+          "sha256": "82313bbd192e7c0fe7fea97163a16411b6e88be821f0445c0c11200114bce33e",
+          "sizeBytes": 127037
+        }
+      ],
+      "varlensTarget": {
+        "importMode": "single-vcf",
+        "artifact": "tests/.cache/public-data/generated/vcf/trio-region.vcf.gz",
+        "options": {
+          "selectedSample": "HG005",
+          "genomeBuild": "GRCh38"
+        }
+      },
+      "expectedCoverage": ["snv", "indel", "vcf-unannotated", "multisample", "trio"]
+    },
+    {
+      "id": "local-trio-vep-vcf",
+      "purpose": "Manifest-backed GIAB Chinese Trio region VCF with VEP CSQ annotations.",
+      "enabledByDefault": true,
+      "source": {
+        "kind": "local",
+        "path": "tests/test-data/vcf/trio-region.vep.vcf.gz",
+        "licenseOrTerms": "repo fixture derived from public GIAB Chinese Trio planning source",
+        "sha256": "754c14b46b4d06d1470bbb177ca624fba4b2c6d0bf8a32480cb5f9f072606667",
+        "sizeBytes": 318573
+      },
+      "sourceType": {
+        "container": "vcf.gz",
+        "producer": "GIAB Chinese Trio + VEP",
+        "genomeBuild": "GRCh38",
+        "samples": ["HG005", "HG006", "HG007"]
+      },
+      "transforms": [
+        {
+          "id": "copy",
+          "type": "copy",
+          "output": "tests/.cache/public-data/generated/vcf/trio-region.vep.vcf.gz",
+          "sha256": "754c14b46b4d06d1470bbb177ca624fba4b2c6d0bf8a32480cb5f9f072606667",
+          "sizeBytes": 318573
+        }
+      ],
+      "varlensTarget": {
+        "importMode": "single-vcf",
+        "artifact": "tests/.cache/public-data/generated/vcf/trio-region.vep.vcf.gz",
+        "options": {
+          "selectedSample": "HG005",
+          "genomeBuild": "GRCh38"
+        }
+      },
+      "expectedCoverage": ["snv", "indel", "vcf-csq", "gnomad-af", "cadd", "clinvar"]
+    },
+    {
+      "id": "local-trio-snpeff-vcf",
+      "purpose": "Manifest-backed GIAB Chinese Trio region VCF with SnpEff ANN annotations.",
+      "enabledByDefault": true,
+      "source": {
+        "kind": "local",
+        "path": "tests/test-data/vcf/trio-region.snpeff.vcf.gz",
+        "licenseOrTerms": "repo fixture derived from public GIAB Chinese Trio planning source",
+        "sha256": "1fe8a8c42afdd5307719b1b9187055057f9d0015b063bcf6cbcd76fdc8c35e55",
+        "sizeBytes": 169798
+      },
+      "sourceType": {
+        "container": "vcf.gz",
+        "producer": "GIAB Chinese Trio + SnpEff",
+        "genomeBuild": "GRCh38",
+        "samples": ["HG005", "HG006", "HG007"]
+      },
+      "transforms": [
+        {
+          "id": "copy",
+          "type": "copy",
+          "output": "tests/.cache/public-data/generated/vcf/trio-region.snpeff.vcf.gz",
+          "sha256": "1fe8a8c42afdd5307719b1b9187055057f9d0015b063bcf6cbcd76fdc8c35e55",
+          "sizeBytes": 169798
+        }
+      ],
+      "varlensTarget": {
+        "importMode": "single-vcf",
+        "artifact": "tests/.cache/public-data/generated/vcf/trio-region.snpeff.vcf.gz",
+        "options": {
+          "selectedSample": "HG005",
+          "genomeBuild": "GRCh38"
+        }
+      },
+      "expectedCoverage": ["snv", "indel", "vcf-ann"]
+    },
+    {
+      "id": "local-bed-regions",
+      "purpose": "Offline smoke fixture for import-time BED region filtering.",
+      "enabledByDefault": true,
+      "source": {
+        "kind": "local",
+        "path": "tests/test-data/vcf/test-regions.bed",
+        "licenseOrTerms": "repo test fixture",
+        "sha256": "050151b7f1d22c254433affa8a574279813e565aea37cb1172681d57110b9853",
+        "sizeBytes": 89
+      },
+      "sourceType": {
+        "container": "bed",
+        "producer": "synthetic",
+        "genomeBuild": "GRCh38"
+      },
+      "transforms": [
+        {
+          "id": "copy",
+          "type": "copy",
+          "output": "tests/.cache/public-data/generated/bed/test-regions.bed",
+          "sha256": "050151b7f1d22c254433affa8a574279813e565aea37cb1172681d57110b9853",
+          "sizeBytes": 89
+        }
+      ],
+      "varlensTarget": {
+        "importMode": "bed-filter",
+        "artifact": "tests/.cache/public-data/generated/bed/test-regions.bed"
+      },
+      "expectedCoverage": ["bed-region-filter"]
+    },
+    {
+      "id": "local-json-simple",
+      "purpose": "Offline smoke fixture for VarLens simple JSON import.",
+      "enabledByDefault": true,
+      "source": {
+        "kind": "local",
+        "path": "tests/fixtures/import/simple-format.json",
+        "licenseOrTerms": "repo test fixture",
+        "sha256": "4401fec23feae2675e7a582a160ed0b1a49f1ecd1578f0887218d23999c3b75c",
+        "sizeBytes": 599
+      },
+      "sourceType": {
+        "container": "json",
+        "producer": "varlens-fixture",
+        "jsonShape": "json-simple"
+      },
+      "transforms": [
+        {
+          "id": "copy",
+          "type": "copy",
+          "output": "tests/.cache/public-data/generated/json/simple-format.json",
+          "sha256": "4401fec23feae2675e7a582a160ed0b1a49f1ecd1578f0887218d23999c3b75c",
+          "sizeBytes": 599
+        }
+      ],
+      "varlensTarget": {
+        "importMode": "single-json",
+        "artifact": "tests/.cache/public-data/generated/json/simple-format.json"
+      },
+      "expectedCoverage": ["json-simple"]
+    },
+    {
+      "id": "local-json-object",
+      "purpose": "Offline smoke fixture for VarLens object JSON import.",
+      "enabledByDefault": true,
+      "source": {
+        "kind": "local",
+        "path": "tests/fixtures/import/object-format.json",
+        "licenseOrTerms": "repo test fixture",
+        "sha256": "197d3c6839764ad243b5ee2df9b2794cce2c5383fb8225cdbfab5f24e8b5a253",
+        "sizeBytes": 628
+      },
+      "sourceType": {
+        "container": "json",
+        "producer": "varlens-fixture",
+        "jsonShape": "json-object"
+      },
+      "transforms": [
+        {
+          "id": "copy",
+          "type": "copy",
+          "output": "tests/.cache/public-data/generated/json/object-format.json",
+          "sha256": "197d3c6839764ad243b5ee2df9b2794cce2c5383fb8225cdbfab5f24e8b5a253",
+          "sizeBytes": 628
+        }
+      ],
+      "varlensTarget": {
+        "importMode": "single-json",
+        "artifact": "tests/.cache/public-data/generated/json/object-format.json"
+      },
+      "expectedCoverage": ["json-object"]
+    },
+    {
+      "id": "local-json-columnar",
+      "purpose": "Offline smoke fixture for VarLens wrapped columnar JSON import.",
+      "enabledByDefault": false,
+      "source": {
+        "kind": "local",
+        "path": "tests/fixtures/import/columnar-format.json",
+        "licenseOrTerms": "repo test fixture",
+        "sha256": "ef6f03b46da677da7f48981a13499a794c09ef460378b0429617c1dd5150ad02",
+        "sizeBytes": 11489
+      },
+      "sourceType": {
+        "container": "json",
+        "producer": "varlens-fixture",
+        "jsonShape": "json-columnar-wrapped"
+      },
+      "transforms": [
+        {
+          "id": "copy",
+          "type": "copy",
+          "output": "tests/.cache/public-data/generated/json/columnar-format.json",
+          "sha256": "ef6f03b46da677da7f48981a13499a794c09ef460378b0429617c1dd5150ad02",
+          "sizeBytes": 11489
+        }
+      ],
+      "varlensTarget": {
+        "importMode": "single-json",
+        "artifact": "tests/.cache/public-data/generated/json/columnar-format.json"
+      },
+      "expectedCoverage": ["json-columnar"]
+    },
+    {
+      "id": "local-json-vcf-columnar",
+      "purpose": "Generated wrapped columnar JSON fixture derived from the manifest-backed synthetic VCF.",
+      "enabledByDefault": true,
+      "source": {
+        "kind": "local",
+        "path": "tests/test-data/vcf/synthetic-unit-test.vcf",
+        "licenseOrTerms": "repo test fixture",
+        "sha256": "e198476423cf2b9e842ff46dfef9bc51d072a9ab4f07ff60934e2682f3727ac4",
+        "sizeBytes": 7768
+      },
+      "sourceType": {
+        "container": "vcf",
+        "producer": "synthetic",
+        "genomeBuild": "GRCh38",
+        "samples": ["HG005", "HG006", "HG007"]
+      },
+      "transforms": [],
+      "varlensTarget": {
+        "importMode": "single-json",
+        "artifact": "tests/.cache/public-data/generated/json/from-vcf/synthetic-unit-test.columnar.json"
+      },
+      "expectedCoverage": ["json-columnar"]
+    },
+    {
+      "id": "local-json-columnar-unwrapped",
+      "purpose": "Offline smoke fixture for VarLens unwrapped columnar JSON import.",
+      "enabledByDefault": true,
+      "source": {
+        "kind": "local",
+        "path": "tests/fixtures/import/columnar-unwrapped-format.json.gz",
+        "licenseOrTerms": "repo test fixture",
+        "sha256": "75f87e2c58e8d1a16162acbab3d9eb5203919c4b9f14d395f25e6b1200bfd263",
+        "sizeBytes": 331
+      },
+      "sourceType": {
+        "container": "json.gz",
+        "producer": "varlens-fixture",
+        "jsonShape": "json-columnar-unwrapped"
+      },
+      "transforms": [
+        {
+          "id": "copy",
+          "type": "copy",
+          "output": "tests/.cache/public-data/generated/json/columnar-unwrapped-format.json.gz",
+          "sha256": "75f87e2c58e8d1a16162acbab3d9eb5203919c4b9f14d395f25e6b1200bfd263",
+          "sizeBytes": 331
+        }
+      ],
+      "varlensTarget": {
+        "importMode": "single-json",
+        "artifact": "tests/.cache/public-data/generated/json/columnar-unwrapped-format.json.gz"
+      },
+      "expectedCoverage": ["json-columnar"]
+    },
+    {
+      "id": "local-longread-bundle",
+      "purpose": "Manifest-backed multi-file bundle with SNP/indel, SV, CNV, and STR VCFs.",
+      "enabledByDefault": true,
+      "source": {
+        "kind": "local-set",
+        "licenseOrTerms": "repo synthetic test fixtures",
+        "files": [
+          {
+            "id": "snp",
+            "path": "tests/test-data/vcf/synthetic-unit-test.vcf",
+            "container": "vcf",
+            "sha256": "e198476423cf2b9e842ff46dfef9bc51d072a9ab4f07ff60934e2682f3727ac4",
+            "sizeBytes": 7768
+          },
+          {
+            "id": "sv",
+            "path": "tests/test-data/vcf/synthetic-sv.vcf",
+            "container": "vcf",
+            "sha256": "190609e681071326e17363560a721ec454e30e2ab810da10d098d3e59a7feed8",
+            "sizeBytes": 3230
+          },
+          {
+            "id": "cnv",
+            "path": "tests/test-data/vcf/synthetic-cnv.vcf",
+            "container": "vcf",
+            "sha256": "4a1b97d00530bf0765be7025492b324ad2268424f3512709869b3217454d8506",
+            "sizeBytes": 1902
+          },
+          {
+            "id": "str",
+            "path": "tests/test-data/vcf/synthetic-str.vcf",
+            "container": "vcf",
+            "sha256": "2a21dcbd84f6eaa96e14b4d0102f9f0ba2b040d27dfce206ac7c49c5845092f3",
+            "sizeBytes": 3599
+          }
+        ]
+      },
+      "sourceType": {
+        "container": "vcf",
+        "producer": "synthetic long-read bundle shape",
+        "genomeBuild": "GRCh38",
+        "samples": ["SAMPLE1", "HG005"]
+      },
+      "transforms": [
+        {
+          "id": "copy-bundle",
+          "type": "copy-many",
+          "files": [
+            {
+              "id": "snp",
+              "input": "tests/test-data/vcf/synthetic-unit-test.vcf",
+              "output": "tests/.cache/public-data/generated/longread/DEMO.wf_snp.vcf",
+              "container": "vcf",
+              "sha256": "e198476423cf2b9e842ff46dfef9bc51d072a9ab4f07ff60934e2682f3727ac4",
+              "sizeBytes": 7768
+            },
+            {
+              "id": "sv",
+              "input": "tests/test-data/vcf/synthetic-sv.vcf",
+              "output": "tests/.cache/public-data/generated/longread/DEMO.wf_sv.vcf",
+              "container": "vcf",
+              "sha256": "190609e681071326e17363560a721ec454e30e2ab810da10d098d3e59a7feed8",
+              "sizeBytes": 3230
+            },
+            {
+              "id": "cnv",
+              "input": "tests/test-data/vcf/synthetic-cnv.vcf",
+              "output": "tests/.cache/public-data/generated/longread/DEMO.wf_cnv.vcf",
+              "container": "vcf",
+              "sha256": "4a1b97d00530bf0765be7025492b324ad2268424f3512709869b3217454d8506",
+              "sizeBytes": 1902
+            },
+            {
+              "id": "str",
+              "input": "tests/test-data/vcf/synthetic-str.vcf",
+              "output": "tests/.cache/public-data/generated/longread/DEMO.wf_str.vcf",
+              "container": "vcf",
+              "sha256": "2a21dcbd84f6eaa96e14b4d0102f9f0ba2b040d27dfce206ac7c49c5845092f3",
+              "sizeBytes": 3599
+            }
+          ]
+        }
+      ],
+      "varlensTarget": {
+        "importMode": "multi-file",
+        "caseName": "DEMO",
+        "files": [
+          {
+            "filePath": "tests/.cache/public-data/generated/longread/DEMO.wf_sv.vcf",
+            "variantType": "sv",
+            "caller": "Sniffles2",
+            "annotationFormat": "ann"
+          },
+          {
+            "filePath": "tests/.cache/public-data/generated/longread/DEMO.wf_cnv.vcf",
+            "variantType": "cnv",
+            "caller": "Spectre",
+            "annotationFormat": "ann"
+          },
+          {
+            "filePath": "tests/.cache/public-data/generated/longread/DEMO.wf_str.vcf",
+            "variantType": "str",
+            "caller": "straglr",
+            "annotationFormat": null
+          },
+          {
+            "filePath": "tests/.cache/public-data/generated/longread/DEMO.wf_snp.vcf",
+            "variantType": "snv",
+            "caller": null,
+            "annotationFormat": null
+          }
+        ],
+        "options": {
+          "genomeBuild": "GRCh38"
+        }
+      },
+      "expectedCoverage": ["vcf-longread-bundle", "sv", "sv-breakend", "cnv", "str"]
+    },
+    {
+      "id": "local-zip-json",
+      "purpose": "Deterministic ZIP fixture containing VarLens JSON import files.",
+      "enabledByDefault": true,
+      "source": {
+        "kind": "local-set",
+        "licenseOrTerms": "repo test fixtures",
+        "files": [
+          {
+            "id": "simple-json-gz",
+            "path": "tests/fixtures/import/simple-format.json.gz",
+            "container": "json.gz",
+            "sha256": "ce1352b29d6c005baf95f0a97e1766835eafeec3bf7b7f858a14c54a53ff0b89",
+            "sizeBytes": 254
+          },
+          {
+            "id": "object-json-gz",
+            "path": "tests/fixtures/import/object-format.json.gz",
+            "container": "json.gz",
+            "sha256": "64a5829928c9327a9d823fdea317b5e91ff9b9f79943dab55d864877060037aa",
+            "sizeBytes": 287
+          }
+        ]
+      },
+      "sourceType": {
+        "container": "zip",
+        "producer": "deterministic local zip"
+      },
+      "transforms": [
+        {
+          "id": "zip-json",
+          "type": "zip",
+          "output": "tests/.cache/public-data/generated/zip/json-batch.zip",
+          "sha256": "7e19d2131736ab9ec6783b0fdfe5af21e05ebbedd6862ff5ec0a9b65df98134a",
+          "sizeBytes": 799,
+          "entries": [
+            {
+              "input": "tests/fixtures/import/simple-format.json.gz",
+              "entryName": "simple-format.json.gz"
+            },
+            {
+              "input": "tests/fixtures/import/object-format.json.gz",
+              "entryName": "object-format.json.gz"
+            }
+          ]
+        }
+      ],
+      "varlensTarget": {
+        "importMode": "zip",
+        "artifact": "tests/.cache/public-data/generated/zip/json-batch.zip"
+      },
+      "expectedCoverage": ["zip-extraction", "json-simple", "json-object"]
+    },
+    {
+      "id": "public-giab-hg002-wgs",
+      "purpose": "Large public GIAB source descriptor for opt-in heavy parity/perf data gathering.",
+      "enabledByDefault": false,
+      "large": true,
+      "source": {
+        "kind": "remote",
+        "url": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/HG002_GRCh38_1_22_v4.2.1_benchmark.vcf.gz",
+        "cachePath": "raw/giab/HG002_GRCh38_1_22_v4.2.1_benchmark.vcf.gz",
+        "licenseOrTerms": "NIST GIAB public benchmark data; verify terms before redistributing derived fixtures.",
+        "sha256": "adb4d4a50048aa13353a06b84fcfcbca09a5d17525efaa4cea44f8822e81175c",
+        "minSizeBytes": 100000000
+      },
+      "sourceType": {
+        "container": "vcf.gz",
+        "producer": "GIAB",
+        "genomeBuild": "GRCh38",
+        "samples": ["HG002"]
+      },
+      "transforms": [],
+      "varlensTarget": {
+        "importMode": "source-only",
+        "artifact": "tests/.cache/public-data/raw/giab/HG002_GRCh38_1_22_v4.2.1_benchmark.vcf.gz"
+      },
+      "expectedCoverage": ["snv", "indel", "vcf-unannotated"]
+    }
+  ]
+}

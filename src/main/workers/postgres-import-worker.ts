@@ -432,10 +432,7 @@ export async function runImport(
               caseId
             )
           }
-          // Force the final commit synchronous so the import only reports
-          // success once the WAL is fsynced. Postgres flushes WAL up to
-          // this commit's LSN, which transitively makes every earlier
-          // async-committed batch durable on disk.
+          // Report success only after this commit fsyncs all prior async-committed batches.
           await client.query('SET LOCAL synchronous_commit = ON')
           await client.query('COMMIT')
           committed = true
@@ -475,8 +472,6 @@ export async function runImport(
         // ignore — used only for provenance
       }
 
-      // `_pool` is ignored by PostgresJsonImportRepository — the repo accepts a
-      // stubbed pool and the caller passes the actual client through writeJsonImport.
       const repo = new PostgresJsonImportRepository(
         { connect: async () => client as unknown as PoolClient } as Pick<Pool, 'connect'>,
         start.schema

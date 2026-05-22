@@ -1,0 +1,79 @@
+[
+  {
+    "id": "17_7674220_C/T",
+    "input": "17 7674220 7674220 C/T 1",
+    "transcript_consequences": [
+      {
+        "transcript_id": "ENST00000269305",
+        "gene_symbol": "TP53",
+        "consequence_terms": ["missense_variant"],
+        "impact": "MODERATE",
+        "biotype": "protein_coding",
+        "source": "Ensembl",
+        "cadd_phred": 28.4,
+        "cadd_raw": 5.08655,
+        "sift_score": 0.01,
+        "sift_prediction": "deleterious"
+      },
+      {
+        "transcript_id": "ENST00000359597",
+        "gene_symbol": "TP53",
+        "consequence_terms": ["missense_variant"],
+        "impact": "MODERATE",
+        "biotype": "protein_coding",
+        "source": "Ensembl",
+        "cadd_phred": 28.4,
+        "cadd_raw": 5.08655,
+        "sift_score": 0,
+        "sift_prediction": "deleterious",
+        "polyphen_score": 0.978,
+        "polyphen_prediction": "probably_damaging"
+      },
+      {
+        "transcript_id": "ENST00000505014",
+        "gene_symbol": "TP53",
+        "consequence_terms": ["downstream_gene_variant"],
+        "impact": "MODIFIER",
+        "biotype": "retained_intron",
+        "source": "Ensembl",
+        "cadd_phred": 28.4,
+        "cadd_raw": 5.08655
+      }
+    ],
+    "colocated_variants": [
+      {
+        "id": "CM920675"
+      },
+      {
+        "id": "rs11540652",
+        "frequencies": {
+          "T": {
+            "gnomadg_fin": 0,
+            "gnomade_fin": 0,
+            "gnomade_remaining": 0.00001656,
+            "gnomade_sas": 0,
+            "gnomadg_asj": 0,
+            "gnomadg_mid": 0,
+            "gnomade": 0.000006158,
+            "gnomadg_remaining": 0,
+            "gnomade_afr": 0,
+            "gnomade_asj": 0,
+            "gnomadg_eas": 0,
+            "gnomadg_afr": 0.00002418,
+            "gnomadg_amr": 0,
+            "gnomadg": 0.00001974,
+            "gnomadg_sas": 0,
+            "gnomade_amr": 0,
+            "gnomade_nfe": 0.000006296,
+            "gnomade_eas": 0.00002519,
+            "gnomadg_nfe": 0.00002942,
+            "gnomade_mid": 0,
+            "gnomadg_ami": 0
+          }
+        },
+        "clin_sig": ["likely_pathogenic", "pathogenic"]
+      }
+    ],
+    "most_severe_consequence": "missense_variant"
+  }
+]

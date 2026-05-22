@@ -17,6 +17,7 @@ import type {
   ProteinApiError
 } from '../../../shared/types/protein'
 import { mainLogger } from '../MainLogger'
+import { apiFixturePath, readApiFixture } from './ApiFixtureLoader'
 
 /** Domain entry types to include in results */
 const INCLUDED_DOMAIN_TYPES = new Set([
@@ -30,11 +31,11 @@ const INCLUDED_DOMAIN_TYPES = new Set([
 ])
 
 export class InterProApiClient {
-  private cache: ApiCache
+  private cache: ApiCache | null
   private limiter: Bottleneck
   private readonly baseUrl = 'https://www.ebi.ac.uk/interpro/api'
 
-  constructor(cache: ApiCache) {
+  constructor(cache: ApiCache | null) {
     this.cache = cache
 
     // Configure Bottleneck for InterPro rate limits
@@ -54,8 +55,25 @@ export class InterProApiClient {
     const normalizedAccession = accession.toUpperCase()
     const cacheKey = `interpro:${normalizedAccession}`
 
+    const fixture = readApiFixture(
+      apiFixturePath(['interpro', `${normalizedAccession.toLowerCase()}.json`])
+    )
+    if (fixture !== null) {
+      const raw = InterProResponseSchema.parse(fixture)
+      const { domains, proteinLength } = this.extractDomains(raw.results, normalizedAccession)
+      return {
+        success: true,
+        domains,
+        proteinLength,
+        cacheInfo: {
+          cached: false,
+          cachedAt: undefined
+        }
+      }
+    }
+
     // Check cache first
-    const cached = this.cache.get(cacheKey)
+    const cached = this.cache?.get(cacheKey)
     if (cached) {
       try {
         const raw = InterProResponseSchema.parse(JSON.parse(cached.data))
@@ -86,7 +104,7 @@ export class InterProApiClient {
       const parsed = InterProResponseSchema.parse(rawResponse)
 
       // Cache response with 90-day TTL
-      this.cache.set(cacheKey, JSON.stringify(rawResponse), 90)
+      this.cache?.set(cacheKey, JSON.stringify(rawResponse), 90)
 
       const { domains, proteinLength } = this.extractDomains(parsed.results, normalizedAccession)
 
@@ -210,6 +228,6 @@ export class InterProApiClient {
    * Clear all cached InterPro responses
    */
   clearCache(): void {
-    this.cache.clearByPrefix('interpro:')
+    this.cache?.clearByPrefix('interpro:')
   }
 }

@@ -8,9 +8,9 @@ If you DO see one of these tests failing (because you ran `make web-gate-static`
 
 | Layer | What it pins | When it runs |
 |---|---|---|
-| **Layer 1 — Static** (`*.test.ts` at root) | Structural rules: no DB-factory leaks, no direct argon2 imports, every domain table has `user_id`, no Electron in `src/shared/`, etc. | `npm run test:web-gate` or `make web-gate-static`. **Not** part of default `npm run test`. |
-| **Layer 2 — Integration** (`integration/`) | `/healthz`, JSON logs, SIGTERM, idempotent migrations against the Fastify server. | Same trigger as Layer 1. Tests that need a built web server and `VARLENS_PG_URL` skip in the fast/default lane; a future opt-in Postgres web lane should make those prerequisites fail-loud. |
-| **Layer 3 — Parity** (`parity/`) | Structural parity sentinels plus behavioral scenarios as they are implemented. | `make web-gate-parity` only. Boots a real Electron app and switches the native-module ABI. |
+| **Layer 1 — Static** (`*.test.ts` at root) | Structural rules: no DB-factory leaks, no direct argon2 imports, every domain table has `user_id`, no Electron in `src/shared/`, etc. | `make web-gate-static` or `npm run test:web-gate`. **Not** part of default `npm run test`. |
+| **Layer 2 — Integration** (`integration/`) | `/healthz`, JSON logs, SIGTERM, idempotent migrations against the Fastify server. | `make web-gate-integration` for skip-tolerant local checks; `make web-gate-postgres` or `make web-ci` for fail-loud Postgres-backed checks. |
+| **Layer 3 — Parity** (`parity/`) | Structural parity sentinels plus behavioral scenarios. `web-gate-parity` runs the live parity directory; `web-parity-e2e` is the manifest-backed fixture parity command. | `make web-gate-parity` or `make web-parity-e2e` only. Both boot Electron and switch the native-module ABI. |
 
 ## For desktop-only contributors (researchers, clinicians, default workflow)
 
@@ -35,10 +35,13 @@ The allowlists (`ALLOWLIST_LOOPHOLE_IMPORTERS` in `db-seam`, `EXPECTED_MISSING_U
 
 ```bash
 npm run test:web-gate     # Layer 1 + Layer 2, fast
-make web-gate-static      # Layer 1 static gate only
-make web-gate-integration # Layer 2 alone; Postgres-backed tests need out/web + VARLENS_PG_URL
-make web-gate-parity      # Layer 3 — boots Electron, switches native ABI
-make web-gate             # static + integration (parity is intentionally separate)
+make web-gate-static      # Layer 1 static gate
+make web-gate-integration # Layer 2 skip-tolerant integration tests
+make web-gate-postgres    # Layer 2 fail-loud Postgres-backed integration tests
+make web-gate-parity      # Layer 3 live parity directory
+make web-parity-e2e       # manifest-backed fixture parity verification
+make web-gate             # static gate only (parity is intentionally separate)
+make web-ci               # web readiness gate: rebuild-node + build-web + static + Postgres integration
 ```
 
 None of these run during `make ci` or default `npm run test`. They are a parallel CI lane the web-track contributor invokes explicitly.

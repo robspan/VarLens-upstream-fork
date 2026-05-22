@@ -1,4 +1,4 @@
-.PHONY: help rebuild dev dev-postgres web-dev build build-web build-web-server build-web-renderer preview lint lint-check agent-check test test-watch test-coverage web-ci web-gate web-gate-static web-gate-integration web-gate-postgres web-gate-parity typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-query-perf pg-seed-dev pg-hosted-smoke pg-reset
+.PHONY: help rebuild dev dev-postgres web-dev build build-web build-web-server build-web-renderer preview lint lint-check agent-check test test-watch test-coverage web-ci web-gate web-gate-static web-gate-integration web-gate-postgres web-gate-parity web-parity-e2e web-test-report web-data-gather web-data-prepare web-data-verify web-ipc-fixtures typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-query-perf pg-seed-dev pg-hosted-smoke pg-reset
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -178,23 +178,59 @@ test-watch: ## Run tests in watch mode
 test-coverage: ## Run tests with coverage report
 	npm run test:coverage
 
-web-gate: ## Run all opt-in web migration gate tests
-	npm run test:web-gate
+#---------------------------------------------------------------------------
+# Phase 1 web-migration gate (see .planning/web/completed/testing/desktop-to-web-parity.md)
+#---------------------------------------------------------------------------
 
-web-gate-static: ## Run opt-in web migration static gate tests
-	npx vitest run --project web-gate tests/web-gate/*.test.ts
+web-gate-static: web-ipc-fixtures ## Run Layer 1 static gate tests (assumes Node ABI — run `make rebuild-node` first if needed)
+	npx vitest run --project web-gate
 
-web-gate-integration: ## Run opt-in web migration integration gate tests
-	npx vitest run --project web-gate tests/web-gate/integration/*.test.ts
+web-ipc-fixtures: ## Validate IPC parity fixture manifest and referenced fixture data
+	npm run test:ipc-parity-fixtures
+
+web-gate-integration: ## Run Layer 2 web-only integration tests (skipped until out/web/ exists)
+	npx vitest run --project web-gate tests/web-gate/integration
 
 web-gate-postgres: build-web ## Run fail-loud Postgres-backed web integration tests (requires VARLENS_PG_URL)
 	@if [ -z "$$VARLENS_PG_URL" ]; then echo "VARLENS_PG_URL is required for web-gate-postgres. This is intentionally opt-in and never part of default desktop CI."; exit 2; fi
 	npx vitest run --project web-gate tests/web-gate/integration
 
-web-gate-parity: ## Run opt-in desktop/web parity gate tests
-	VARLENS_RUN_WEB_GATE_PARITY=1 npx vitest run --project web-gate-parity --passWithNoTests
+web-gate-parity: ## Run Layer 3 parity scenarios (opt-in; boots Electron, switches native ABI)
+	@echo "=== web-gate-parity (opt-in; switches native module to Electron ABI) ==="
+	@if [ -z "$$VARLENS_PG_URL" ]; then echo "VARLENS_PG_URL is required for web-gate-parity. This validates desktop↔web parity against PostgreSQL."; exit 2; fi
+	@if [ ! -f out/main/index.js ]; then echo "out/main/index.js missing — running 'make build' first"; npm run build; fi
+	npm run rebuild:electron
+	VARLENS_RUN_WEB_GATE_PARITY=1 VARLENS_RUN_WEB_PARITY_E2E=1 npx vitest run --project web-gate-parity tests/web-gate/parity
+
+web-parity-e2e: web-data-verify ## Run manifest-backed desktop↔web parity E2E (requires VARLENS_PG_URL)
+	@if [ -z "$$VARLENS_PG_URL" ]; then echo "VARLENS_PG_URL is required for web-parity-e2e. This is opt-in and never part of default desktop CI."; exit 2; fi
+	@echo "=== web-parity-e2e (opt-in; switches native module to Electron ABI) ==="
+	npm run rebuild:electron
+	npm run build
+	VARLENS_RUN_WEB_GATE_PARITY=1 VARLENS_RUN_WEB_PARITY_E2E=1 npx vitest run --project web-gate-parity tests/web-gate/parity/data-manifest-parity.test.ts tests/web-gate/parity/ipc-fixture-parity.test.ts
+
+web-test-report: ## Generate web test report artifacts (VARLENS_WEB=1 runs full parity; uses VARLENS_PG_URL or .env.postgres.local)
+	node scripts/reports/run-web-test-report.mjs
+
+web-gate: web-gate-static ## Run the Phase 1 gate fast tests (parity is opt-in via web-gate-parity)
+	@echo "Static web gate done. Run 'make web-gate-parity' to validate the desktop↔web parity path (opt-in)."
 
 web-ci: rebuild-node build-web web-gate-static web-gate-postgres ## Opt-in web readiness gate; requires VARLENS_PG_URL
+
+#---------------------------------------------------------------------------
+# Web parity data gathering (opt-in; see .planning/web/completed/data/)
+#---------------------------------------------------------------------------
+
+DATA_ARGS ?=
+
+web-data-gather: ## Gather/verify public parity data sources into gitignored cache (use DATA_ARGS='--fixture ID --allow-large')
+	node scripts/data-fixtures/download-fixtures.mjs $(DATA_ARGS)
+
+web-data-prepare: web-data-gather ## Transform gathered data into VarLens-ready generated fixtures
+	node scripts/data-fixtures/prepare-fixtures.mjs $(DATA_ARGS)
+
+web-data-verify: web-data-prepare ## Verify generated parity fixtures and source contracts
+	node scripts/data-fixtures/verify-fixtures.mjs $(DATA_ARGS)
 
 #---------------------------------------------------------------------------
 # CI / Full Checks

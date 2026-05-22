@@ -1,5 +1,5 @@
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { existsSync, mkdtempSync, mkdirSync, readFileSync } from 'fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 
@@ -7,6 +7,7 @@ export interface LaunchElectronAppOptions {
   perfMode?: boolean
   env?: Record<string, string | undefined>
   isolationRoot?: string
+  hideWindow?: boolean
 }
 
 export interface LaunchElectronAppResult {
@@ -39,6 +40,7 @@ export async function launchElectronApp(
       VARLENS_APP_DATA_DIR: appDataDir,
       VARLENS_USER_DATA_DIR: userDataDir,
       VARLENS_PERF_MODE: options.perfMode ? '1' : process.env.VARLENS_PERF_MODE,
+      VARLENS_E2E_HIDE_WINDOW: options.hideWindow ? '1' : process.env.VARLENS_E2E_HIDE_WINDOW,
       ...options.env
     }
   })
@@ -51,6 +53,12 @@ export async function launchElectronApp(
     const mainLog = existsSync(logFilePath)
       ? readFileSync(logFilePath, 'utf8').trim()
       : 'Main log file was not created before Electron exited.'
+
+    try {
+      await app.close()
+    } finally {
+      rmSync(isolationRoot, { recursive: true, force: true })
+    }
 
     throw new Error(
       [
@@ -79,7 +87,11 @@ export async function launchElectronApp(
     appDataDir,
     consoleMessages,
     cleanup: async () => {
-      await app.close()
+      try {
+        await app.close()
+      } finally {
+        rmSync(isolationRoot, { recursive: true, force: true })
+      }
     }
   }
 }

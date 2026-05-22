@@ -1,38 +1,12 @@
-import { z } from 'zod'
 import { wrapHandler } from '../errorHandler'
 import type { HandlerDependencies } from '../types'
-import { CaseIdSchema } from '../../../shared/types/ipc-schemas'
+import {
+  CaseMetricCaseIdSchema,
+  MetricDefinitionCreateSchema,
+  MetricDeleteSchema,
+  MetricUpsertSchema
+} from '../../../shared/api/schemas/case-metrics'
 import { mainLogger } from '../../services/MainLogger'
-
-// ============================================================
-// Inline Zod Schemas for Case Metrics
-// ============================================================
-
-const MetricIdSchema = z.number().int().positive()
-
-const MetricDefinitionCreateSchema = z.object({
-  name: z.string().min(1).max(200),
-  valueType: z.enum(['numeric', 'text', 'date']),
-  unit: z.string(),
-  category: z.string().min(1)
-})
-
-const MetricValueSchema = z.object({
-  numeric_value: z.number().nullish(),
-  text_value: z.string().nullish(),
-  date_value: z.string().nullish()
-})
-
-const MetricUpsertSchema = z.object({
-  caseId: CaseIdSchema,
-  metricId: MetricIdSchema,
-  value: MetricValueSchema
-})
-
-const MetricDeleteSchema = z.object({
-  caseId: CaseIdSchema,
-  metricId: MetricIdSchema
-})
 
 /**
  * Case Metrics IPC handlers
@@ -101,7 +75,7 @@ export function registerCaseMetricHandlers({
   ipcMain.handle('case-metrics:listForCase', async (_event, caseId: unknown) => {
     return wrapHandler(async () => {
       // ANTI-07: Runtime validation at IPC boundary
-      const validated = CaseIdSchema.safeParse(caseId)
+      const validated = CaseMetricCaseIdSchema.safeParse(caseId)
       if (!validated.success) {
         mainLogger.error(
           `Invalid case-metrics:listForCase params: ${validated.error.message}`,

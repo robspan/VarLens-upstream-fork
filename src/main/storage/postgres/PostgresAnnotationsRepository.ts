@@ -1,13 +1,16 @@
-import type { Pool } from 'pg'
+import type { Pool, PoolClient } from 'pg'
 
 import type {
   AcmgClassification,
   CaseVariantAnnotation,
   VariantAnnotation
 } from '../../../shared/types/database'
+import { globalAnnotationAuditEntries, perCaseAnnotationAuditEntries } from '../annotation-audit'
 import { quoteIdentifier } from './identifiers'
+import { PostgresAuditLogRepository } from './PostgresAuditLogRepository'
 
 type QueryablePool = Pick<Pool, 'query'>
+type TransactionCapablePool = QueryablePool & { connect: () => Promise<PoolClient> }
 
 type GlobalAnnotationUpdates = Partial<
   Omit<
@@ -181,6 +184,37 @@ export class PostgresAnnotationsRepository {
     return toGlobalAnnotation(result.rows[0])
   }
 
+  async upsertGlobalAnnotationWithAudit(
+    chr: string,
+    pos: number,
+    ref: string,
+    alt: string,
+    updates: GlobalAnnotationUpdates & { user_name?: string | null }
+  ): Promise<VariantAnnotation> {
+    const client = await this.connect()
+    try {
+      await client.query('BEGIN')
+      const annotations = new PostgresAnnotationsRepository(client, this.schema)
+      const audit = new PostgresAuditLogRepository(client, this.schema)
+      const oldAnnotation = await annotations.getGlobalAnnotation(chr, pos, ref, alt)
+      const result = await annotations.upsertGlobalAnnotation(chr, pos, ref, alt, updates)
+      for (const entry of globalAnnotationAuditEntries(
+        { chr, pos, ref, alt },
+        updates,
+        oldAnnotation as Record<string, unknown> | null
+      )) {
+        await audit.append(entry)
+      }
+      await client.query('COMMIT')
+      return result
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
+    } finally {
+      client.release()
+    }
+  }
+
   async deleteGlobalAnnotation(chr: string, pos: number, ref: string, alt: string): Promise<void> {
     const schemaName = quoteIdentifier(this.schema)
     await this.pool.query(
@@ -273,6 +307,36 @@ export class PostgresAnnotationsRepository {
     return toPerCaseAnnotation(result.rows[0])
   }
 
+  async upsertPerCaseAnnotationWithAudit(
+    caseId: number,
+    variantId: number,
+    updates: PerCaseAnnotationUpdates & { user_name?: string | null }
+  ): Promise<CaseVariantAnnotation> {
+    const client = await this.connect()
+    try {
+      await client.query('BEGIN')
+      const annotations = new PostgresAnnotationsRepository(client, this.schema)
+      const audit = new PostgresAuditLogRepository(client, this.schema)
+      const oldAnnotation = await annotations.getPerCaseAnnotation(caseId, variantId)
+      const result = await annotations.upsertPerCaseAnnotation(caseId, variantId, updates)
+      for (const entry of perCaseAnnotationAuditEntries(
+        caseId,
+        variantId,
+        updates,
+        oldAnnotation as Record<string, unknown> | null
+      )) {
+        await audit.append(entry)
+      }
+      await client.query('COMMIT')
+      return result
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
+    } finally {
+      client.release()
+    }
+  }
+
   async deletePerCaseAnnotation(caseId: number, variantId: number): Promise<void> {
     const schemaName = quoteIdentifier(this.schema)
     await this.pool.query(
@@ -310,6 +374,14 @@ export class PostgresAnnotationsRepository {
         : await this.getPerCaseAnnotation(caseId, toNumber(variantId))
 
     return { global, perCase }
+  }
+
+  private async connect(): Promise<PoolClient> {
+    const pool = this.pool as Partial<TransactionCapablePool>
+    if (pool.connect === undefined) {
+      throw new Error('Postgres annotation audit writes require a transaction-capable pool')
+    }
+    return await pool.connect()
   }
 
   async getBatch(

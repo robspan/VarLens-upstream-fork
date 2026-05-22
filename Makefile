@@ -1,10 +1,15 @@
-.PHONY: help rebuild dev dev-postgres build preview lint lint-check agent-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-query-perf pg-seed-dev pg-hosted-smoke pg-reset
+.PHONY: help rebuild dev dev-postgres web-dev build preview lint lint-check agent-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-query-perf pg-seed-dev pg-hosted-smoke pg-reset build-web web-ci web-gate web-gate-static web-gate-integration web-gate-postgres web-gate-parity web-parity-e2e web-test-report web-data-gather web-data-prepare web-data-verify sync-upstream install-hooks
 
 # Default target - show help
 .DEFAULT_GOAL := help
 
 CI_NODE_VERSION ?= $(shell tr -d '\n' < .nvmrc)
 XVFB_RUN ?= $(shell if command -v xvfb-run >/dev/null 2>&1; then printf 'xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" '; fi)
+WEB_DEV_PORT ?= 8787
+WEB_DEV_SCHEMA ?= web_dev
+WEB_DEV_RECOVERY_KEY_DIR ?= /tmp/varlens-web-dev
+WEB_DEV_API_LATENCY_MS ?= 75
+WEB_DEV_ADMIN_USERNAME ?= admin
 
 define ensure_ci_node
 	@current_node="$$(node -v | sed 's/^v//')"; \
@@ -14,6 +19,28 @@ define ensure_ci_node
 		exit 1; \
 	fi
 endef
+
+#---------------------------------------------------------------------------
+# Mode toggle: desktop (default) / web (opt-in via VARLENS_WEB=1)
+#
+# Sets which projects vitest runs and whether `make dev` starts the web
+# server. Direct targets (web-gate-static, etc.) still work standalone for
+# web-only invocations.
+#---------------------------------------------------------------------------
+
+# Web mode is opt-in only. Set VARLENS_WEB=1 explicitly when a target
+# should extend itself with web checks.
+VARLENS_WEB ?= 0
+
+# Export so it propagates to sub-makes and child processes; make does
+# not export variables by default.
+export VARLENS_WEB
+
+ifeq ($(VARLENS_WEB),1)
+    VITEST_EXTRA_ARGS := -- --project web-gate
+else
+    VITEST_EXTRA_ARGS :=
+endif
 
 #---------------------------------------------------------------------------
 # Help
@@ -36,8 +63,38 @@ rebuild: ## Rebuild native modules for Electron (fixes native module version mis
 rebuild-node: ## Rebuild native modules for Node.js (needed before running tests)
 	npm run rebuild:node
 
-dev: rebuild ## Start development server with hot reload
+ifeq ($(VARLENS_WEB),1)
+dev: web-dev ## Start development server (set VARLENS_WEB=1 for web mode)
+else
+dev: rebuild ## Start development server (set VARLENS_WEB=1 for web mode)
 	npm run dev
+endif
+
+web-dev: ## Start local Postgres-backed web mode at http://localhost:$(WEB_DEV_PORT)/
+	@if [ ! -f .env.postgres.local ]; then echo "Missing .env.postgres.local. Copy .env.postgres.example first."; exit 1; fi
+	$(MAKE) pg-up
+	VARLENS_WEB_BASE=/ npm run build:web
+	@echo ""
+	@echo "Starting VarLens web mode:"
+	@echo "  URL:      http://localhost:$(WEB_DEV_PORT)/"
+	@echo "  Health:   http://localhost:$(WEB_DEV_PORT)/healthz"
+	@echo "  Postgres: .env.postgres.local"
+	@echo "  Schema:   $(WEB_DEV_SCHEMA)"
+	@echo "  Secrets:  $${VARLENS_RECOVERY_KEY_DIR:-$(WEB_DEV_RECOVERY_KEY_DIR)}"
+	@echo "  API delay: $${VARLENS_WEB_API_LATENCY_MS:-$(WEB_DEV_API_LATENCY_MS)}ms"
+	@echo "  Dev admin bootstrap: set VARLENS_ADMIN_PASSWORD_HASH for first run"
+	@echo ""
+	@set -a; . ./.env.postgres.local; set +a; \
+		NODE_ENV=development \
+		APP_PATH_PREFIX=/ \
+		VARLENS_WEB_HOST="$${VARLENS_WEB_HOST:-127.0.0.1}" \
+		VARLENS_WEB_PORT="$${VARLENS_WEB_PORT:-$(WEB_DEV_PORT)}" \
+		VARLENS_WEB_API_LATENCY_MS="$${VARLENS_WEB_API_LATENCY_MS:-$(WEB_DEV_API_LATENCY_MS)}" \
+		VARLENS_PG_SCHEMA="$(WEB_DEV_SCHEMA)" \
+		VARLENS_RECOVERY_KEY_DIR="$${VARLENS_RECOVERY_KEY_DIR:-$(WEB_DEV_RECOVERY_KEY_DIR)}" \
+		VARLENS_ADMIN_USERNAME="$${VARLENS_ADMIN_USERNAME:-$(WEB_DEV_ADMIN_USERNAME)}" \
+		VARLENS_ADMIN_PASSWORD_HASH="$${VARLENS_ADMIN_PASSWORD_HASH:-}" \
+		node out/web/server.cjs
 
 dev-postgres: ## Start development server with PostgreSQL backend enabled
 	@if [ ! -f .env.postgres.local ]; then echo "Missing .env.postgres.local. Copy .env.postgres.example first."; exit 1; fi
@@ -103,8 +160,8 @@ typecheck: ## Run TypeScript type checking
 # Testing
 #---------------------------------------------------------------------------
 
-test: ## Run tests once
-	npm run test
+test: ## Run tests once (set VARLENS_WEB=1 to include web-gate project)
+	npm run test $(VITEST_EXTRA_ARGS)
 
 test-watch: ## Run tests in watch mode
 	npm run test:watch
@@ -113,10 +170,64 @@ test-coverage: ## Run tests with coverage report
 	npm run test:coverage
 
 #---------------------------------------------------------------------------
+# Phase 1 web-migration gate (see .planning/web/completed/testing/desktop-to-web-parity.md)
+#---------------------------------------------------------------------------
+
+build-web: ## Build the opt-in web server + browser bundle
+	npm run build:web
+
+web-gate-static: ## Run Layer 1 static gate tests (assumes Node ABI — run `make rebuild-node` first if needed)
+	npx vitest run --project web-gate
+
+web-gate-integration: ## Run Layer 2 web-only integration tests (skipped until out/web/ exists)
+	npx vitest run --project web-gate tests/web-gate/integration
+
+web-gate-postgres: build-web ## Run fail-loud Postgres-backed web integration tests (requires VARLENS_PG_URL)
+	@if [ -z "$$VARLENS_PG_URL" ]; then echo "VARLENS_PG_URL is required for web-gate-postgres. This is intentionally opt-in and never part of default desktop CI."; exit 2; fi
+	npx vitest run --project web-gate tests/web-gate/integration
+
+web-gate-parity: ## Run Layer 3 parity scenarios (opt-in; boots Electron, switches native ABI)
+	@echo "=== web-gate-parity (opt-in; switches native module to Electron ABI) ==="
+	@if [ -z "$$VARLENS_PG_URL" ]; then echo "VARLENS_PG_URL is required for web-gate-parity. This validates desktop↔web parity against PostgreSQL."; exit 2; fi
+	@if [ ! -f out/main/index.js ]; then echo "out/main/index.js missing — running 'make build' first"; npm run build; fi
+	npm run rebuild:electron
+	VARLENS_RUN_WEB_GATE_PARITY=1 VARLENS_RUN_WEB_PARITY_E2E=1 npx vitest run --project web-gate-parity tests/web-gate/parity/data-manifest-parity.test.ts tests/web-gate/parity/ipc-fixture-parity.test.ts
+
+web-parity-e2e: web-data-verify ## Run manifest-backed desktop↔web parity E2E (requires VARLENS_PG_URL)
+	@if [ -z "$$VARLENS_PG_URL" ]; then echo "VARLENS_PG_URL is required for web-parity-e2e. This is opt-in and never part of default desktop CI."; exit 2; fi
+	@echo "=== web-parity-e2e (opt-in; switches native module to Electron ABI) ==="
+	npm run rebuild:electron
+	npm run build
+	VARLENS_RUN_WEB_GATE_PARITY=1 VARLENS_RUN_WEB_PARITY_E2E=1 npx vitest run --project web-gate-parity tests/web-gate/parity/data-manifest-parity.test.ts tests/web-gate/parity/ipc-fixture-parity.test.ts
+
+web-test-report: ## Generate web test report artifacts (VARLENS_WEB=1 runs full parity; uses VARLENS_PG_URL or .env.postgres.local)
+	node scripts/reports/run-web-test-report.mjs
+
+web-gate: web-gate-static ## Run the Phase 1 gate fast tests (parity is opt-in via web-gate-parity)
+	@echo "Static + integration done. Run 'make web-gate-parity' to validate the desktop↔web parity path (opt-in)."
+
+web-ci: rebuild-node build-web web-gate-static web-gate-postgres ## Opt-in web readiness gate; requires VARLENS_PG_URL
+
+#---------------------------------------------------------------------------
+# Web parity data gathering (opt-in; see .planning/web/completed/data/)
+#---------------------------------------------------------------------------
+
+DATA_ARGS ?=
+
+web-data-gather: ## Gather/verify public parity data sources into gitignored cache (use DATA_ARGS='--fixture ID --allow-large')
+	node scripts/data-fixtures/download-fixtures.mjs $(DATA_ARGS)
+
+web-data-prepare: web-data-gather ## Transform gathered data into VarLens-ready generated fixtures
+	node scripts/data-fixtures/prepare-fixtures.mjs $(DATA_ARGS)
+
+web-data-verify: web-data-prepare ## Verify generated parity fixtures and source contracts
+	node scripts/data-fixtures/verify-fixtures.mjs $(DATA_ARGS)
+
+#---------------------------------------------------------------------------
 # CI / Full Checks
 #---------------------------------------------------------------------------
 
-ci: lint-check format-check typecheck rebuild-node test ## Run all CI checks (lint, format, typecheck, rebuild, test)
+ci: lint-check format-check typecheck rebuild-node test ## Run all CI checks (lint, format, typecheck, rebuild, test). Set VARLENS_WEB=1 to include web-gate.
 
 ci-checks: ## Run the GitHub Actions "Checks (Ubuntu)" job under Node $(CI_NODE_VERSION)
 	@echo "=== Checks (Ubuntu) using Node $(CI_NODE_VERSION) ==="
@@ -265,3 +376,44 @@ clean-all: clean ## Clean everything including node_modules
 	rm -rf node_modules
 
 reinstall: clean-all install ## Clean and reinstall everything
+
+#---------------------------------------------------------------------------
+# Upstream sync (private fork → berntpopp/VarLens)
+#---------------------------------------------------------------------------
+
+sync-upstream: ## Fetch upstream and merge upstream/main into local main + VarLens-Web (ours wins on conflict)
+	@if ! git remote get-url upstream >/dev/null 2>&1; then \
+		echo "ERROR: 'upstream' remote not configured."; \
+		echo "  Run: git remote add upstream https://github.com/berntpopp/VarLens.git"; \
+		exit 1; \
+	fi
+	@current=$$(git symbolic-ref --short -q HEAD || echo ""); \
+	if [ -z "$$current" ]; then \
+		echo "ERROR: detached HEAD. Check out main or VarLens-Web first."; exit 1; \
+	fi; \
+	if [ "$$current" != "main" ] && [ "$$current" != "VarLens-Web" ]; then \
+		echo "ERROR: refusing to sync from branch '$$current' (only main / VarLens-Web supported)."; \
+		echo "  Check out the right branch first, or override deliberately by running the steps manually."; \
+		exit 1; \
+	fi
+	@if ! git diff --quiet || ! git diff --cached --quiet; then \
+		echo "ERROR: working tree is dirty. Commit or stash before sync-upstream."; \
+		exit 1; \
+	fi
+	@echo "==> Fetching upstream..."
+	git fetch upstream
+	@echo "==> Fast-forwarding main..."
+	git checkout main
+	git merge --ff-only upstream/main
+	@echo "==> Merging main into VarLens-Web (ours wins on conflict)..."
+	git checkout VarLens-Web
+	git merge -X ours main
+	@echo "==> Done. Review with 'git log --oneline main..HEAD' then push when ready."
+
+install-hooks: ## Install repo git hooks into .git/hooks/ (currently: pre-commit)
+	@mkdir -p .git/hooks
+	@ln -sf ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit
+	@chmod +x scripts/git-hooks/pre-commit
+	@rm -f .git/hooks/pre-push  # cleanup: hook moved from pre-push to pre-commit
+	@echo "==> Installed: .git/hooks/pre-commit -> scripts/git-hooks/pre-commit"
+	@echo "    Bypass for one commit: VARLENS_HOOK_SKIP=1 git commit ..."

@@ -65,18 +65,22 @@ describe('variants-logic exports', () => {
     expect(getDb).not.toHaveBeenCalled()
   })
 
-  it('fails variants:search clearly on postgres instead of calling getDb', async () => {
+  it('routes variants:search through the postgres read executor without calling getDb', async () => {
+    const execute = vi.fn().mockResolvedValue({ data: [], total_count: 0 })
     const getDb = vi.fn(() => {
-      throw new Error('getDb should not be called for postgres search rejection')
+      throw new Error('getDb should not be called for postgres search')
     })
     const getSession = () =>
       ({
-        capabilities: { backend: 'postgres' }
+        capabilities: { backend: 'postgres' },
+        getReadExecutor: () => ({ execute })
       }) as never
 
-    await expect(searchVariants(1, 'BRCA1', 20, getSession, getDb)).rejects.toThrow(
-      'PostgreSQL variants:search is deferred from Phase 7'
-    )
+    await expect(searchVariants(1, 'BRCA1', 20, getSession, getDb)).resolves.toEqual([])
+    expect(execute).toHaveBeenCalledWith({
+      type: 'variants:query',
+      params: [{ case_id: 1, gene_symbol: 'BRCA1' }, 20, 0, undefined, true, false]
+    })
     expect(getDb).not.toHaveBeenCalled()
   })
 })

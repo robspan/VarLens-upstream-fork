@@ -12,9 +12,15 @@ import type { StorageSession } from '../storage/session'
 let dbPool: DbPool | null = null
 type DbPoolSource = {
   capabilities: Pick<StorageSession['capabilities'], 'backend'>
-  getDbPool: StorageSession['getDbPool']
+  // Concrete-class method on SqliteStorageSession; no longer on the
+  // sealed StorageSession interface (see src/main/storage/session.ts).
+  getDbPool(): DbPool | null
 }
-let getActiveSession: (() => DbPoolSource | null) | null = null
+let getActiveSession: (() => StorageSession | null) | null = null
+
+function hasDbPoolSource(session: StorageSession): session is StorageSession & DbPoolSource {
+  return 'getDbPool' in session && typeof session.getDbPool === 'function'
+}
 
 /**
  * User-configured worker thread count.
@@ -33,7 +39,8 @@ export function getDbPool(): DbPool | null {
     return null
   }
 
-  const sessionPool = activeSession?.getDbPool() ?? null
+  const sessionPool =
+    activeSession !== null && hasDbPoolSource(activeSession) ? activeSession.getDbPool() : null
   if (sessionPool !== null) {
     return sessionPool
   }
@@ -41,7 +48,7 @@ export function getDbPool(): DbPool | null {
   return dbPool
 }
 
-export function setActiveSessionResolver(resolver: () => DbPoolSource | null): void {
+export function setActiveSessionResolver(resolver: () => StorageSession | null): void {
   getActiveSession = resolver
 }
 

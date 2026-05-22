@@ -1,0 +1,38 @@
+name: Upstream sync check
+
+# Fails if HEAD is missing commits from berntpopp/VarLens@main.
+# Pairs with `make sync-upstream` and the scripts/git-hooks/pre-push hook.
+
+on:
+  pull_request:
+    branches: [main, VarLens-Web]
+  push:
+    branches: [main, VarLens-Web]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Add upstream remote
+        run: git remote add upstream https://github.com/berntpopp/VarLens.git
+
+      - name: Fetch upstream/main
+        run: git fetch upstream main
+
+      - name: Verify upstream/main is ancestor of HEAD
+        run: |
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "OK: branch contains all commits from upstream/main."
+            exit 0
+          fi
+          behind=$(git rev-list --count HEAD..upstream/main)
+          echo "::error::Branch is missing ${behind} commit(s) from berntpopp/VarLens@main."
+          echo "Run 'make sync-upstream' locally and push the result."
+          exit 1

@@ -38,11 +38,13 @@ describe('DatabasePicker', () => {
     mockApi = createMockApi()
     mockApi.database.deleteFile = vi.fn().mockResolvedValue({ success: true })
     window.api = mockApi as unknown as typeof window.api
+    window.__VARLENS_WEB__ = false
   })
 
   afterEach(() => {
     wrapper?.unmount()
     document.body.innerHTML = ''
+    window.__VARLENS_WEB__ = false
     vi.restoreAllMocks()
   })
 
@@ -143,5 +145,26 @@ describe('DatabasePicker', () => {
 
     expect(mockApi.database.postgresProfileRemove).toHaveBeenCalledWith('profile-1')
     expect(mockApi.database.deleteFile).not.toHaveBeenCalled()
+  })
+
+  it('hides desktop database actions in web mode', async () => {
+    window.__VARLENS_WEB__ = true
+    const store = useDatabaseStore()
+    store.currentName = 'VarLens Web'
+    store.currentPath = 'web:postgres'
+    store.recentDatabases = [{ path: '/tmp/case.sqlite', name: 'case.sqlite', lastOpened: 1 }]
+    store.postgresProfiles = [POSTGRES_PROFILE]
+
+    mountPicker()
+    await openPickerMenu()
+
+    const menuText = document.body.textContent ?? ''
+    expect(menuText).toContain('VarLens Web')
+    expect(menuText).toContain('web:postgres')
+    expect(menuText).not.toContain('Recent Databases')
+    expect(menuText).not.toContain('Open...')
+    expect(menuText).not.toContain('New...')
+    expect(menuText).not.toContain('Add PostgreSQL...')
+    expect(mockApi.database.postgresProfilesList).not.toHaveBeenCalled()
   })
 })

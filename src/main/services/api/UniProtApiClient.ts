@@ -12,14 +12,15 @@ import { ApiCache } from './ApiCache'
 import { UniProtResponseSchema } from './schemas/protein-response'
 import type { ProteinMappingResult, ProteinApiError } from '../../../shared/types/protein'
 import { mainLogger } from '../MainLogger'
+import { apiFixturePath, readApiFixture } from './ApiFixtureLoader'
 
 export class UniProtApiClient {
-  private cache: ApiCache
+  private cache: ApiCache | null
   private limiter: Bottleneck
   private readonly baseUrl = 'https://rest.uniprot.org'
   private readonly cacheTtlDays = 90
 
-  constructor(cache: ApiCache) {
+  constructor(cache: ApiCache | null) {
     this.cache = cache
 
     this.limiter = new Bottleneck({
@@ -37,8 +38,29 @@ export class UniProtApiClient {
   async fetchProteinMapping(geneSymbol: string): Promise<ProteinMappingResult | ProteinApiError> {
     const cacheKey = `uniprot:${geneSymbol}`
 
+    const fixture = readApiFixture(apiFixturePath(['uniprot', `${geneSymbol.toLowerCase()}.json`]))
+    if (fixture !== null) {
+      const raw = UniProtResponseSchema.parse(fixture)
+      const result = raw.results[0]
+      if (result === undefined) {
+        return { success: false, error: `No UniProt entry found for gene: ${geneSymbol}` }
+      }
+      return {
+        success: true,
+        mapping: {
+          uniprotAccession: result.primaryAccession,
+          geneName: result.genes?.[0]?.geneName?.value ?? geneSymbol,
+          proteinName: result.proteinDescription?.recommendedName?.fullName?.value ?? '',
+          proteinLength: result.sequence.length
+        },
+        cacheInfo: {
+          cached: false
+        }
+      }
+    }
+
     // Check cache first
-    const cached = this.cache.get(cacheKey)
+    const cached = this.cache?.get(cacheKey)
     if (cached) {
       try {
         const raw = UniProtResponseSchema.parse(JSON.parse(cached.data))
@@ -78,7 +100,7 @@ export class UniProtApiClient {
       }
 
       // Cache the raw response
-      this.cache.set(cacheKey, JSON.stringify(rawResponse), this.cacheTtlDays)
+      this.cache?.set(cacheKey, JSON.stringify(rawResponse), this.cacheTtlDays)
 
       const result = data.results[0]
       return {
@@ -145,6 +167,6 @@ export class UniProtApiClient {
    * Clear all cached UniProt responses
    */
   clearCache(): void {
-    this.cache.clearByPrefix('uniprot:')
+    this.cache?.clearByPrefix('uniprot:')
   }
 }

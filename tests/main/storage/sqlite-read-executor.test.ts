@@ -41,11 +41,15 @@ describe('SqliteReadExecutor', () => {
     }
     const executor = new SqliteReadExecutor(databaseService as never, dbPool as never)
 
-    await expect(executor.execute({ type: 'cases:query', params })).resolves.toBe(expected)
+    await expect(executor.execute({ type: 'cases:query', params: [params] })).resolves.toBe(
+      expected
+    )
     expect(dbPool.run).toHaveBeenCalledWith({
       type: 'cases:query',
       params: [params]
     })
+    // Note: the SqliteReadExecutor now passes task.params (the tuple)
+    // straight through to the pool — no extra wrapping.
     expect(databaseService.cases.queryCases).not.toHaveBeenCalled()
   })
 
@@ -58,7 +62,9 @@ describe('SqliteReadExecutor', () => {
     }
     const executor = new SqliteReadExecutor(databaseService as never, null)
 
-    await expect(executor.execute({ type: 'cases:query', params })).resolves.toBe(expected)
+    await expect(executor.execute({ type: 'cases:query', params: [params] })).resolves.toBe(
+      expected
+    )
     expect(databaseService.cases.queryCases).toHaveBeenCalledWith(params)
   })
 

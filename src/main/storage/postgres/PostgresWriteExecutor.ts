@@ -8,6 +8,7 @@ import type { PostgresCommentsMetricsRepository } from './PostgresCommentsMetric
 import type { PostgresFilterPresetsRepository } from './PostgresFilterPresetsRepository'
 import type { PostgresPanelsRepository } from './PostgresPanelsRepository'
 import type { PostgresTagsRepository } from './PostgresTagsRepository'
+import type { PostgresTranscriptsRepository } from './PostgresTranscriptsRepository'
 
 type PostgresCaseMetadataWriter = Pick<
   PostgresCaseMetadataRepository,
@@ -53,8 +54,10 @@ export class PostgresWriteExecutor implements StorageWriteExecutor {
       annotations: Pick<
         PostgresAnnotationsRepository,
         | 'upsertGlobalAnnotation'
+        | 'upsertGlobalAnnotationWithAudit'
         | 'deleteGlobalAnnotation'
         | 'upsertPerCaseAnnotation'
+        | 'upsertPerCaseAnnotationWithAudit'
         | 'deletePerCaseAnnotation'
       >
       commentsMetrics: Pick<
@@ -89,6 +92,10 @@ export class PostgresWriteExecutor implements StorageWriteExecutor {
       analysisGroups: Pick<
         PostgresAnalysisGroupsRepository,
         'createGroup' | 'updateGroup' | 'deleteGroup' | 'addMember' | 'removeMember'
+      >
+      transcripts: Pick<
+        PostgresTranscriptsRepository,
+        'switchSelectedTranscript' | 'insertTranscriptAndSwitch'
       >
     }
   ) {}
@@ -172,6 +179,15 @@ export class PostgresWriteExecutor implements StorageWriteExecutor {
           normalizeAnnotationUpdates(task.params[1])
         )
 
+      case 'annotations:upsertGlobalWithAudit':
+        return await this.workflow.annotations.upsertGlobalAnnotationWithAudit(
+          task.params[0].chr,
+          task.params[0].pos,
+          task.params[0].ref,
+          task.params[0].alt,
+          normalizeAnnotationUpdates(task.params[1])
+        )
+
       case 'annotations:deleteGlobal':
         return await this.workflow.annotations.deleteGlobalAnnotation(
           task.params[0].chr,
@@ -182,6 +198,13 @@ export class PostgresWriteExecutor implements StorageWriteExecutor {
 
       case 'annotations:upsertPerCase':
         return await this.workflow.annotations.upsertPerCaseAnnotation(
+          task.params[0],
+          task.params[1],
+          normalizeAnnotationUpdates(task.params[2])
+        )
+
+      case 'annotations:upsertPerCaseWithAudit':
+        return await this.workflow.annotations.upsertPerCaseAnnotationWithAudit(
           task.params[0],
           task.params[1],
           normalizeAnnotationUpdates(task.params[2])
@@ -276,6 +299,12 @@ export class PostgresWriteExecutor implements StorageWriteExecutor {
 
       case 'audit:append':
         return await this.workflow.audit.append(task.params[0])
+
+      case 'transcripts:switch':
+        return await this.workflow.transcripts.switchSelectedTranscript(...task.params)
+
+      case 'transcripts:insertAndSwitch':
+        return await this.workflow.transcripts.insertTranscriptAndSwitch(...task.params)
     }
 
     const exhaustive: never = task

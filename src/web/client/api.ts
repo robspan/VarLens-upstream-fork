@@ -1,0 +1,164 @@
+/**
+ * Web-mode `window.api`.
+ *
+ * Single Proxy that forwards `window.api.<domain>.<method>(...args)` to
+ * `POST /api/<domain>/<method>` with `{ args }`, returning the parsed
+ * JSON body. Typed as `WindowAPI` so renderer call sites stay identical
+ * to the Electron build.
+ *
+ * Three behaviours the renderer relies on that don't map to plain RPC:
+ *
+ *   - Event subscribers. Import progress is bridged over server-sent
+ *     events; unsupported event sources still receive a no-op
+ *     unsubscribe so call sites don't crash.
+ *   - `perf.isEnabled` / `perf.reportInteractive`. Synchronous
+ *     boolean / fire-and-forget; stubbed locally.
+ *   - `shell.openExternal`. Browser equivalent is `window.open`.
+ *
+ * Everything else is RPC. The server dispatcher is what enforces which
+ * methods actually exist; the Proxy is permissive on purpose.
+ */
+import type { WindowAPI } from '../../shared/types/api'
+import type { UpdateStatus } from '../../shared/types/api'
+import { isIpcError } from '../../shared/types/errors'
+
+declare const __APP_VERSION__: string
+
+interface InvokeBody {
+  args: unknown[]
+}
+
+// Vite's `base` config materialises here at build time. The browser
+// loads the SPA from BASE_URL (e.g. `/varlens/`), so API calls have to
+// share that prefix or reverse-proxy path routing won't match.
+const API_BASE = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/api`
+
+async function httpInvoke(domain: string, method: string, args: unknown[]): Promise<unknown> {
+  const body: InvokeBody = { args }
+  const res = await fetch(`${API_BASE}/${domain}/${method}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+  // Server returns JSON for both success and application errors
+  // (SerializableError). Non-2xx with non-JSON body is a transport
+  // failure — surface it.
+  const text = await res.text()
+  if (!res.ok) {
+    try {
+      const parsed = JSON.parse(text) as unknown
+      if (isIpcError(parsed)) return parsed
+    } catch {
+      // Throw below for non-JSON error responses.
+    }
+    throw new Error(`web rpc ${domain}.${method}: ${res.status} ${res.statusText}: ${text}`)
+  }
+  if (text === '') return undefined
+  try {
+    return JSON.parse(text)
+  } catch {
+    throw new Error(`web rpc ${domain}.${method}: ${res.status} ${res.statusText}: ${text}`)
+  }
+}
+
+const NOOP_UNSUBSCRIBE = (): void => {}
+
+function subscribeWebEvent<T>(type: string, callback: (payload: T) => void): () => void {
+  if (typeof EventSource === 'undefined') return NOOP_UNSUBSCRIBE
+
+  const source = new EventSource(`${API_BASE}/events`, { withCredentials: true })
+  const listener = (event: MessageEvent<string>): void => {
+    callback(JSON.parse(event.data) as T)
+  }
+  source.addEventListener(type, listener as EventListener)
+  return () => {
+    source.removeEventListener(type, listener as EventListener)
+    source.close()
+  }
+}
+
+function buildDomainProxy(domain: string): unknown {
+  return new Proxy(
+    {},
+    {
+      get(_target, prop: string | symbol) {
+        if (typeof prop !== 'string') return undefined
+        // Event subscribers: window.api.<domain>.on*(callback) → no-op unsubscribe.
+        if (prop.startsWith('on')) {
+          return (..._args: unknown[]) => NOOP_UNSUBSCRIBE
+        }
+        return (...args: unknown[]) => httpInvoke(domain, prop, args)
+      }
+    }
+  )
+}
+
+const PERF_API = {
+  reportInteractive: () => undefined,
+  getSnapshot: () => httpInvoke('perf', 'getSnapshot', []),
+  resetSnapshot: () => httpInvoke('perf', 'resetSnapshot', []),
+  isEnabled: () => false
+}
+
+const SHELL_API = {
+  openExternal: (url: string) => {
+    window.open(url, '_blank', 'noopener,noreferrer')
+    return Promise.resolve({ ok: true } as unknown)
+  },
+  showItemInFolder: () => Promise.resolve({ ok: false } as unknown),
+  updateDomains: (_domains: string[]) => Promise.resolve(undefined)
+}
+
+const SYSTEM_API = {
+  getVersion: () => Promise.resolve({ app: __APP_VERSION__, electron: 'web' }),
+  getUserDataPath: () => Promise.resolve('web'),
+  getCpuCount: () => Promise.resolve(navigator.hardwareConcurrency || 1),
+  setWorkerThreads: (_count: number) => Promise.resolve(undefined),
+  getWorkerThreads: () => Promise.resolve(0),
+  getLogFilePath: () => Promise.resolve('')
+}
+
+const idleUpdateStatus: UpdateStatus = { state: 'idle' }
+
+const UPDATER_API = {
+  checkForUpdate: () => Promise.resolve(undefined),
+  downloadUpdate: () => Promise.resolve(undefined),
+  installUpdate: () => Promise.resolve(undefined),
+  getStatus: () => Promise.resolve(idleUpdateStatus),
+  onStatusChange: (_callback: (status: UpdateStatus) => void) => NOOP_UNSUBSCRIBE
+}
+
+function buildImportApi(): unknown {
+  const rpc = buildDomainProxy('import') as Record<string, unknown>
+  return new Proxy(
+    {},
+    {
+      get(_target, prop: string | symbol) {
+        if (prop === 'onProgress') {
+          return (callback: (progress: unknown) => void) =>
+            subscribeWebEvent('import:progress', callback)
+        }
+        return typeof prop === 'string' ? rpc[prop] : undefined
+      }
+    }
+  )
+}
+
+const DOMAIN_OVERRIDES: Record<string, unknown> = {
+  import: buildImportApi(),
+  perf: PERF_API,
+  shell: SHELL_API,
+  system: SYSTEM_API,
+  updater: UPDATER_API
+}
+
+export function createApi(): WindowAPI {
+  return new Proxy({} as WindowAPI, {
+    get(_target, prop: string | symbol) {
+      if (typeof prop !== 'string') return undefined
+      if (prop in DOMAIN_OVERRIDES) return DOMAIN_OVERRIDES[prop]
+      return buildDomainProxy(prop)
+    }
+  }) as WindowAPI
+}

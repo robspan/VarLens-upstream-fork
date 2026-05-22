@@ -194,6 +194,17 @@ export async function getFilterOptions(
 /**
  * FTS5 full-text search for variants.
  */
+function unwrapVariantSearchResult(result: unknown): unknown {
+  if (
+    result !== null &&
+    typeof result === 'object' &&
+    Array.isArray((result as { data?: unknown }).data)
+  ) {
+    return (result as { data: unknown[] }).data
+  }
+  return result
+}
+
 export async function searchVariants(
   caseId: number,
   query: string,
@@ -204,7 +215,11 @@ export async function searchVariants(
 ): Promise<unknown> {
   const deps = resolveReadDependencies(getSessionOrDb, getDbOrPool, getDbPool)
   if (deps.session?.capabilities.backend === 'postgres') {
-    throw new Error('PostgreSQL variants:search is deferred from Phase 7')
+    const result = await deps.session.getReadExecutor().execute({
+      type: 'variants:query',
+      params: [{ case_id: caseId, gene_symbol: query }, limit, 0, undefined, true, false]
+    })
+    return unwrapVariantSearchResult(result)
   }
 
   const pool = deps.getDbPool?.()

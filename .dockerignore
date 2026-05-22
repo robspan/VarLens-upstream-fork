@@ -1,0 +1,63 @@
+# Excluded from the docker build context. Mirrors .gitignore plus the
+# desktop-only artifact dirs we never want shipped in the web image.
+
+# Host node_modules MUST be excluded — `COPY . .` would otherwise overwrite
+# the freshly rebuilt system-Node-ABI binaries with the developer's local
+# Electron-ABI binaries from `make dev`, producing a broken image.
+node_modules/
+**/node_modules/
+
+# VCS / agent state
+.git/
+.github/
+.husky/
+.claude/
+.vscode/
+.idea/
+.codex
+
+# Build/test outputs (the builder stage rebuilds what it needs)
+out/
+dist/
+release/
+coverage/
+.nyc_output/
+.eslintcache
+.prettiercache
+.cache/
+.playwright-mcp/
+playwright-report/
+playwright-output/
+test-results/
+tests/.cache/
+
+# Desktop-only assets
+build/
+resources/
+scripts/perf/
+scripts/postgres/
+
+# Docs / planning never shipped in the runtime image
+docs/
+.planning/
+
+# Local secrets / env
+.env
+.env.local
+.env.*.local
+.env.web
+
+# Test fixtures (large)
+tests/test-data/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.log
+npm-debug.log*
+
+# Local databases
+*.db
+*.db-journal

@@ -11,13 +11,14 @@ import { ApiCache } from './ApiCache'
 import { AlphaFoldResponseSchema } from './schemas/protein-response'
 import type { ProteinStructureResult, ProteinApiError } from '../../../shared/types/protein'
 import { mainLogger } from '../MainLogger'
+import { apiFixturePath, readApiFixture } from './ApiFixtureLoader'
 
 export class AlphaFoldApiClient {
-  private cache: ApiCache
+  private cache: ApiCache | null
   private readonly baseUrl = 'https://alphafold.ebi.ac.uk'
   private readonly cacheTtlDays = 90
 
-  constructor(cache: ApiCache) {
+  constructor(cache: ApiCache | null) {
     this.cache = cache
   }
 
@@ -32,8 +33,22 @@ export class AlphaFoldApiClient {
   ): Promise<ProteinStructureResult | ProteinApiError> {
     const cacheKey = `alphafold:${uniprotAccession}`
 
+    const fixture = readApiFixture(
+      apiFixturePath(['alphafold', `${uniprotAccession.toLowerCase()}.json`])
+    )
+    if (fixture !== null) {
+      const raw = AlphaFoldResponseSchema.parse(fixture)
+      return {
+        success: true,
+        structure: this.buildStructureInfo(uniprotAccession, raw),
+        cacheInfo: {
+          cached: false
+        }
+      }
+    }
+
     // Check cache first
-    const cached = this.cache.get(cacheKey)
+    const cached = this.cache?.get(cacheKey)
     if (cached) {
       try {
         const raw = AlphaFoldResponseSchema.parse(JSON.parse(cached.data))
@@ -57,7 +72,7 @@ export class AlphaFoldApiClient {
       // 404 means no prediction exists — valid result
       if (status === 404) {
         // Cache the empty array so subsequent calls skip the network
-        this.cache.set(cacheKey, JSON.stringify([]), this.cacheTtlDays)
+        this.cache?.set(cacheKey, JSON.stringify([]), this.cacheTtlDays)
         return {
           success: true,
           structure: {
@@ -73,7 +88,7 @@ export class AlphaFoldApiClient {
 
       const parsed = AlphaFoldResponseSchema.parse(data)
 
-      this.cache.set(cacheKey, JSON.stringify(data), this.cacheTtlDays)
+      this.cache?.set(cacheKey, JSON.stringify(data), this.cacheTtlDays)
 
       return {
         success: true,
@@ -185,6 +200,6 @@ export class AlphaFoldApiClient {
    * Clear all cached AlphaFold responses
    */
   clearCache(): void {
-    this.cache.clearByPrefix('alphafold:')
+    this.cache?.clearByPrefix('alphafold:')
   }
 }

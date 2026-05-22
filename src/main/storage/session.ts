@@ -1,5 +1,3 @@
-import type { DatabaseService } from '../database/DatabaseService'
-import type { DbPool } from '../database/DbPool'
 import type { Case } from '../../shared/types/database'
 import type { StorageImportExecutor } from './import-executor'
 import type { StorageReadExecutor } from './read-executor'
@@ -14,16 +12,11 @@ export interface StorageSession {
   getReadExecutor(): StorageReadExecutor
   getWriteExecutor(): StorageWriteExecutor
   getImportExecutor(): StorageImportExecutor
-  /**
-   * Compatibility escape hatch for legacy SQLite-only paths.
-   * New migrated slices must use getReadExecutor().
-   */
-  getDatabaseService(): DatabaseService
-  /**
-   * Compatibility escape hatch for legacy SQLite-only paths.
-   * New migrated slices must use getReadExecutor().
-   */
-  getDbPool(): DbPool | null
+  // The former getDatabaseService() / getDbPool() escape hatches are off the
+  // interface. Backend-specific access (e.g. for SQLite-only flows like
+  // SqliteImportExecutor) goes through concrete class methods, with the
+  // consumer type-narrowing on capabilities.backend first. New domain logic
+  // must use getReadExecutor() / getWriteExecutor().
   getEncryptionKey(): string | undefined
   needsStartupRebuild(): boolean
   rekey(newPassword: string): void

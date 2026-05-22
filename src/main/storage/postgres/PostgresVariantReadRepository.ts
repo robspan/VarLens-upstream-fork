@@ -374,6 +374,19 @@ export class PostgresVariantReadRepository {
     return (result.rows as Array<{ gene_symbol: string }>).map((row) => row.gene_symbol)
   }
 
+  async searchVariants(caseId: number, query: string, limit: number): Promise<Variant[]> {
+    if (toPrefixTsQuery(query) === '') return []
+    const result = await this.queryVariants(
+      { case_id: caseId, search_query: query },
+      limit,
+      0,
+      undefined,
+      true,
+      false
+    )
+    return result.data
+  }
+
   async queryVariants(
     filter: VariantFilter,
     limit: number,

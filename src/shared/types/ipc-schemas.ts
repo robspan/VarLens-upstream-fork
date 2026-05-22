@@ -22,6 +22,21 @@ import { z } from 'zod'
 import { DOMAIN_CONFIG } from '../config'
 import { ACMG_CLASSIFICATIONS } from '../config/domain.config'
 import { normalizeAcmgClassification } from '../utils/acmg'
+export {
+  UsernameSchema,
+  PasswordSchema,
+  LoginParamsSchema,
+  CreateUserSchema,
+  ChangePasswordSchema
+} from '../api/schemas/auth'
+export {
+  TagIdSchema,
+  TagCreateSchema,
+  TagUpdateSchema,
+  VariantTagAssignSchema,
+  VariantTagSetSchema,
+  TagCaseVariantIdSchema
+} from '../api/schemas/tags'
 
 /**
  * Helper to create a nullish string that transforms null to undefined
@@ -360,49 +375,6 @@ export const TypesPresentPayloadSchema = z
   })
 
 // ============================================================
-// Tag Schemas
-// ============================================================
-
-/**
- * Schema for tag ID validation
- */
-export const TagIdSchema = z.number().int().positive()
-
-/**
- * Schema for tag creation
- */
-export const TagCreateSchema = z.object({
-  name: z.string().min(1).max(100),
-  color: z.string().min(4).max(9) // e.g., #fff or #ffffff
-})
-
-/**
- * Schema for tag update
- */
-export const TagUpdateSchema = z.object({
-  name: z.string().min(1).max(100).optional(),
-  color: z.string().min(4).max(9).optional()
-})
-
-/**
- * Schema for variant tag assignment (caseId, variantId, tagId)
- */
-export const VariantTagAssignSchema = z.object({
-  caseId: z.number().int().positive(),
-  variantId: z.number().int().positive(),
-  tagId: z.number().int().positive()
-})
-
-/**
- * Schema for setting multiple tags on a variant
- */
-export const VariantTagSetSchema = z.object({
-  caseId: z.number().int().positive(),
-  variantId: z.number().int().positive(),
-  tagIds: z.array(z.number().int().positive())
-})
-
-// ============================================================
 // Annotation Schemas
 // ============================================================
 
@@ -483,45 +455,6 @@ export const PerCaseAnnotationUpdatesSchema = z.object({
 export const CaseVariantIdSchema = z.object({
   caseId: z.number().int().positive(),
   variantId: z.number().int().positive()
-})
-
-// ============================================================
-// Auth Schemas
-// ============================================================
-
-/**
- * Schema for username validation
- */
-export const UsernameSchema = z.string().min(1).max(100)
-
-/**
- * Schema for password validation (min 8 characters)
- */
-export const PasswordSchema = z.string().min(8).max(256)
-
-/**
- * Schema for login parameters
- */
-export const LoginParamsSchema = z.object({
-  username: UsernameSchema,
-  password: z.string().min(1).max(256) // login allows any non-empty password
-})
-
-/**
- * Schema for user creation
- */
-export const CreateUserSchema = z.object({
-  username: UsernameSchema,
-  displayName: z.string().min(1).max(200),
-  tempPassword: PasswordSchema
-})
-
-/**
- * Schema for password change
- */
-export const ChangePasswordSchema = z.object({
-  oldPassword: z.string().min(1).max(256),
-  newPassword: PasswordSchema
 })
 
 // ============================================================

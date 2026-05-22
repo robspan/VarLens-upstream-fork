@@ -357,8 +357,14 @@ export function cancelGeneBurdenCompare(): void {
  */
 export async function getSummaryStatus(
   getDb: () => DatabaseService,
-  getDbPool?: () => DbPool | null
+  getDbPool?: () => DbPool | null,
+  getSession?: GetSession
 ): Promise<unknown> {
+  const postgresSession = getPostgresSession(getSession)
+  if (postgresSession !== undefined) {
+    return { is_stale: false, last_rebuilt_at: 0 }
+  }
+
   const pool = getDbPool?.()
   if (pool) {
     return await pool.run({ type: 'cohort:summaryStatus', params: [] })

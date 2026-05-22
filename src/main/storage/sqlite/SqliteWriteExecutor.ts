@@ -1,5 +1,6 @@
 import type { DatabaseService } from '../../database/DatabaseService'
 import type { StorageWriteExecutor, StorageWriteTask } from '../write-executor'
+import { globalAnnotationAuditEntries, perCaseAnnotationAuditEntries } from '../annotation-audit'
 
 function normalizeAnnotationUpdates<T extends { starred?: boolean }>(
   updates: T
@@ -9,6 +10,11 @@ function normalizeAnnotationUpdates<T extends { starred?: boolean }>(
     ...rest,
     ...(starred !== undefined ? { starred: starred ? 1 : 0 } : {})
   }
+}
+
+function serializeAuditValue(value: unknown): string | null {
+  if (value === undefined || value === null) return null
+  return typeof value === 'string' ? value : JSON.stringify(value)
 }
 
 export class SqliteWriteExecutor implements StorageWriteExecutor {
@@ -104,6 +110,37 @@ export class SqliteWriteExecutor implements StorageWriteExecutor {
           normalizeAnnotationUpdates(task.params[1])
         )
 
+      case 'annotations:upsertGlobalWithAudit': {
+        const coords = task.params[0]
+        const updates = task.params[1]
+        const oldAnnotation = this.databaseService.annotations.getGlobalAnnotation(
+          coords.chr,
+          coords.pos,
+          coords.ref,
+          coords.alt
+        )
+        const result = this.databaseService.annotations.upsertGlobalAnnotation(
+          coords.chr,
+          coords.pos,
+          coords.ref,
+          coords.alt,
+          normalizeAnnotationUpdates(updates)
+        )
+        for (const entry of globalAnnotationAuditEntries(
+          coords,
+          updates,
+          oldAnnotation as Record<string, unknown> | null
+        )) {
+          this.databaseService.auditLog.appendEntry({
+            ...entry,
+            old_value: serializeAuditValue(entry.old_value),
+            new_value: serializeAuditValue(entry.new_value),
+            user_name: entry.user_name ?? null
+          })
+        }
+        return result
+      }
+
       case 'annotations:deleteGlobal':
         this.databaseService.annotations.deleteGlobalAnnotation(
           task.params[0].chr,
@@ -119,6 +156,33 @@ export class SqliteWriteExecutor implements StorageWriteExecutor {
           task.params[1],
           normalizeAnnotationUpdates(task.params[2])
         )
+
+      case 'annotations:upsertPerCaseWithAudit': {
+        const [caseId, variantId, updates] = task.params
+        const oldAnnotation = this.databaseService.annotations.getPerCaseAnnotation(
+          caseId,
+          variantId
+        )
+        const result = this.databaseService.annotations.upsertPerCaseAnnotation(
+          caseId,
+          variantId,
+          normalizeAnnotationUpdates(updates)
+        )
+        for (const entry of perCaseAnnotationAuditEntries(
+          caseId,
+          variantId,
+          updates,
+          oldAnnotation as Record<string, unknown> | null
+        )) {
+          this.databaseService.auditLog.appendEntry({
+            ...entry,
+            old_value: serializeAuditValue(entry.old_value),
+            new_value: serializeAuditValue(entry.new_value),
+            user_name: entry.user_name ?? null
+          })
+        }
+        return result
+      }
 
       case 'annotations:deletePerCase':
         this.databaseService.annotations.deletePerCaseAnnotation(...task.params)
@@ -242,6 +306,14 @@ export class SqliteWriteExecutor implements StorageWriteExecutor {
           user_name: task.params[0].user_name ?? null
         })
         return undefined
+
+      case 'transcripts:switch':
+        this.databaseService.transcripts.switchSelectedTranscript(...task.params)
+        return { success: true }
+
+      case 'transcripts:insertAndSwitch':
+        this.databaseService.transcripts.insertTranscriptAndSwitch(...task.params)
+        return { success: true }
     }
 
     const exhaustive: never = task

@@ -138,7 +138,7 @@ export function registerCohortHandlers({
   // Summary status
   ipcMain.handle('cohort:summaryStatus', async () => {
     return wrapHandler(async () => {
-      return getSummaryStatus(getDb, getDbPool)
+      return getSummaryStatus(getDb, getDbPool, getSession)
     })
   })
 

@@ -1,34 +1,12 @@
-import { z } from 'zod'
 import { wrapHandler } from '../errorHandler'
 import type { HandlerDependencies } from '../types'
-import { CaseIdSchema } from '../../../shared/types/ipc-schemas'
+import {
+  CaseCommentCaseIdSchema,
+  CaseCommentIdSchema,
+  CommentCreateSchema,
+  CommentUpdateSchema
+} from '../../../shared/api/schemas/case-comments'
 import { mainLogger } from '../../services/MainLogger'
-
-// ============================================================
-// Inline Zod Schemas for Case Comments
-// ============================================================
-
-const CommentIdSchema = z.number().int().positive()
-
-const CommentCategorySchema = z.enum([
-  'Clinical Note',
-  'Lab Result',
-  'Interpretation',
-  'Follow-up',
-  'Family History',
-  'Treatment'
-])
-
-const CommentCreateSchema = z.object({
-  caseId: CaseIdSchema,
-  category: CommentCategorySchema,
-  content: z.string().min(1)
-})
-
-const CommentUpdateSchema = z.object({
-  commentId: CommentIdSchema,
-  content: z.string().min(1)
-})
 
 /**
  * Case Comments IPC handlers
@@ -44,7 +22,7 @@ export function registerCaseCommentHandlers({
   ipcMain.handle('case-comments:list', async (_event, caseId: unknown) => {
     return wrapHandler(async () => {
       // ANTI-07: Runtime validation at IPC boundary
-      const validated = CaseIdSchema.safeParse(caseId)
+      const validated = CaseCommentCaseIdSchema.safeParse(caseId)
       if (!validated.success) {
         mainLogger.error(
           `Invalid case-comments:list params: ${validated.error.message}`,
@@ -119,7 +97,7 @@ export function registerCaseCommentHandlers({
   ipcMain.handle('case-comments:delete', async (_event, commentId: unknown) => {
     return wrapHandler(async () => {
       // ANTI-07: Runtime validation at IPC boundary
-      const validated = CommentIdSchema.safeParse(commentId)
+      const validated = CaseCommentIdSchema.safeParse(commentId)
       if (!validated.success) {
         mainLogger.error(
           `Invalid case-comments:delete params: ${validated.error.message}`,

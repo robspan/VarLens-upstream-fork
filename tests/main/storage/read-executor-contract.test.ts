@@ -18,7 +18,7 @@ describe('StorageReadExecutor contract', () => {
 
     const queryTask = {
       type: 'cases:query',
-      params
+      params: [params]
     } satisfies StorageReadTask
 
     expectTypeOf(queryTask).toMatchTypeOf<StorageReadTask>()

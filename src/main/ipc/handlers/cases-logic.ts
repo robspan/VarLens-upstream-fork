@@ -95,7 +95,7 @@ export async function queryCases(
 ): Promise<unknown> {
   const task: StorageReadTask = {
     type: 'cases:query',
-    params
+    params: [params]
   }
 
   return await getSession().getReadExecutor().execute(task)

@@ -75,22 +75,41 @@ Do **not** use `electron-builder install-app-deps` — it has been broken for El
 
 The **Makefile is the source of truth**. GitHub Actions workflows mirror it target-for-target. When in doubt, run the `make` target, not the underlying npm script.
 
-| Command                                                             | Purpose                                                                    |
-| ------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `make dev`                                                          | Rebuild for Electron, start hot-reload dev server                          |
-| `make lint` / `make lint-check`                                     | ESLint with / without auto-fix                                             |
-| `make format` / `make format-check`                                 | Prettier with / without write                                              |
-| `make typecheck`                                                    | `vue-tsc` (renderer) + `tsc` (node) in parallel                            |
-| `make test`                                                         | Vitest once (run `make rebuild-node` first)                                |
-| `make test-watch` / `make test-coverage`                            | Vitest watch / with coverage                                               |
-| `make build`                                                        | `electron-vite build` into `out/`                                          |
-| `make dist` / `make dist-linux` / `make dist-mac` / `make dist-win` | Build + package                                                            |
-| `make ci`                                                           | Local minimum: lint-check + format-check + typecheck + rebuild-node + test |
-| `make ci-full` / `make ci-actions`                                  | Full local mirror of GitHub Actions pipeline                               |
-| `make ci-startup-smoke`                                             | Playwright Electron startup smoke under xvfb (Linux)                       |
-| `make docs-dev` / `make docs`                                       | VitePress user docs                                                        |
+| Command                                                             | Purpose                                                                                         |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `make dev`                                                          | Rebuild for Electron, start hot-reload dev server                                               |
+| `make lint` / `make lint-check`                                     | ESLint with / without auto-fix                                                                  |
+| `make format` / `make format-check`                                 | Prettier with / without write                                                                   |
+| `make typecheck`                                                    | `vue-tsc` (renderer) + `tsc` (node) in parallel                                                 |
+| `make test`                                                         | Vitest once (run `make rebuild-node` first)                                                     |
+| `make test-watch` / `make test-coverage`                            | Vitest watch / with coverage                                                                    |
+| `make build`                                                        | `electron-vite build` into `out/`                                                               |
+| `make dist` / `make dist-linux` / `make dist-mac` / `make dist-win` | Build + package                                                                                 |
+| `make ci`                                                           | Local minimum: lint-check + format-check + typecheck + rebuild-node + test                      |
+| `make ci-full` / `make ci-actions`                                  | Full local mirror of GitHub Actions pipeline                                                    |
+| `make ci-startup-smoke`                                             | Playwright Electron startup smoke under xvfb (Linux)                                            |
+| `make docs-dev` / `make docs`                                       | VitePress user docs                                                                             |
+| `VARLENS_WEB=1 make ...`                                            | Mode toggle: extends `dev` / `test` / `ci` to include the web layer (see § "Mode toggle" below) |
 
 **Before claiming work is done, run `make ci` at minimum.** If you have run local packaging first, clean `release/` before `make ci` because ESLint still traverses generated release artifacts. For anything touching Electron lifecycle, IPC, workers, or packaging, run `make ci-full`.
+
+### Mode toggle: desktop (default) / web (opt-in)
+
+`VARLENS_WEB=1` extends `make dev`, `make test`, and `make ci` to include the web layer. Default is desktop. Direct targets (`make web-gate-static`, etc.) still work for web-only invocations.
+
+```
+make test                    # desktop suite (main + renderer + refactor-checkpoint)
+VARLENS_WEB=1 make test      # adds web-gate static + integration
+
+make ci                      # desktop CI gate
+VARLENS_WEB=1 make ci        # desktop + web
+
+make dev                     # Electron dev server
+VARLENS_WEB=1 make dev       # local Postgres-backed web server at http://localhost:8787/
+make web-dev                 # same web server target without setting VARLENS_WEB
+```
+
+This matches the §app2.1 "desktop is default; web is opt-in" model. A desktop-only contributor never needs to set the var; a web-track contributor sets it once per shell.
 
 ## Testing
 

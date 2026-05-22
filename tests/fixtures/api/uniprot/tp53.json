@@ -1,0 +1,24 @@
+{
+  "results": [
+    {
+      "primaryAccession": "P04637",
+      "genes": [
+        {
+          "geneName": {
+            "value": "TP53"
+          }
+        }
+      ],
+      "proteinDescription": {
+        "recommendedName": {
+          "fullName": {
+            "value": "Cellular tumor antigen p53"
+          }
+        }
+      },
+      "sequence": {
+        "length": 393
+      }
+    }
+  ]
+}

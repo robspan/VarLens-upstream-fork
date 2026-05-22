@@ -137,8 +137,10 @@ describe('PostgresStorageSession', () => {
       } as never
     })
 
-    expect(() => session.getDatabaseService()).toThrow('DatabaseService is not available')
-    expect(() => session.getDbPool()).toThrow('DbPool is not available')
+    // After the Phase 1 db-seam seal, getDatabaseService / getDbPool are
+    // off the StorageSession interface and removed from PostgresStorageSession
+    // entirely. Only the SQLite-only method that *remains* on the interface
+    // (rekey) is still asserted here.
     expect(() => session.rekey('secret')).toThrow('SQLite rekey is not supported')
   })
 
@@ -224,11 +226,13 @@ describe('PostgresStorageSession', () => {
     await expect(
       session.getReadExecutor().execute({
         type: 'cases:query',
-        params: {
-          limit: 25,
-          offset: 0,
-          sort_order: 'desc'
-        }
+        params: [
+          {
+            limit: 25,
+            offset: 0,
+            sort_order: 'desc'
+          }
+        ]
       })
     ).resolves.toMatchObject({
       data: [

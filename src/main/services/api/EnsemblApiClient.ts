@@ -12,14 +12,15 @@ import { ApiCache } from './ApiCache'
 import { EnsemblGeneLookupSchema } from './schemas/protein-response'
 import type { GeneStructureResult, ProteinApiError } from '../../../shared/types/protein'
 import { mainLogger } from '../MainLogger'
+import { apiFixturePath, readApiFixture } from './ApiFixtureLoader'
 
 export class EnsemblApiClient {
-  private cache: ApiCache
+  private cache: ApiCache | null
   private limiter: Bottleneck
   private readonly baseUrl = 'https://rest.ensembl.org'
   private readonly cacheTtlDays = 90
 
-  constructor(cache: ApiCache) {
+  constructor(cache: ApiCache | null) {
     this.cache = cache
 
     this.limiter = new Bottleneck({
@@ -40,8 +41,26 @@ export class EnsemblApiClient {
   async fetchGeneStructure(geneSymbol: string): Promise<GeneStructureResult | ProteinApiError> {
     const cacheKey = `ensembl:gene:${geneSymbol}`
 
+    const fixture = readApiFixture(
+      apiFixturePath(['ensembl', `${geneSymbol.toLowerCase()}-gene-structure.json`])
+    )
+    if (fixture !== null) {
+      const raw = EnsemblGeneLookupSchema.parse(fixture)
+      const result = this.parseGeneStructure(raw, geneSymbol)
+      if (result === null) {
+        return {
+          success: false,
+          error: `No transcript with exon data found for gene: ${geneSymbol}`
+        }
+      }
+      return {
+        ...result,
+        cacheInfo: { cached: false }
+      }
+    }
+
     // Check cache first
-    const cached = this.cache.get(cacheKey)
+    const cached = this.cache?.get(cacheKey)
     if (cached) {
       try {
         const raw = EnsemblGeneLookupSchema.parse(JSON.parse(cached.data))
@@ -65,7 +84,7 @@ export class EnsemblApiClient {
       const data = EnsemblGeneLookupSchema.parse(rawResponse)
 
       // Cache the raw response
-      this.cache.set(cacheKey, JSON.stringify(rawResponse), this.cacheTtlDays)
+      this.cache?.set(cacheKey, JSON.stringify(rawResponse), this.cacheTtlDays)
 
       const result = this.parseGeneStructure(data, geneSymbol)
       if (result === null) {
@@ -166,6 +185,6 @@ export class EnsemblApiClient {
    * Clear all cached Ensembl responses
    */
   clearCache(): void {
-    this.cache.clearByPrefix('ensembl:')
+    this.cache?.clearByPrefix('ensembl:')
   }
 }

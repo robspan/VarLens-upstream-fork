@@ -12,14 +12,15 @@ import { mainLogger } from '../MainLogger'
 import type { HpoTerm } from './schemas/hpo-response'
 import type { HpoSearchResult } from '../../../shared/types/api-enrichment'
 import { HpoAutocompleteResponseSchema } from './schemas/hpo-response'
+import { apiFixturePath, readApiFixture } from './ApiFixtureLoader'
 
 export class HpoApiClient {
   private readonly baseUrl = 'https://clinicaltables.nlm.nih.gov/api/hpo/v3/search'
-  private readonly cache: ApiCache
+  private readonly cache: ApiCache | null
   private lastRequestTime = 0
   private readonly minDelay = 200 // 5 req/sec courtesy rate limit
 
-  constructor(cache: ApiCache) {
+  constructor(cache: ApiCache | null) {
     this.cache = cache
   }
 
@@ -44,8 +45,19 @@ export class HpoApiClient {
       // Generate cache key
       const cacheKey = `hpo:search:${query.toLowerCase().trim()}:${maxResults}`
 
+      const fixture = readApiFixture(
+        apiFixturePath(['hpo', `search-${query.toLowerCase().trim()}.json`])
+      )
+      if (fixture !== null) {
+        const validated = HpoAutocompleteResponseSchema.parse(fixture)
+        return {
+          success: true,
+          terms: validated[3].map(([id, name]) => ({ id, name }))
+        }
+      }
+
       // Check cache first - HPO terms don't change often, cache for 30 days
-      const cached = this.cache.get(cacheKey)
+      const cached = this.cache?.get(cacheKey)
       if (cached) {
         const parsed = JSON.parse(cached.data) as HpoTerm[]
         return {
@@ -95,7 +107,7 @@ export class HpoApiClient {
       const terms: HpoTerm[] = validated[3].map(([id, name]) => ({ id, name }))
 
       // Cache transformed result
-      this.cache.set(cacheKey, JSON.stringify(terms), 30)
+      this.cache?.set(cacheKey, JSON.stringify(terms), 30)
 
       return {
         success: true,
@@ -125,7 +137,7 @@ export class HpoApiClient {
     }
 
     const cacheKey = `hpo:search:${query.toLowerCase().trim()}:${maxResults}`
-    const cached = this.cache.get(cacheKey)
+    const cached = this.cache?.get(cacheKey)
 
     if (!cached) return null
 
@@ -144,6 +156,6 @@ export class HpoApiClient {
    * Clear all cached HPO responses
    */
   clearCache(): void {
-    this.cache.clearByPrefix('hpo:')
+    this.cache?.clearByPrefix('hpo:')
   }
 }

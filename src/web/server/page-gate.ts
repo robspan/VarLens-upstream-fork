@@ -1,0 +1,105 @@
+/**
+ * Server-side login wall.
+ *
+ * `auth.ts` already gates `/api/*` paths. This module gates everything
+ * else: the SPA shell (`/`, `/index.html`), JS/CSS chunks, fonts,
+ * favicon, etc. An unauthenticated browser hitting any of those is
+ * redirected to `/login` and never receives a single SPA byte. A
+ * successful login binds the session cookie and the next request lands
+ * on the SPA, fully unaware that auth ever happened.
+ *
+ * Decision matrix per request:
+ *
+ *                          | session.user present | absent
+ *   ──────────────────────────────────────────────────────────────
+ *   /api/*                 | passthrough          | auth.ts handles 401
+ *   /healthz               | passthrough          | passthrough  (Caddy + smoke probes)
+ *   /login, /login/...     | passthrough          | passthrough  (the wall itself)
+ *   non-GET                | passthrough          | passthrough  (auth.ts/CSRF surface)
+ *   anything else (GET)    | passthrough          | 302 → /login?next=<path>
+ *
+ * Why preHandler and not onRequest: `@fastify/secure-session` populates
+ * `request.session` in its preValidation/preHandler chain, and we need
+ * to read `request.session.user` here. preHandler runs after that, so
+ * the session object is ready by the time we look.
+ *
+ * Open-redirect defence: only the request's path+query is considered
+ * for `?next=`. Anything containing `\` or matching `//host` shape is
+ * dropped (defence in depth — `sanitizeNextParam` in login-route.ts is
+ * the second checkpoint).
+ */
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+
+const ALWAYS_PUBLIC_PATHS = new Set<string>(['/healthz', '/login', '/login/'])
+const PUBLIC_PATH_PREFIXES = ['/login/']
+
+function isPublicPath(path: string): boolean {
+  if (ALWAYS_PUBLIC_PATHS.has(path)) return true
+  for (const prefix of PUBLIC_PATH_PREFIXES) {
+    if (path.startsWith(prefix)) return true
+  }
+  return false
+}
+
+/**
+ * Build the `?next=` value for the post-login redirect. Returns an
+ * empty string when the request path isn't a safe relative path; the
+ * login route then falls back to the configured app prefix.
+ */
+function buildNextParam(rawUrl: string): string {
+  // Drop anything that already smells like an open-redirect attempt.
+  // The browser never sends scheme+authority on a same-origin GET, so
+  // a `\` or `//` anywhere in the URL is suspicious.
+  if (rawUrl === '' || rawUrl[0] !== '/') return ''
+  if (rawUrl.includes('\\')) return ''
+  if (rawUrl.startsWith('//')) return ''
+  // Cap absurdly long URLs — the login route re-validates the prefix
+  // anyway, this is just to keep the redirect Location header sane.
+  if (rawUrl.length > 2048) return ''
+  return rawUrl
+}
+
+export interface PageGateOptions {
+  /**
+   * Mounted prefix the SPA lives under (matches Caddy's
+   * `handle_path /varlens*`). Used to construct the `Location` header
+   * for the 302. Defaults are resolved by login-route.ts.
+   */
+  appPathPrefix: string
+}
+
+export function registerPageGate(app: FastifyInstance, options: PageGateOptions): void {
+  const { appPathPrefix } = options
+
+  app.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
+    // Only intercept GETs. POST/PUT/DELETE traffic is API-only and is
+    // handled by auth.ts (401 for unauthenticated `/api/*`).
+    if (request.method !== 'GET' && request.method !== 'HEAD') return
+
+    const fullUrl = request.url
+    const path = fullUrl.split('?', 1)[0]
+
+    // `/api/*` is auth.ts's territory — never short-circuit it here, or
+    // the API would start redirecting instead of returning JSON 401s.
+    if (path.startsWith('/api/')) return
+    if (isPublicPath(path)) return
+
+    const user = request.session?.user
+    if (user !== undefined) return
+
+    // Build the redirect target, prepending the app prefix because the
+    // browser sees the app under e.g. `/varlens/login`, not `/login`.
+    // Caddy's `handle_path` strips the prefix on the way in, so by the
+    // time we issue a 302 we have to put it back on.
+    const next = buildNextParam(fullUrl)
+    const location =
+      appPathPrefix +
+      '/login' +
+      (next !== '' ? '?next=' + encodeURIComponent(appPathPrefix + next) : '')
+
+    reply.header('cache-control', 'no-store')
+    reply.code(302)
+    reply.header('location', location)
+    return reply.send()
+  })
+}

@@ -1,0 +1,108 @@
+{
+  "id": "ENSG00000141510",
+  "display_name": "TP53",
+  "start": 7661779,
+  "end": 7687546,
+  "strand": -1,
+  "seq_region_name": "17",
+  "Transcript": [
+    {
+      "id": "ENST00000269305",
+      "display_name": "TP53-201",
+      "start": 7668421,
+      "end": 7687490,
+      "strand": -1,
+      "is_canonical": 1,
+      "Exon": [
+        {
+          "start": 7687377,
+          "end": 7687490,
+          "id": "ENSE00003753508",
+          "strand": -1,
+          "seq_region_name": "17",
+          "object_type": "Exon"
+        },
+        {
+          "start": 7676521,
+          "end": 7676622,
+          "id": "ENSE00004023728",
+          "strand": -1,
+          "seq_region_name": "17",
+          "object_type": "Exon"
+        },
+        {
+          "start": 7676382,
+          "end": 7676403,
+          "id": "ENSE00002419584",
+          "strand": -1,
+          "seq_region_name": "17",
+          "object_type": "Exon"
+        },
+        {
+          "start": 7675994,
+          "end": 7676272,
+          "id": "ENSE00003625790",
+          "strand": -1,
+          "seq_region_name": "17",
+          "object_type": "Exon"
+        },
+        {
+          "start": 7675053,
+          "end": 7675236,
+          "id": "ENSE00003518480",
+          "strand": -1,
+          "seq_region_name": "17",
+          "object_type": "Exon"
+        },
+        {
+          "start": 7674859,
+          "end": 7674971,
+          "id": "ENSE00003723991",
+          "strand": -1,
+          "seq_region_name": "17",
+          "object_type": "Exon"
+        },
+        {
+          "start": 7674181,
+          "end": 7674290,
+          "id": "ENSE00003712342",
+          "strand": -1,
+          "seq_region_name": "17",
+          "object_type": "Exon"
+        },
+        {
+          "start": 7673701,
+          "end": 7673837,
+          "id": "ENSE00003725258",
+          "strand": -1,
+          "seq_region_name": "17",
+          "object_type": "Exon"
+        },
+        {
+          "start": 7673535,
+          "end": 7673608,
+          "id": "ENSE00003786593",
+          "strand": -1,
+          "seq_region_name": "17",
+          "object_type": "Exon"
+        },
+        {
+          "start": 7670609,
+          "end": 7670715,
+          "id": "ENSE00003545950",
+          "strand": -1,
+          "seq_region_name": "17",
+          "object_type": "Exon"
+        },
+        {
+          "start": 7668421,
+          "end": 7669690,
+          "id": "ENSE00004023724",
+          "strand": -1,
+          "seq_region_name": "17",
+          "object_type": "Exon"
+        }
+      ]
+    }
+  ]
+}

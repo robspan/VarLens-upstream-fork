@@ -1,8 +1,6 @@
 import type { Pool } from 'pg'
 
 import { mainLogger } from '../../services/MainLogger'
-import type { DatabaseService } from '../../database/DatabaseService'
-import type { DbPool } from '../../database/DbPool'
 import type { Case } from '../../../shared/types/database'
 import { PostgresAvailableBuildsRepository } from './PostgresAvailableBuildsRepository'
 import { PostgresAnalysisGroupsRepository } from './PostgresAnalysisGroupsRepository'
@@ -24,6 +22,7 @@ import { PostgresPanelsRepository } from './PostgresPanelsRepository'
 import { PostgresReadExecutor } from './PostgresReadExecutor'
 import { PostgresShortlistService } from './PostgresShortlistService'
 import { PostgresTagsRepository } from './PostgresTagsRepository'
+import { PostgresTranscriptsRepository } from './PostgresTranscriptsRepository'
 import { PostgresVariantReadRepository } from './PostgresVariantReadRepository'
 import type { StorageImportExecutor } from '../import-executor'
 import type { StorageReadExecutor } from '../read-executor'
@@ -129,6 +128,22 @@ export class PostgresStorageSession implements StorageSession {
     schema: string
   ) => PostgresCaseListRepository
   private readonly pool: Pool
+
+  /**
+   * Public accessor for the underlying pg.Pool.
+   *
+   * The web variant (src/web/server.ts) needs to share this pool with
+   * PostgresWebAuthService so the process opens exactly one connection
+   * pool, not two. Phase 2 #4's first cut reached into the private
+   * field via `as unknown as { pool? }` — QA flagged the cast as a
+   * type-system bypass that would silently break under any future
+   * refactor of the field. This getter makes the contract explicit
+   * and compiler-checked.
+   */
+  getPool(): Pool {
+    return this.pool
+  }
+
   private readonly readExecutor: StorageReadExecutor
   private readonly writeExecutor: StorageWriteExecutor
   private readonly importExecutor: StorageImportExecutor
@@ -150,6 +165,7 @@ export class PostgresStorageSession implements StorageSession {
     const analysisGroups = new PostgresAnalysisGroupsRepository(options.pool, options.config.schema)
     const cohort = new PostgresCohortRepository(options.pool, options.config.schema)
     const audit = new PostgresAuditLogRepository(options.pool, options.config.schema)
+    const transcripts = new PostgresTranscriptsRepository(options.pool, options.config.schema)
     const variants = new PostgresVariantReadRepository(options.pool, options.config.schema)
     const shortlist = new PostgresShortlistService({
       pool: options.pool,
@@ -171,6 +187,7 @@ export class PostgresStorageSession implements StorageSession {
       shortlist,
       analysisGroups,
       audit,
+      transcripts,
       caseMetadata,
       variants
     })
@@ -184,7 +201,8 @@ export class PostgresStorageSession implements StorageSession {
         panels,
         filterPresets,
         analysisGroups,
-        audit
+        audit,
+        transcripts
       }
     )
     this.importExecutor = new PostgresImportExecutor({
@@ -237,14 +255,6 @@ export class PostgresStorageSession implements StorageSession {
 
   getImportExecutor(): StorageImportExecutor {
     return this.importExecutor
-  }
-
-  getDatabaseService(): DatabaseService {
-    return unsupported('DatabaseService is not available for postgres sessions')
-  }
-
-  getDbPool(): DbPool | null {
-    return unsupported('DbPool is not available for postgres sessions')
   }
 
   getEncryptionKey(): string | undefined {

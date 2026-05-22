@@ -15,6 +15,7 @@ import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 import { logService } from '../services/LogService'
 import { useApiService } from '../composables/useApiService'
 import { useSettingsStore } from '../stores/settingsStore'
+import { isWebRuntime } from '../utils/runtime-mode'
 
 const {
   selectedCaseId,
@@ -37,6 +38,7 @@ const {
 const { api } = useApiService()
 const settingsStore = useSettingsStore()
 const hasCases = computed(() => caseCount.value > 0)
+const isWebMode = isWebRuntime()
 
 // ── Variant type tabs ─────────────────────────────────────────
 
@@ -325,7 +327,12 @@ defineExpose({
 </script>
 
 <template>
-  <EmptyState v-if="!selectedCaseId" :has-cases="hasCases" @import="handleImportClick" />
+  <EmptyState
+    v-if="!selectedCaseId"
+    :has-cases="hasCases"
+    :allow-import="!isWebMode"
+    @import="handleImportClick"
+  />
   <div v-else class="case-content">
     <!-- Variant type tabs (only shown when case has SV/CNV/STR data or Shortlist) -->
     <v-tabs

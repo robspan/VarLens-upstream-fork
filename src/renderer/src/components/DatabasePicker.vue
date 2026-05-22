@@ -17,7 +17,19 @@
       </v-btn>
     </template>
 
-    <v-list>
+    <v-list v-if="isWebMode">
+      <v-list-item>
+        <template #prepend>
+          <v-icon :icon="mdiDatabaseCog" />
+        </template>
+        <v-list-item-title>{{ databaseStore.currentName || 'VarLens Web' }}</v-list-item-title>
+        <v-list-item-subtitle class="text-truncate">
+          {{ databaseStore.currentPath || 'web:postgres' }}
+        </v-list-item-subtitle>
+      </v-list-item>
+    </v-list>
+
+    <v-list v-else>
       <!-- Recent databases section -->
       <v-list-subheader>Recent Databases</v-list-subheader>
       <template v-if="databaseStore.recentDatabases.length > 0">
@@ -217,6 +229,7 @@
 import { onMounted, ref } from 'vue'
 import { useDatabaseStore } from '../stores/databaseStore'
 import { useApiService } from '../composables/useApiService'
+import { isWebRuntime } from '../utils/runtime-mode'
 import PasswordDialog from './PasswordDialog.vue'
 import CreateDatabaseDialog from './CreateDatabaseDialog.vue'
 import ChangePasswordDialog from './ChangePasswordDialog.vue'
@@ -241,6 +254,7 @@ import {
 
 const databaseStore = useDatabaseStore()
 const { api } = useApiService()
+const isWebMode = isWebRuntime()
 
 // Component refs
 const passwordDialogRef = ref<InstanceType<typeof PasswordDialog> | null>(null)
@@ -262,7 +276,9 @@ const emit = defineEmits<{
 }>()
 
 onMounted(() => {
-  void fetchPostgresProfiles()
+  if (!isWebMode) {
+    void fetchPostgresProfiles()
+  }
 })
 
 // Handlers
@@ -340,7 +356,7 @@ function handlePasswordChanged(): void {
 }
 
 async function handleMenuToggle(isOpen: boolean): Promise<void> {
-  if (isOpen) {
+  if (isOpen && !isWebMode) {
     await fetchPostgresProfiles()
   }
 }

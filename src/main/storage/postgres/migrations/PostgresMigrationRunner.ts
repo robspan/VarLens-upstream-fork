@@ -29,6 +29,10 @@ export class PostgresMigrationRunner {
     try {
       await client.query('BEGIN')
       transactionStarted = true
+      // Some migrations touch database-global objects such as extensions.
+      // PostgreSQL can race on concurrent CREATE EXTENSION IF NOT EXISTS calls,
+      // so keep cross-schema migration runners serialized before schema DDL.
+      await client.query('SELECT pg_advisory_xact_lock(928714, 0)')
       await client.query('SELECT pg_advisory_xact_lock(928714, hashtext($1))', [this.schema])
       await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.schemaName}`)
       await client.query(`

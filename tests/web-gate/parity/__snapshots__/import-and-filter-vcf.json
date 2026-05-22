@@ -1,0 +1,220 @@
+{
+  "schemaVersion": 1,
+  "fixture": "tests/test-data/vcf/synthetic-unit-test.vcf",
+  "variantCount": 16,
+  "filters": {
+    "all": {
+      "total": 16,
+      "rows": [
+        {
+          "chr": "chr22",
+          "pos": 20000100,
+          "ref": "A",
+          "alt": "G"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20000200,
+          "ref": "C",
+          "alt": "T"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20000350,
+          "ref": "G",
+          "alt": "A"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20001000,
+          "ref": "ATCG",
+          "alt": "A"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20001500,
+          "ref": "G",
+          "alt": "GACC"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20002000,
+          "ref": "A",
+          "alt": "G"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20003000,
+          "ref": "C",
+          "alt": "T"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20003500,
+          "ref": "G",
+          "alt": "A"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20004000,
+          "ref": "T",
+          "alt": "C"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20004500,
+          "ref": "A",
+          "alt": "G"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20005000,
+          "ref": "GCA",
+          "alt": "G"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20005500,
+          "ref": "T",
+          "alt": "TAGG"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20006000,
+          "ref": "C",
+          "alt": "G"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20007000,
+          "ref": "A",
+          "alt": "C"
+        },
+        {
+          "chr": "chrX",
+          "pos": 50000100,
+          "ref": "A",
+          "alt": "G"
+        },
+        {
+          "chr": "chrX",
+          "pos": 50000500,
+          "ref": "T",
+          "alt": "C"
+        }
+      ]
+    },
+    "chr22": {
+      "total": 14,
+      "rows": [
+        {
+          "chr": "chr22",
+          "pos": 20000100,
+          "ref": "A",
+          "alt": "G"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20000200,
+          "ref": "C",
+          "alt": "T"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20000350,
+          "ref": "G",
+          "alt": "A"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20001000,
+          "ref": "ATCG",
+          "alt": "A"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20001500,
+          "ref": "G",
+          "alt": "GACC"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20002000,
+          "ref": "A",
+          "alt": "G"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20003000,
+          "ref": "C",
+          "alt": "T"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20003500,
+          "ref": "G",
+          "alt": "A"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20004000,
+          "ref": "T",
+          "alt": "C"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20004500,
+          "ref": "A",
+          "alt": "G"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20005000,
+          "ref": "GCA",
+          "alt": "G"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20005500,
+          "ref": "T",
+          "alt": "TAGG"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20006000,
+          "ref": "C",
+          "alt": "G"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20007000,
+          "ref": "A",
+          "alt": "C"
+        }
+      ]
+    },
+    "high_impact": {
+      "total": 3,
+      "rows": [
+        {
+          "chr": "chr22",
+          "pos": 20000350,
+          "ref": "G",
+          "alt": "A"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20001000,
+          "ref": "ATCG",
+          "alt": "A"
+        },
+        {
+          "chr": "chr22",
+          "pos": 20003500,
+          "ref": "G",
+          "alt": "A"
+        }
+      ]
+    }
+  }
+}

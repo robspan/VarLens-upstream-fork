@@ -96,6 +96,121 @@ describe('PostgresAnnotationsRepository', () => {
     ])
   })
 
+  it('upserts global annotations and audit entries in one transaction', async () => {
+    const release = vi.fn()
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 8,
+            chr: '1',
+            pos: 12345,
+            ref: 'A',
+            alt: 'G',
+            global_comment: null,
+            starred: 0,
+            acmg_classification: 'VUS',
+            acmg_evidence: null,
+            created_at: 1714060800000,
+            updated_at: 1714060801000
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 8,
+            chr: '1',
+            pos: 12345,
+            ref: 'A',
+            alt: 'G',
+            global_comment: null,
+            starred: 1,
+            acmg_classification: 'Pathogenic',
+            acmg_evidence: null,
+            created_at: 1714060800000,
+            updated_at: 1714060802000
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+    const pool = {
+      connect: vi.fn(async () => ({ query, release }))
+    }
+    const repository = new PostgresAnnotationsRepository(pool as never, 'public')
+
+    await expect(
+      repository.upsertGlobalAnnotationWithAudit('1', 12345, 'A', 'G', {
+        starred: 1,
+        acmg_classification: 'Pathogenic',
+        user_name: 'analyst'
+      })
+    ).resolves.toMatchObject({ starred: 1, acmg_classification: 'Pathogenic' })
+
+    expect(query).toHaveBeenNthCalledWith(1, 'BEGIN')
+    expect(query).toHaveBeenNthCalledWith(
+      4,
+      expect.stringContaining('INSERT INTO "public"."audit_log"'),
+      [
+        'acmg_classify',
+        'variant_annotation',
+        '1:12345:A:G',
+        JSON.stringify({ acmg_classification: 'VUS' }),
+        JSON.stringify({ acmg_classification: 'Pathogenic' }),
+        'analyst',
+        null
+      ]
+    )
+    expect(query).toHaveBeenNthCalledWith(6, 'COMMIT')
+    expect(release).toHaveBeenCalledOnce()
+  })
+
+  it('rolls back audited global annotation writes when audit append fails', async () => {
+    const release = vi.fn()
+    const failure = new Error('audit append failed')
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 8,
+            chr: '1',
+            pos: 12345,
+            ref: 'A',
+            alt: 'G',
+            global_comment: null,
+            starred: 1,
+            acmg_classification: null,
+            acmg_evidence: null,
+            created_at: 1714060800000,
+            updated_at: 1714060802000
+          }
+        ]
+      })
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValueOnce({ rows: [] })
+    const pool = {
+      connect: vi.fn(async () => ({ query, release }))
+    }
+    const repository = new PostgresAnnotationsRepository(pool as never, 'public')
+
+    await expect(
+      repository.upsertGlobalAnnotationWithAudit('1', 12345, 'A', 'G', {
+        starred: true,
+        user_name: 'analyst'
+      })
+    ).rejects.toThrow('audit append failed')
+
+    expect(query).toHaveBeenNthCalledWith(5, 'ROLLBACK')
+    expect(release).toHaveBeenCalledOnce()
+  })
+
   it('deletes global annotations by coordinates', async () => {
     const pool = makePool()
     pool.query.mockResolvedValueOnce({ rows: [] })
@@ -166,6 +281,72 @@ describe('PostgresAnnotationsRepository', () => {
     expect(upsertSql).toContain('ON CONFLICT (case_id, variant_id) DO UPDATE')
     expect(upsertSql).toContain('"public"."case_variant_annotations"')
     expect(upsertParams).toStrictEqual([2, 3, 'updated', 0, null, null, true, true, false, false])
+  })
+
+  it('upserts per-case annotations and audit entries in one transaction', async () => {
+    const release = vi.fn()
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 9,
+            case_id: 2,
+            variant_id: 3,
+            per_case_comment: null,
+            starred: 0,
+            acmg_classification: 'Benign',
+            acmg_evidence: null,
+            created_at: 1714060800000,
+            updated_at: 1714060801000
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 9,
+            case_id: 2,
+            variant_id: 3,
+            per_case_comment: null,
+            starred: 0,
+            acmg_classification: 'Likely pathogenic',
+            acmg_evidence: null,
+            created_at: 1714060800000,
+            updated_at: 1714060802000
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+    const pool = {
+      connect: vi.fn(async () => ({ query, release }))
+    }
+    const repository = new PostgresAnnotationsRepository(pool as never, 'public')
+
+    await expect(
+      repository.upsertPerCaseAnnotationWithAudit(2, 3, {
+        acmg_classification: 'Likely pathogenic',
+        user_name: 'reviewer'
+      })
+    ).resolves.toMatchObject({ acmg_classification: 'Likely pathogenic' })
+
+    expect(query).toHaveBeenNthCalledWith(
+      4,
+      expect.stringContaining('INSERT INTO "public"."audit_log"'),
+      [
+        'acmg_classify',
+        'case_variant_annotation',
+        'case:2:variant:3',
+        JSON.stringify({ acmg_classification: 'Benign' }),
+        JSON.stringify({ acmg_classification: 'Likely pathogenic' }),
+        'reviewer',
+        null
+      ]
+    )
+    expect(query).toHaveBeenNthCalledWith(5, 'COMMIT')
+    expect(release).toHaveBeenCalledOnce()
   })
 
   it('deletes per-case annotations by case and variant id', async () => {

@@ -13,5 +13,6 @@ import type { WindowAPI } from '../../shared/types/api'
 declare global {
   interface Window {
     api: WindowAPI
+    __VARLENS_WEB__?: boolean
   }
 }

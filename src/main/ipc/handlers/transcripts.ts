@@ -1,26 +1,12 @@
-import { z } from 'zod'
 import { wrapHandler } from '../errorHandler'
 import type { HandlerDependencies } from '../types'
 import type { TranscriptInsertRow } from '../../../shared/types/transcript'
+import {
+  TranscriptIdSchema,
+  TranscriptInsertRowSchema,
+  TranscriptVariantIdSchema
+} from '../../../shared/api/schemas/transcripts'
 import { mainLogger } from '../../services/MainLogger'
-
-// Schema for variant ID validation
-const VariantIdSchema = z.number().int().positive()
-
-// Schema for transcript ID validation
-const TranscriptIdSchema = z.string().min(1)
-
-// Schema for transcript insert row validation
-const TranscriptInsertRowSchema = z.object({
-  transcript_id: z.string().min(1),
-  gene_symbol: z.string().nullable(),
-  consequence: z.string().nullable(),
-  cdna: z.string().nullable(),
-  aa_change: z.string().nullable(),
-  hpo_sim_score: z.number().nullable(),
-  moi: z.string().nullable(),
-  is_selected: z.number().int().min(0).max(1)
-})
 
 /**
  * Transcript IPC handlers
@@ -30,7 +16,8 @@ const TranscriptInsertRowSchema = z.object({
 export function registerTranscriptHandlers({
   ipcMain,
   getDb,
-  getDbPool
+  getDbPool,
+  getDbManager
 }: HandlerDependencies): void {
   /**
    * List all transcripts for a variant
@@ -38,7 +25,7 @@ export function registerTranscriptHandlers({
   ipcMain.handle('transcripts:list', async (_event, variantId: unknown) => {
     return wrapHandler(async () => {
       // ANTI-07: Runtime validation at IPC boundary
-      const validated = VariantIdSchema.safeParse(variantId)
+      const validated = TranscriptVariantIdSchema.safeParse(variantId)
       if (!validated.success) {
         mainLogger.error(
           `Invalid transcripts:list params: ${validated.error.message}`,
@@ -47,8 +34,16 @@ export function registerTranscriptHandlers({
         throw new Error('Invalid parameters')
       }
 
+      const session = getDbManager().getCurrentSession()
+      if (session.capabilities.backend === 'postgres') {
+        return await session.getReadExecutor().execute({
+          type: 'transcripts:list',
+          params: [validated.data]
+        })
+      }
+
       const pool = getDbPool?.()
-      if (pool) {
+      if (pool !== undefined && pool !== null) {
         return await pool.run({ type: 'transcripts:list' as const, params: [validated.data] })
       }
       const db = getDb()
@@ -64,7 +59,7 @@ export function registerTranscriptHandlers({
     async (_event, variantId: unknown, transcriptId: unknown) => {
       return wrapHandler(async () => {
         // ANTI-07: Runtime validation at IPC boundary
-        const validatedVariantId = VariantIdSchema.safeParse(variantId)
+        const validatedVariantId = TranscriptVariantIdSchema.safeParse(variantId)
         if (!validatedVariantId.success) {
           mainLogger.error(
             `Invalid transcripts:switch variantId: ${validatedVariantId.error.message}`,
@@ -80,6 +75,14 @@ export function registerTranscriptHandlers({
             'transcripts'
           )
           throw new Error('Invalid parameters')
+        }
+
+        const session = getDbManager().getCurrentSession()
+        if (session.capabilities.backend === 'postgres') {
+          return await session.getWriteExecutor().execute({
+            type: 'transcripts:switch',
+            params: [validatedVariantId.data, validatedTranscriptId.data]
+          })
         }
 
         const db = getDb()
@@ -98,7 +101,7 @@ export function registerTranscriptHandlers({
     async (_event, variantId: unknown, transcript: unknown) => {
       return wrapHandler(async () => {
         // ANTI-07: Runtime validation at IPC boundary
-        const validatedVariantId = VariantIdSchema.safeParse(variantId)
+        const validatedVariantId = TranscriptVariantIdSchema.safeParse(variantId)
         if (!validatedVariantId.success) {
           mainLogger.error(
             `Invalid transcripts:insertAndSwitch variantId: ${validatedVariantId.error.message}`,
@@ -114,6 +117,14 @@ export function registerTranscriptHandlers({
             'transcripts'
           )
           throw new Error('Invalid parameters')
+        }
+
+        const session = getDbManager().getCurrentSession()
+        if (session.capabilities.backend === 'postgres') {
+          return await session.getWriteExecutor().execute({
+            type: 'transcripts:insertAndSwitch',
+            params: [validatedVariantId.data, validatedTranscript.data as TranscriptInsertRow]
+          })
         }
 
         const db = getDb()

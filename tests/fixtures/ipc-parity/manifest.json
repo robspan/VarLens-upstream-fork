@@ -1,0 +1,759 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Deterministic fixture plan for stakeholder IPC parity across Electron and web runtimes.",
+  "coverageTarget": {
+    "mode": "workflow-per-ipc",
+    "ipcAreaCount": 23,
+    "requiredIpcAreas": [
+      "analysis-groups",
+      "annotations",
+      "audit",
+      "batch-import",
+      "case-comments",
+      "case-metadata",
+      "case-metrics",
+      "cases",
+      "cohort",
+      "database",
+      "export",
+      "presets",
+      "gene-lists",
+      "gene-ref",
+      "hpo",
+      "import",
+      "panels",
+      "protein",
+      "region-files",
+      "tags",
+      "transcripts",
+      "variants",
+      "vep"
+    ]
+  },
+  "dataLineage": {
+    "caseVariantThread": {
+      "intent": "Exercise imported case, variant table, cohort, annotation, tag, transcript, panel, export, and audit workflows from one connected local dataset.",
+      "sources": [
+        {
+          "kind": "repo-vcf",
+          "path": "tests/test-data/vcf/synthetic-unit-test.vcf",
+          "usedFor": ["primaryCase", "secondaryCase", "variantAnchors"]
+        },
+        {
+          "kind": "repo-bed",
+          "path": "tests/test-data/vcf/test-regions.bed",
+          "usedFor": ["region-files", "panels"]
+        },
+        {
+          "kind": "generated-zip",
+          "path": "tests/.cache/public-data/generated/zip/json-batch.zip",
+          "usedFor": ["batch-import"]
+        }
+      ],
+      "links": [
+        "primaryCase imports HG005 from synthetic-unit-test.vcf",
+        "secondaryCase imports HG006 from the same VCF to create overlapping cohort carriers",
+        "variantAnchors.primary selects COMT chr22:20000350 G>A for annotation, tag, transcript, carrier, and export checks",
+        "variantAnchors.secondary selects LZTR1 chr22:20006000 C>G for cohort and asset cross-checks",
+        "gene-lists, panels, presets, metadata, and region files all reuse COMT/LZTR1/SNAP29 from the imported variants"
+      ]
+    },
+    "referenceApiThread": {
+      "intent": "Exercise external/reference IPC consumers without live network by using raw upstream-shaped payloads that still pass production schemas.",
+      "sources": [
+        {
+          "kind": "NLM Clinical Tables HPO",
+          "query": "seizure",
+          "path": "tests/fixtures/api/hpo/search-seizure.json",
+          "usedFor": ["hpo.search", "case-metadata.assignHpoTerm"]
+        },
+        {
+          "kind": "Ensembl VEP",
+          "query": "17:7674220 G>T",
+          "path": "tests/fixtures/api/vep/chr17-7674220-g-t.json",
+          "usedFor": ["vep.fetch", "transcript merge/dropdown consumers"]
+        },
+        {
+          "kind": "UniProt",
+          "query": "TP53",
+          "path": "tests/fixtures/api/uniprot/tp53.json",
+          "usedFor": ["protein.getMapping"]
+        },
+        {
+          "kind": "InterPro",
+          "query": "P04637",
+          "path": "tests/fixtures/api/interpro/p04637.json",
+          "usedFor": ["protein.getDomains"]
+        },
+        {
+          "kind": "AlphaFold DB",
+          "query": "P04637",
+          "path": "tests/fixtures/api/alphafold/p04637.json",
+          "usedFor": ["protein.getStructure"]
+        },
+        {
+          "kind": "Ensembl gene lookup",
+          "query": "TP53",
+          "path": "tests/fixtures/api/ensembl/tp53-gene-structure.json",
+          "usedFor": ["protein.getGeneStructure"]
+        }
+      ],
+      "links": [
+        "UniProt maps TP53 to P04637",
+        "P04637 is reused by InterPro and AlphaFold so protein mapping, domain, and structure calls describe the same protein",
+        "Ensembl gene lookup reuses TP53 so lollipop/gene-structure rendering lines up with the protein mapping",
+        "VEP uses a TP53-region variant, giving transcript consequences that can be merged with DB transcript rows",
+        "HPO seizure data reuses HP:0001250, the same term assigned to the primary case metadata"
+      ]
+    }
+  },
+  "baseData": {
+    "primaryCase": {
+      "fixtureId": "local-synthetic-vcf",
+      "filePath": "tests/test-data/vcf/synthetic-unit-test.vcf",
+      "caseName": "ipc-parity-primary",
+      "vcfOptions": {
+        "selectedSample": "HG005",
+        "genomeBuild": "GRCh38"
+      }
+    },
+    "secondaryCase": {
+      "fixtureId": "local-synthetic-vcf",
+      "filePath": "tests/test-data/vcf/synthetic-unit-test.vcf",
+      "caseName": "ipc-parity-secondary",
+      "vcfOptions": {
+        "selectedSample": "HG006",
+        "genomeBuild": "GRCh38"
+      }
+    },
+    "zipBatch": {
+      "fixtureId": "local-zip-json",
+      "filePath": "tests/.cache/public-data/generated/zip/json-batch.zip"
+    },
+    "bedFile": {
+      "fixtureId": "local-bed-regions",
+      "filePath": "tests/test-data/vcf/test-regions.bed"
+    },
+    "variantAnchors": {
+      "primary": {
+        "chr": "chr22",
+        "pos": 20000350,
+        "ref": "G",
+        "alt": "A",
+        "gene_symbol": "COMT",
+        "consequence": "HIGH",
+        "func": "stop_gained"
+      },
+      "secondary": {
+        "chr": "chr22",
+        "pos": 20006000,
+        "ref": "C",
+        "alt": "G",
+        "gene_symbol": "LZTR1",
+        "consequence": "MODERATE",
+        "func": "missense_variant"
+      }
+    }
+  },
+  "apiFixtures": {
+    "hpo": {
+      "query": "seizure",
+      "maxResults": 3,
+      "path": "tests/fixtures/api/hpo/search-seizure.json"
+    },
+    "vep": {
+      "chr": "17",
+      "pos": 7674220,
+      "ref": "G",
+      "alt": "T",
+      "path": "tests/fixtures/api/vep/chr17-7674220-g-t.json"
+    },
+    "uniprot": {
+      "geneSymbol": "TP53",
+      "path": "tests/fixtures/api/uniprot/tp53.json"
+    },
+    "interpro": {
+      "uniprotAccession": "P04637",
+      "path": "tests/fixtures/api/interpro/p04637.json"
+    },
+    "alphafold": {
+      "uniprotAccession": "P04637",
+      "path": "tests/fixtures/api/alphafold/p04637.json"
+    },
+    "ensembl": {
+      "geneSymbol": "TP53",
+      "path": "tests/fixtures/api/ensembl/tp53-gene-structure.json"
+    }
+  },
+  "scenarios": [
+    {
+      "id": "import-and-case-index",
+      "covers": ["import", "cases", "variants"],
+      "setup": ["primaryCase"],
+      "operations": [
+        {
+          "domain": "import",
+          "method": "start",
+          "args": [
+            "$baseData.primaryCase.filePath",
+            "$baseData.primaryCase.caseName",
+            "$baseData.primaryCase.vcfOptions"
+          ]
+        },
+        {
+          "domain": "cases",
+          "method": "list",
+          "args": []
+        },
+        {
+          "domain": "cases",
+          "method": "query",
+          "args": [
+            {
+              "limit": 20,
+              "offset": 0,
+              "search_term": "ipc-parity",
+              "_count_needed": true
+            }
+          ]
+        },
+        {
+          "domain": "cases",
+          "method": "availableBuilds",
+          "args": []
+        },
+        {
+          "domain": "variants",
+          "method": "query",
+          "args": ["$case.primary.id", { "consequences": ["HIGH"] }, 0, 25]
+        },
+        {
+          "domain": "variants",
+          "method": "typeCounts",
+          "args": ["$case.primary.id"]
+        },
+        {
+          "domain": "variants",
+          "method": "search",
+          "args": ["$case.primary.id", "COMT", 5]
+        },
+        {
+          "domain": "variants",
+          "method": "geneSymbols",
+          "args": ["$case.primary.id", "CO", 5]
+        },
+        {
+          "domain": "variants",
+          "method": "typesPresent",
+          "args": [{ "caseId": "$case.primary.id" }]
+        },
+        {
+          "domain": "variants",
+          "method": "columnMeta",
+          "args": [{ "caseId": "$case.primary.id", "columnKey": "gene_symbol" }]
+        }
+      ],
+      "assertion": "normalized-result-hash"
+    },
+    {
+      "id": "batch-import-zip",
+      "covers": ["batch-import"],
+      "setup": ["zipBatch"],
+      "operations": [
+        {
+          "domain": "batch-import",
+          "method": "extractZip",
+          "args": ["$baseData.zipBatch.filePath"]
+        },
+        {
+          "domain": "batch-import",
+          "method": "cleanupZipTemp",
+          "args": []
+        }
+      ],
+      "assertion": "normalized-result-hash"
+    },
+    {
+      "id": "case-workbench",
+      "covers": ["case-metadata", "case-comments", "case-metrics", "audit"],
+      "setup": ["primaryCase"],
+      "operations": [
+        {
+          "domain": "case-metadata",
+          "method": "upsert",
+          "args": [
+            "$case.primary.id",
+            {
+              "affected_status": "affected",
+              "sex": "female",
+              "notes": "IPC parity clinical note",
+              "age": 42,
+              "date_of_birth": "1984-01-01"
+            }
+          ]
+        },
+        {
+          "domain": "case-metadata",
+          "method": "createCohort",
+          "capture": "cohort.primary",
+          "args": ["IPC Parity Cohort", "Cohort used by IPC parity fixtures"]
+        },
+        {
+          "domain": "case-metadata",
+          "method": "assignCohort",
+          "args": ["$case.primary.id", "$cohort.primary.id"]
+        },
+        {
+          "domain": "case-metadata",
+          "method": "assignHpoTerm",
+          "args": ["$case.primary.id", "HP:0001250", "Seizure"]
+        },
+        {
+          "domain": "case-metadata",
+          "method": "upsertDataInfo",
+          "args": [
+            "$case.primary.id",
+            {
+              "platform": "genome",
+              "platform_details": "synthetic IPC parity fixture",
+              "af_filter": "gnomAD < 0.01",
+              "gene_list_filter": "COMT,LZTR1",
+              "region_filter": "chr22 parity BED",
+              "quality_filter": "PASS only",
+              "data_notes": "Deterministic parity provenance"
+            }
+          ]
+        },
+        {
+          "domain": "case-metadata",
+          "method": "upsertExternalId",
+          "args": ["$case.primary.id", "lab_accession", "IPC-PARITY-001"]
+        },
+        {
+          "domain": "case-comments",
+          "method": "create",
+          "capture": "comment.primary",
+          "args": ["$case.primary.id", "Interpretation", "Initial IPC parity interpretation"]
+        },
+        {
+          "domain": "case-comments",
+          "method": "update",
+          "args": ["$comment.primary.id", "Updated IPC parity interpretation"]
+        },
+        {
+          "domain": "case-metrics",
+          "method": "createDefinition",
+          "capture": "metric.coverage",
+          "args": ["Mean coverage", "numeric", "x", "Sequencing QC"]
+        },
+        {
+          "domain": "case-metrics",
+          "method": "upsert",
+          "args": ["$case.primary.id", "$metric.coverage.id", { "numeric_value": 38.5 }]
+        },
+        {
+          "domain": "case-metadata",
+          "method": "getFullMetadata",
+          "args": ["$case.primary.id"]
+        },
+        {
+          "domain": "case-comments",
+          "method": "list",
+          "args": ["$case.primary.id"]
+        },
+        {
+          "domain": "case-metrics",
+          "method": "listForCase",
+          "args": ["$case.primary.id"]
+        },
+        {
+          "domain": "audit",
+          "method": "query",
+          "args": [{ "limit": 20, "offset": 0 }]
+        }
+      ],
+      "assertion": "normalized-result-hash"
+    },
+    {
+      "id": "annotation-tags-transcripts",
+      "covers": ["annotations", "tags", "transcripts"],
+      "setup": ["primaryCase"],
+      "operations": [
+        {
+          "domain": "annotations",
+          "method": "upsertGlobal",
+          "args": [
+            "$variant.primary.chr",
+            "$variant.primary.pos",
+            "$variant.primary.ref",
+            "$variant.primary.alt",
+            {
+              "starred": true,
+              "acmg_classification": "Pathogenic",
+              "global_comment": "Global IPC parity annotation",
+              "user_name": "ipc-parity"
+            }
+          ]
+        },
+        {
+          "domain": "annotations",
+          "method": "upsertPerCase",
+          "args": [
+            "$case.primary.id",
+            "$variant.primary.id",
+            {
+              "starred": true,
+              "acmg_classification": "Likely pathogenic",
+              "per_case_comment": "Per-case IPC parity annotation",
+              "user_name": "ipc-parity"
+            }
+          ]
+        },
+        {
+          "domain": "annotations",
+          "method": "getForVariant",
+          "args": [
+            "$case.primary.id",
+            "$variant.primary.chr",
+            "$variant.primary.pos",
+            "$variant.primary.ref",
+            "$variant.primary.alt"
+          ]
+        },
+        {
+          "domain": "tags",
+          "method": "create",
+          "capture": "tag.review",
+          "args": ["Needs review", "#6A1B9A"]
+        },
+        {
+          "domain": "tags",
+          "method": "assignVariantTag",
+          "args": ["$case.primary.id", "$variant.primary.id", "$tag.review.id"]
+        },
+        {
+          "domain": "tags",
+          "method": "getVariantTags",
+          "args": ["$case.primary.id", "$variant.primary.id"]
+        },
+        {
+          "domain": "transcripts",
+          "method": "insertAndSwitch",
+          "args": [
+            "$variant.primary.id",
+            {
+              "transcript_id": "ENST_PARITY_000001",
+              "gene_symbol": "COMT",
+              "consequence": "stop_gained",
+              "cdna": "c.493G>A",
+              "aa_change": "p.Glu165Ter",
+              "hpo_sim_score": 0.87,
+              "moi": "AD",
+              "is_selected": 1
+            }
+          ]
+        },
+        {
+          "domain": "transcripts",
+          "method": "list",
+          "args": ["$variant.primary.id"]
+        }
+      ],
+      "assertion": "normalized-result-hash"
+    },
+    {
+      "id": "cohort-analysis",
+      "covers": ["cohort"],
+      "setup": ["primaryCase", "secondaryCase"],
+      "operations": [
+        {
+          "domain": "cohort",
+          "method": "getVariants",
+          "args": [{ "limit": 25, "offset": 0, "gene_symbol": "COMT" }]
+        },
+        {
+          "domain": "cohort",
+          "method": "getColumnMeta",
+          "args": []
+        },
+        {
+          "domain": "cohort",
+          "method": "getSummary",
+          "args": []
+        },
+        {
+          "domain": "cohort",
+          "method": "getCarriers",
+          "args": [
+            "$variant.primary.chr",
+            "$variant.primary.pos",
+            "$variant.primary.ref",
+            "$variant.primary.alt"
+          ]
+        },
+        {
+          "domain": "cohort",
+          "method": "getGeneBurden",
+          "args": []
+        },
+        {
+          "domain": "cohort",
+          "method": "getSummaryStatus",
+          "args": []
+        }
+      ],
+      "assertion": "normalized-result-hash"
+    },
+    {
+      "id": "knowledge-assets",
+      "covers": ["gene-lists", "region-files", "panels", "analysis-groups", "presets"],
+      "setup": ["primaryCase", "bedFile"],
+      "operations": [
+        {
+          "domain": "gene-lists",
+          "method": "create",
+          "capture": "geneList.primary",
+          "args": ["IPC parity genes", "COMT/LZTR1 parity list"]
+        },
+        {
+          "domain": "gene-lists",
+          "method": "setGenes",
+          "args": ["$geneList.primary.id", ["COMT", "LZTR1", "SNAP29"]]
+        },
+        {
+          "domain": "region-files",
+          "method": "create",
+          "capture": "regionFile.primary",
+          "args": ["IPC parity regions", "chr22 synthetic parity regions"]
+        },
+        {
+          "domain": "region-files",
+          "method": "importBed",
+          "args": ["$regionFile.primary.id", "$baseData.bedFile.filePath"]
+        },
+        {
+          "domain": "panels",
+          "method": "create",
+          "capture": "panel.primary",
+          "args": [
+            {
+              "name": "IPC parity panel",
+              "description": "Panel fixture for IPC parity",
+              "version": "1",
+              "source": "manual",
+              "sourceId": "ipc-parity-panel"
+            }
+          ]
+        },
+        {
+          "domain": "panels",
+          "method": "setGenes",
+          "args": [
+            "$panel.primary.id",
+            [
+              { "hgncId": "HGNC:2228", "symbol": "COMT" },
+              { "hgncId": "HGNC:6742", "symbol": "LZTR1" }
+            ]
+          ]
+        },
+        {
+          "domain": "panels",
+          "method": "activate",
+          "args": ["$case.primary.id", "$panel.primary.id", 50]
+        },
+        {
+          "domain": "analysis-groups",
+          "method": "create",
+          "capture": "analysisGroup.primary",
+          "args": [
+            {
+              "name": "IPC parity trio",
+              "groupType": "family",
+              "description": "Analysis group fixture"
+            }
+          ]
+        },
+        {
+          "domain": "analysis-groups",
+          "method": "addMember",
+          "args": [
+            {
+              "groupId": "$analysisGroup.primary.id",
+              "caseId": "$case.primary.id",
+              "role": "proband",
+              "affectedStatus": "affected",
+              "individualId": "IPC-P1"
+            }
+          ]
+        },
+        {
+          "domain": "presets",
+          "method": "create",
+          "capture": "preset.primary",
+          "args": [
+            {
+              "name": "IPC parity high impact",
+              "description": "High-impact COMT parity filter",
+              "filterJson": {
+                "geneSymbol": "COMT",
+                "consequences": ["HIGH"],
+                "clinvars": ["Pathogenic"]
+              },
+              "kind": "filter",
+              "isVisible": true,
+              "sortOrder": 90
+            }
+          ]
+        },
+        {
+          "domain": "gene-lists",
+          "method": "list",
+          "args": []
+        },
+        {
+          "domain": "region-files",
+          "method": "list",
+          "args": []
+        },
+        {
+          "domain": "panels",
+          "method": "activeForCase",
+          "args": ["$case.primary.id"]
+        },
+        {
+          "domain": "analysis-groups",
+          "method": "getForCase",
+          "args": ["$case.primary.id"]
+        },
+        {
+          "domain": "presets",
+          "method": "list",
+          "args": []
+        }
+      ],
+      "assertion": "normalized-result-hash"
+    },
+    {
+      "id": "database-and-export",
+      "covers": ["database", "export"],
+      "setup": ["primaryCase"],
+      "operations": [
+        {
+          "domain": "database",
+          "method": "info",
+          "args": []
+        },
+        {
+          "domain": "database",
+          "method": "capabilities",
+          "args": []
+        },
+        {
+          "domain": "database",
+          "method": "getOverview",
+          "args": []
+        },
+        {
+          "domain": "export",
+          "method": "variants",
+          "args": [
+            "$case.primary.id",
+            { "consequences": ["HIGH"] },
+            "$baseData.primaryCase.caseName"
+          ]
+        },
+        {
+          "domain": "export",
+          "method": "cohort",
+          "args": [{ "limit": 25, "offset": 0, "gene_symbol": "COMT" }]
+        }
+      ],
+      "assertion": "content-hash-for-exports-and-normalized-result-hash"
+    },
+    {
+      "id": "reference-apis",
+      "covers": ["gene-ref", "hpo", "protein", "vep"],
+      "setup": ["apiFixtures"],
+      "operations": [
+        {
+          "domain": "gene-ref",
+          "method": "info",
+          "args": []
+        },
+        {
+          "domain": "gene-ref",
+          "method": "assemblies",
+          "args": []
+        },
+        {
+          "domain": "hpo",
+          "method": "search",
+          "args": ["$apiFixtures.hpo.query", "$apiFixtures.hpo.maxResults"],
+          "fixture": "$apiFixtures.hpo.path"
+        },
+        {
+          "domain": "protein",
+          "method": "getMapping",
+          "args": ["$apiFixtures.uniprot.geneSymbol"],
+          "fixture": "$apiFixtures.uniprot.path"
+        },
+        {
+          "domain": "protein",
+          "method": "getDomains",
+          "args": ["$apiFixtures.interpro.uniprotAccession"],
+          "fixture": "$apiFixtures.interpro.path"
+        },
+        {
+          "domain": "protein",
+          "method": "getStructure",
+          "args": ["$apiFixtures.alphafold.uniprotAccession"],
+          "fixture": "$apiFixtures.alphafold.path"
+        },
+        {
+          "domain": "protein",
+          "method": "getGeneStructure",
+          "args": ["$apiFixtures.ensembl.geneSymbol"],
+          "fixture": "$apiFixtures.ensembl.path"
+        },
+        {
+          "domain": "vep",
+          "method": "fetch",
+          "args": [
+            "$apiFixtures.vep.chr",
+            "$apiFixtures.vep.pos",
+            "$apiFixtures.vep.ref",
+            "$apiFixtures.vep.alt"
+          ],
+          "fixture": "$apiFixtures.vep.path"
+        },
+        {
+          "domain": "vep",
+          "method": "getCacheStats",
+          "args": []
+        }
+      ],
+      "assertion": "normalized-result-hash"
+    }
+  ],
+  "normalization": {
+    "dropFields": [
+      "id",
+      "case_id",
+      "variant_id",
+      "created_at",
+      "updated_at",
+      "timestamp",
+      "last_rebuilt_at",
+      "file_path",
+      "path",
+      "dbPath",
+      "cachedAt"
+    ],
+    "sortArraysBy": {
+      "cases": ["name"],
+      "variants": ["chr", "pos", "ref", "alt"],
+      "audit": ["action_type", "entity_key"],
+      "assets": ["name"]
+    }
+  }
+}

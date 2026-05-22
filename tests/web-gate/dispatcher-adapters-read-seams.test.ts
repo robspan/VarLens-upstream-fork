@@ -1,0 +1,275 @@
+import { describe, expect, test } from 'vitest'
+
+import { buildDispatcher } from '../../src/web/server/dispatcher'
+import { makeDeps } from './helpers/dispatcher-adapters'
+
+describe('web dispatcher adapters: read seams', () => {
+  test('panels.get returns the desktop panel-plus-genes shape', async () => {
+    const { deps, execute, reply } = makeDeps()
+    execute.mockResolvedValueOnce({ id: 5, name: 'Cancer panel' })
+    execute.mockResolvedValueOnce([{ symbol: 'BRCA1', hgnc_id: 'HGNC:1100' }])
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['panels:get'].handle([5], {} as never, reply as never, deps)
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      id: 5,
+      name: 'Cancer panel',
+      genes: [{ symbol: 'BRCA1', hgnc_id: 'HGNC:1100' }]
+    })
+    expect(execute).toHaveBeenNthCalledWith(1, { type: 'panels:get', params: [5] })
+    expect(execute).toHaveBeenNthCalledWith(2, { type: 'panels:getGenes', params: [5] })
+  })
+
+  test('panels.update maps renderer object args to the storage task shape', async () => {
+    const { deps, writeExecute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    await overrides['panels:update'].handle(
+      [{ id: 5, name: 'Updated panel', description: null }],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'panels:update',
+      params: [5, { name: 'Updated panel', description: null, version: undefined }]
+    })
+  })
+
+  test('database.info returns a safe web workspace identity for renderer startup', async () => {
+    const { deps, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['database:info'].handle([], {} as never, reply as never, deps)
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      path: 'web:postgres',
+      name: 'VarLens Web',
+      encrypted: false
+    })
+  })
+
+  test('cases.list delegates to the web storage session', async () => {
+    const { deps, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['cases:list'].handle([], {} as never, reply as never, deps)
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(result).toEqual([{ id: 1, name: 'Case A' }])
+    expect(deps.session.listCases).toHaveBeenCalledTimes(1)
+  })
+
+  test('cohort.getVariants maps preload method name to cohort:query', async () => {
+    const { deps, execute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    await overrides['cohort:getVariants'].handle(
+      [{ limit: 25, offset: 10, search_term: 'BRCA1', sort_order: 'desc' }],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(execute).toHaveBeenCalledWith({
+      type: 'cohort:query',
+      params: [{ limit: 25, offset: 10, search_term: 'BRCA1', sort_order: 'desc' }]
+    })
+  })
+
+  test('cohort.getVariants rejects invalid renderer args before storage execution', async () => {
+    const { deps, execute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['cohort:getVariants'].handle(
+      [{ limit: -1 }],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).toHaveBeenCalledWith(400)
+    expect(result).toEqual({
+      error: 'invalid-cohort-params',
+      message: 'Invalid cohort search parameters'
+    })
+    expect(execute).not.toHaveBeenCalled()
+  })
+
+  test('cohort read helpers map preload method names to storage task names', async () => {
+    const { deps, execute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    await overrides['cohort:getSummary'].handle([], {} as never, reply as never, deps)
+    await overrides['cohort:getColumnMeta'].handle([], {} as never, reply as never, deps)
+    await overrides['cohort:getGeneBurden'].handle([], {} as never, reply as never, deps)
+    await overrides['cohort:getCarriers'].handle(
+      ['chr22', 12345, 'A', 'T'],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(execute).toHaveBeenCalledWith({ type: 'cohort:summary', params: [] })
+    expect(execute).toHaveBeenCalledWith({ type: 'cohort:columnMeta', params: [] })
+    expect(execute).toHaveBeenCalledWith({ type: 'cohort:geneBurden', params: [] })
+    expect(execute).toHaveBeenCalledWith({
+      type: 'cohort:carriers',
+      params: ['chr22', 12345, 'A', 'T']
+    })
+  })
+
+  test('database.recentList returns an empty desktop-file list in web mode', async () => {
+    const { deps, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['database:recentList'].handle(
+      [],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(result).toEqual([])
+  })
+
+  test('database.capabilities overlays browser-only unsupported features', async () => {
+    const { deps, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['database:capabilities'].handle(
+      [],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(result).toMatchObject({
+      backend: 'postgres',
+      export: { variants: false, cohort: false, streaming: false }
+    })
+  })
+
+  test('web-only unsupported cohort actions fail explicitly', async () => {
+    const { deps, execute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['cohort:runAssociation'].handle(
+      [{}],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).toHaveBeenCalledWith(501)
+    expect(result).toEqual({
+      error: 'unsupported-web-capability',
+      capability: 'cohort.runAssociation',
+      message: 'cohort.runAssociation is not available in web mode yet.'
+    })
+    expect(execute).not.toHaveBeenCalled()
+  })
+
+  test('reference API fixture-backed methods fail explicitly when fixtures are disabled', async () => {
+    const { deps, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['hpo:search'].handle(['BRCA'], {} as never, reply as never, deps)
+
+    expect(reply.code).toHaveBeenCalledWith(501)
+    expect(result).toEqual({
+      error: 'unsupported-web-capability',
+      capability: 'hpo.search',
+      message: 'hpo.search is not available in web mode yet.'
+    })
+  })
+
+  test('reference API fixture-backed methods reject invalid args as bad requests', async () => {
+    const previousFixtureFlag = process.env.VARLENS_WEB_PARITY_FIXTURES
+    const previousFixtureDir = process.env.VARLENS_API_FIXTURES_DIR
+    process.env.VARLENS_WEB_PARITY_FIXTURES = '1'
+    process.env.VARLENS_API_FIXTURES_DIR = process.cwd()
+
+    try {
+      const cases = [
+        {
+          key: 'hpo:search',
+          args: [123],
+          expected: {
+            error: 'invalid-hpo-search',
+            message: 'hpo.search query must be a string'
+          }
+        },
+        {
+          key: 'vep:fetch',
+          args: ['chr1', 'not-a-position', 'A', 'T'],
+          expected: {
+            error: 'invalid-vep-fetch',
+            message: 'Invalid vep.fetch parameters'
+          }
+        },
+        {
+          key: 'protein:getMapping',
+          args: [123],
+          expected: {
+            error: 'invalid-protein-gene',
+            message: 'gene symbol must be a string'
+          }
+        },
+        {
+          key: 'protein:getDomains',
+          args: [123],
+          expected: {
+            error: 'invalid-protein-accession',
+            message: 'UniProt accession must be a string'
+          }
+        }
+      ] as const
+
+      for (const entry of cases) {
+        const { deps, execute, reply } = makeDeps()
+        const { overrides } = buildDispatcher(deps)
+
+        const result = await overrides[entry.key].handle(
+          entry.args,
+          {} as never,
+          reply as never,
+          deps
+        )
+
+        expect(reply.code, entry.key).toHaveBeenCalledWith(400)
+        expect(result, entry.key).toEqual(entry.expected)
+        expect(execute, entry.key).not.toHaveBeenCalled()
+      }
+    } finally {
+      if (previousFixtureFlag === undefined) delete process.env.VARLENS_WEB_PARITY_FIXTURES
+      else process.env.VARLENS_WEB_PARITY_FIXTURES = previousFixtureFlag
+      if (previousFixtureDir === undefined) delete process.env.VARLENS_API_FIXTURES_DIR
+      else process.env.VARLENS_API_FIXTURES_DIR = previousFixtureDir
+    }
+  })
+
+  test('cohort.getSummaryStatus returns a stable non-rebuild status for web Postgres', async () => {
+    const { deps, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    const result = await overrides['cohort:getSummaryStatus'].handle(
+      [],
+      {} as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(result).toEqual({ is_stale: false, last_rebuilt_at: 0 })
+  })
+})

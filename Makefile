@@ -1,10 +1,15 @@
-.PHONY: help rebuild dev dev-postgres build build-web build-web-server build-web-renderer preview lint lint-check agent-check test test-watch test-coverage web-gate web-gate-static web-gate-integration web-gate-parity typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-query-perf pg-seed-dev pg-hosted-smoke pg-reset
+.PHONY: help rebuild dev dev-postgres web-dev build build-web build-web-server build-web-renderer preview lint lint-check agent-check test test-watch test-coverage web-ci web-gate web-gate-static web-gate-integration web-gate-postgres web-gate-parity typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-query-perf pg-seed-dev pg-hosted-smoke pg-reset
 
 # Default target - show help
 .DEFAULT_GOAL := help
 
 CI_NODE_VERSION ?= $(shell tr -d '\n' < .nvmrc)
 XVFB_RUN ?= $(shell if command -v xvfb-run >/dev/null 2>&1; then printf 'xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" '; fi)
+WEB_DEV_PORT ?= 8787
+WEB_DEV_SCHEMA ?= web_dev
+WEB_DEV_RECOVERY_KEY_DIR ?= /tmp/varlens-web-dev
+WEB_DEV_API_LATENCY_MS ?= 75
+WEB_DEV_ADMIN_USERNAME ?= admin
 
 define ensure_ci_node
 	@current_node="$$(node -v | sed 's/^v//')"; \
@@ -14,6 +19,28 @@ define ensure_ci_node
 		exit 1; \
 	fi
 endef
+
+#---------------------------------------------------------------------------
+# Mode toggle: desktop (default) / web (opt-in via VARLENS_WEB=1)
+#
+# Sets which projects vitest runs and whether `make dev` starts the web
+# server. Direct targets (web-gate-static, etc.) still work standalone for
+# web-only invocations.
+#---------------------------------------------------------------------------
+
+# Web mode is opt-in only. Set VARLENS_WEB=1 explicitly when a target
+# should extend itself with web checks.
+VARLENS_WEB ?= 0
+
+# Export so it propagates to sub-makes and child processes; make does
+# not export variables by default.
+export VARLENS_WEB
+
+ifeq ($(VARLENS_WEB),1)
+    VITEST_EXTRA_ARGS := -- --project web-gate
+else
+    VITEST_EXTRA_ARGS :=
+endif
 
 #---------------------------------------------------------------------------
 # Help
@@ -36,8 +63,38 @@ rebuild: ## Rebuild native modules for Electron (fixes native module version mis
 rebuild-node: ## Rebuild native modules for Node.js (needed before running tests)
 	npm run rebuild:node
 
-dev: rebuild ## Start development server with hot reload
+ifeq ($(VARLENS_WEB),1)
+dev: web-dev ## Start development server (set VARLENS_WEB=1 for web mode)
+else
+dev: rebuild ## Start development server (set VARLENS_WEB=1 for web mode)
 	npm run dev
+endif
+
+web-dev: ## Start local Postgres-backed web mode at http://localhost:$(WEB_DEV_PORT)/
+	@if [ ! -f .env.postgres.local ]; then echo "Missing .env.postgres.local. Copy .env.postgres.example first."; exit 1; fi
+	$(MAKE) pg-up
+	VARLENS_WEB_BASE=/ npm run build:web
+	@echo ""
+	@echo "Starting VarLens web mode:"
+	@echo "  URL:      http://localhost:$(WEB_DEV_PORT)/"
+	@echo "  Health:   http://localhost:$(WEB_DEV_PORT)/healthz"
+	@echo "  Postgres: .env.postgres.local"
+	@echo "  Schema:   $(WEB_DEV_SCHEMA)"
+	@echo "  Secrets:  $${VARLENS_RECOVERY_KEY_DIR:-$(WEB_DEV_RECOVERY_KEY_DIR)}"
+	@echo "  API delay: $${VARLENS_WEB_API_LATENCY_MS:-$(WEB_DEV_API_LATENCY_MS)}ms"
+	@echo "  Dev admin bootstrap: set VARLENS_ADMIN_PASSWORD_HASH for first run"
+	@echo ""
+	@set -a; . ./.env.postgres.local; set +a; \
+		NODE_ENV=development \
+		APP_PATH_PREFIX=/ \
+		VARLENS_WEB_HOST="$${VARLENS_WEB_HOST:-127.0.0.1}" \
+		VARLENS_WEB_PORT="$${VARLENS_WEB_PORT:-$(WEB_DEV_PORT)}" \
+		VARLENS_WEB_API_LATENCY_MS="$${VARLENS_WEB_API_LATENCY_MS:-$(WEB_DEV_API_LATENCY_MS)}" \
+		VARLENS_PG_SCHEMA="$(WEB_DEV_SCHEMA)" \
+		VARLENS_RECOVERY_KEY_DIR="$${VARLENS_RECOVERY_KEY_DIR:-$(WEB_DEV_RECOVERY_KEY_DIR)}" \
+		VARLENS_ADMIN_USERNAME="$${VARLENS_ADMIN_USERNAME:-$(WEB_DEV_ADMIN_USERNAME)}" \
+		VARLENS_ADMIN_PASSWORD_HASH="$${VARLENS_ADMIN_PASSWORD_HASH:-}" \
+		node out/web/server.cjs
 
 dev-postgres: ## Start development server with PostgreSQL backend enabled
 	@if [ ! -f .env.postgres.local ]; then echo "Missing .env.postgres.local. Copy .env.postgres.example first."; exit 1; fi
@@ -112,8 +169,8 @@ typecheck: ## Run TypeScript type checking
 # Testing
 #---------------------------------------------------------------------------
 
-test: ## Run tests once
-	npm run test
+test: ## Run tests once (set VARLENS_WEB=1 to include web-gate project)
+	npm run test $(VITEST_EXTRA_ARGS)
 
 test-watch: ## Run tests in watch mode
 	npm run test:watch
@@ -130,14 +187,20 @@ web-gate-static: ## Run opt-in web migration static gate tests
 web-gate-integration: ## Run opt-in web migration integration gate tests
 	npx vitest run --project web-gate tests/web-gate/integration/*.test.ts
 
+web-gate-postgres: build-web ## Run fail-loud Postgres-backed web integration tests (requires VARLENS_PG_URL)
+	@if [ -z "$$VARLENS_PG_URL" ]; then echo "VARLENS_PG_URL is required for web-gate-postgres. This is intentionally opt-in and never part of default desktop CI."; exit 2; fi
+	npx vitest run --project web-gate tests/web-gate/integration
+
 web-gate-parity: ## Run opt-in desktop/web parity gate tests
 	VARLENS_RUN_WEB_GATE_PARITY=1 npx vitest run --project web-gate-parity --passWithNoTests
+
+web-ci: rebuild-node build-web web-gate-static web-gate-postgres ## Opt-in web readiness gate; requires VARLENS_PG_URL
 
 #---------------------------------------------------------------------------
 # CI / Full Checks
 #---------------------------------------------------------------------------
 
-ci: lint-check format-check typecheck rebuild-node test ## Run all CI checks (lint, format, typecheck, rebuild, test)
+ci: lint-check format-check typecheck rebuild-node test ## Run all CI checks (lint, format, typecheck, rebuild, test). Set VARLENS_WEB=1 to include web-gate.
 
 ci-checks: ## Run the GitHub Actions "Checks (Ubuntu)" job under Node $(CI_NODE_VERSION)
 	@echo "=== Checks (Ubuntu) using Node $(CI_NODE_VERSION) ==="

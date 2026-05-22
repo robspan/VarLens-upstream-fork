@@ -14,11 +14,11 @@ export class SqliteReadExecutor implements StorageReadExecutor {
         if (this.dbPool !== null) {
           return await this.dbPool.run({
             type: 'cases:query',
-            params: [task.params]
+            params: task.params
           })
         }
 
-        return this.databaseService.cases.queryCases(task.params)
+        return this.databaseService.cases.queryCases(task.params[0])
 
       case 'cases:availableBuilds':
         if (this.dbPool !== null) {
@@ -142,6 +142,15 @@ export class SqliteReadExecutor implements StorageReadExecutor {
         if (this.dbPool !== null)
           return await this.dbPool.run({ type: task.type, params: task.params })
         return this.databaseService.variants.getGeneSymbols(
+          task.params[0],
+          task.params[1],
+          task.params[2]
+        )
+
+      case 'variants:search':
+        if (this.dbPool !== null)
+          return await this.dbPool.run({ type: task.type, params: task.params })
+        return this.databaseService.variants.searchVariants(
           task.params[0],
           task.params[1],
           task.params[2]
@@ -303,6 +312,9 @@ export class SqliteReadExecutor implements StorageReadExecutor {
 
       case 'audit:query':
         return this.databaseService.auditLog.query(task.params[0])
+
+      case 'transcripts:list':
+        return this.databaseService.transcripts.getVariantTranscripts(task.params[0])
     }
 
     const _exhaustive: never = task

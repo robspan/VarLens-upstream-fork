@@ -1,4 +1,5 @@
 import { Worker } from 'node:worker_threads'
+import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { mainLogger } from '../../services/MainLogger'
 import type {
@@ -28,7 +29,9 @@ export class PostgresImportWorkerClient {
   private readonly workerFactory?: () => Worker
 
   constructor(options: PostgresImportWorkerClientOptions = {}) {
-    this.workerPath = resolve(__dirname, 'postgres-import-worker.js')
+    const siblingWorker = resolve(__dirname, 'postgres-import-worker.js')
+    const builtMainWorker = resolve(process.cwd(), 'out/main/postgres-import-worker.js')
+    this.workerPath = existsSync(siblingWorker) ? siblingWorker : builtMainWorker
     this.workerFactory = options.workerFactory
   }
 
@@ -88,16 +91,16 @@ export class PostgresImportWorkerClient {
   }
 
   async terminate(): Promise<void> {
-    if (!this.worker) return
+    const worker = this.worker
+    if (!worker) return
+    this.worker = null
     try {
-      await this.worker.terminate()
+      await worker.terminate()
     } catch (e) {
       mainLogger.warn(
         `Postgres import worker termination failed: ${e instanceof Error ? e.message : String(e)}`,
         'PostgresImportWorkerClient'
       )
-    } finally {
-      this.worker = null
     }
   }
 }

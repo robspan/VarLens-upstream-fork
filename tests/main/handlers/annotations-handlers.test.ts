@@ -446,7 +446,7 @@ describe('annotations:upsertPerCase — variants:annotationChanged broadcast', (
 })
 
 describe('annotation PostgreSQL audit routing', () => {
-  it('appends audit entries after postgres global annotation mutations', async () => {
+  it('uses one audited postgres storage write for global annotation mutations', async () => {
     const readExecute = vi.fn().mockResolvedValue({ starred: 0 })
     const writeExecute = vi.fn().mockResolvedValue({ starred: 1 })
     const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>()
@@ -479,28 +479,12 @@ describe('annotation PostgreSQL audit routing', () => {
       })
     ).resolves.toEqual({ starred: 1 })
 
-    expect(readExecute).toHaveBeenCalledWith({
-      type: 'annotations:getGlobal',
-      params: [{ chr: '1', pos: 123, ref: 'A', alt: 'G' }]
-    })
-    expect(writeExecute).toHaveBeenNthCalledWith(1, {
-      type: 'annotations:upsertGlobal',
+    expect(readExecute).not.toHaveBeenCalled()
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'annotations:upsertGlobalWithAudit',
       params: [
         { chr: '1', pos: 123, ref: 'A', alt: 'G' },
         { starred: true, user_name: 'analyst' }
-      ]
-    })
-    expect(writeExecute).toHaveBeenNthCalledWith(2, {
-      type: 'audit:append',
-      params: [
-        {
-          action_type: 'star',
-          entity_type: 'variant_annotation',
-          entity_key: '1:123:A:G',
-          old_value: JSON.stringify({ starred: 0 }),
-          new_value: JSON.stringify({ starred: 1 }),
-          user_name: 'analyst'
-        }
       ]
     })
   })

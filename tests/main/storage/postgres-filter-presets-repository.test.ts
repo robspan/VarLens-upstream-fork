@@ -80,8 +80,8 @@ describe('PostgresFilterPresetsRepository', () => {
       null,
       JSON.stringify({ genes: ['BRCA1'] }),
       'filter',
-      false,
-      true,
+      0,
+      1,
       0,
       expect.any(Number),
       expect.any(Number)
@@ -142,7 +142,7 @@ describe('PostgresFilterPresetsRepository', () => {
     expect(sql).not.toContain('name =')
     expect(sql).not.toContain('filter_json =')
     expect(sql).not.toContain('kind =')
-    expect(params).toEqual([false, 5, expect.any(Number), 9])
+    expect(params).toEqual([0, 5, expect.any(Number), 9])
   })
 
   it('throws typed errors for missing, duplicate, and protected presets', async () => {

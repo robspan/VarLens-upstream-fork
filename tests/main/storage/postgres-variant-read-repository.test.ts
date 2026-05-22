@@ -44,6 +44,37 @@ describe('PostgresVariantReadRepository', () => {
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('ILIKE'), [1, 'br%', 20])
   })
 
+  it('searches the full search document instead of narrowing to gene_symbol', async () => {
+    const pool = {
+      query: vi.fn().mockResolvedValueOnce({
+        rows: [
+          {
+            id: '1',
+            case_id: '1',
+            chr: '1',
+            pos: '1000',
+            ref: 'A',
+            alt: 'G',
+            gene_symbol: 'GENE1',
+            consequence: 'stop_gained',
+            internal_af: null
+          }
+        ]
+      })
+    }
+    const repository = new PostgresVariantReadRepository(pool as never, 'public')
+
+    await expect(repository.searchVariants(1, 'stop', 20)).resolves.toMatchObject([
+      { id: 1, case_id: 1, consequence: 'stop_gained' }
+    ])
+
+    const sql = String(pool.query.mock.calls[0][0])
+    expect(sql).toContain('search_document @@')
+    expect(sql).toContain("to_tsquery('simple'")
+    expect(sql).not.toContain('gene_symbol ILIKE')
+    expect(pool.query.mock.calls[0][1]).toEqual([1, 'stop:*', 20, 0])
+  })
+
   it.each([
     ['tag_ids', { tag_ids: [1] }, 'variant_tags'],
     ['starred_only', { starred_only: true }, 'case_variant_annotations'],

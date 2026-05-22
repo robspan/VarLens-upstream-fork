@@ -200,12 +200,14 @@ describe('cases IPC handlers', () => {
     expect(result).toBe(expected)
     expect(execute).toHaveBeenCalledWith({
       type: 'cases:query',
-      params: {
-        limit: 25,
-        offset: 0,
-        sort_by: 'created_at',
-        sort_order: 'desc'
-      }
+      params: [
+        {
+          limit: 25,
+          offset: 0,
+          sort_by: 'created_at',
+          sort_order: 'desc'
+        }
+      ]
     })
   })
 

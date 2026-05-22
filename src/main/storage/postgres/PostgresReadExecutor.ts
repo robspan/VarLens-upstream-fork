@@ -13,6 +13,7 @@ import type { PostgresOverviewRepository } from './PostgresOverviewRepository'
 import type { PostgresPanelsRepository } from './PostgresPanelsRepository'
 import type { PostgresShortlistService } from './PostgresShortlistService'
 import type { PostgresTagsRepository } from './PostgresTagsRepository'
+import type { PostgresTranscriptsRepository } from './PostgresTranscriptsRepository'
 import type { PostgresVariantReadRepository } from './PostgresVariantReadRepository'
 
 interface PostgresReadExecutorRepositories {
@@ -55,6 +56,7 @@ interface PostgresReadExecutorRepositories {
     'listGroups' | 'getGroupWithMembers' | 'getGroupForCase'
   >
   audit: Pick<PostgresAuditLogRepository, 'getByEntityKey' | 'query'>
+  transcripts: Pick<PostgresTranscriptsRepository, 'list'>
   caseMetadata: Pick<
     PostgresCaseMetadataRepository,
     | 'getCaseMetadata'
@@ -74,6 +76,7 @@ interface PostgresReadExecutorRepositories {
     | 'getVariantTypeCounts'
     | 'getVariantTypesPresent'
     | 'getGeneSymbols'
+    | 'searchVariants'
     | 'queryVariants'
     | 'getFilterOptions'
     | 'getColumnMeta'
@@ -86,7 +89,7 @@ export class PostgresReadExecutor implements StorageReadExecutor {
   async execute(task: StorageReadTask): Promise<unknown> {
     switch (task.type) {
       case 'cases:query':
-        return await this.repositories.casesQuery.queryCases(task.params)
+        return await this.repositories.casesQuery.queryCases(task.params[0])
 
       case 'cases:availableBuilds':
         return await this.repositories.availableBuilds.getAvailableGenomeBuilds()
@@ -132,6 +135,13 @@ export class PostgresReadExecutor implements StorageReadExecutor {
 
       case 'variants:geneSymbols':
         return await this.repositories.variants.getGeneSymbols(
+          task.params[0],
+          task.params[1],
+          task.params[2]
+        )
+
+      case 'variants:search':
+        return await this.repositories.variants.searchVariants(
           task.params[0],
           task.params[1],
           task.params[2]
@@ -255,6 +265,9 @@ export class PostgresReadExecutor implements StorageReadExecutor {
 
       case 'audit:query':
         return await this.repositories.audit.query(task.params[0])
+
+      case 'transcripts:list':
+        return await this.repositories.transcripts.list(task.params[0])
     }
 
     const _exhaustive: never = task

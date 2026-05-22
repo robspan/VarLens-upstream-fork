@@ -6,8 +6,8 @@ import {
   TagUpdateSchema,
   VariantTagAssignSchema,
   VariantTagSetSchema,
-  CaseVariantIdSchema
-} from '../../../shared/types/ipc-schemas'
+  TagCaseVariantIdSchema
+} from '../../../shared/api/schemas/tags'
 import { mainLogger } from '../../services/MainLogger'
 import type { AuditAppendParams } from '../../storage/audit-log-types'
 import type { StorageWriteExecutor } from '../../storage/write-executor'
@@ -139,7 +139,7 @@ export function registerTagHandlers({
 
   ipcMain.handle('tags:getVariantTags', async (_event, caseId: unknown, variantId: unknown) => {
     return wrapHandler(async () => {
-      const validated = CaseVariantIdSchema.safeParse({ caseId, variantId })
+      const validated = TagCaseVariantIdSchema.safeParse({ caseId, variantId })
       if (!validated.success) {
         mainLogger.error(`Invalid tags:getVariantTags params: ${validated.error.message}`, 'tags')
         throw new Error('Invalid case/variant ID')

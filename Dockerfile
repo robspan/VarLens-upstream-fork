@@ -35,7 +35,7 @@ RUN npm ci --ignore-scripts \
  && npm rebuild better-sqlite3-multiple-ciphers @node-rs/argon2
 
 COPY . .
-RUN npm run build:web
+RUN VARLENS_WEB_BASE=/ npm run build:web
 
 # Reduce to production deps only.
 RUN npm prune --omit=dev --ignore-scripts

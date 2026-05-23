@@ -189,7 +189,7 @@ jobs:
             echo "**Tags:**"
             echo "${{ steps.meta.outputs.tags }}" | sed 's/^/- `/' | sed 's/$/`/'
             echo ""
-            echo "Pin in the deploy repo \`compose/docker-compose.yml\`:"
+            echo "Pin in the deploy repo \`k8s/overlays/prod/kustomization.yaml\`:"
             echo ""
             echo "\`\`\`yaml"
             echo "image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.push.outputs.digest }}"

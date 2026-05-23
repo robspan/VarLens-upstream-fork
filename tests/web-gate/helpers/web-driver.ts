@@ -5,7 +5,7 @@ import { join } from 'path'
 import { Pool } from 'pg'
 import type { FastifyInstance } from 'fastify'
 
-import type { buildApp as buildAppType } from '../../../src/web/server'
+import type { buildApp as buildAppType, BuildAppOptions } from '../../../src/web/server'
 
 const BOOTSTRAP_PASSWORD = 'web-gate-bootstrap-password-2026'
 const ACTIVE_PASSWORD = 'web-gate-active-password-2026'
@@ -95,7 +95,9 @@ export async function startIsolatedWebSchema(prefix?: string): Promise<IsolatedW
   return { schema, recoveryDir, close }
 }
 
-export async function startWebDriver(): Promise<WebDriver> {
+export async function startWebDriver(
+  options: Pick<BuildAppOptions, 'metrics'> = {}
+): Promise<WebDriver> {
   const isolated = await startIsolatedWebSchema('web_driver')
 
   let app: FastifyInstance | undefined
@@ -124,7 +126,8 @@ export async function startWebDriver(): Promise<WebDriver> {
         username: 'web-gate-admin',
         passwordHash,
         displayName: 'Web Gate Admin'
-      }
+      },
+      metrics: options.metrics
     })
 
     const loginRes = (await app.inject({

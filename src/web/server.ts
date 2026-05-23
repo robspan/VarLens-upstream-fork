@@ -36,6 +36,12 @@ import { registerLoginRoute, resolveAppPathPrefix } from './server/login-route'
 import { registerPageGate } from './server/page-gate'
 import { registerOpenApi } from './server/routes/openapi'
 import { registerStatic } from './server/static'
+import {
+  type AppMetrics,
+  createAppMetricsFromEnv,
+  registerRequestMetrics,
+  startMetricsServer
+} from './server/metrics'
 import pkg from '../../package.json'
 
 /**
@@ -62,6 +68,7 @@ export interface AdminBootstrapOptions {
  */
 export interface BuildAppOptions {
   admin?: AdminBootstrapOptions
+  metrics?: AppMetrics
 }
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -81,6 +88,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       level: process.env.VARLENS_LOG_LEVEL ?? 'info'
     }
   })
+  const metrics = options.metrics ?? createAppMetricsFromEnv()
+  registerRequestMetrics(app, metrics)
 
   const session: PostgresStorageSession = await createPostgresStorageSession(pgConfig)
   // Share the storage session's pool with the auth service so we open
@@ -121,6 +130,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
   app.get('/healthz', async (_request, reply) => {
     const open = await isPostgresHealthy(pool)
+    metrics.setDatabaseHealthy(open)
     if (!open) {
       reply.code(503)
       return { status: 'unhealthy', version: pkg.version, db: { open: false } }
@@ -325,18 +335,48 @@ async function main(): Promise<void> {
     )
   }
   const host = process.env.VARLENS_WEB_HOST ?? '0.0.0.0'
+  const metricsPortRaw = process.env.VARLENS_METRICS_PORT ?? '9090'
+  const metricsPort = Number(metricsPortRaw)
+  if (!Number.isInteger(metricsPort) || metricsPort < 0 || metricsPort > 65535) {
+    throw new Error(
+      `VARLENS_METRICS_PORT must be an integer in [0, 65535]; got: ${JSON.stringify(metricsPortRaw)}`
+    )
+  }
+  const metricsHost = process.env.VARLENS_METRICS_HOST ?? '0.0.0.0'
+  const metricsPath = process.env.VARLENS_METRICS_PATH ?? '/metrics'
+  const metricsEnabled = process.env.VARLENS_METRICS_ENABLED !== '0'
+  const metrics = createAppMetricsFromEnv()
 
-  const app = await buildApp({ admin: readAdminEnv() })
+  const app = await buildApp({ admin: readAdminEnv(), metrics })
 
   await app.listen({ port, host })
+  const metricsServer = metricsEnabled
+    ? await startMetricsServer({ metrics, host: metricsHost, port: metricsPort, path: metricsPath })
+    : undefined
 
   const address = app.server.address()
   const boundPort = address !== null && typeof address === 'object' ? address.port : port
   app.log.info({ port: boundPort }, 'listening')
+  if (metricsServer !== undefined) {
+    const metricsAddress = metricsServer.address()
+    const boundMetricsPort =
+      metricsAddress !== null && typeof metricsAddress === 'object'
+        ? metricsAddress.port
+        : metricsPort
+    app.log.info({ port: boundMetricsPort, path: metricsPath }, 'metrics listening')
+  }
 
   const shutdown = async (signal: string): Promise<void> => {
     app.log.info({ signal }, 'shutting down')
     try {
+      if (metricsServer !== undefined) {
+        await new Promise<void>((resolve, reject) => {
+          metricsServer.close((error) => {
+            if (error !== undefined) reject(error)
+            else resolve()
+          })
+        })
+      }
       await app.close()
       process.exit(0)
     } catch (err) {

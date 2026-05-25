@@ -1051,7 +1051,7 @@ const MultiFileImportSpecSchema = z
     caller: NonBlankImportStringSchema.nullable(),
     annotationFormat: NonBlankImportStringSchema.nullable()
   })
-  .passthrough()
+  .strict()
 
 export const ImportFiltersIpcPayloadSchema = z
   .object({

@@ -56,6 +56,22 @@ describe('ImportStartMultiFileParamsSchema', () => {
     expect(ImportStartMultiFileParamsSchema.safeParse(validMultiFileParams).success).toBe(true)
   })
 
+  it('rejects unknown fields on multi-file specs', () => {
+    expect(
+      ImportStartMultiFileParamsSchema.safeParse([
+        validMultiFileParams[0],
+        [
+          {
+            ...validMultiFileParams[1][0],
+            unexpected: 'preserved by passthrough'
+          }
+        ],
+        validMultiFileParams[2],
+        validMultiFileParams[3]
+      ]).success
+    ).toBe(false)
+  })
+
   it('rejects malformed filters payloads', () => {
     expect(
       ImportStartMultiFileParamsSchema.safeParse([

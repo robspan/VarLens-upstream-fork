@@ -115,6 +115,19 @@ describe('import IPC handlers', () => {
     expect(startImport).not.toHaveBeenCalled()
   })
 
+  it.each(['relative.vcf', '/tmp/../etc/shadow'])(
+    'returns INVALID_PARAMETERS when import:start receives non-normalized filePath %s',
+    async (filePath) => {
+      const ipcMain = makeIpcMain()
+      registerImportHandlers(makeDeps(ipcMain) as never)
+
+      const result = await invokeHandler(ipcMain, 'import:start', filePath, 'Case A', undefined)
+
+      expectInvalidParametersResult(result)
+      expect(startImport).not.toHaveBeenCalled()
+    }
+  )
+
   it('returns INVALID_PARAMETERS when import:startMultiFile receives an unallowed filePath', async () => {
     const ipcMain = makeIpcMain()
     registerImportHandlers(makeDeps(ipcMain) as never)
@@ -155,6 +168,33 @@ describe('import IPC handlers', () => {
     expectInvalidParametersResult(result)
     expect(startMultiFileImport).not.toHaveBeenCalled()
   })
+
+  it.each(['relative.bed', '/tmp/../etc/shadow'])(
+    'returns INVALID_PARAMETERS when import:startMultiFile receives non-normalized BED path %s',
+    async (bedFile) => {
+      const ipcMain = makeIpcMain()
+      registerImportHandlers(makeDeps(ipcMain) as never)
+
+      const result = await invokeHandler(
+        ipcMain,
+        'import:startMultiFile',
+        'Case A',
+        [
+          {
+            filePath: '/tmp/variants.vcf',
+            variantType: 'SNV',
+            caller: null,
+            annotationFormat: null
+          }
+        ],
+        undefined,
+        { bedFile }
+      )
+
+      expectInvalidParametersResult(result)
+      expect(startMultiFileImport).not.toHaveBeenCalled()
+    }
+  )
 
   it('returns INVALID_PARAMETERS when import:vcfPreview receives an unallowed filePath', async () => {
     const ipcMain = makeIpcMain()

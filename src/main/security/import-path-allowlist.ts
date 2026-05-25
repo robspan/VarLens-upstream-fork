@@ -25,7 +25,11 @@ export function addAllowedImportPath(absolutePath: string): void {
 }
 
 export function isAllowedImportPath(candidate: string): boolean {
+  if (!isAbsolute(candidate)) return false
+
   const abs = resolve(candidate)
+  if (abs !== candidate) return false
+
   const realCandidate = tryRealpath(abs)
 
   if (

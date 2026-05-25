@@ -17,6 +17,14 @@ describe('import-path-allowlist', () => {
     expect(isAllowedImportPath('/etc/passwd')).toBe(false)
   })
 
+  it('rejects relative paths even when they resolve under an automatic root', () => {
+    expect(isAllowedImportPath('relative.bed')).toBe(false)
+  })
+
+  it('rejects non-normalized absolute paths containing traversal', () => {
+    expect(isAllowedImportPath('/tmp/../etc/shadow')).toBe(false)
+  })
+
   it('accepts a previously-registered dialog path', () => {
     addAllowedImportPath('/some/custom/mount/file.vcf')
     expect(isAllowedImportPath('/some/custom/mount/file.vcf')).toBe(true)

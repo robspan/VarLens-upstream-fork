@@ -11,9 +11,9 @@
  * regressed by web-specific concerns.
  *
  * Cross-backend policy values (USER_ROLES, MAX_FAILED_ATTEMPTS,
- * LOCKOUT_DURATION_MINUTES) come from src/shared/auth/auth-constants —
- * the constants module is process-agnostic and the only thing the two
- * implementations share.
+ * LOCKOUT_DURATION_MINUTES) and web password policy come from
+ * src/shared/auth/auth-constants — the constants module is process-agnostic
+ * and the only thing the two implementations share.
  */
 import type { Pool } from 'pg'
 
@@ -27,6 +27,7 @@ import {
   MAX_FAILED_ATTEMPTS,
   ROLE_ADMIN,
   ROLE_USER,
+  WEB_MIN_PASSWORD_LENGTH,
   type UserRole
 } from '../../shared/auth/auth-constants'
 
@@ -36,7 +37,7 @@ import {
  * an admin/single-user context. The desktop AuthService keeps its
  * own (laxer) rule because that surface predates this policy.
  */
-export const MIN_PASSWORD_LENGTH = 12
+export const MIN_PASSWORD_LENGTH = WEB_MIN_PASSWORD_LENGTH
 
 /**
  * Server-side validation errors that callers need to discriminate

@@ -12,6 +12,22 @@ function toNumber(value: unknown): number {
   return 0
 }
 
+function toBoolean(value: unknown): boolean {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value === 1
+  if (typeof value === 'bigint') return value === 1n
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    return normalized === 't' || normalized === 'true' || normalized === '1'
+  }
+  return false
+}
+
+function toNullableBoolean(value: unknown): boolean | null {
+  if (value === null || value === undefined) return null
+  return toBoolean(value)
+}
+
 const transcriptColumns = `
   id, variant_id, transcript_id, gene_symbol, consequence, cdna, aa_change,
   hpo_sim_score, moi, is_selected, is_mane_select, is_canonical
@@ -167,13 +183,9 @@ export class PostgresTranscriptsRepository {
       aa_change: (row.aa_change as string | null) ?? null,
       hpo_sim_score: (row.hpo_sim_score as number | null) ?? null,
       moi: (row.moi as string | null) ?? null,
-      is_selected: row.is_selected === true || row.is_selected === 1,
-      is_mane_select:
-        row.is_mane_select === null
-          ? null
-          : row.is_mane_select === true || row.is_mane_select === 1,
-      is_canonical:
-        row.is_canonical === null ? null : row.is_canonical === true || row.is_canonical === 1
+      is_selected: toBoolean(row.is_selected),
+      is_mane_select: toNullableBoolean(row.is_mane_select),
+      is_canonical: toNullableBoolean(row.is_canonical)
     }
   }
 }

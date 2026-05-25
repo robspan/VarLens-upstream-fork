@@ -211,6 +211,49 @@ describe('PostgresAnnotationsRepository', () => {
     expect(release).toHaveBeenCalledOnce()
   })
 
+  it('preserves the original audited global annotation failure when rollback fails', async () => {
+    const release = vi.fn()
+    const failure = new Error('audit append failed')
+    const rollbackFailure = new Error('rollback failed')
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 8,
+            chr: '1',
+            pos: 12345,
+            ref: 'A',
+            alt: 'G',
+            global_comment: null,
+            starred: 1,
+            acmg_classification: null,
+            acmg_evidence: null,
+            created_at: 1714060800000,
+            updated_at: 1714060802000
+          }
+        ]
+      })
+      .mockRejectedValueOnce(failure)
+      .mockRejectedValueOnce(rollbackFailure)
+    const pool = {
+      connect: vi.fn(async () => ({ query, release }))
+    }
+    const repository = new PostgresAnnotationsRepository(pool as never, 'public')
+
+    await expect(
+      repository.upsertGlobalAnnotationWithAudit('1', 12345, 'A', 'G', {
+        starred: true,
+        user_name: 'analyst'
+      })
+    ).rejects.toThrow('audit append failed')
+
+    expect(query).toHaveBeenNthCalledWith(5, 'ROLLBACK')
+    expect(release).toHaveBeenCalledOnce()
+  })
+
   it('deletes global annotations by coordinates', async () => {
     const pool = makePool()
     pool.query.mockResolvedValueOnce({ rows: [] })
@@ -346,6 +389,47 @@ describe('PostgresAnnotationsRepository', () => {
       ]
     )
     expect(query).toHaveBeenNthCalledWith(5, 'COMMIT')
+    expect(release).toHaveBeenCalledOnce()
+  })
+
+  it('preserves the original audited per-case annotation failure when rollback fails', async () => {
+    const release = vi.fn()
+    const failure = new Error('audit append failed')
+    const rollbackFailure = new Error('rollback failed')
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 9,
+            case_id: 2,
+            variant_id: 3,
+            per_case_comment: null,
+            starred: 1,
+            acmg_classification: null,
+            acmg_evidence: null,
+            created_at: 1714060800000,
+            updated_at: 1714060802000
+          }
+        ]
+      })
+      .mockRejectedValueOnce(failure)
+      .mockRejectedValueOnce(rollbackFailure)
+    const pool = {
+      connect: vi.fn(async () => ({ query, release }))
+    }
+    const repository = new PostgresAnnotationsRepository(pool as never, 'public')
+
+    await expect(
+      repository.upsertPerCaseAnnotationWithAudit(2, 3, {
+        starred: true,
+        user_name: 'reviewer'
+      })
+    ).rejects.toThrow('audit append failed')
+
+    expect(query).toHaveBeenNthCalledWith(5, 'ROLLBACK')
     expect(release).toHaveBeenCalledOnce()
   })
 

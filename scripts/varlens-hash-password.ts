@@ -10,8 +10,11 @@
  *   Confirm:        ********
  *   $argon2id$v=19$m=65536,t=3,p=4$<salt>$<hash>
  *
+ *   # Capture only the hash:
+ *   $ printf 'password\npassword\n' | npm run --silent varlens:hash-password > admin.hash
+ *
  *   # Then in the operator environment:
- *   VARLENS_ADMIN_PASSWORD_HASH=$argon2id$v=19$...
+ *   VARLENS_ADMIN_PASSWORD_HASH='$argon2id$v=19$...'
  *   # VARLENS_ADMIN_PASSWORD is not supported.
  *
  * Why this CLI exists: the web track refuses plaintext credentials
@@ -28,8 +31,7 @@
  * straight to stdout for the operator to copy.
  */
 import { defaultPasswordProvider } from '../src/main/auth/providers/argon2-provider'
-
-const MIN_PASSWORD_LENGTH = 12
+import { WEB_MIN_PASSWORD_LENGTH } from '../src/shared/auth/auth-constants'
 
 /**
  * Read all of stdin into a line iterator. Used in non-TTY mode so a
@@ -79,7 +81,7 @@ async function readSecretTty(prompt: string): Promise<string> {
           reject(new Error('cancelled'))
           return
         }
-        if (ch === '' || ch === '\b') {
+        if (ch === '\x7f' || ch === '\b') {
           buf = buf.slice(0, -1)
           continue
         }
@@ -106,9 +108,9 @@ async function main(): Promise<void> {
     confirm = next() ?? ''
   }
 
-  if (pw.length < MIN_PASSWORD_LENGTH) {
+  if (pw.length < WEB_MIN_PASSWORD_LENGTH) {
     process.stderr.write(
-      `Password too short (${pw.length} chars; minimum ${MIN_PASSWORD_LENGTH}).\n`
+      `Password too short (${pw.length} chars; minimum ${WEB_MIN_PASSWORD_LENGTH}).\n`
     )
     process.exit(2)
   }
@@ -120,11 +122,11 @@ async function main(): Promise<void> {
   process.stderr.write('Hashing (Argon2id, m=64MB, t=3, p=4)...\n')
   const hash = await defaultPasswordProvider.hashPassword(pw)
 
-  // Hash to stdout, instructions to stderr — so a pipe-into-file
-  // captures only the hash.
+  // Hash to stdout, instructions to stderr. Use `npm run --silent`
+  // when redirecting so npm's banner does not enter the output file.
   process.stdout.write(hash + '\n')
   process.stderr.write('\nDone. Add to your .env:\n')
-  process.stderr.write('  VARLENS_ADMIN_PASSWORD_HASH=' + hash + '\n')
+  process.stderr.write(`  VARLENS_ADMIN_PASSWORD_HASH='${hash}'\n`)
   process.stderr.write('Plaintext VARLENS_ADMIN_PASSWORD is not supported.\n')
 }
 

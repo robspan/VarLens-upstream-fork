@@ -5,7 +5,7 @@
  * here. Without a single source of truth the two backends
  * drift on policy — different lockout thresholds, mismatched role
  * enums, divergent CHECK constraints between SQLite migrations.ts v12
- * and Postgres migrations/sql/0007_*.sql.
+ * and Postgres migrations/sql/0008_*.sql.
  *
  * Anything that is *policy* belongs here. SQL fragments, query
  * shape, and row-mapping stay in the per-backend implementation.
@@ -35,6 +35,13 @@ export const ROLE_USER: UserRole = 'user'
  * `DEFAULT 'user'`; the migration-parity tests pin both to this value.
  */
 export const DEFAULT_USER_ROLE: UserRole = ROLE_USER
+
+/**
+ * Minimum length for passwords accepted by the web track. Desktop auth keeps
+ * its existing looser behavior; web bootstrap and password rotation share this
+ * value so the hash CLI cannot drift from the Postgres auth service.
+ */
+export const WEB_MIN_PASSWORD_LENGTH = 12
 
 /**
  * After this many consecutive failed login attempts the account is

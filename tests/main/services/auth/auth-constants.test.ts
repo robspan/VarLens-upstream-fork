@@ -10,6 +10,7 @@ import {
   MAX_FAILED_ATTEMPTS,
   ROLE_ADMIN,
   ROLE_USER,
+  WEB_MIN_PASSWORD_LENGTH,
   USER_ROLES,
   type UserRole
 } from '../../../../src/shared/auth/auth-constants'
@@ -103,6 +104,10 @@ describe('auth-constants module', () => {
     expect(LOCKOUT_DURATION_MINUTES).toBe(15)
   })
 
+  it('exposes the web password minimum used by the hash CLI and Postgres service', () => {
+    expect(WEB_MIN_PASSWORD_LENGTH).toBe(12)
+  })
+
   it('UserRole type is a typed alias of USER_ROLES values (compile-time)', () => {
     // Compile-time witnesses: the `satisfies` pattern locks UserRole to
     // a subset of the array's values — TS will refuse to compile if
@@ -155,6 +160,26 @@ describe('AuthService.ts uses the constants module (no role literals)', () => {
     expect(stripped, `AuthService must use ROLE_USER, not the string literal 'user'`).not.toMatch(
       /'user'/
     )
+  })
+})
+
+describe('web password policy uses the shared constant', () => {
+  it('PostgresWebAuthService imports WEB_MIN_PASSWORD_LENGTH from auth-constants', () => {
+    const src = readOrFail(
+      resolve(REPO_ROOT, 'src/web/auth/PostgresWebAuthService.ts'),
+      'PostgresWebAuthService.ts'
+    )
+    expect(src).toMatch(/WEB_MIN_PASSWORD_LENGTH/)
+    expect(src).not.toMatch(/^export const MIN_PASSWORD_LENGTH\s*=\s*12/m)
+  })
+
+  it('the hash-password CLI imports WEB_MIN_PASSWORD_LENGTH from auth-constants', () => {
+    const src = readOrFail(
+      resolve(REPO_ROOT, 'scripts/varlens-hash-password.ts'),
+      'scripts/varlens-hash-password.ts'
+    )
+    expect(src).toMatch(/WEB_MIN_PASSWORD_LENGTH/)
+    expect(src).not.toMatch(/^const MIN_PASSWORD_LENGTH\s*=\s*12/m)
   })
 })
 

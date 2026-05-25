@@ -9,6 +9,11 @@ import { detectFormat } from '../import/format-detection'
 import { MARK_STALE_SQL } from '../../shared/sql/cohort-summary-rebuild'
 import { openWorkerDatabase, rebuildFts, rebuildCohortSummary } from './worker-db'
 import {
+  finalizeInterruptedImportFts,
+  postTerminalMessageAfterCleanup,
+  type ImportFtsFinalizationState
+} from './import-finalization'
+import {
   DROP_FTS_TRIGGERS,
   DROP_INDEXES,
   RECREATE_INDEXES,
@@ -32,6 +37,11 @@ port.on('message', async (msg: MainMessage) => {
   if (msg.type === 'start') {
     cancelled = false
     let db: DatabaseType | null = null
+    let terminalMessage: WorkerMessage | undefined
+    const ftsFinalizationState: ImportFtsFinalizationState = {
+      ftsTriggersDropped: false,
+      ftsRebuilt: false
+    }
 
     try {
       db = openWorkerDatabase(msg.dbPath, msg.encryptionKey)
@@ -40,6 +50,7 @@ port.on('message', async (msg: MainMessage) => {
 
       // Drop FTS triggers and non-essential indexes at start (batch optimization)
       db.exec(DROP_FTS_TRIGGERS)
+      ftsFinalizationState.ftsTriggersDropped = true
       db.exec(DROP_INDEXES)
 
       // Mark cohort summary as stale before import
@@ -250,61 +261,68 @@ port.on('message', async (msg: MainMessage) => {
       // FTS rebuild + ANALYZE + optimize
       sendProgress(totalFiles, totalFiles, '', 99, 'finalizing', 0, 0)
       rebuildFts(db)
+      ftsFinalizationState.ftsRebuilt = true
       rebuildCohortSummary(db)
 
       const completeMsg: WorkerMessage = {
         type: 'complete',
         results: { succeeded, failed, skipped, cancelled, details: results }
       }
-      port.postMessage(completeMsg)
+      terminalMessage = completeMsg
     } catch (fatalError) {
       // Index/trigger recreation is handled unconditionally in the finally block below
 
-      const errorMsg: WorkerMessage = {
+      terminalMessage = {
         type: 'error',
         fileIndex: -1,
         error: fatalError instanceof Error ? fatalError.message : String(fatalError),
         phase: 'fatal',
         stack: fatalError instanceof Error ? fatalError.stack : undefined
       }
-      port.postMessage(errorMsg)
     } finally {
-      if (db) {
-        try {
-          db.exec(RECREATE_INDEXES)
-        } catch (e) {
-          console.warn(
-            '[import-worker] Failed to recreate indexes (will be recreated on next app start):',
-            e instanceof Error ? e.message : String(e)
-          )
-        }
-        try {
-          db.pragma('wal_checkpoint(TRUNCATE)')
-        } catch (e) {
-          console.warn(
-            '[import-worker] Failed to truncate WAL checkpoint:',
-            e instanceof Error ? e.message : String(e)
-          )
-        }
-        try {
-          db.pragma('synchronous = NORMAL')
-          db.pragma('wal_autocheckpoint = 1000')
-          db.pragma('foreign_keys = ON')
-        } catch (e) {
-          console.warn(
-            '[import-worker] Failed to restore pragmas after import:',
-            e instanceof Error ? e.message : String(e)
-          )
-        }
-        try {
-          db.close()
-        } catch (e) {
-          console.warn(
-            '[import-worker] Failed to close database:',
-            e instanceof Error ? e.message : String(e)
-          )
-        }
-      }
+      postTerminalMessageAfterCleanup(
+        terminalMessage,
+        () => {
+          if (db) {
+            finalizeInterruptedImportFts(db, ftsFinalizationState)
+            try {
+              db.exec(RECREATE_INDEXES)
+            } catch (e) {
+              console.warn(
+                '[import-worker] Failed to recreate indexes (will be recreated on next app start):',
+                e instanceof Error ? e.message : String(e)
+              )
+            }
+            try {
+              db.pragma('wal_checkpoint(TRUNCATE)')
+            } catch (e) {
+              console.warn(
+                '[import-worker] Failed to truncate WAL checkpoint:',
+                e instanceof Error ? e.message : String(e)
+              )
+            }
+            try {
+              db.pragma('synchronous = NORMAL')
+              db.pragma('wal_autocheckpoint = 1000')
+              db.pragma('foreign_keys = ON')
+            } catch (e) {
+              console.warn(
+                '[import-worker] Failed to restore pragmas after import:',
+                e instanceof Error ? e.message : String(e)
+              )
+            }
+            try {
+              db.close()
+            } catch (e) {
+              console.warn(
+                '[import-worker] Failed to close database:',
+                e instanceof Error ? e.message : String(e)
+              )
+            }
+          }
+        },
+        (message) => port.postMessage(message)
+      )
     }
   }
 })

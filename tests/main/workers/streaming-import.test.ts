@@ -30,7 +30,6 @@ import { parseVcfHeaderFromLines } from '../../../src/main/import/vcf/vcf-header
 import { parseVcfLine } from '../../../src/main/import/vcf/vcf-line-parser'
 import { mapVcfRecord } from '../../../src/main/import/vcf/VcfMapper'
 import { DEFAULT_INFO_FIELD_MAPPINGS } from '../../../src/main/import/vcf/info-field-registry'
-import { createFTSTriggers } from '../../../src/main/database/schema'
 import type { VcfHeader } from '../../../src/main/import/vcf/types'
 
 // Fixtures
@@ -153,16 +152,6 @@ function buildStmts(db: DatabaseType) {
 
   function finishBulkInsert(caseId: number, totalInserted: number): void {
     updateVariantCountStmt.run(totalInserted, caseId)
-    try {
-      db.exec("INSERT INTO variants_fts(variants_fts) VALUES('rebuild')")
-    } catch {
-      // best effort
-    }
-    try {
-      db.exec(createFTSTriggers)
-    } catch {
-      // best effort
-    }
   }
 
   return {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { join } from 'node:path'
 import Database from 'better-sqlite3-multiple-ciphers'
 import type { Database as DatabaseType } from 'better-sqlite3-multiple-ciphers'
@@ -22,6 +22,7 @@ describe('prepareStatements', () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     db.close()
   })
 
@@ -98,6 +99,17 @@ describe('prepareStatements', () => {
       variant_count: number
     }
     expect(row.variant_count).toBe(42)
+  })
+
+  it('finishBulkInsert does not rebuild FTS or recreate FTS triggers per file', () => {
+    const stmts = prepareStatements(db)
+    const execSpy = vi.spyOn(db, 'exec')
+    const caseResult = stmts.insertCase.run('test', '/path', 100, Date.now(), 'GRCh38')
+    const caseId = Number(caseResult.lastInsertRowid)
+
+    stmts.finishBulkInsert(caseId, 42)
+
+    expect(execSpy).not.toHaveBeenCalled()
   })
 })
 

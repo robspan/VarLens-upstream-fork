@@ -101,4 +101,24 @@ describe('PostgresImportWorkerClient', () => {
     expect(() => c.cancel()).not.toThrow()
     expect(fake.postMessage).not.toHaveBeenCalled()
   })
+
+  it('throws a clear error when the worker bundle cannot be found', () => {
+    const c = new PostgresImportWorkerClient({
+      workerPathCandidates: ['/tmp/varlens-missing-postgres-import-worker.js']
+    })
+
+    expect(() =>
+      c.start(
+        {
+          type: 'start',
+          client: { connectionString: 'postgres://x' },
+          schema: 'public',
+          mode: 'single-file',
+          caseName: 'X',
+          filePath: '/tmp/a.json'
+        },
+        { onProgress: vi.fn(), onFileComplete: vi.fn(), onComplete: vi.fn(), onError: vi.fn() }
+      )
+    ).toThrow(/Postgres import worker bundle not found/)
+  })
 })

@@ -7,8 +7,15 @@ import { DatabaseManager } from '../../../src/main/services/DatabaseManager'
 import { RecentDatabasesService } from '../../../src/main/services/RecentDatabasesService'
 import { POSTGRES_CAPABILITIES } from '../../../src/main/storage/postgres/PostgresStorageSession'
 import type { StorageSession } from '../../../src/main/storage/session'
+import type { DbPool } from '../../../src/main/database/DbPool'
 
 let tempDir: string | null = null
+
+type SqlitePoolSession = StorageSession & { getDbPool(): DbPool | null }
+
+function hasSqlitePool(session: StorageSession): session is SqlitePoolSession {
+  return session.capabilities.backend === 'sqlite' && 'getDbPool' in session
+}
 
 afterEach(async () => {
   if (tempDir !== null) {
@@ -44,7 +51,9 @@ describe('DatabaseManager storage-session compatibility', () => {
 
     await manager.open(dbPath)
 
-    expect(manager.getCurrentSession().getDbPool()).not.toBeNull()
+    const session = manager.getCurrentSession()
+    expect(hasSqlitePool(session)).toBe(true)
+    expect(hasSqlitePool(session) ? session.getDbPool() : null).not.toBeNull()
 
     await manager.close()
   })
@@ -71,11 +80,8 @@ describe('DatabaseManager storage-session compatibility', () => {
       getWriteExecutor: () => ({
         execute: vi.fn()
       }),
-      getDatabaseService: () => {
-        throw new Error('DatabaseService is not available for postgres sessions')
-      },
-      getDbPool: () => {
-        throw new Error('DbPool is not available for postgres sessions')
+      getImportExecutor: () => {
+        throw new Error('Import executor is not available for this test session')
       },
       getEncryptionKey: () => {
         throw new Error('Encryption keys are not available for postgres sessions')
@@ -131,12 +137,15 @@ describe('DatabaseManager storage-session compatibility', () => {
     const { getDbPool, setActiveSessionResolver } =
       await import('../../../src/main/ipc/dbPoolManager')
 
-    setActiveSessionResolver(() => ({
-      capabilities: {
-        backend: 'sqlite'
-      },
-      getDbPool: () => sessionPool
-    }))
+    setActiveSessionResolver(
+      () =>
+        ({
+          capabilities: {
+            backend: 'sqlite'
+          },
+          getDbPool: () => sessionPool as unknown as DbPool
+        }) as unknown as StorageSession
+    )
 
     expect(getDbPool()).toBe(sessionPool)
 
@@ -149,14 +158,14 @@ describe('DatabaseManager storage-session compatibility', () => {
     const { getDbPool, setActiveSessionResolver } =
       await import('../../../src/main/ipc/dbPoolManager')
 
-    setActiveSessionResolver(() => ({
-      capabilities: {
-        backend: 'postgres'
-      },
-      getDbPool: () => {
-        throw new Error('DbPool is not available for postgres sessions')
-      }
-    }))
+    setActiveSessionResolver(
+      () =>
+        ({
+          capabilities: {
+            backend: 'postgres'
+          }
+        }) as unknown as StorageSession
+    )
 
     expect(getDbPool()).toBeNull()
 

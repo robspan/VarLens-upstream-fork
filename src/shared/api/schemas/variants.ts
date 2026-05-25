@@ -2,13 +2,21 @@ import { z } from 'zod'
 
 import {
   CaseIdSchema,
+  ColumnMetaPayloadSchema,
   LimitSchema,
   OffsetSchema,
   SortItemSchema,
   VariantFilterPartialSchema
 } from '../../types/ipc-schemas'
 
-export { CaseIdSchema, LimitSchema, OffsetSchema, SortItemSchema, VariantFilterPartialSchema }
+export {
+  CaseIdSchema,
+  ColumnMetaPayloadSchema,
+  LimitSchema,
+  OffsetSchema,
+  SortItemSchema,
+  VariantFilterPartialSchema
+}
 
 export const VariantSortBySchema = z.array(SortItemSchema)
 
@@ -18,17 +26,7 @@ export const VariantSearchArgsSchema = z.tuple([
   LimitSchema.optional()
 ])
 
-export const VariantColumnMetaPayloadSchema = z.union([
-  z.object({
-    caseId: z.number(),
-    columnKey: z.string()
-  }),
-  z.object({
-    caseId: z.unknown().optional(),
-    caseIds: z.array(z.number()),
-    columnKey: z.string()
-  })
-])
+export const VariantColumnMetaPayloadSchema = ColumnMetaPayloadSchema
 
 const NullishStringOpenApiSchema = z.string().nullable().optional()
 const NullishStringArrayOpenApiSchema = z.array(z.string()).nullable().optional()

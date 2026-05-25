@@ -18,7 +18,7 @@ export const CreateUserSchema = z.object({
 
 export const ChangePasswordSchema = z.object({
   oldPassword: z.string().min(1).max(256),
-  newPassword: PasswordInputSchema
+  newPassword: PasswordSchema
 })
 
 export const LoginArgsSchema = z.tuple([LoginParamsSchema.shape.username, PasswordInputSchema])

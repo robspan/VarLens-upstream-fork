@@ -652,11 +652,6 @@ export async function runImport(
             const stream = await deps.createVcfMappedStream(fileSpec.filePath, {
               selectedSample,
               genomeBuild,
-              // Match the existing SQLite multi-file contract: file 0 creates
-              // the case through the single-file import path and is not given
-              // import filters; filters apply to appended files. Single-file
-              // multi-file imports still receive filters because there is no
-              // append phase that could otherwise apply them.
               filters: start.files.length > 1 && i === 0 ? undefined : importFilters
             })
 

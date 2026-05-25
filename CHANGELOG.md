@@ -7,6 +7,288 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.59.3] — 2026-05-21
+
+### Changed
+
+- **Agent-health guardrails added** (#209) to keep authored source files within
+  LLM-sustainable review bounds. The repository now has a Make target and
+  baseline-backed checks that flag oversized source growth before PRs land.
+- **LLM-sustainable coding rules documented** in `AGENTS.md`, making the
+  source-size, boundary, testing, and planning expectations explicit for all
+  coding agents.
+
+### Internal
+
+- **Dependabot maintenance releases consolidated** across runtime and
+  development dependencies (#203, #206).
+- **Agent-health planning and review notes archived** under `.planning/`,
+  including the derived-data consistency plan, the 2026-05-21 follow-up review,
+  and the implementation plan for guardrails.
+
+## [0.59.0] — 2026-04-30
+
+### Added
+
+- **PostgreSQL connection manager UI added** so users can configure and switch
+  hosted PostgreSQL workspaces from the app instead of relying only on local
+  development wiring.
+- **Hosted PostgreSQL smoke tooling added** for exercising the hosted-workspace
+  path and capturing WGS query readiness evidence before future query-index
+  work.
+
+### Changed
+
+- **PostgreSQL migration lifecycle hardened** so hosted and local PostgreSQL
+  workspaces can be brought forward through schema changes more reliably.
+- **Final PostgreSQL parity gates satisfied** across the product-parity work,
+  completing the storage-backend parity push that started in the 0.56.x series.
+
+### Security
+
+- **PostgreSQL profiling secret lifecycle cleaned up** so profiling support no
+  longer leaves sensitive connection material around longer than required.
+
+### Internal
+
+- **PostgreSQL product-parity specs and completed plans archived** under
+  `.planning/`, preserving the audit trail for the parity release work.
+
+## [0.58.3] — 2026-04-30
+
+### Added
+
+- **Clinical variant filter parity added for PostgreSQL** so clinical filtering
+  workflows can run against the PostgreSQL backend.
+- **Cohort, export, and audit-log parity added for PostgreSQL**, closing the
+  remaining high-level workflow gaps between SQLite and PostgreSQL-backed
+  workspaces.
+
+### Fixed
+
+- **Database picker now shows the active workspace** when PostgreSQL support is
+  enabled, reducing ambiguity during backend switching.
+- **Shortlist IPC errors are handled in the renderer** instead of surfacing as
+  unhandled failures.
+- **Shortlist behavior corrected for PostgreSQL workspaces.** Unsupported
+  shortlist states are hidden where needed, PostgreSQL shortlist parity is
+  implemented, and the SQLite shortlist read task is routed through the storage
+  executor.
+
+### Internal
+
+- **PostgreSQL parity roadmap status refreshed and final plans archived** under
+  `.planning/`.
+
+## [0.58.2] — 2026-04-30
+
+### Internal
+
+- **Dependency updates consolidated** into a single maintenance release.
+
+## [0.58.1] — 2026-04-30
+
+### Internal
+
+- **Compatible Dependabot updates consolidated** into one dependency-maintenance
+  release.
+
+## [0.58.0] — 2026-04-30
+
+### Added
+
+- **PostgreSQL VCF imports switched to `COPY FROM STDIN`.** The import path now
+  uses `pg-copy-streams`, reusable COPY text encoders, pre-reserved IDs, and
+  worker-thread orchestration for JSON, VCF, and multi-file imports.
+- **PostgreSQL generated search documents added** for variants and extension
+  tables, replacing the earlier per-batch bulk-update approach with STORED
+  generated columns.
+- **PostgreSQL backend capability matrix, schema migration lifecycle, variant
+  filter parity, export/delete overview parity, workflow-domain parity, and
+  hosted-operations foundation added** as the next product-parity layer.
+- **WGS import and query benchmark harnesses added** for PostgreSQL and SQLite,
+  including the GIAB HG002 fixture downloader and comparison scripts.
+
+### Changed
+
+- **PostgreSQL bulk-load performance tuned** through Docker PostgreSQL
+  configuration changes and batch-level worker commits. The recorded Phase
+  16/16.1/16.2 WGS state documents PostgreSQL imports at 1.85x SQLite for the
+  GIAB HG002 v4.2.1 benchmark.
+- **PostgreSQL import-worker contracts tightened** around cancellation,
+  transaction scoping, SSL config mapping, stream error handling, large-allele
+  handling, and hash-keyed `variant_frequency` joins.
+- **PostgreSQL storage-roadmap work advanced** from Phase 16 implementation
+  into the broader parity roadmap, with the completed phase archives moved into
+  `.planning/`.
+
+### Fixed
+
+- **PostgreSQL COPY worker bundling fixed** by using the named `pipeline`
+  import that survives the worker bundle.
+- **Large-allele frequency rebuilds fixed** by adding `coord_hash` generated
+  columns, hash-keyed indexes, and hash-only joins for `variant_frequency`.
+- **PostgreSQL parity review comments addressed** before the 0.58.0 tag.
+
+### Internal
+
+- **COPY text encoding gained property and boundary tests** with a dedicated
+  coverage gate for the encoder module.
+- **PostgreSQL import E2E coverage expanded** across COPY cancellation,
+  large-allele scenarios, VCF single-sample import, extension tables, BED
+  filtering, multi-file import, partial failure, pre-existing rejection, and
+  cancellation responsiveness.
+- **Phase 9, 9.1, 16, and roadmap planning artifacts archived** under
+  `.planning/`.
+
+## [0.56.14] — 2026-04-26
+
+### Added
+
+- **Storage import executor contract added** with SQLite and PostgreSQL
+  implementations for JSON imports, giving the active storage session ownership
+  of import writes.
+- **PostgreSQL import worker pipeline added** for JSON, VCF, and multi-file
+  imports, including worker-thread message contracts, transaction-scoped
+  repositories, BED filtering, pre-mapping filters, per-file transactions, and
+  post-loop bookkeeping.
+- **PostgreSQL VCF import support added** for single-sample, multi-file,
+  extension-table, large-allele, and cancellation scenarios.
+- **WGS import benchmark tooling added** with the GIAB HG002 fixture downloader,
+  PostgreSQL and SQLite benchmark tests, and comparison artifacts.
+- **Large-variant coordinate hashing added** for PostgreSQL via `coord_hash`
+  generated columns and hash-keyed indexes.
+
+### Changed
+
+- **Import start IPC now routes through the active storage session**, keeping
+  import execution aligned with the selected backend.
+- **PostgreSQL import repositories made transaction-scoped** and shared
+  PostgreSQL import configuration helpers extracted for reuse.
+- **PostgreSQL import worker commits per batch** to improve WGS import
+  performance while preserving cancellation and failure behavior.
+
+### Fixed
+
+- **Import-executor lifecycle and concurrency guards hardened** to avoid invalid
+  import states.
+- **PostgreSQL import worker stream errors handled** so unhandled worker errors
+  do not escape cancellation and failure paths.
+- **PostgreSQL large-allele frequency rebuilds fixed** by upserting and joining
+  `variant_frequency` through `coord_hash`.
+- **PostgreSQL worker review comments addressed** before release.
+
+### Internal
+
+- **PostgreSQL parity Phase 8 and Phase 9 planning artifacts archived and
+  refreshed** under `.planning/`, including the large-coordinate index design.
+- **WGS benchmark state documented** in `AGENTS.md`, and the GIAB fixture SHA256
+  pinned for reproducible performance runs.
+
+## [0.56.13] — 2026-04-24
+
+### Added
+
+- **PostgreSQL variant read schema and seed data added** for the storage parity
+  path.
+- **PostgreSQL variant read paths added** for small reads and query reads,
+  allowing variant lookup and query workflows to execute through PostgreSQL
+  storage sessions.
+
+### Changed
+
+- **SQLite variant reads now route through storage executors**, matching the
+  new backend-neutral read boundary.
+- **Variant read IPC now routes through storage sessions** instead of directly
+  coupling to the legacy SQLite path.
+
+### Fixed
+
+- **PostgreSQL variant-read review comments addressed** before release.
+
+### Internal
+
+- **Variant read executor contracts and E2E coverage added** for PostgreSQL
+  variant reads.
+- **PostgreSQL variant read parity planning archived** under `.planning/`, with
+  variant filter metadata explicitly deferred.
+
+## [0.56.12] — 2026-04-24
+
+### Added
+
+- **PostgreSQL case metadata repository added** with metadata filter support for
+  the storage parity path.
+
+### Changed
+
+- **Case metadata moved behind executor contracts** for both SQLite and
+  PostgreSQL, and IPC now routes case metadata through storage sessions.
+- **PostgreSQL write-executor dependencies narrowed** as the storage boundary
+  continued to separate read and write responsibilities.
+
+### Fixed
+
+- **PostgreSQL case metadata integers normalized** so metadata responses match
+  SQLite expectations.
+- **PostgreSQL distinct HPO responses aligned** with the existing SQLite
+  contract.
+
+### Internal
+
+- **PostgreSQL case metadata dev-mode E2E coverage added**.
+- **Phase 5 storage docs archived and Phase 6 PostgreSQL parity planning
+  added** under `.planning/`, along with a PostgreSQL WGS readiness inventory.
+
+## [0.56.11] — 2026-04-24
+
+### Added
+
+- **Storage session read-executor contract added** as the next backend-neutral
+  storage boundary.
+- **PostgreSQL cases query executor added**, enabling `cases:list` to run
+  through PostgreSQL-backed storage sessions.
+
+### Changed
+
+- **Legacy database-pool access bridged through storage sessions** so IPC paths
+  can migrate without breaking existing SQLite behavior.
+- **SQLite read execution and cases queries moved under storage executors**,
+  aligning SQLite with the new session boundary.
+- **Available builds migrated to the storage executor** and file-backed worker
+  writes marked SQLite-only.
+
+### Internal
+
+- **Storage executor files formatted** and completed phase docs archived.
+- **Branch and PR workflow requirements added to `AGENTS.md`**.
+- **Storage Phase 5 planning added** under `.planning/`.
+
+## [0.56.10] — 2026-04-24
+
+### Fixed
+
+- **Release workflow gate now uses the correct Build workflow name**, restoring
+  the tagged-release check that waits for the matching build workflow run.
+
+## [0.56.9] — 2026-04-24
+
+### Added
+
+- **`cases:list` PostgreSQL vertical slice added** (#174), extending the storage
+  session scaffold with the first user-facing read path backed by PostgreSQL.
+
+### Internal
+
+- **Completed storage planning documents archived** under `.planning/`.
+
+## [0.56.8] — 2026-04-23
+
+### Added
+
+- **PostgreSQL storage session Phase 2 scaffold added** (#173), continuing the
+  backend-neutral storage-session work after the initial 0.56.7 boundary landed.
+
 ## [0.56.7] — 2026-04-23
 
 ### Changed

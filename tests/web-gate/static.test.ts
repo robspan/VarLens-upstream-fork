@@ -33,4 +33,26 @@ describe('web static serving', () => {
       await rm(publicDir, { recursive: true, force: true })
     }
   })
+
+  test('returns 404 for missing asset-like paths instead of the SPA shell', async () => {
+    const publicDir = await mkdtemp(join(tmpdir(), 'varlens-web-public-'))
+    process.env.VARLENS_WEB_PUBLIC_DIR = publicDir
+    await writeFile(join(publicDir, 'index.html'), '<html><body>VarLens web</body></html>')
+
+    const app = fastify()
+    try {
+      await registerStatic(app)
+
+      const assetResponse = await app.inject({ method: 'GET', url: '/assets/missing.js' })
+      const faviconResponse = await app.inject({ method: 'GET', url: '/favicon.svg' })
+
+      expect(assetResponse.statusCode, assetResponse.body).toBe(404)
+      expect(assetResponse.body).not.toContain('VarLens web')
+      expect(faviconResponse.statusCode, faviconResponse.body).toBe(404)
+      expect(faviconResponse.body).not.toContain('VarLens web')
+    } finally {
+      await app.close()
+      await rm(publicDir, { recursive: true, force: true })
+    }
+  })
 })

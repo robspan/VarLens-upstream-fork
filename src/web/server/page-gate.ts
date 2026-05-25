@@ -14,7 +14,7 @@
  *   ──────────────────────────────────────────────────────────────
  *   /api/*                 | passthrough          | auth.ts handles 401
  *   /healthz               | passthrough          | passthrough  (health probes)
- *   /login, /login/...     | passthrough          | passthrough  (the wall itself)
+ *   /login, /login/        | passthrough          | passthrough  (the wall itself)
  *   non-GET                | passthrough          | passthrough  (auth.ts/CSRF surface)
  *   anything else (GET)    | passthrough          | 302 → /login?next=<path>
  *
@@ -31,14 +31,9 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 
 const ALWAYS_PUBLIC_PATHS = new Set<string>(['/healthz', '/login', '/login/'])
-const PUBLIC_PATH_PREFIXES = ['/login/']
 
 function isPublicPath(path: string): boolean {
-  if (ALWAYS_PUBLIC_PATHS.has(path)) return true
-  for (const prefix of PUBLIC_PATH_PREFIXES) {
-    if (path.startsWith(prefix)) return true
-  }
-  return false
+  return ALWAYS_PUBLIC_PATHS.has(path)
 }
 
 /**

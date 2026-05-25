@@ -9,10 +9,12 @@
  * the `renderer:` key. This is its web sibling — same renderer source
  * tree, different transport, different entry HTML.
  */
-import { defineConfig } from 'vite'
+import { copyFileSync, mkdirSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+import { defineConfig, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vuetify from 'vite-plugin-vuetify'
-import { resolve } from 'node:path'
 
 import pkg from './package.json'
 
@@ -22,6 +24,21 @@ function normalizeBase(value: string | undefined): string {
   if (raw === '/') return '/'
   const withLeading = raw.startsWith('/') ? raw : '/' + raw
   return withLeading.endsWith('/') ? withLeading : withLeading + '/'
+}
+
+function copyWebPublicAssets(): Plugin {
+  const outDir = resolve(__dirname, 'out/web/public')
+  return {
+    name: 'web-renderer:copy-public-assets',
+    apply: 'build',
+    writeBundle() {
+      mkdirSync(outDir, { recursive: true })
+      copyFileSync(
+        resolve(__dirname, 'src/renderer/public/favicon.svg'),
+        resolve(outDir, 'favicon.svg')
+      )
+    }
+  }
 }
 
 export default defineConfig({
@@ -40,7 +57,7 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version)
   },
-  plugins: [vue(), vuetify({ autoImport: true })],
+  plugins: [vue(), vuetify({ autoImport: true }), copyWebPublicAssets()],
   build: {
     target: 'es2022',
     outDir: resolve(__dirname, 'out/web/public'),

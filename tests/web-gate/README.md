@@ -35,7 +35,7 @@ The allowlists (`ALLOWLIST_LOOPHOLE_IMPORTERS` in `db-seam`, `EXPECTED_MISSING_U
 
 ```bash
 npm run test:web-gate     # Layer 1 + Layer 2, fast
-make web-gate-static      # same
+make web-gate-static      # Layer 1 static gate only
 make web-gate-integration # Layer 2 alone; Postgres-backed tests need out/web + VARLENS_PG_URL
 make web-gate-parity      # Layer 3 — boots Electron, switches native ABI
 make web-gate             # static + integration (parity is intentionally separate)

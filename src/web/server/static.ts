@@ -22,6 +22,12 @@ export function getPublicDir(): string {
   return DEFAULT_PUBLIC_DIR
 }
 
+function isAssetLikePath(path: string): boolean {
+  if (path.startsWith('/assets/')) return true
+  const lastSegment = path.split('/').pop() ?? ''
+  return lastSegment.includes('.')
+}
+
 export async function registerStatic(app: FastifyInstance): Promise<void> {
   const publicDir = getPublicDir()
   if (!existsSync(publicDir)) {
@@ -47,6 +53,10 @@ export async function registerStatic(app: FastifyInstance): Promise<void> {
       return { error: 'not found' }
     }
     if (url.startsWith('/api/') || url === '/healthz') {
+      reply.code(404)
+      return { error: 'not found' }
+    }
+    if (isAssetLikePath(url)) {
       reply.code(404)
       return { error: 'not found' }
     }

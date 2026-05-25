@@ -19,6 +19,7 @@ import { resolve } from 'node:path'
 import process from 'node:process'
 
 const ARTIFACT_DIR = resolve(process.cwd(), '.planning/artifacts/perf/wgs-import')
+const BUDGET = 2.0
 
 function listBaselines() {
   let entries
@@ -64,10 +65,10 @@ function main() {
   const ts = new Date().toISOString().replace(/[:.]/g, '-')
   const out = resolve(ARTIFACT_DIR, `${ts}-comparison.md`)
 
-  const escalates = ratio > 2.0
+  const escalates = ratio > BUDGET
   const escalationLine = escalates
-    ? `- escalation triggered: postgres / sqlite = ${ratio.toFixed(2)}× (> 2.0×). Open a follow-up phase to switch postgres to COPY FROM STDIN via pg-copy-streams.`
-    : `- escalation rule: postgres / sqlite must stay ≤ 2.0×; current ratio is within budget.`
+    ? `- escalation triggered: postgres / sqlite = ${ratio.toFixed(2)}× (> ${BUDGET.toFixed(1)}×). Open a follow-up phase to switch postgres to COPY FROM STDIN via pg-copy-streams.`
+    : `- escalation rule: postgres / sqlite must stay ≤ ${BUDGET.toFixed(1)}×; current ratio is within budget.`
 
   writeFileSync(
     out,
@@ -82,6 +83,12 @@ function main() {
     ].join('\n')
   )
   globalThis.console.log(`Wrote ${out}`)
+  if (escalates) {
+    globalThis.console.error(
+      `::error::WGS import budget breach: ratio ${ratio.toFixed(2)} exceeds budget ${BUDGET.toFixed(2)}`
+    )
+    process.exit(1)
+  }
 }
 
 main()

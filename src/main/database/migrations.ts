@@ -42,6 +42,7 @@ import { BUILT_IN_SHORTLIST_PRESETS } from './built-in-shortlist-presets'
  * - 25: Multi-variant type support (SV/CNV/STR extension tables, case_import_files)
  * - 26: v0.55.0 FTS5 virtual tables for variant_sv + variant_str (multi-variant filter/sort/search)
  * - 27: filter_presets.kind discriminator + built-in shortlist preset seeds (unified Shortlist tab)
+ * - 28: idx_variants_case_type for case_id-first cohort scans
  *
  * @param db - better-sqlite3-multiple-ciphers Database instance
  */
@@ -1716,5 +1717,14 @@ export function runMigrations(db: Database.Database): void {
     }
 
     db.exec('PRAGMA user_version = 27')
+  }
+
+  // Migration v28: add idx_variants_case_type for case_id-first cohort scans
+  // QW-10 (Phase 1 Pre-0.60 Hardening, audit Perf-01 #4/#10)
+  // Keeps the existing idx_variants_type_case (variant_type, case_id) intact
+  // because the variant-extension-registry planner reasoning depends on it.
+  if (currentVersion < 28) {
+    db.exec('CREATE INDEX IF NOT EXISTS idx_variants_case_type ON variants(case_id, variant_type)')
+    db.exec('PRAGMA user_version = 28')
   }
 }

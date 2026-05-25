@@ -19,7 +19,6 @@ import { createFieldMapper } from '../import/transforms/FieldMapper'
 import { createObjectFormatMapper } from '../import/transforms/ObjectFormatMapper'
 import { resolveColumnIndices } from '../import/config/fieldMapping'
 import { createDecompressedStream, isGzipped } from '../import/stream-utils'
-import { createFTSTriggers } from '../database/schema'
 import { parseVcfHeaderFromLines } from '../import/vcf/vcf-header-parser'
 import { parseVcfLine } from '../import/vcf/vcf-line-parser'
 import { mapVcfRecord } from '../import/vcf/VcfMapper'
@@ -240,29 +239,11 @@ export function prepareStatements(db: DatabaseType) {
     db.exec(DROP_FTS_TRIGGERS)
   }
 
-  /**
-   * Rebuild FTS, recreate triggers, and update the case variant_count
-   * after all batches for one file have been inserted.
-   */
   function finishBulkInsert(caseId: number, totalInserted: number): void {
+    // QW-11: Per-file FTS rebuild + trigger recreate removed (audit Perf-01 #8).
+    // Session-end rebuildFts(db) in import-worker.ts handles the single FTS
+    // rebuild for the whole import session.
     updateVariantCountStmt.run(totalInserted, caseId)
-
-    try {
-      db.exec("INSERT INTO variants_fts(variants_fts) VALUES('rebuild')")
-    } catch (e) {
-      console.warn(
-        '[import-pipeline] Failed to rebuild FTS index during finishBulkInsert:',
-        e instanceof Error ? e.message : String(e)
-      )
-    }
-    try {
-      db.exec(createFTSTriggers)
-    } catch (e) {
-      console.warn(
-        '[import-pipeline] Failed to recreate FTS triggers during finishBulkInsert:',
-        e instanceof Error ? e.message : String(e)
-      )
-    }
   }
 
   return {

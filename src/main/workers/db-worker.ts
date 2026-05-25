@@ -13,6 +13,7 @@ import { existsSync } from 'fs'
 import { DATABASE_CONFIG } from '../../shared/config'
 import { createRepositories } from '../database/createRepositories'
 import { GeneReferenceDb } from '../database/GeneReferenceDb'
+import { assertNotHexLiteralKey } from '../database/sqlcipher-key-guard'
 import type { DbTask } from '../../shared/types/db-task'
 import { dispatchTask } from './db-worker-dispatch'
 
@@ -24,6 +25,10 @@ const { dbPath, encryptionKey, geneRefDbPath } = workerData as {
   /** Path to the bundled gene_reference.db — resolved on the main thread
    *  and forwarded here because Electron's `app` is not available in workers */
   geneRefDbPath?: string
+}
+
+if (encryptionKey !== undefined && encryptionKey !== '') {
+  assertNotHexLiteralKey(encryptionKey)
 }
 
 const db = new Database(dbPath)

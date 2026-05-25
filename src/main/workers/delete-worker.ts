@@ -10,6 +10,7 @@ import Database from 'better-sqlite3-multiple-ciphers'
 import type { Database as DatabaseType } from 'better-sqlite3-multiple-ciphers'
 import { DATABASE_CONFIG } from '../../shared/config'
 import { createFTSTriggers } from '../database/schema'
+import { assertNotHexLiteralKey } from '../database/sqlcipher-key-guard'
 import { MARK_STALE_SQL } from '../../shared/sql/cohort-summary-rebuild'
 import { rebuildFts, rebuildCohortSummary, DROP_FTS_TRIGGERS } from './worker-db'
 import { deleteAllCases, deleteCaseBatch } from './delete-operations'
@@ -103,6 +104,10 @@ port.on('message', (msg: DeleteWorkerRequest) => {
 })
 
 function openDatabase(dbPath: string, encryptionKey?: string): DatabaseType {
+  if (encryptionKey !== undefined && encryptionKey !== '') {
+    assertNotHexLiteralKey(encryptionKey)
+  }
+
   const db = new Database(dbPath)
 
   if (encryptionKey !== undefined && encryptionKey !== '') {

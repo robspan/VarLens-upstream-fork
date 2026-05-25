@@ -23,6 +23,27 @@ describe('DatabaseService', () => {
   })
 
   describe('Initialization', () => {
+    it("rejects encryption key starting with x'", () => {
+      expect(() => new DatabaseService(':memory:', "x'0102'")).toThrow(/hex-literal/i)
+    })
+
+    it("rejects encryption key starting with X'", () => {
+      expect(() => new DatabaseService(':memory:', "X'aabbcc'")).toThrow(/hex-literal/i)
+    })
+
+    it('accepts a normal quoted-string key', () => {
+      const tempDbPath = join(tmpdir(), `varlens-test-normal-key-${Date.now()}.db`)
+      const normalKeyService = new DatabaseService(tempDbPath, 'correct horse battery staple')
+      try {
+        expect(normalKeyService.isEncrypted()).toBe(true)
+      } finally {
+        normalKeyService.close()
+        if (existsSync(tempDbPath)) unlinkSync(tempDbPath)
+        if (existsSync(`${tempDbPath}-wal`)) unlinkSync(`${tempDbPath}-wal`)
+        if (existsSync(`${tempDbPath}-shm`)) unlinkSync(`${tempDbPath}-shm`)
+      }
+    })
+
     it('initializes database with WAL mode', () => {
       // Use a temp file to properly test WAL mode
       // (in-memory databases always use 'memory' mode)
@@ -330,6 +351,16 @@ describe('DatabaseService', () => {
       })
 
       expect(result).toBe('transaction result')
+    })
+  })
+
+  describe('rekey', () => {
+    it("rejects new password starting with x'", () => {
+      expect(() => service.rekey("x'0102'")).toThrow(/hex-literal/i)
+    })
+
+    it("rejects new password starting with X'", () => {
+      expect(() => service.rekey("X'aabbcc'")).toThrow(/hex-literal/i)
     })
   })
 

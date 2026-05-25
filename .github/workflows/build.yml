@@ -44,7 +44,7 @@ jobs:
               - 'tsconfig*.json'
               - 'eslint.config.js'
               - '.prettierignore'
-              - '.github/workflows/build.yml'
+              - '.github/workflows/**'
               - 'vitest.config.ts'
               - 'Makefile'
 
@@ -260,21 +260,36 @@ jobs:
 
   # ── 4. Required-status-check aggregator ────────────────────────────
   # Branch protection should require THIS job (and secrets-scan) only.
-  # It succeeds when all upstream jobs succeeded OR were correctly
-  # skipped (docs-only PRs). This avoids the `paths-ignore` pending-
-  # forever trap.
+  # It succeeds when all upstream jobs succeeded, except docs-only PRs
+  # where code-gated jobs were intentionally skipped. This avoids the
+  # `paths-ignore` pending-forever trap while still failing on cancelled
+  # or unexpectedly skipped upstream jobs.
   ci:
     name: CI
     needs: [changes, secrets-scan, checks, package]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Fail if any required job failed
+      - name: Compute overall result
         run: |
-          if [[ "${{ needs.secrets-scan.result }}" == "failure" ]] \
-             || [[ "${{ needs.checks.result }}"       == "failure" ]] \
-             || [[ "${{ needs.package.result }}"      == "failure" ]]; then
-            echo "One or more required jobs failed"
-            exit 1
+          for r in \
+            "${{ needs.changes.result }}" \
+            "${{ needs.secrets-scan.result }}"; do
+            if [ "$r" != "success" ]; then
+              echo "::error::Required job result was '$r' (expected 'success'). Failing."
+              exit 1
+            fi
+          done
+          if [ "${{ needs.changes.outputs.code }}" = "false" ]; then
+            echo "No code changed; build jobs were intentionally skipped. PASS."
+            exit 0
           fi
-          echo "All required jobs passed or were correctly skipped"
+          for r in \
+            "${{ needs.checks.result }}" \
+            "${{ needs.package.result }}"; do
+            if [ "$r" != "success" ]; then
+              echo "::error::Required job result was '$r' (expected 'success'). Failing."
+              exit 1
+            fi
+          done
+          echo "All required jobs succeeded."

@@ -153,10 +153,28 @@ class InsecureLocalPostgresSecretStore implements SecretStore {
 }
 
 let defaultPostgresProfileStore: PostgresProfileStore | null = null
+let insecureSecretStoreWarned = false
+
+function warnIfInsecureSecretStore(): void {
+  if (insecureSecretStoreWarned) {
+    return
+  }
+
+  if (process.env.VARLENS_POSTGRES_PROFILE_SECRET_STORE === 'insecure-local') {
+    mainLogger.warn(
+      'VARLENS_POSTGRES_PROFILE_SECRET_STORE=insecure-local is active. ' +
+        'PostgreSQL profile credentials are stored in plaintext. ' +
+        'Unset this env var or set it to a secure backend before any production-like workflow.',
+      'database-handler'
+    )
+    insecureSecretStoreWarned = true
+  }
+}
 
 function getDefaultPostgresProfileStore(): PostgresProfileStore {
   if (defaultPostgresProfileStore === null) {
     const userDataPath = app.getPath('userData')
+    warnIfInsecureSecretStore()
     const secretStore =
       process.env.VARLENS_POSTGRES_PROFILE_SECRET_STORE === 'insecure-local'
         ? createInsecureLocalPostgresSecretStore(userDataPath)

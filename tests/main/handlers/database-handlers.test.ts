@@ -1,3 +1,7 @@
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
 import { describe, expect, it, vi } from 'vitest'
 import { mainLogger } from '../../../src/main/services/MainLogger'
 import { ErrorCode } from '../../../src/shared/types/errors'
@@ -7,9 +11,18 @@ import type {
 } from '../../../src/shared/types/postgres-profile'
 
 vi.mock('electron', () => ({
+  app: {
+    getPath: vi.fn(() => process.env.VARLENS_TEST_USER_DATA_PATH ?? tmpdir()),
+    isPackaged: false
+  },
   dialog: {
     showOpenDialog: vi.fn(),
     showSaveDialog: vi.fn()
+  },
+  safeStorage: {
+    decryptString: vi.fn(),
+    encryptString: vi.fn(),
+    isEncryptionAvailable: vi.fn(() => true)
   },
   shell: {
     showItemInFolder: vi.fn()
@@ -232,5 +245,48 @@ describe('database IPC handlers', () => {
     })
 
     expect(openPostgresSession).toHaveBeenCalledWith(session)
+  })
+
+  it('warns once when the insecure postgres profile secret store is activated', async () => {
+    const previousSecretStore = process.env.VARLENS_POSTGRES_PROFILE_SECRET_STORE
+    const previousUserDataPath = process.env.VARLENS_TEST_USER_DATA_PATH
+    const userDataPath = await mkdtemp(join(tmpdir(), 'varlens-profile-store-'))
+    const warnSpy = vi.spyOn(mainLogger, 'warn').mockImplementation(() => undefined)
+
+    process.env.VARLENS_POSTGRES_PROFILE_SECRET_STORE = 'insecure-local'
+    process.env.VARLENS_TEST_USER_DATA_PATH = userDataPath
+
+    try {
+      const { handlers } = await createHandlerMap()
+
+      await expect(handlers.get('database:postgresProfilesList')!()).resolves.toEqual([])
+      await expect(handlers.get('database:postgresProfilesList')!()).resolves.toEqual([])
+
+      expect(warnSpy).toHaveBeenCalledOnce()
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'VARLENS_POSTGRES_PROFILE_SECRET_STORE=insecure-local is active. ' +
+            'PostgreSQL profile credentials are stored in plaintext. ' +
+            'Unset this env var or set it to a secure backend before any production-like workflow.'
+        ),
+        'database-handler'
+      )
+    } finally {
+      if (previousSecretStore === undefined) {
+        delete process.env.VARLENS_POSTGRES_PROFILE_SECRET_STORE
+      } else {
+        process.env.VARLENS_POSTGRES_PROFILE_SECRET_STORE = previousSecretStore
+      }
+
+      if (previousUserDataPath === undefined) {
+        delete process.env.VARLENS_TEST_USER_DATA_PATH
+      } else {
+        process.env.VARLENS_TEST_USER_DATA_PATH = previousUserDataPath
+      }
+
+      warnSpy.mockRestore()
+      await rm(userDataPath, { recursive: true, force: true })
+      vi.resetModules()
+    }
   })
 })

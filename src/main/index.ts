@@ -9,6 +9,7 @@ import { initAutoUpdater, scheduleUpdateChecks } from './services/AutoUpdater'
 import { APP_CONFIG } from '../shared/config'
 import { isUrlSafeForExternal } from './utils/url-validation'
 import { markMilestone } from './services/MainPerfTrace'
+import { isMainWindowNavigationAllowed } from './window-navigation-policy'
 
 if (process.env.VARLENS_APP_DATA_DIR !== undefined && process.env.VARLENS_APP_DATA_DIR !== '') {
   app.setPath('appData', process.env.VARLENS_APP_DATA_DIR)
@@ -73,6 +74,7 @@ function createWindow(): void {
       v8CacheOptions: 'bypassHeatCheck'
     }
   })
+  const rendererUrl = process.env['ELECTRON_RENDERER_URL']
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
@@ -90,9 +92,16 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const allowed = isMainWindowNavigationAllowed(url, rendererUrl)
+    if (!allowed) {
+      mainLogger.warn(`Blocked in-page navigation to disallowed URL: ${url}`, 'main-window')
+      event.preventDefault()
+    }
+  })
+
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
-  const rendererUrl = process.env['ELECTRON_RENDERER_URL']
   if (is.dev && rendererUrl !== undefined && rendererUrl !== '') {
     mainWindow.loadURL(rendererUrl)
   } else {

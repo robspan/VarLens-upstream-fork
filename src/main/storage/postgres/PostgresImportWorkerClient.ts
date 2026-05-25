@@ -33,7 +33,9 @@ export class PostgresImportWorkerClient {
 
   constructor(options: PostgresImportWorkerClientOptions = {}) {
     this.workerPathCandidates = options.workerPathCandidates ?? [
+      resolve(__dirname, 'postgres-import-worker.cjs'),
       resolve(__dirname, 'postgres-import-worker.js'),
+      resolve(process.cwd(), 'out/web/postgres-import-worker.cjs'),
       resolve(process.cwd(), 'out/main/postgres-import-worker.js')
     ]
     this.workerPath = this.workerPathCandidates.find((candidate) => existsSync(candidate)) ?? null

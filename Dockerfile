@@ -17,7 +17,7 @@
 # are pinned to 8080 here.
 
 # ---- Stage 1: builder -----------------------------------------------------
-FROM node:24.14.1-bookworm-slim AS builder
+FROM node:24.15.0-bookworm-slim AS builder
 
 WORKDIR /app
 
@@ -49,6 +49,8 @@ RUN npm prune --omit=dev --ignore-scripts
 # theoretically misresolve.
 RUN node -e "(async () => { \
     require('./out/web/server.cjs'); \
+    require('node:fs').accessSync('./out/web/postgres-import-worker.cjs'); \
+    require('./out/web/postgres-import-worker.cjs'); \
     const Database = require('better-sqlite3-multiple-ciphers'); \
     new Database(':memory:').prepare('SELECT 1').get(); \
     const argon2 = require('@node-rs/argon2'); \
@@ -57,7 +59,7 @@ RUN node -e "(async () => { \
   })().catch((e) => { console.error(e); process.exit(1); })"
 
 # ---- Stage 2: runtime -----------------------------------------------------
-FROM node:24.14.1-bookworm-slim AS runtime
+FROM node:24.15.0-bookworm-slim AS runtime
 
 ENV NODE_ENV=production \
     VARLENS_WEB_PORT=8080 \

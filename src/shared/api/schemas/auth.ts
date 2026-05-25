@@ -31,7 +31,7 @@ export const UsernameArgsSchema = z.tuple([UsernameSchema])
 export const ResetPasswordArgsSchema = z.tuple([UsernameSchema, PasswordSchema])
 export const ChangePasswordArgsSchema = z.tuple([
   ChangePasswordSchema.shape.oldPassword,
-  ChangePasswordSchema.shape.newPassword
+  PasswordInputSchema
 ])
 
 export const AuthSessionUserSchema = z.object({

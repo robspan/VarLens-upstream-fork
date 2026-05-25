@@ -327,10 +327,11 @@ jobs:
 
   # ── 5. Required-status-check aggregator ────────────────────────────
   # Branch protection should require THIS job (and secrets-scan) only.
-  # It succeeds when all upstream jobs succeeded, except docs-only PRs
-  # where code-gated jobs were intentionally skipped. This avoids the
-  # `paths-ignore` pending-forever trap while still failing on cancelled
-  # or unexpectedly skipped upstream jobs.
+  # It succeeds when all required upstream jobs for the changed surface
+  # succeeded, except docs-only / planning-only PRs where desktop and web
+  # gated jobs were intentionally skipped. This avoids the `paths-ignore`
+  # pending-forever trap while still failing on cancelled or unexpectedly
+  # skipped upstream jobs.
   ci:
     name: CI
     needs: [changes, secrets-scan, checks, package, web-ci]
@@ -347,17 +348,24 @@ jobs:
               exit 1
             fi
           done
-          if [ "${{ needs.changes.outputs.code }}" = "false" ]; then
-            echo "No code changed; build jobs were intentionally skipped. PASS."
+          if [ "${{ needs.changes.outputs.code }}" = "false" ] && [ "${{ needs.changes.outputs.web }}" = "false" ]; then
+            echo "No code or web surface changed; build jobs were intentionally skipped. PASS."
             exit 0
           fi
-          for r in \
-            "${{ needs.checks.result }}" \
-            "${{ needs.package.result }}" \
-            "${{ needs.web-ci.result }}"; do
-            if [ "$r" != "success" ]; then
-              echo "::error::Required job result was '$r' (expected 'success'). Failing."
+          if [ "${{ needs.changes.outputs.code }}" = "true" ]; then
+            for r in \
+              "${{ needs.checks.result }}" \
+              "${{ needs.package.result }}"; do
+              if [ "$r" != "success" ]; then
+                echo "::error::Required desktop job result was '$r' (expected 'success'). Failing."
+                exit 1
+              fi
+            done
+          fi
+          if [ "${{ needs.changes.outputs.web }}" = "true" ]; then
+            if [ "${{ needs.web-ci.result }}" != "success" ]; then
+              echo "::error::Required web-ci job result was '${{ needs.web-ci.result }}' (expected 'success'). Failing."
               exit 1
             fi
-          done
+          fi
           echo "All required jobs succeeded."

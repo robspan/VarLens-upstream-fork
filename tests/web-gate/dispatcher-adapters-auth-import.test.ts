@@ -137,7 +137,7 @@ describe('web dispatcher adapters: auth and import', () => {
     }
   })
 
-  test('import.startMultiFile preserves object filter payloads for import logic', async () => {
+  test('import.startMultiFile normalizes valid object filter payloads for import logic', async () => {
     const prevNodeEnv = process.env.NODE_ENV
     process.env.NODE_ENV = 'test'
     try {
@@ -157,7 +157,7 @@ describe('web dispatcher adapters: auth and import', () => {
             }
           ],
           { genomeBuild: 'hg38' },
-          { bedPadding: 'legacy-string' }
+          { bedPadding: 10, passOnly: true, minQual: 30, minGq: null }
         ],
         request as never,
         reply as never,
@@ -177,7 +177,90 @@ describe('web dispatcher adapters: auth and import', () => {
             }
           ],
           vcfOptions: { genomeBuild: 'hg38', selectedSample: undefined },
-          filters: expect.objectContaining({ bedPadding: 'legacy-string' })
+          filters: expect.objectContaining({
+            bedPadding: 10,
+            passOnly: true,
+            minQual: 30,
+            minGq: null
+          })
+        })
+      )
+    } finally {
+      if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = prevNodeEnv
+    }
+  })
+
+  test('import.startMultiFile rejects malformed filter payloads before import logic', async () => {
+    const prevNodeEnv = process.env.NODE_ENV
+    process.env.NODE_ENV = 'test'
+    try {
+      const { deps, importMultiFile, reply } = makeDeps()
+      const { overrides } = buildDispatcher(deps)
+      const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
+
+      const result = await overrides['import:startMultiFile'].handle(
+        [
+          'Case A',
+          [
+            {
+              filePath: '/tmp/input.vcf',
+              variantType: 'snv',
+              caller: 'caller',
+              annotationFormat: null
+            }
+          ],
+          { genomeBuild: 'hg38' },
+          { minQual: '30', passOnly: 'true' }
+        ],
+        request as never,
+        reply as never,
+        deps
+      )
+
+      expect(reply.code).toHaveBeenCalledWith(400)
+      expect(result).toEqual({
+        error: 'invalid-filters',
+        message: 'filters must match the import filter schema'
+      })
+      expect(importMultiFile).not.toHaveBeenCalled()
+    } finally {
+      if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = prevNodeEnv
+    }
+  })
+
+  test('import.startMultiFile treats null filter payloads as absent', async () => {
+    const prevNodeEnv = process.env.NODE_ENV
+    process.env.NODE_ENV = 'test'
+    try {
+      const { deps, importMultiFile, reply } = makeDeps()
+      const { overrides } = buildDispatcher(deps)
+      const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
+
+      await overrides['import:startMultiFile'].handle(
+        [
+          'Case A',
+          [
+            {
+              filePath: '/tmp/input.vcf',
+              variantType: 'snv',
+              caller: 'caller',
+              annotationFormat: null
+            }
+          ],
+          { genomeBuild: 'hg38' },
+          null
+        ],
+        request as never,
+        reply as never,
+        deps
+      )
+
+      expect(reply.code).not.toHaveBeenCalled()
+      expect(importMultiFile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filters: undefined
         })
       )
     } finally {

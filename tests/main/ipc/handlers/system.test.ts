@@ -73,7 +73,19 @@ describe('system IPC handlers', () => {
     vi.clearAllMocks()
   })
 
-  it.each([-1, 65])(
+  it.each([0, 4, 64])('forwards valid system:setWorkerThreads count %s', async (count) => {
+    const ipcMain = makeIpcMain()
+    registerSystemHandlers(makeDeps(ipcMain) as never)
+
+    const result = await invokeHandler(ipcMain, 'system:setWorkerThreads', count)
+
+    expect(result).toBeUndefined()
+    expect(isIpcError(result)).toBe(false)
+    expect(setWorkerThreads).toHaveBeenCalledTimes(1)
+    expect(setWorkerThreads).toHaveBeenCalledWith(count)
+  })
+
+  it.each([-1, 1.5, 65])(
     'returns INVALID_PARAMETERS when system:setWorkerThreads receives %s',
     async (count) => {
       const ipcMain = makeIpcMain()

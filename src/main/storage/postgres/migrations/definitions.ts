@@ -33,6 +33,11 @@ const MIGRATION_FILES: readonly MigrationFile[] = [
     version: '0006',
     name: 'create_audit_log',
     fileName: '0006_create_audit_log.sql'
+  },
+  {
+    version: '0007',
+    name: 'perf_indexes',
+    fileName: '0007_perf_indexes.sql'
   }
 ]
 

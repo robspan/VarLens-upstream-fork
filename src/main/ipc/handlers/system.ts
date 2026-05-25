@@ -3,9 +3,11 @@ import { readFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join, dirname } from 'path'
 import os from 'os'
+import { z } from 'zod'
 import type { HandlerDependencies } from '../types'
 import { setWorkerThreads, getWorkerThreads } from '../dbPoolManager'
 import { wrapHandler } from '../errorHandler'
+import { InvalidParametersError } from '../errors'
 import { mainLogger } from '../../services/MainLogger'
 import { getMainPerfSnapshot } from '../../services/MainPerfTrace'
 
@@ -14,6 +16,8 @@ import { getMainPerfSnapshot } from '../../services/MainPerfTrace'
  * Channels: system:version, system:userDataPath, system:getCpuCount,
  *           system:setWorkerThreads, system:getWorkerThreads
  */
+
+const SetWorkerThreadsCountSchema = z.number().int().min(0).max(64)
 
 /**
  * Get the application version from package.json.
@@ -70,7 +74,14 @@ export function registerSystemHandlers({ ipcMain }: HandlerDependencies): void {
 
   ipcMain.handle('system:setWorkerThreads', async (_event, count: number) => {
     return wrapHandler(async () => {
-      setWorkerThreads(count)
+      const parsed = SetWorkerThreadsCountSchema.safeParse(count)
+      if (!parsed.success) {
+        throw new InvalidParametersError(
+          `Invalid system:setWorkerThreads count: ${parsed.error.message}`
+        )
+      }
+
+      setWorkerThreads(parsed.data)
     })
   })
 

@@ -64,6 +64,14 @@ describe('DROP_FTS_TRIGGERS', () => {
 })
 
 describe('openWorkerDatabase', () => {
+  it("rejects encryption key starting with x'", () => {
+    expect(() => openWorkerDatabase(':memory:', "x'0102'")).toThrow(/hex-literal/i)
+  })
+
+  it("rejects encryption key starting with X'", () => {
+    expect(() => openWorkerDatabase(':memory:', "X'aabbcc'")).toThrow(/hex-literal/i)
+  })
+
   it('opens a writable in-memory database', () => {
     const db = trackDb(openWorkerDatabase(':memory:'))
     expect(db).toBeDefined()
@@ -100,6 +108,24 @@ describe('openWorkerDatabase', () => {
 })
 
 describe('openWorkerDatabaseReadOnly', () => {
+  it("rejects encryption key starting with x'", () => {
+    const dbPath = makeTempPath()
+    const seed = trackDb(new Database(dbPath))
+    seed.exec('CREATE TABLE t (id INTEGER PRIMARY KEY)')
+    seed.close()
+
+    expect(() => openWorkerDatabaseReadOnly(dbPath, "x'0102'")).toThrow(/hex-literal/i)
+  })
+
+  it("rejects encryption key starting with X'", () => {
+    const dbPath = makeTempPath()
+    const seed = trackDb(new Database(dbPath))
+    seed.exec('CREATE TABLE t (id INTEGER PRIMARY KEY)')
+    seed.close()
+
+    expect(() => openWorkerDatabaseReadOnly(dbPath, "X'aabbcc'")).toThrow(/hex-literal/i)
+  })
+
   it('opens a database successfully', () => {
     // Read-only mode requires a real file (in-memory DBs cannot be readonly)
     const dbPath = makeTempPath()

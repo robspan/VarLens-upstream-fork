@@ -21,7 +21,7 @@ const UrlSchema = z.string().min(1).max(2048)
 const FilePathSchema = z.string().min(1).max(1024)
 
 /** Schema for user domains array */
-const UserDomainsSchema = z.array(z.string().min(1).max(253))
+const UserDomainsSchema = z.array(z.string().min(1).max(253)).max(100)
 
 export function registerShellHandlers({ ipcMain }: HandlerDependencies): void {
   ipcMain.handle('shell:updateUserDomains', async (_event, domains: unknown) => {

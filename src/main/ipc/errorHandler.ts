@@ -6,6 +6,7 @@ import {
   WrongPasswordError
 } from '../database/errors'
 import { mainLogger } from '../services/MainLogger'
+import { InvalidParametersError } from './errors'
 
 /**
  * Convert any error to a serializable format for IPC transport.
@@ -66,6 +67,14 @@ export function toSerializableError(error: unknown): SerializableError {
       code: ErrorCode.FILE_NOT_FOUND,
       message: error.message,
       userMessage: 'File not found. Please check the path and try again.'
+    }
+  }
+
+  if (error instanceof InvalidParametersError) {
+    return {
+      code: ErrorCode.INVALID_PARAMETERS,
+      message: error.message,
+      userMessage: error.userMessage
     }
   }
 

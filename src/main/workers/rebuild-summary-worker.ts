@@ -8,6 +8,7 @@ import { parentPort } from 'worker_threads'
 import Database from 'better-sqlite3-multiple-ciphers'
 import type { Database as DatabaseType } from 'better-sqlite3-multiple-ciphers'
 import { DATABASE_CONFIG } from '../../shared/config'
+import { assertNotHexLiteralKey } from '../database/sqlcipher-key-guard'
 import {
   REBUILD_VARIANT_SUMMARY_SQL,
   REBUILD_GENE_BURDEN_SQL,
@@ -80,6 +81,10 @@ function emitPhase(phase: RebuildPhase): void {
 port.on('message', (msg: RebuildWorkerRequest) => {
   let db: DatabaseType | null = null
   try {
+    if (msg.encryptionKey !== undefined && msg.encryptionKey !== '') {
+      assertNotHexLiteralKey(msg.encryptionKey)
+    }
+
     db = new Database(msg.dbPath)
 
     if (msg.encryptionKey !== undefined && msg.encryptionKey !== '') {

@@ -33,6 +33,7 @@ import type { FilterPresetRepository } from './FilterPresetRepository'
 import type { PanelRepository } from './PanelRepository'
 import type { AnalysisGroupRepository } from './AnalysisGroupRepository'
 import type { ShortlistService } from './ShortlistService'
+import { assertNotHexLiteralKey } from './sqlcipher-key-guard'
 
 /**
  * DatabaseService class
@@ -63,6 +64,10 @@ export class DatabaseService {
     this.dbPath = dbPath
     this.encrypted = encryptionKey !== undefined && encryptionKey !== ''
     this._encryptionKey = encryptionKey
+
+    if (this.encrypted) {
+      assertNotHexLiteralKey(encryptionKey!)
+    }
 
     try {
       this.db = new Database(dbPath)
@@ -300,6 +305,8 @@ export class DatabaseService {
    * Change the encryption key for an encrypted database
    */
   rekey(newPassword: string): void {
+    assertNotHexLiteralKey(newPassword)
+
     try {
       const safePassword = newPassword.split("'").join("''")
       this.db.pragma(`rekey='${safePassword}'`)

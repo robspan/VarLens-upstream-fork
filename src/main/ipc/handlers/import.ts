@@ -1,9 +1,19 @@
 import { dialog } from 'electron'
 import { dirname } from 'path'
+import type { z } from 'zod'
 import { wrapHandler } from '../errorHandler'
+import { InvalidParametersError } from '../errors'
 import type { HandlerDependencies } from '../types'
 import { safeEmit } from '../utils/safeEmit'
 import { loadSettings, saveSettings } from '../utils/settings-io'
+import { addAllowedImportPath, isAllowedImportPath } from '../../security/import-path-allowlist'
+import {
+  ImportFiltersIpcPayloadSchema,
+  ImportStartMultiFileParamsSchema,
+  ImportStartParamsSchema,
+  ImportVcfMultiPreviewParamsSchema,
+  ImportVcfPreviewParamsSchema
+} from '../../../shared/ipc/domains/import-schemas'
 import {
   startImport,
   cancelImport,
@@ -24,14 +34,7 @@ import { mainLogger } from '../../services/MainLogger'
  * class living in the main process), so it sends a BED file path + padding
  * and the main process builds the filter here.
  */
-interface ImportFiltersIpcPayload {
-  bedFile?: string | null
-  bedPadding?: number
-  passOnly?: boolean
-  minQual?: number | null
-  minGq?: number | null
-  minDp?: number | null
-}
+type ImportFiltersIpcPayload = z.infer<typeof ImportFiltersIpcPayloadSchema>
 
 /**
  * Convert a serialized IPC filter payload into the in-process `ImportFilters`
@@ -76,6 +79,13 @@ function buildImportFiltersFromIpc(
   }
 }
 
+function throwUnallowedImportPath(channel: string, filePath: string, label = 'filePath'): never {
+  throw new InvalidParametersError(
+    `${channel}: ${label} is not in the allowed import paths: ${filePath}`,
+    'The selected file is not in an allowed location.'
+  )
+}
+
 /** Shared callbacks that wire logic-layer events to renderer via safeEmit. */
 const importCallbacks: ImportCallbacks = {
   onProgress: (data) => safeEmit('import:progress', data)
@@ -108,6 +118,9 @@ export function registerImportHandlers({
       }
 
       const filePath = result.filePaths[0]
+      for (const p of result.filePaths) {
+        addAllowedImportPath(p)
+      }
       await saveSettings({ ...settings, lastImportDirectory: dirname(filePath) })
 
       return filePath
@@ -123,7 +136,22 @@ export function registerImportHandlers({
       vcfOptions?: { selectedSample?: string; genomeBuild?: string }
     ) => {
       return wrapHandler(async () => {
-        return startImport(filePath, caseName, vcfOptions, getSession, importCallbacks)
+        const parsed = ImportStartParamsSchema.safeParse([filePath, caseName, vcfOptions])
+        if (!parsed.success) {
+          throw new InvalidParametersError(`Invalid import:start params: ${parsed.error.message}`)
+        }
+
+        const [validatedPath, validatedCaseName, validatedOptions] = parsed.data
+        if (!isAllowedImportPath(validatedPath)) {
+          throwUnallowedImportPath('import:start', validatedPath)
+        }
+        return startImport(
+          validatedPath,
+          validatedCaseName,
+          validatedOptions,
+          getSession,
+          importCallbacks
+        )
       })
     }
   )
@@ -138,19 +166,53 @@ export function registerImportHandlers({
       filtersPayload?: ImportFiltersIpcPayload
     ) => {
       return wrapHandler(async () => {
-        // Build the SQLite-path ImportFilters (loads BedFilter into memory).
-        // The PG path receives filtersPayload directly so it can extract the
-        // BED file path without going through the BedFilter constructor.
-        const importFilters = buildImportFiltersFromIpc(filtersPayload)
-        return startMultiFileImport(
+        const parsed = ImportStartMultiFileParamsSchema.safeParse([
           caseName,
           files,
           vcfOptions,
+          filtersPayload
+        ])
+        if (!parsed.success) {
+          throw new InvalidParametersError(
+            `Invalid import:startMultiFile params: ${parsed.error.message}`
+          )
+        }
+
+        const [validatedCaseName, validatedFiles, validatedOptions, validatedFiltersPayload] =
+          parsed.data
+        validatedFiles.forEach((file, index) => {
+          if (!isAllowedImportPath(file.filePath)) {
+            throwUnallowedImportPath(
+              'import:startMultiFile',
+              file.filePath,
+              `files[${index}].filePath`
+            )
+          }
+        })
+
+        const bedFile = validatedFiltersPayload?.bedFile
+        if (
+          bedFile !== undefined &&
+          bedFile !== null &&
+          bedFile !== '' &&
+          !isAllowedImportPath(bedFile)
+        ) {
+          throwUnallowedImportPath('import:startMultiFile', bedFile, 'filtersPayload.bedFile')
+        }
+
+        // Build the SQLite-path ImportFilters (loads BedFilter into memory).
+        // The PG path receives filtersPayload directly so it can extract the
+        // BED file path without going through the BedFilter constructor.
+        const importFilters = buildImportFiltersFromIpc(validatedFiltersPayload)
+        return startMultiFileImport(
+          validatedCaseName,
+          validatedFiles,
+          validatedOptions,
           getSession,
           getDb,
           importCallbacks,
           importFilters,
-          filtersPayload
+          validatedFiltersPayload
         )
       })
     }
@@ -164,13 +226,37 @@ export function registerImportHandlers({
 
   ipcMain.handle('import:vcfPreview', async (_event, filePath: string) => {
     return wrapHandler(async () => {
-      return getVcfPreview(filePath)
+      const parsed = ImportVcfPreviewParamsSchema.safeParse([filePath])
+      if (!parsed.success) {
+        throw new InvalidParametersError(
+          `Invalid import:vcfPreview params: ${parsed.error.message}`
+        )
+      }
+
+      const [validatedPath] = parsed.data
+      if (!isAllowedImportPath(validatedPath)) {
+        throwUnallowedImportPath('import:vcfPreview', validatedPath)
+      }
+      return getVcfPreview(validatedPath)
     })
   })
 
   ipcMain.handle('import:vcfMultiPreview', async (_event, filePaths: string[]) => {
     return wrapHandler(async () => {
-      return getVcfMultiPreview(filePaths)
+      const parsed = ImportVcfMultiPreviewParamsSchema.safeParse([filePaths])
+      if (!parsed.success) {
+        throw new InvalidParametersError(
+          `Invalid import:vcfMultiPreview params: ${parsed.error.message}`
+        )
+      }
+
+      const [validatedPaths] = parsed.data
+      validatedPaths.forEach((filePath, index) => {
+        if (!isAllowedImportPath(filePath)) {
+          throwUnallowedImportPath('import:vcfMultiPreview', filePath, `filePaths[${index}]`)
+        }
+      })
+      return getVcfMultiPreview(validatedPaths)
     })
   })
 
@@ -193,6 +279,9 @@ export function registerImportHandlers({
       }
 
       await saveSettings({ ...settings, lastImportDirectory: dirname(result.filePaths[0]) })
+      for (const p of result.filePaths) {
+        addAllowedImportPath(p)
+      }
       return result.filePaths
     })
   })
@@ -218,6 +307,9 @@ export function registerImportHandlers({
       // Persist the directory so the next BED picker opens in the same place
       // (matches the behavior of import:selectFile / import:selectFiles).
       await saveSettings({ ...settings, lastImportDirectory: dirname(result.filePaths[0]) })
+      for (const p of result.filePaths) {
+        addAllowedImportPath(p)
+      }
       return result.filePaths[0]
     })
   })

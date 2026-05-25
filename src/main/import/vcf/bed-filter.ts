@@ -1,4 +1,5 @@
 import { readFileSync } from 'fs'
+import { isAbsolute, resolve } from 'path'
 import { gunzipSync } from 'zlib'
 
 interface Interval {
@@ -26,6 +27,16 @@ export class BedFilter {
 
   /** Load intervals from a .bed or .bed.gz file with optional padding */
   static fromFile(filePath: string, padding: number): BedFilter {
+    // QW-7 worker-safe defensive check. The full allow-list check happens
+    // at the IPC boundary in main; this file is also loaded by worker threads.
+    if (!isAbsolute(filePath)) {
+      throw new Error(`BedFilter.fromFile: path must be an absolute path: ${filePath}`)
+    }
+    const resolved = resolve(filePath)
+    if (resolved !== filePath || resolved.split('/').includes('..')) {
+      throw new Error(`BedFilter.fromFile: path must not contain '..' segments: ${filePath}`)
+    }
+
     const raw = filePath.endsWith('.gz')
       ? gunzipSync(readFileSync(filePath)).toString('utf-8')
       : readFileSync(filePath, 'utf-8')

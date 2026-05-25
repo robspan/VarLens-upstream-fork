@@ -10,6 +10,7 @@ import type { Database as DatabaseType } from 'better-sqlite3-multiple-ciphers'
 import { DATABASE_CONFIG } from '../../shared/config'
 import { createFTSTriggers } from '../database/schema'
 import { rebuildAllFtsIndexes } from '../database/fts-trigger-management'
+import { assertNotHexLiteralKey } from '../database/sqlcipher-key-guard'
 import {
   REBUILD_VARIANT_SUMMARY_SQL,
   REBUILD_GENE_BURDEN_SQL,
@@ -31,6 +32,10 @@ export const DROP_FTS_TRIGGERS = `
  * Open a database for import/write operations with aggressive performance pragmas.
  */
 export function openWorkerDatabase(dbPath: string, encryptionKey?: string): DatabaseType {
+  if (encryptionKey !== undefined && encryptionKey !== '') {
+    assertNotHexLiteralKey(encryptionKey)
+  }
+
   const db = new Database(dbPath)
 
   if (encryptionKey !== undefined && encryptionKey !== '') {
@@ -54,6 +59,10 @@ export function openWorkerDatabase(dbPath: string, encryptionKey?: string): Data
  * Open a database in read-only mode (for export operations).
  */
 export function openWorkerDatabaseReadOnly(dbPath: string, encryptionKey?: string): DatabaseType {
+  if (encryptionKey !== undefined && encryptionKey !== '') {
+    assertNotHexLiteralKey(encryptionKey)
+  }
+
   const db = new Database(dbPath, { readonly: true })
 
   if (encryptionKey !== undefined && encryptionKey !== '') {

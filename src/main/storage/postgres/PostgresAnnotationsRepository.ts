@@ -89,6 +89,14 @@ function valuesListForVariantKeys(keys: VariantKey[], params: unknown[]): string
     .join(', ')
 }
 
+async function rollbackTransaction(client: Pick<PoolClient, 'query'>): Promise<void> {
+  try {
+    await client.query('ROLLBACK')
+  } catch {
+    // Preserve the original transaction failure; rollback errors add noise here.
+  }
+}
+
 export class PostgresAnnotationsRepository {
   constructor(
     private readonly pool: QueryablePool,
@@ -208,7 +216,7 @@ export class PostgresAnnotationsRepository {
       await client.query('COMMIT')
       return result
     } catch (error) {
-      await client.query('ROLLBACK')
+      await rollbackTransaction(client)
       throw error
     } finally {
       client.release()
@@ -330,7 +338,7 @@ export class PostgresAnnotationsRepository {
       await client.query('COMMIT')
       return result
     } catch (error) {
-      await client.query('ROLLBACK')
+      await rollbackTransaction(client)
       throw error
     } finally {
       client.release()

@@ -38,7 +38,8 @@
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",
     "docs:screenshots": "npx playwright test tests/e2e/screenshots.e2e.ts",
-    "build:gene-ref": "npx tsx scripts/build-gene-reference-db.ts"
+    "build:gene-ref": "npx tsx scripts/build-gene-reference-db.ts",
+    "varlens:hash-password": "npx tsx scripts/varlens-hash-password.ts"
   },
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.2",

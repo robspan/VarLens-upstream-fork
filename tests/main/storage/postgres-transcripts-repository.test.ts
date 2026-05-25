@@ -44,6 +44,47 @@ describe('PostgresTranscriptsRepository', () => {
     ])
   })
 
+  it('maps pg-style string transcript flags to desktop boolean fields', async () => {
+    const pool = {
+      query: vi.fn().mockResolvedValue({
+        rows: [
+          {
+            id: '2',
+            variant_id: '9',
+            transcript_id: 'NM_007294.4',
+            gene_symbol: 'BRCA1',
+            consequence: 'MODERATE',
+            cdna: null,
+            aa_change: null,
+            hpo_sim_score: null,
+            moi: null,
+            is_selected: 't',
+            is_mane_select: '1',
+            is_canonical: 'false'
+          }
+        ]
+      })
+    }
+    const repository = new PostgresTranscriptsRepository(pool as never, 'case_schema')
+
+    await expect(repository.list(9)).resolves.toEqual([
+      {
+        id: 2,
+        variant_id: 9,
+        transcript_id: 'NM_007294.4',
+        gene_symbol: 'BRCA1',
+        consequence: 'MODERATE',
+        cdna: null,
+        aa_change: null,
+        hpo_sim_score: null,
+        moi: null,
+        is_selected: true,
+        is_mane_select: true,
+        is_canonical: false
+      }
+    ])
+  })
+
   it('updates the parent variant when switching the selected transcript', async () => {
     const release = vi.fn()
     const query = vi

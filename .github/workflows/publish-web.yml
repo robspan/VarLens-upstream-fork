@@ -93,7 +93,7 @@ jobs:
       digest: ${{ steps.push.outputs.digest }}
       tags: ${{ steps.meta.outputs.tags }}
     env:
-      SCAN_TAG: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:ci-scan-${{ github.sha }}
+      SCAN_TAG: ghcr.io/${{ github.repository_owner }}/varlens-web:ci-scan-${{ github.sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # actions/checkout@v6.0.2

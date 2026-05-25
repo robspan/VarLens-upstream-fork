@@ -1,0 +1,218 @@
+# Build, Trivy-scan, and publish the VarLens web image to GHCR.
+#
+# Triggers:
+#   - manual workflow_dispatch
+#   - published GitHub release
+#
+# Versioned deploy orchestration lives outside this application repo.
+# This workflow only builds, tests, scans, and optionally publishes the
+# web application image.
+#
+# Trivy posture:
+#   - Gating step: CRITICAL only — fails the workflow if any non-ignored
+#     CRITICAL CVE is present. A bad CRITICAL must not be silently shipped.
+#   - Advisory step: HIGH (and below) — uploaded to the Security tab as
+#     SARIF for review, never blocks. SARIF is uploaded with an explicit
+#     `category` so future scanners can coexist.
+#
+# The published digest goes into the workflow summary so an external
+# operator/deploy repository can pin the image by sha256.
+#
+# Fork note: `GITHUB_TOKEN` can only push to an existing GHCR package when
+# that package grants this repository write access. Forks should still run the
+# web gate, but they should not fail only because publish access is absent. Set
+# repository variable `VARLENS_WEB_PUBLISH_GHCR=1` after granting package access
+# if a fork intentionally needs to publish an edge image.
+
+name: publish-web
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/varlens-web
+
+jobs:
+  web-ci:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: varlens_web_ci
+          POSTGRES_USER: varlens
+          POSTGRES_PASSWORD: varlens
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U varlens -d varlens_web_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      VARLENS_PG_URL: postgres://varlens:varlens@127.0.0.1:5432/varlens_web_ci
+      VARLENS_RECOVERY_KEY_DIR: /tmp/varlens-web-ci-secrets
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # actions/checkout@v6.0.2
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # actions/setup-node@v6.4.0
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-dev build-essential
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run opt-in web gate
+        run: make web-ci
+
+  build-and-push:
+    needs: web-ci
+    if: |
+      github.repository == 'berntpopp/VarLens'
+      || vars.VARLENS_WEB_PUBLISH_GHCR == '1'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+      tags: ${{ steps.meta.outputs.tags }}
+    env:
+      SCAN_TAG: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:ci-scan-${{ github.sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # actions/checkout@v6.0.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d70bba72b1f3fd22344832f00baa16ece964efeb # docker/setup-buildx-action@v3.3.0
+
+      - name: Login to GHCR
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # docker/login-action@v3.3.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image metadata
+        id: meta
+        uses: docker/metadata-action@8e5442c4ef9f78752691e2d8f8d19755c6f78e81 # docker/metadata-action@v5.5.1
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=edge,enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=ref,event=tag
+            type=sha,format=short
+
+      - name: Build image for security gate
+        uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75 # docker/build-push-action@v6.6.1
+        with:
+          context: .
+          push: false
+          load: true
+          tags: |
+            ${{ env.SCAN_TAG }}
+            ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy gate — CRITICAL only (fails before push)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.SCAN_TAG }}
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Trivy advisory scan (HIGH+) — SARIF for Security tab
+        id: trivy-advisory
+        if: always()
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.SCAN_TAG }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '0'
+
+      - name: Upload SARIF
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@b7cec7526559c32f1616476ff32d17ba4c59b2d6 # github/codeql-action/upload-sarif@v3.25.15
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-web-image
+
+      - name: Push scanned image
+        id: push
+        shell: bash
+        run: |
+          first_tag=''
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            if [ -z "$first_tag" ]; then first_tag="$tag"; fi
+            docker push "$tag"
+          done <<< "${{ steps.meta.outputs.tags }}"
+
+          if [ -z "$first_tag" ]; then
+            echo "No image tags were produced." >&2
+            exit 1
+          fi
+
+          digest="$(docker buildx imagetools inspect "$first_tag" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Summarise digest
+        run: |
+          {
+            echo "## Published image"
+            echo ""
+            echo "**Digest:** \`${{ steps.push.outputs.digest }}\`"
+            echo ""
+            echo "**Tags:**"
+            echo "${{ steps.meta.outputs.tags }}" | sed 's/^/- `/' | sed 's/$/`/'
+            echo ""
+            echo "Pin in the deploy repo \`compose/docker-compose.yml\`:"
+            echo ""
+            echo "\`\`\`yaml"
+            echo "image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.push.outputs.digest }}"
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish-skipped:
+    needs: web-ci
+    if: |
+      github.repository != 'berntpopp/VarLens'
+      && vars.VARLENS_WEB_PUBLISH_GHCR != '1'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain skipped GHCR publish
+        run: |
+          {
+            echo "## GHCR publish skipped"
+            echo ""
+            echo "The web gate passed, but this repository is not configured to publish"
+            echo "\`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:edge\`."
+            echo ""
+            echo "This avoids fork-only 403 failures when the existing GHCR package"
+            echo "is owned by another repository. To publish from this repository,"
+            echo "grant it write access to the GHCR package and set repository"
+            echo "variable \`VARLENS_WEB_PUBLISH_GHCR=1\`."
+          } >> "$GITHUB_STEP_SUMMARY"

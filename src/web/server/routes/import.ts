@@ -93,6 +93,13 @@ export function buildImportOverrides(): Record<string, OverrideHandler> {
         }
 
         const normalizedFilters = normalizeImportFiltersPayload(filters)
+        if (filters !== undefined && filters !== null && normalizedFilters === undefined) {
+          reply.code(400)
+          return {
+            error: 'invalid-filters',
+            message: 'filters must match the import filter schema'
+          }
+        }
 
         return await startMultiFileImport(
           validatedCaseName.data,

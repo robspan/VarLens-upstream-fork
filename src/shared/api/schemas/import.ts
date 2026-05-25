@@ -100,5 +100,5 @@ export function normalizeImportFiltersPayload(filters: unknown): ImportFiltersPa
   if (filters === null || typeof filters !== 'object') return undefined
 
   const parsed = ImportFiltersPayloadSchema.safeParse(filters)
-  return parsed.success ? parsed.data : (filters as ImportFiltersPayload)
+  return parsed.success ? parsed.data : undefined
 }

@@ -1,4 +1,4 @@
-.PHONY: help rebuild dev dev-postgres build preview lint lint-check agent-check test test-watch test-coverage typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-query-perf pg-seed-dev pg-hosted-smoke pg-reset
+.PHONY: help rebuild dev dev-postgres build build-web build-web-server build-web-renderer preview lint lint-check agent-check test test-watch test-coverage web-gate web-gate-static web-gate-integration web-gate-parity typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-query-perf pg-seed-dev pg-hosted-smoke pg-reset
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -52,6 +52,15 @@ preview: ## Preview production build locally
 
 build: ## Build for production
 	npm run build
+
+build-web: ## Build web server and renderer bundles
+	npm run build:web
+
+build-web-server: ## Build the Fastify web server bundle
+	npm run build:web:server
+
+build-web-renderer: ## Build the browser web renderer bundle
+	npm run build:web:renderer
 
 dist: ## Build and package for current platform (for releases)
 	npm run dist
@@ -111,6 +120,18 @@ test-watch: ## Run tests in watch mode
 
 test-coverage: ## Run tests with coverage report
 	npm run test:coverage
+
+web-gate: ## Run all opt-in web migration gate tests
+	npm run test:web-gate
+
+web-gate-static: ## Run opt-in web migration static gate tests
+	npx vitest run --project web-gate tests/web-gate/*.test.ts
+
+web-gate-integration: ## Run opt-in web migration integration gate tests
+	npx vitest run --project web-gate tests/web-gate/integration/*.test.ts
+
+web-gate-parity: ## Run opt-in desktop/web parity gate tests
+	VARLENS_RUN_WEB_GATE_PARITY=1 npx vitest run --project web-gate-parity --passWithNoTests
 
 #---------------------------------------------------------------------------
 # CI / Full Checks

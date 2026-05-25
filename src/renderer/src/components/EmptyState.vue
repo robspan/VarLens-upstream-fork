@@ -19,7 +19,7 @@
             Select a case from the sidebar to view variants
           </p>
         </template>
-        <template v-else>
+        <template v-else-if="allowImport">
           <p class="text-body-medium text-grey mb-4">
             Get started by importing your first variant file
           </p>
@@ -32,6 +32,9 @@
             <span class="text-body-small text-grey">or drag and drop files here</span>
           </div>
         </template>
+        <template v-else>
+          <p class="text-body-medium text-grey">No cases are available in this workspace yet.</p>
+        </template>
       </v-col>
     </v-row>
   </v-container>
@@ -39,9 +42,15 @@
 
 <script setup lang="ts">
 import { mdiArrowLeft, mdiTrayArrowDown, mdiUpload } from '@mdi/js'
-defineProps<{
-  hasCases?: boolean
-}>()
+withDefaults(
+  defineProps<{
+    hasCases?: boolean
+    allowImport?: boolean
+  }>(),
+  {
+    allowImport: true
+  }
+)
 
 defineEmits<{
   import: []

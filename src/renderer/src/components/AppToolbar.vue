@@ -106,12 +106,14 @@
           @click="$emit('show-database-overview')"
         />
         <v-list-item
+          v-if="!isWebMode"
           :prepend-icon="mdiDatabaseImport"
           title="Import Data"
           subtitle="Ctrl+I"
           @click="$emit('import-click')"
         />
         <v-list-item
+          v-if="!isWebMode"
           :prepend-icon="mdiFileDocumentMultiple"
           title="Import VCF Files"
           subtitle="Multi-file case (SNV + SV + CNV + STR)"
@@ -175,6 +177,7 @@ import ImportStatusChip from './ImportStatusChip.vue'
 import { useAppState } from '../composables/useAppState'
 import { useResponsiveLayout } from '../composables/useResponsiveLayout'
 import { useCaseMetadata } from '../composables/useCaseMetadata'
+import { isWebRuntime } from '../utils/runtime-mode'
 import type { AffectedStatus, CaseSex } from '../../../shared/types/api'
 import {
   mdiAccount,
@@ -209,6 +212,7 @@ const {
 
 const { showModeToggleLabels, showContextIndicator } = useResponsiveLayout()
 const { getMetadata, loadMetadata } = useCaseMetadata()
+const isWebMode = isWebRuntime()
 
 // Preload metadata when a case is selected so status/sex icons display immediately
 watch(

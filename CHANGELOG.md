@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.59.5] — 2026-05-25
+
+### Security
+
+- **Main-process log redaction now protects PHI before persistence and IPC.**
+  HGVS notation, genomic coordinates, and patient/sample identifiers are
+  scrubbed before `electron-log` writes to disk and before log messages are
+  forwarded to renderer windows.
+
+### Fixed
+
+- **Release workflow now refuses tag/package version mismatches.** Tags such as
+  `vX.Y.Z` must match `package.json` before release artifacts can be published.
+
+### Internal
+
+- **CHANGELOG history backfilled for 13 tagged releases** from `v0.56.8`
+  through `v0.59.3`, and the release runbook now requires promoting
+  `[Unreleased]` before bumping `package.json`.
+
 ## [0.59.3] — 2026-05-21
 
 ### Changed

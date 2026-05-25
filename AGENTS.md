@@ -24,7 +24,7 @@ The target user is a clinical geneticist or researcher working with case-level v
 | Docs site     | VitePress (`docs/`)                                                 |
 | CI/CD         | GitHub Actions on Windows / Ubuntu / macOS runners                  |
 
-Node version is pinned by `.nvmrc` — match it before running anything (`24.14.1` at time of writing). npm ≥ 11 is required.
+Node version is pinned by `.nvmrc` — match it before running anything (`24.15.0` at time of writing). npm ≥ 11 is required.
 
 ## Repository Layout
 

@@ -1,4 +1,5 @@
 import { Worker } from 'node:worker_threads'
+import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { mainLogger } from '../../services/MainLogger'
 import type {
@@ -20,15 +21,22 @@ export interface PostgresImportWorkerCallbacks {
 export interface PostgresImportWorkerClientOptions {
   /** Override worker construction. Default loads the built worker bundle. */
   workerFactory?: () => Worker
+  /** Override path lookup for tests. */
+  workerPathCandidates?: readonly string[]
 }
 
 export class PostgresImportWorkerClient {
   private worker: Worker | null = null
-  private readonly workerPath: string
+  private readonly workerPath: string | null
+  private readonly workerPathCandidates: readonly string[]
   private readonly workerFactory?: () => Worker
 
   constructor(options: PostgresImportWorkerClientOptions = {}) {
-    this.workerPath = resolve(__dirname, 'postgres-import-worker.js')
+    this.workerPathCandidates = options.workerPathCandidates ?? [
+      resolve(__dirname, 'postgres-import-worker.js'),
+      resolve(process.cwd(), 'out/main/postgres-import-worker.js')
+    ]
+    this.workerPath = this.workerPathCandidates.find((candidate) => existsSync(candidate)) ?? null
     this.workerFactory = options.workerFactory
   }
 
@@ -36,7 +44,16 @@ export class PostgresImportWorkerClient {
     if (this.worker) {
       throw new Error('PostgresImportWorkerClient already started')
     }
-    this.worker = this.workerFactory ? this.workerFactory() : new Worker(this.workerPath)
+    if (this.workerFactory) {
+      this.worker = this.workerFactory()
+    } else {
+      if (this.workerPath === null) {
+        throw new Error(
+          `Postgres import worker bundle not found. Checked: ${this.workerPathCandidates.join(', ')}`
+        )
+      }
+      this.worker = new Worker(this.workerPath)
+    }
 
     this.worker.on('message', (msg: PostgresImportWorkerOutboundMessage) => {
       switch (msg.type) {
@@ -88,16 +105,16 @@ export class PostgresImportWorkerClient {
   }
 
   async terminate(): Promise<void> {
-    if (!this.worker) return
+    const worker = this.worker
+    if (!worker) return
+    this.worker = null
     try {
-      await this.worker.terminate()
+      await worker.terminate()
     } catch (e) {
       mainLogger.warn(
         `Postgres import worker termination failed: ${e instanceof Error ? e.message : String(e)}`,
         'PostgresImportWorkerClient'
       )
-    } finally {
-      this.worker = null
     }
   }
 }

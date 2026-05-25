@@ -380,4 +380,64 @@ describe('postgres-import-worker runImport', () => {
     // bedFilter is undefined because we didn't supply a bedFilePath.
     expect(filters.bedFilter).toBeUndefined()
   })
+
+  it('applies multi-file filters only to append files when a base file creates the case', async () => {
+    const client = {
+      connect: vi.fn(async () => undefined),
+      query: vi.fn(async (sql: string | { text: string }) => {
+        const text = typeof sql === 'string' ? sql : sql.text
+        if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] }
+        return { rows: [] }
+      }),
+      end: vi.fn(async () => undefined)
+    }
+    const { Readable } = await import('node:stream')
+    const filtersByFile = new Map<string, unknown>()
+
+    await runImport(
+      {
+        createClient: () => client as never,
+        detectFormat: async () => ({ format: 'vcf', caseKey: '' }) as never,
+        createVcfMappedStream: async (filePath, options) => {
+          filtersByFile.set(filePath, options.filters)
+          return Readable.from([]) as never
+        },
+        createMapperPipeline: async () => Readable.from([]),
+        statFile: () => ({ size: 0 })
+      },
+      {
+        type: 'start',
+        client: { connectionString: 'postgres://x' },
+        schema: 'public',
+        mode: 'multi-file',
+        caseName: 'F',
+        vcfOptions: { selectedSample: 'NA12878', genomeBuild: 'GRCh38' },
+        files: [
+          {
+            filePath: '/tmp/base.vcf.gz',
+            variantType: 'snv-indel',
+            annotationFormat: null,
+            caller: null
+          },
+          {
+            filePath: '/tmp/append.vcf.gz',
+            variantType: 'snv-indel',
+            annotationFormat: null,
+            caller: null
+          }
+        ],
+        filters: {
+          passOnly: true,
+          minQual: 30
+        }
+      },
+      () => {}
+    )
+
+    expect(filtersByFile.get('/tmp/base.vcf.gz')).toBeUndefined()
+    expect(filtersByFile.get('/tmp/append.vcf.gz')).toMatchObject({
+      passOnly: true,
+      minQual: 30
+    })
+  })
 })

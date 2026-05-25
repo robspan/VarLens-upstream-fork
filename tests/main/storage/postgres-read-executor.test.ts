@@ -11,7 +11,8 @@ function workflowRepositories() {
     panels: {} as never,
     filterPresets: {} as never,
     shortlist: {} as never,
-    analysisGroups: {} as never
+    analysisGroups: {} as never,
+    transcripts: {} as never
   }
 }
 
@@ -39,7 +40,9 @@ describe('PostgresReadExecutor', () => {
       caseMetadata: {} as never
     })
 
-    await expect(executor.execute({ type: 'cases:query', params })).resolves.toBe(expected)
+    await expect(executor.execute({ type: 'cases:query', params: [params] })).resolves.toBe(
+      expected
+    )
     expect(casesQuery.queryCases).toHaveBeenCalledWith(params)
     expect(availableBuilds.getAvailableGenomeBuilds).not.toHaveBeenCalled()
   })
@@ -104,7 +107,8 @@ describe('PostgresReadExecutor', () => {
     const variants = {
       getVariantTypeCounts: vi.fn().mockResolvedValue({ snv: 2 }),
       getVariantTypesPresent: vi.fn().mockResolvedValue(['snv']),
-      getGeneSymbols: vi.fn().mockResolvedValue(['BRCA1'])
+      getGeneSymbols: vi.fn().mockResolvedValue(['BRCA1']),
+      searchVariants: vi.fn().mockResolvedValue([{ id: 1, consequence: 'stop_gained' }])
     }
     const casesQuery = { queryCases: vi.fn() }
     const availableBuilds = { getAvailableGenomeBuilds: vi.fn() }
@@ -140,6 +144,10 @@ describe('PostgresReadExecutor', () => {
     await expect(
       executor.execute({ type: 'variants:geneSymbols', params: [1, 'BR', 20] })
     ).resolves.toStrictEqual(['BRCA1'])
+    await expect(
+      executor.execute({ type: 'variants:search', params: [1, 'stop', 20] })
+    ).resolves.toStrictEqual([{ id: 1, consequence: 'stop_gained' }])
+    expect(variants.searchVariants).toHaveBeenCalledWith(1, 'stop', 20)
   })
 
   it('dispatches variant query reads to the postgres variant repository', async () => {

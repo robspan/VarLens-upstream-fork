@@ -10,7 +10,8 @@ function workflowRepositories(): ConstructorParameters<typeof PostgresWriteExecu
     commentsMetrics: {} as never,
     panels: {} as never,
     filterPresets: {} as never,
-    analysisGroups: {} as never
+    analysisGroups: {} as never,
+    transcripts: {} as never
   }
 }
 
@@ -73,7 +74,8 @@ describe('PostgresWriteExecutor', () => {
     const workflow = workflowRepositories()
     workflow.tags = { createTag: vi.fn().mockResolvedValue({ id: 1 }) } as never
     workflow.annotations = {
-      upsertPerCaseAnnotation: vi.fn().mockResolvedValue({ case_id: 1, variant_id: 2 })
+      upsertPerCaseAnnotation: vi.fn().mockResolvedValue({ case_id: 1, variant_id: 2 }),
+      upsertPerCaseAnnotationWithAudit: vi.fn().mockResolvedValue({ case_id: 1, variant_id: 2 })
     } as never
     workflow.panels = { createPanel: vi.fn().mockResolvedValue({ id: 3 }) } as never
     const executor = new PostgresWriteExecutor({} as never, {} as never, workflow)
@@ -88,12 +90,19 @@ describe('PostgresWriteExecutor', () => {
       params: [1, 2, { acmg_classification: 'VUS' }]
     })
     await executor.execute({
+      type: 'annotations:upsertPerCaseWithAudit',
+      params: [1, 2, { acmg_classification: 'VUS' }]
+    })
+    await executor.execute({
       type: 'panels:create',
       params: [{ name: 'Panel', source: 'manual' }]
     })
 
     expect(workflow.tags.createTag).toHaveBeenCalledWith('Review', '#fff')
     expect(workflow.annotations.upsertPerCaseAnnotation).toHaveBeenCalledWith(1, 2, {
+      acmg_classification: 'VUS'
+    })
+    expect(workflow.annotations.upsertPerCaseAnnotationWithAudit).toHaveBeenCalledWith(1, 2, {
       acmg_classification: 'VUS'
     })
     expect(workflow.panels.createPanel).toHaveBeenCalledWith({ name: 'Panel', source: 'manual' })

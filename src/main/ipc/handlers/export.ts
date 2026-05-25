@@ -1,13 +1,14 @@
-import { z } from 'zod'
 import { dialog, BrowserWindow } from 'electron'
+import { randomUUID } from 'node:crypto'
+import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { wrapHandler } from '../errorHandler'
 import type { HandlerDependencies } from '../types'
 import { mainLogger } from '../../services/MainLogger'
 import {
-  CaseIdSchema,
-  VariantFilterPartialSchema,
-  CohortSearchParamsSchema
-} from '../../../shared/types/ipc-schemas'
+  CohortSearchParamsSchema,
+  VariantExportParamsSchema
+} from '../../../shared/api/schemas/export'
 import { safeEmit } from '../utils/safeEmit'
 import {
   prepareVariantExport,
@@ -18,12 +19,15 @@ import {
 } from './export-logic'
 import type { ExportCallbacks } from './export-logic'
 
-/** Schema for variant export parameters */
-const VariantExportParamsSchema = z.object({
-  caseId: CaseIdSchema,
-  filters: VariantFilterPartialSchema,
-  caseName: z.string().min(1).max(500)
-})
+const AUTOMATED_EXPORT_DIR_ENV = 'VARLENS_AUTOMATED_EXPORT_DIR'
+
+function automatedExportPath(defaultFileName: string): string | null {
+  const dir = process.env[AUTOMATED_EXPORT_DIR_ENV]
+  if (dir === undefined || dir.trim() === '') return null
+  mkdirSync(dir, { recursive: true })
+  const safeName = defaultFileName.replace(/[^a-zA-Z0-9._-]/g, '_')
+  return join(dir, `${randomUUID()}-${safeName}`)
+}
 
 /**
  * Export IPC handlers
@@ -67,36 +71,39 @@ export function registerExportHandlers({
           return preparation
         }
 
+        const defaultFileName = `${validated.data.caseName.replace(/[^a-z0-9]/gi, '_')}_variants.${isPostgres ? 'csv' : 'xlsx'}`
+        let outputFilePath = automatedExportPath(defaultFileName)
         const mainWindow = BrowserWindow.getAllWindows()[0]
 
-        if (mainWindow === undefined || mainWindow.isDestroyed()) {
-          return { success: false, error: 'No window available for export dialog' }
-        }
+        if (outputFilePath === null) {
+          if (mainWindow === undefined || mainWindow.isDestroyed()) {
+            return { success: false, error: 'No window available for export dialog' }
+          }
 
-        // Show save dialog
-        const defaultFileName = `${validated.data.caseName.replace(/[^a-z0-9]/gi, '_')}_variants.${isPostgres ? 'csv' : 'xlsx'}`
-        const result = await dialog.showSaveDialog(mainWindow, {
-          title: isPostgres ? 'Export Variants to CSV' : 'Export Variants to Excel',
-          defaultPath: defaultFileName,
-          filters: isPostgres
-            ? [
-                { name: 'CSV Files', extensions: ['csv'] },
-                { name: 'All Files', extensions: ['*'] }
-              ]
-            : [
-                { name: 'Excel Files', extensions: ['xlsx'] },
-                { name: 'All Files', extensions: ['*'] }
-              ]
-        })
+          const result = await dialog.showSaveDialog(mainWindow, {
+            title: isPostgres ? 'Export Variants to CSV' : 'Export Variants to Excel',
+            defaultPath: defaultFileName,
+            filters: isPostgres
+              ? [
+                  { name: 'CSV Files', extensions: ['csv'] },
+                  { name: 'All Files', extensions: ['*'] }
+                ]
+              : [
+                  { name: 'Excel Files', extensions: ['xlsx'] },
+                  { name: 'All Files', extensions: ['*'] }
+                ]
+          })
 
-        if (result.canceled === true || result.filePath === undefined || result.filePath === '') {
-          return { success: false, error: 'Export cancelled' }
+          if (result.canceled === true || result.filePath === undefined || result.filePath === '') {
+            return { success: false, error: 'Export cancelled' }
+          }
+          outputFilePath = result.filePath
         }
 
         /** Wire progress events to renderer via safeEmit. */
         const exportCallbacks: ExportCallbacks = {
           onProgress: (data) => {
-            if (!mainWindow.isDestroyed()) {
+            if (mainWindow !== undefined && !mainWindow.isDestroyed()) {
               safeEmit('export:progress', data)
             }
           }
@@ -112,7 +119,7 @@ export function registerExportHandlers({
               }
             ]
           })) as AsyncIterable<Record<string, unknown>>
-          return await exportPostgresVariants(rows, result.filePath, exportCallbacks)
+          return await exportPostgresVariants(rows, outputFilePath, exportCallbacks)
         }
 
         if (preparation === null) {
@@ -124,7 +131,7 @@ export function registerExportHandlers({
           preparation.compiled,
           validated.data.filters,
           validated.data.caseName,
-          result.filePath,
+          outputFilePath,
           exportCallbacks
         )
       }) as Promise<{ success: boolean; filePath?: string; error?: string }>
@@ -151,41 +158,43 @@ export function registerExportHandlers({
         )
         const session = getDbManager().getCurrentSession()
         const isPostgres = session.capabilities.backend === 'postgres'
+        const defaultFileName = `cohort_variants_${new Date().toISOString().slice(0, 10)}.${isPostgres ? 'csv' : 'xlsx'}`
+        let outputFilePath = automatedExportPath(defaultFileName)
         const mainWindow = BrowserWindow.getAllWindows()[0]
 
-        // Check for valid window before showing dialog
-        if (mainWindow === undefined || mainWindow.isDestroyed()) {
-          mainLogger.warn(
-            'Window closed before cohort export dialog, cannot show save dialog',
-            'export'
-          )
-          return { success: false, error: 'No window available for export dialog' }
-        }
+        if (outputFilePath === null) {
+          if (mainWindow === undefined || mainWindow.isDestroyed()) {
+            mainLogger.warn(
+              'Window closed before cohort export dialog, cannot show save dialog',
+              'export'
+            )
+            return { success: false, error: 'No window available for export dialog' }
+          }
 
-        // Show save dialog
-        const defaultFileName = `cohort_variants_${new Date().toISOString().slice(0, 10)}.${isPostgres ? 'csv' : 'xlsx'}`
-        const result = await dialog.showSaveDialog(mainWindow, {
-          title: isPostgres ? 'Export Cohort Variants to CSV' : 'Export Cohort Variants to Excel',
-          defaultPath: defaultFileName,
-          filters: isPostgres
-            ? [
-                { name: 'CSV Files', extensions: ['csv'] },
-                { name: 'All Files', extensions: ['*'] }
-              ]
-            : [
-                { name: 'Excel Files', extensions: ['xlsx'] },
-                { name: 'All Files', extensions: ['*'] }
-              ]
-        })
+          const result = await dialog.showSaveDialog(mainWindow, {
+            title: isPostgres ? 'Export Cohort Variants to CSV' : 'Export Cohort Variants to Excel',
+            defaultPath: defaultFileName,
+            filters: isPostgres
+              ? [
+                  { name: 'CSV Files', extensions: ['csv'] },
+                  { name: 'All Files', extensions: ['*'] }
+                ]
+              : [
+                  { name: 'Excel Files', extensions: ['xlsx'] },
+                  { name: 'All Files', extensions: ['*'] }
+                ]
+          })
 
-        if (result.canceled === true || result.filePath === undefined || result.filePath === '') {
-          return { success: false, error: 'Export cancelled' }
+          if (result.canceled === true || result.filePath === undefined || result.filePath === '') {
+            return { success: false, error: 'Export cancelled' }
+          }
+          outputFilePath = result.filePath
         }
 
         /** Wire progress events to renderer via safeEmit. */
         const exportCallbacks: ExportCallbacks = {
           onProgress: (data) => {
-            if (!mainWindow.isDestroyed()) {
+            if (mainWindow !== undefined && !mainWindow.isDestroyed()) {
               safeEmit('export:progress', data)
             }
           }
@@ -196,10 +205,10 @@ export function registerExportHandlers({
             type: 'export:cohort',
             params: [validated.data]
           })) as AsyncIterable<Record<string, unknown>>
-          return await exportPostgresCohort(rows, result.filePath, exportCallbacks)
+          return await exportPostgresCohort(rows, outputFilePath, exportCallbacks)
         }
 
-        return exportCohort(getDb, validated.data, result.filePath)
+        return exportCohort(getDb, validated.data, outputFilePath)
       }) as Promise<{ success: boolean; filePath?: string; error?: string }>
     }
   )

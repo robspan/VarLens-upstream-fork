@@ -96,8 +96,8 @@ export class PostgresFilterPresetsRepository {
           params.description ?? null,
           JSON.stringify(params.filterJson),
           kind,
-          false,
-          params.isVisible !== false,
+          0,
+          params.isVisible === false ? 0 : 1,
           params.sortOrder ?? 0,
           now,
           now
@@ -129,7 +129,7 @@ export class PostgresFilterPresetsRepository {
       }
 
       if (toBoolean(existing.is_built_in)) {
-        if (updates.isVisible !== undefined) addAssignment('is_visible', updates.isVisible)
+        if (updates.isVisible !== undefined) addAssignment('is_visible', updates.isVisible ? 1 : 0)
         if (updates.sortOrder !== undefined) addAssignment('sort_order', updates.sortOrder)
       } else {
         if (updates.name !== undefined) addAssignment('name', updates.name)
@@ -138,7 +138,7 @@ export class PostgresFilterPresetsRepository {
         if (updates.filterJson !== undefined)
           addAssignment('filter_json', JSON.stringify(updates.filterJson))
         if (updates.kind !== undefined) addAssignment('kind', updates.kind)
-        if (updates.isVisible !== undefined) addAssignment('is_visible', updates.isVisible)
+        if (updates.isVisible !== undefined) addAssignment('is_visible', updates.isVisible ? 1 : 0)
         if (updates.sortOrder !== undefined) addAssignment('sort_order', updates.sortOrder)
       }
 

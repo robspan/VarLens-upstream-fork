@@ -18,6 +18,7 @@ import type {
   VariantCoords
 } from '../ipc/handlers/annotations-logic'
 import type { AuditAppendParams } from './audit-log-types'
+import type { TranscriptInsertRow } from '../../shared/types/transcript'
 
 export type StorageWriteTask =
   | { type: 'cases:delete'; params: [caseId: number] }
@@ -52,9 +53,17 @@ export type StorageWriteTask =
       type: 'annotations:upsertGlobal'
       params: [coords: VariantCoords, updates: GlobalAnnotationUpdates]
     }
+  | {
+      type: 'annotations:upsertGlobalWithAudit'
+      params: [coords: VariantCoords, updates: GlobalAnnotationUpdates]
+    }
   | { type: 'annotations:deleteGlobal'; params: [coords: VariantCoords] }
   | {
       type: 'annotations:upsertPerCase'
+      params: [caseId: number, variantId: number, updates: PerCaseAnnotationUpdates]
+    }
+  | {
+      type: 'annotations:upsertPerCaseWithAudit'
       params: [caseId: number, variantId: number, updates: PerCaseAnnotationUpdates]
     }
   | { type: 'annotations:deletePerCase'; params: [caseId: number, variantId: number] }
@@ -123,6 +132,11 @@ export type StorageWriteTask =
     }
   | { type: 'analysis-groups:removeMember'; params: [groupId: number, caseId: number] }
   | { type: 'audit:append'; params: [params: AuditAppendParams] }
+  | { type: 'transcripts:switch'; params: [variantId: number, transcriptId: string] }
+  | {
+      type: 'transcripts:insertAndSwitch'
+      params: [variantId: number, transcript: TranscriptInsertRow]
+    }
 
 export interface StorageWriteExecutor {
   execute(task: StorageWriteTask): Promise<unknown>

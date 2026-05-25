@@ -652,7 +652,7 @@ export async function runImport(
             const stream = await deps.createVcfMappedStream(fileSpec.filePath, {
               selectedSample,
               genomeBuild,
-              filters: importFilters
+              filters: start.files.length > 1 && i === 0 ? undefined : importFilters
             })
 
             let variants: Array<Record<string, unknown>> = []

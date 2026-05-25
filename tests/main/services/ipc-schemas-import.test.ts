@@ -3,7 +3,7 @@ import {
   ImportStartMultiFileParamsSchema,
   ImportStartParamsSchema,
   ImportVcfOptionsSchema
-} from '../../../src/shared/types/ipc-schemas'
+} from '../../../src/shared/ipc/domains/import-schemas'
 
 describe('ImportVcfOptionsSchema', () => {
   it('accepts future genome build string values', () => {

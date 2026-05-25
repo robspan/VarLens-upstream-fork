@@ -13,7 +13,7 @@ import {
   ImportStartParamsSchema,
   ImportVcfMultiPreviewParamsSchema,
   ImportVcfPreviewParamsSchema
-} from '../../../shared/types/ipc-schemas'
+} from '../../../shared/ipc/domains/import-schemas'
 import {
   startImport,
   cancelImport,

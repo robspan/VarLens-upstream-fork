@@ -17,6 +17,7 @@
 
 import { isMainThread } from 'worker_threads'
 import type { LogMessage } from '../../shared/types/log'
+import { sanitizeLogMessage } from '../../shared/utils/sanitizers'
 
 // Lazy-loaded references — only populated in the main thread
 let log: typeof import('electron-log/main').default | null = null
@@ -95,40 +96,44 @@ export class MainLogger {
   }
 
   debug(message: string, source = 'main'): void {
+    const safeMessage = sanitizeLogMessage(message)
     if (log) {
-      log.debug(`[${source}] ${message}`)
+      log.debug(`[${source}] ${safeMessage}`)
     } else {
       // Worker thread: console is the only option (allowed per CLAUDE.md)
-      console.debug(`[${source}] ${message}`)
+      console.debug(`[${source}] ${safeMessage}`)
     }
-    this.emit('debug', message, source)
+    this.emit('debug', safeMessage, source)
   }
 
   info(message: string, source = 'main'): void {
+    const safeMessage = sanitizeLogMessage(message)
     if (log) {
-      log.info(`[${source}] ${message}`)
+      log.info(`[${source}] ${safeMessage}`)
     } else {
-      console.info(`[${source}] ${message}`)
+      console.info(`[${source}] ${safeMessage}`)
     }
-    this.emit('info', message, source)
+    this.emit('info', safeMessage, source)
   }
 
   warn(message: string, source = 'main'): void {
+    const safeMessage = sanitizeLogMessage(message)
     if (log) {
-      log.warn(`[${source}] ${message}`)
+      log.warn(`[${source}] ${safeMessage}`)
     } else {
-      console.warn(`[${source}] ${message}`)
+      console.warn(`[${source}] ${safeMessage}`)
     }
-    this.emit('warn', message, source)
+    this.emit('warn', safeMessage, source)
   }
 
   error(message: string, source = 'main'): void {
+    const safeMessage = sanitizeLogMessage(message)
     if (log) {
-      log.error(`[${source}] ${message}`)
+      log.error(`[${source}] ${safeMessage}`)
     } else {
-      console.error(`[${source}] ${message}`)
+      console.error(`[${source}] ${safeMessage}`)
     }
-    this.emit('error', message, source)
+    this.emit('error', safeMessage, source)
   }
 }
 

@@ -22,7 +22,13 @@ vi.mock('../../../../src/main/ipc/handlers/import-logic', () => ({
 }))
 
 import { registerImportHandlers } from '../../../../src/main/ipc/handlers/import'
-import { startImport } from '../../../../src/main/ipc/handlers/import-logic'
+import {
+  getVcfMultiPreview,
+  getVcfPreview,
+  startImport,
+  startMultiFileImport
+} from '../../../../src/main/ipc/handlers/import-logic'
+import { __resetAllowlistForTests } from '../../../../src/main/security/import-path-allowlist'
 
 type HandlerCallback = (event: unknown, ...args: unknown[]) => Promise<unknown>
 
@@ -76,6 +82,7 @@ function expectInvalidParametersResult(result: unknown): void {
 describe('import IPC handlers', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    __resetAllowlistForTests()
   })
 
   it('returns INVALID_PARAMETERS when import:start receives an empty filePath', async () => {
@@ -96,5 +103,79 @@ describe('import IPC handlers', () => {
 
     expectInvalidParametersResult(result)
     expect(startImport).not.toHaveBeenCalled()
+  })
+
+  it('returns INVALID_PARAMETERS when import:start receives an unallowed filePath', async () => {
+    const ipcMain = makeIpcMain()
+    registerImportHandlers(makeDeps(ipcMain) as never)
+
+    const result = await invokeHandler(ipcMain, 'import:start', '/etc/passwd', 'Case A', undefined)
+
+    expectInvalidParametersResult(result)
+    expect(startImport).not.toHaveBeenCalled()
+  })
+
+  it('returns INVALID_PARAMETERS when import:startMultiFile receives an unallowed filePath', async () => {
+    const ipcMain = makeIpcMain()
+    registerImportHandlers(makeDeps(ipcMain) as never)
+
+    const result = await invokeHandler(ipcMain, 'import:startMultiFile', 'Case A', [
+      {
+        filePath: '/etc/passwd',
+        variantType: 'SNV',
+        caller: null,
+        annotationFormat: null
+      }
+    ])
+
+    expectInvalidParametersResult(result)
+    expect(startMultiFileImport).not.toHaveBeenCalled()
+  })
+
+  it('returns INVALID_PARAMETERS when import:startMultiFile receives an unallowed BED path', async () => {
+    const ipcMain = makeIpcMain()
+    registerImportHandlers(makeDeps(ipcMain) as never)
+
+    const result = await invokeHandler(
+      ipcMain,
+      'import:startMultiFile',
+      'Case A',
+      [
+        {
+          filePath: '/tmp/variants.vcf',
+          variantType: 'SNV',
+          caller: null,
+          annotationFormat: null
+        }
+      ],
+      undefined,
+      { bedFile: '/etc/passwd' }
+    )
+
+    expectInvalidParametersResult(result)
+    expect(startMultiFileImport).not.toHaveBeenCalled()
+  })
+
+  it('returns INVALID_PARAMETERS when import:vcfPreview receives an unallowed filePath', async () => {
+    const ipcMain = makeIpcMain()
+    registerImportHandlers(makeDeps(ipcMain) as never)
+
+    const result = await invokeHandler(ipcMain, 'import:vcfPreview', '/etc/passwd')
+
+    expectInvalidParametersResult(result)
+    expect(getVcfPreview).not.toHaveBeenCalled()
+  })
+
+  it('returns INVALID_PARAMETERS when import:vcfMultiPreview receives an unallowed filePath', async () => {
+    const ipcMain = makeIpcMain()
+    registerImportHandlers(makeDeps(ipcMain) as never)
+
+    const result = await invokeHandler(ipcMain, 'import:vcfMultiPreview', [
+      '/tmp/variants.vcf',
+      '/etc/passwd'
+    ])
+
+    expectInvalidParametersResult(result)
+    expect(getVcfMultiPreview).not.toHaveBeenCalled()
   })
 })

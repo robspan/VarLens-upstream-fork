@@ -5,6 +5,20 @@ import path from 'path'
 const BED_PATH = path.join(__dirname, '../../../test-data/vcf/test-regions.bed')
 
 describe('BedFilter', () => {
+  describe('fromFile worker-safe defensive check', () => {
+    it('rejects relative paths', () => {
+      expect(() => BedFilter.fromFile('relative/foo.bed', 0)).toThrow(/must be an absolute path/i)
+    })
+
+    it('rejects paths containing .. after resolve', () => {
+      expect(() => BedFilter.fromFile('/tmp/../etc/shadow', 0)).toThrow(/must not contain '\.\.'/i)
+    })
+
+    it('passes the defensive check for an absolute path that does not exist (fails on read, not on guard)', () => {
+      expect(() => BedFilter.fromFile('/tmp/does-not-exist.bed', 0)).toThrow(/ENOENT|no such file/i)
+    })
+  })
+
   describe('loadFromFile', () => {
     it('loads intervals from a BED file', () => {
       const filter = BedFilter.fromFile(BED_PATH, 0)

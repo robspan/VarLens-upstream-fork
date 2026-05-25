@@ -6,6 +6,7 @@ import { InvalidParametersError } from '../errors'
 import type { HandlerDependencies } from '../types'
 import { safeEmit } from '../utils/safeEmit'
 import { loadSettings, saveSettings } from '../utils/settings-io'
+import { addAllowedImportPath, isAllowedImportPath } from '../../security/import-path-allowlist'
 import {
   ImportFiltersIpcPayloadSchema,
   ImportStartMultiFileParamsSchema,
@@ -78,6 +79,13 @@ function buildImportFiltersFromIpc(
   }
 }
 
+function throwUnallowedImportPath(channel: string, filePath: string, label = 'filePath'): never {
+  throw new InvalidParametersError(
+    `${channel}: ${label} is not in the allowed import paths: ${filePath}`,
+    'The selected file is not in an allowed location.'
+  )
+}
+
 /** Shared callbacks that wire logic-layer events to renderer via safeEmit. */
 const importCallbacks: ImportCallbacks = {
   onProgress: (data) => safeEmit('import:progress', data)
@@ -110,6 +118,9 @@ export function registerImportHandlers({
       }
 
       const filePath = result.filePaths[0]
+      for (const p of result.filePaths) {
+        addAllowedImportPath(p)
+      }
       await saveSettings({ ...settings, lastImportDirectory: dirname(filePath) })
 
       return filePath
@@ -131,6 +142,9 @@ export function registerImportHandlers({
         }
 
         const [validatedPath, validatedCaseName, validatedOptions] = parsed.data
+        if (!isAllowedImportPath(validatedPath)) {
+          throwUnallowedImportPath('import:start', validatedPath)
+        }
         return startImport(
           validatedPath,
           validatedCaseName,
@@ -166,6 +180,26 @@ export function registerImportHandlers({
 
         const [validatedCaseName, validatedFiles, validatedOptions, validatedFiltersPayload] =
           parsed.data
+        validatedFiles.forEach((file, index) => {
+          if (!isAllowedImportPath(file.filePath)) {
+            throwUnallowedImportPath(
+              'import:startMultiFile',
+              file.filePath,
+              `files[${index}].filePath`
+            )
+          }
+        })
+
+        const bedFile = validatedFiltersPayload?.bedFile
+        if (
+          bedFile !== undefined &&
+          bedFile !== null &&
+          bedFile !== '' &&
+          !isAllowedImportPath(bedFile)
+        ) {
+          throwUnallowedImportPath('import:startMultiFile', bedFile, 'filtersPayload.bedFile')
+        }
+
         // Build the SQLite-path ImportFilters (loads BedFilter into memory).
         // The PG path receives filtersPayload directly so it can extract the
         // BED file path without going through the BedFilter constructor.
@@ -200,6 +234,9 @@ export function registerImportHandlers({
       }
 
       const [validatedPath] = parsed.data
+      if (!isAllowedImportPath(validatedPath)) {
+        throwUnallowedImportPath('import:vcfPreview', validatedPath)
+      }
       return getVcfPreview(validatedPath)
     })
   })
@@ -214,6 +251,11 @@ export function registerImportHandlers({
       }
 
       const [validatedPaths] = parsed.data
+      validatedPaths.forEach((filePath, index) => {
+        if (!isAllowedImportPath(filePath)) {
+          throwUnallowedImportPath('import:vcfMultiPreview', filePath, `filePaths[${index}]`)
+        }
+      })
       return getVcfMultiPreview(validatedPaths)
     })
   })
@@ -237,6 +279,9 @@ export function registerImportHandlers({
       }
 
       await saveSettings({ ...settings, lastImportDirectory: dirname(result.filePaths[0]) })
+      for (const p of result.filePaths) {
+        addAllowedImportPath(p)
+      }
       return result.filePaths
     })
   })
@@ -262,6 +307,9 @@ export function registerImportHandlers({
       // Persist the directory so the next BED picker opens in the same place
       // (matches the behavior of import:selectFile / import:selectFiles).
       await saveSettings({ ...settings, lastImportDirectory: dirname(result.filePaths[0]) })
+      for (const p of result.filePaths) {
+        addAllowedImportPath(p)
+      }
       return result.filePaths[0]
     })
   })

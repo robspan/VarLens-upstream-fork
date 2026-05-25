@@ -1418,13 +1418,15 @@ EOF
 
 ---
 
-### Task PR3-1 (QW-4): `npm audit fix` for the moderate transitive
+### Task PR3-1 (QW-4): `npm audit fix` for the `qs` moderate (only)
 
 **Files:**
 - Modify: `package-lock.json` (auto-generated)
-- Modify (if needed): `package.json` — only if the fix requires a top-level pin
+- Modify (if needed): `package.json` — only if the fix requires a top-level `overrides` entry
 
-**Context:** Audit lists one moderate-severity advisory on `qs` (transitive via `pg`).
+**Context:** Audit lists one moderate-severity advisory on `qs` (transitive via `pg`). Local `npm audit --omit=dev` at the time of writing reports **6 vulnerabilities: 5 low + 1 moderate**. The 5 `low` are the `elliptic` chain via `pdbe-molstar` (`elliptic → browserify-sign → crypto-browserify → pdbe-molstar`) — fixing them requires `npm audit fix --force` which upgrades `pdbe-molstar` to `3.1.3`, **a breaking change** to the renderer's 3D-structure view. The pdbe-molstar major upgrade is **out of scope for Phase 1** (see spec Non-goals); it gets its own dedicated phase with UAT for the protein viewer. GitHub Dependabot may surface the same `elliptic` chain as `high` (scoring the upstream package, not the in-bundle transitive); this is informational, not a Phase 1 blocker.
+
+**Phase 1 target:** `0 moderate` after this PR. The 5 `low` entries are explicitly accepted as residual until the dedicated pdbe-molstar upgrade phase.
 
 - [ ] **Step 1: Snapshot current state.**
 
@@ -1433,13 +1435,19 @@ npm audit --omit=dev --json > /tmp/audit-before.json
 jq '.metadata.vulnerabilities' /tmp/audit-before.json
 ```
 
-- [ ] **Step 2: Run the fix.**
+Expected shape (record exact numbers for the PR description):
+
+```json
+{ "info": 0, "low": 5, "moderate": 1, "high": 0, "critical": 0, "total": 6 }
+```
+
+- [ ] **Step 2: Run the fix — `--force` is forbidden.**
 
 ```bash
 npm audit fix --omit=dev
 ```
 
-If `npm audit fix` cannot resolve without `--force`, **do not** use `--force` blindly — instead read the advisory, identify which transitive needs `overrides` in `package.json`, and add a minimal override:
+**Do not run `npm audit fix --force`.** It would upgrade `pdbe-molstar` to 3.1.3 (breaking change). If the bare `npm audit fix` cannot resolve the `qs` advisory without `--force`, fall back to a top-level `overrides` entry in `package.json`:
 
 ```json
 "overrides": {
@@ -1447,13 +1455,15 @@ If `npm audit fix` cannot resolve without `--force`, **do not** use `--force` bl
 }
 ```
 
-- [ ] **Step 3: Verify.**
+Then `npm install` to refresh the lockfile.
+
+- [ ] **Step 3: Verify the target.**
 
 ```bash
 npm audit --omit=dev
 ```
 
-Expected: `found 0 vulnerabilities`.
+Expected: `0 moderate` (target). The 5 `low` entries from the `elliptic`/`pdbe-molstar` chain are **expected to remain** — they are out of scope per Phase 1 Non-goals. If `npm audit` reports any new `moderate`/`high`/`critical` entry that did not exist in Step 1's snapshot, surface to the controller before proceeding.
 
 - [ ] **Step 4: Run the test suite to confirm nothing regressed.**
 
@@ -1468,6 +1478,13 @@ Expected: pass.
 ```bash
 git add package.json package-lock.json
 git commit -m "chore(deps): npm audit fix (qs moderate via pg)
+
+Closes the only moderate-severity advisory in the production graph
+(qs DoS via comma-format arrays, GHSA-q8mj-m7cp-5q26). Five low-severity
+elliptic-chain entries via pdbe-molstar are deliberately left in place
+— fixing them requires a pdbe-molstar 3.x major upgrade (breaking
+change in the renderer's 3D-structure view), tracked as its own phase
+in spec Non-goals.
 
 Closes audit §3.2 (release-readiness)."
 ```
@@ -1703,13 +1720,13 @@ Closes audit Sec-02 F-06."
 ### PR-3 acceptance gates
 
 - [ ] **Gate 1.** `make ci-full` exits 0.
-- [ ] **Gate 3.** `npm audit --omit=dev` returns 0 critical / 0 high / 0 moderate.
+- [ ] **Gate 3.** `npm audit --omit=dev` returns **0 moderate** (the Phase 1 target). 5 `low` entries from the `elliptic`/`pdbe-molstar` chain are accepted residual per spec Non-goals — explicitly listed in the PR body so reviewers see they are not regressions.
 
 ```bash
 gh pr create --title "chore: security + CI hygiene" --body "$(cat <<'EOF'
 ## Summary
 
-- QW-4: npm audit fix (qs moderate via pg)
+- QW-4: npm audit fix for the `qs` moderate (transitive via `pg`). 5 `low` entries from the `elliptic`/`pdbe-molstar` chain are left in place — `--force` would upgrade `pdbe-molstar` to 3.1.3 (breaking change in the renderer's 3D-structure view), tracked as its own phase per spec Non-goals.
 - QW-6: will-navigate guard in main window
 - QW-12 + QW-13: Build workflow — fail on cancelled/skipped, include workflow edits in code: filter
 - QW-15: startup warn when PG profile secret store is insecure
@@ -1719,7 +1736,7 @@ Spec: `.planning/specs/2026-05-26-pre-060-hardening.md`
 ## Test plan
 
 - [x] make ci-full
-- [x] npm audit --omit=dev → 0/0/0
+- [x] npm audit --omit=dev → 0 moderate (5 low remain, all in the `elliptic`/`pdbe-molstar` chain — accepted residual per spec Non-goals)
 EOF
 )"
 ```

@@ -8,6 +8,7 @@ import {
   type LaunchElectronAppResult
 } from '../../e2e/helpers/electron-app'
 import { startWebDriver } from '../helpers/web-driver'
+import { callElectronApi } from './electron-harness'
 
 /**
  * Phase 1 gate — Layer 3 parity scenario #1.
@@ -83,19 +84,8 @@ async function runScenarioOnElectron(): Promise<NormalizedCases> {
     await waitForAppShell(session.window)
     await dismissDisclaimerIfPresent(session.window)
 
-    // Drive through the full preload → IPC → main → DB stack.
-    const result = await session.window.evaluate(async () => {
-      const api = (window as unknown as { api?: unknown }).api as
-        | {
-            cases?: { list?: () => Promise<unknown> }
-          }
-        | undefined
-      if (!api?.cases?.list) {
-        throw new Error('window.api.cases.list is not exposed by preload')
-      }
-      const raw = await api.cases.list()
-      return raw
-    })
+    // Drive through the full preload -> IPC -> main -> DB stack.
+    const result = await callElectronApi<unknown>(session, 'cases', 'list')
 
     return normalizeCasesResult(result)
   } finally {
@@ -119,81 +109,43 @@ async function runImportScenarioOnElectron(vcfPath: string): Promise<ImportAndFi
     await dismissDisclaimerIfPresent(session.window)
 
     // The preload `import.start` returns a Promise that resolves with the
-    // ImportResult once the worker finishes — no event subscription needed.
-    // (Progress events exist via `window.api.import.onProgress` but are not
-    // required for completion.)
-    const raw = await session.window.evaluate(async (filePath: string) => {
-      const api = (window as unknown as { api?: unknown }).api as
-        | {
-            import?: {
-              start?: (
-                filePath: string,
-                caseName: string,
-                vcfOptions?: { selectedSample?: string; genomeBuild?: string }
-              ) => Promise<unknown>
-            }
-            variants?: {
-              query?: (
-                caseId: number,
-                filters: Record<string, unknown>,
-                offset?: number,
-                limit?: number,
-                sortBy?: unknown,
-                skipCount?: boolean,
-                includeUnfilteredCount?: boolean
-              ) => Promise<unknown>
-            }
-          }
-        | undefined
+    // ImportResult once the worker finishes. Progress events exist via
+    // `window.api.import.onProgress` but are not required for completion.
+    const importResult = await callElectronApi<{
+      caseId: number
+      variantCount?: number
+      totalVariants?: number
+    }>(session, 'import', 'start', [vcfPath, 'parity-test-case', { genomeBuild: 'hg38' }])
+    const caseId = importResult.caseId
 
-      if (!api?.import?.start) {
-        throw new Error('window.api.import.start is not exposed by preload')
-      }
-      if (!api?.variants?.query) {
-        throw new Error('window.api.variants.query is not exposed by preload')
-      }
-
-      // The preload `wrapHandler` returns IpcResult<T>; the renderer side
-      // unwraps via `unwrapIpcResult` in production. In raw form the result
-      // is `{ ok: true, data: T }` — handle both shapes defensively so this
-      // test is robust to whichever transport the preload happens to use.
-      const unwrap = <T>(v: unknown): T => {
-        if (v && typeof v === 'object' && 'ok' in v) {
-          const r = v as { ok: boolean; data?: T; error?: { message?: string } }
-          if (!r.ok) {
-            throw new Error(`IPC error: ${r.error?.message ?? 'unknown'}`)
-          }
-          return r.data as T
-        }
-        return v as T
-      }
-
-      const importResult = unwrap<{ caseId: number; variantCount: number }>(
-        await api.import.start(filePath, 'parity-test-case', { genomeBuild: 'hg38' })
-      )
-
-      const caseId = importResult.caseId
-
-      const queryAll = unwrap<{ rows?: unknown[]; total?: number }>(
-        await api.variants.query(caseId, {}, 0, 200)
-      )
-      const queryChr22 = unwrap<{ rows?: unknown[]; total?: number }>(
-        await api.variants.query(caseId, { chr: 'chr22' }, 0, 200)
-      )
-      const queryHighImpact = unwrap<{ rows?: unknown[]; total?: number }>(
-        await api.variants.query(caseId, { consequences: ['HIGH'] }, 0, 200)
-      )
-
-      return {
+    const [queryAll, queryChr22, queryHighImpact] = await Promise.all([
+      callElectronApi<{ rows?: unknown[]; total?: number }>(session, 'variants', 'query', [
         caseId,
-        variantCount: importResult.variantCount,
-        all: queryAll,
-        chr22: queryChr22,
-        high_impact: queryHighImpact
-      }
-    }, vcfPath)
+        {},
+        0,
+        200
+      ]),
+      callElectronApi<{ rows?: unknown[]; total?: number }>(session, 'variants', 'query', [
+        caseId,
+        { chr: 'chr22' },
+        0,
+        200
+      ]),
+      callElectronApi<{ rows?: unknown[]; total?: number }>(session, 'variants', 'query', [
+        caseId,
+        { consequences: ['HIGH'] },
+        0,
+        200
+      ])
+    ])
 
-    return raw
+    return {
+      caseId,
+      variantCount: importResult.variantCount ?? importResult.totalVariants ?? 0,
+      all: queryAll,
+      chr22: queryChr22,
+      high_impact: queryHighImpact
+    }
   } finally {
     await session?.cleanup()
   }

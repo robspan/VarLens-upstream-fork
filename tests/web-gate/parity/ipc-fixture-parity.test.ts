@@ -14,6 +14,7 @@ import {
   type LaunchElectronAppResult
 } from '../../e2e/helpers/electron-app'
 import { startIsolatedWebSchema, startWebDriver, type WebDriver } from '../helpers/web-driver'
+import { callElectronApi, unwrapIpcResultForParity } from './electron-harness'
 import { IPC_SCENARIOS, REQUIRED_IPC_AREAS } from './ipc/scenarios'
 import {
   rowsOf,
@@ -73,33 +74,13 @@ const secondaryCase = {
   options: { selectedSample: 'HG006', genomeBuild: 'GRCh38' }
 }
 
-function unwrap<T>(value: unknown): T {
-  if (value !== null && typeof value === 'object' && 'ok' in value) {
-    const result = value as { ok: boolean; data?: T; error?: { message?: string } }
-    if (!result.ok) throw new Error(`IPC error: ${result.error?.message ?? 'unknown'}`)
-    return result.data as T
-  }
-  return value as T
-}
-
 async function electronCall<T>(
   session: LaunchElectronAppResult,
   domain: string,
   method: string,
   args: unknown[] = []
 ): Promise<T> {
-  const raw = await session.window.evaluate(
-    async ({ domain: apiDomain, method: apiMethod, args: apiArgs }) => {
-      const api = (window as unknown as { api?: Record<string, Record<string, unknown>> }).api
-      const fn = api?.[apiDomain]?.[apiMethod]
-      if (typeof fn !== 'function') {
-        throw new Error(`window.api.${apiDomain}.${apiMethod} is not exposed`)
-      }
-      return await (fn as (...innerArgs: unknown[]) => Promise<unknown>)(...apiArgs)
-    },
-    { domain, method, args }
-  )
-  return unwrap<T>(raw)
+  return await callElectronApi(session, domain, method, args)
 }
 
 async function webCall<T>(
@@ -111,7 +92,7 @@ async function webCall<T>(
   const response = await driver.api(domain, method, ...args)
   expect(response.statusCode, response.body).toBe(200)
   if (response.body.trim() === '') return undefined as T
-  return unwrap<T>(response.json())
+  return unwrapIpcResultForParity<T>(response.json())
 }
 
 function importEnvelope(raw: unknown): ImportEnvelope {

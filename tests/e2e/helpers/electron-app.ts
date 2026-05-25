@@ -24,6 +24,7 @@ export async function launchElectronApp(
   options: LaunchElectronAppOptions = {}
 ): Promise<LaunchElectronAppResult> {
   const isolationRoot = options.isolationRoot ?? mkdtempSync(join(tmpdir(), 'varlens-e2e-'))
+  const ownsIsolationRoot = options.isolationRoot === undefined
   const userDataDir = join(isolationRoot, 'user-data')
   const appDataDir = join(isolationRoot, 'app-data')
   mkdirSync(userDataDir, { recursive: true })
@@ -57,7 +58,7 @@ export async function launchElectronApp(
     try {
       await app.close()
     } finally {
-      rmSync(isolationRoot, { recursive: true, force: true })
+      if (ownsIsolationRoot) rmSync(isolationRoot, { recursive: true, force: true })
     }
 
     throw new Error(
@@ -90,7 +91,7 @@ export async function launchElectronApp(
       try {
         await app.close()
       } finally {
-        rmSync(isolationRoot, { recursive: true, force: true })
+        if (ownsIsolationRoot) rmSync(isolationRoot, { recursive: true, force: true })
       }
     }
   }

@@ -42,4 +42,16 @@ describe('web gene reference path resolution', () => {
       await rm(cwd, { recursive: true, force: true })
     }
   })
+
+  test('reads gene reference info without relying on an external sqlite3 binary', () => {
+    const db = getWebGeneReferenceDb()
+
+    expect(db.getInfo()).toMatchObject({
+      geneCount: expect.any(Number),
+      aliasCount: expect.any(Number),
+      coordinateCount: expect.any(Number),
+      assemblies: ['GRCh38', 'GRCh37']
+    })
+    expect(db.getAssemblies().map((assembly) => assembly.id)).toEqual(['GRCh38', 'GRCh37'])
+  })
 })

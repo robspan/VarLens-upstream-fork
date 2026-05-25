@@ -11,6 +11,7 @@ describe('web CI target wiring', () => {
 
     expect(makefile).toMatch(/^web-ci: rebuild-node build-web web-gate-static web-gate-postgres/m)
     expect(makefile).toMatch(/^web-gate-postgres: build-web/m)
+    expect(makefile).toMatch(/^web-gate-parity: web-data-verify/m)
     expect(makefile).toContain('VARLENS_PG_URL is required for web-gate-postgres')
     expect(makefile).toMatch(/^ci: lint-check format-check typecheck rebuild-node test/m)
     expect(makefile).toMatch(/^VARLENS_WEB \?= 0/m)

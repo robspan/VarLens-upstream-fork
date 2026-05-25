@@ -11,6 +11,7 @@ import {
   type LaunchElectronAppResult
 } from '../../e2e/helpers/electron-app'
 import { startWebDriver, type WebDriver } from '../helpers/web-driver'
+import { callElectronApi, unwrapIpcResultForParity } from './electron-harness'
 
 export const SHOULD_RUN =
   process.env.VARLENS_RUN_WEB_GATE_PARITY === '1' && process.env.VARLENS_RUN_WEB_PARITY_E2E === '1'
@@ -152,36 +153,6 @@ function repoPath(path: string): string {
   return resolve(process.cwd(), path)
 }
 
-function unwrap<T>(value: unknown): T {
-  if (value !== null && typeof value === 'object' && 'ok' in value) {
-    const result = value as { ok: boolean; data?: T; error?: { message?: string } }
-    if (!result.ok) throw new Error(`IPC error: ${result.error?.message ?? 'unknown'}`)
-    return result.data as T
-  }
-  return value as T
-}
-
-async function electronCall<T>(
-  session: LaunchElectronAppResult,
-  domain: string,
-  method: string,
-  args: unknown[]
-): Promise<T> {
-  const apiDomain = domain === 'batch-import' ? 'batchImport' : domain
-  const raw = await session.window.evaluate(
-    async ({ domain: apiDomain, method: apiMethod, args: apiArgs }) => {
-      const api = (window as unknown as { api?: Record<string, Record<string, unknown>> }).api
-      const fn = api?.[apiDomain]?.[apiMethod]
-      if (typeof fn !== 'function') {
-        throw new Error(`window.api.${apiDomain}.${apiMethod} is not exposed`)
-      }
-      return await (fn as (...innerArgs: unknown[]) => Promise<unknown>)(...apiArgs)
-    },
-    { domain: apiDomain, method, args }
-  )
-  return unwrap<T>(raw)
-}
-
 async function webCall<T>(
   driver: WebDriver,
   domain: string,
@@ -191,7 +162,7 @@ async function webCall<T>(
   const response = await driver.api(domain, method, ...args)
   expect(response.statusCode, response.body).toBe(200)
   if (response.body.trim() === '') return undefined as T
-  return unwrap<T>(response.json())
+  return unwrapIpcResultForParity<T>(response.json())
 }
 
 function importResultToEnvelope(raw: unknown): ImportEnvelope {
@@ -557,7 +528,7 @@ export async function runTaskOnElectron(task: ScenarioTask): Promise<ScenarioSna
     session = await launchElectronApp({ hideWindow: true })
     await waitForAppShell(session.window)
     await dismissDisclaimerIfPresent(session.window)
-    return await task.run((domain, method, args) => electronCall(session!, domain, method, args))
+    return await task.run((domain, method, args) => callElectronApi(session!, domain, method, args))
   } finally {
     await session?.cleanup()
   }

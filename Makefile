@@ -195,7 +195,7 @@ web-gate-postgres: build-web ## Run fail-loud Postgres-backed web integration te
 	@if [ -z "$$VARLENS_PG_URL" ]; then echo "VARLENS_PG_URL is required for web-gate-postgres. This is intentionally opt-in and never part of default desktop CI."; exit 2; fi
 	npx vitest run --project web-gate tests/web-gate/integration
 
-web-gate-parity: ## Run Layer 3 parity scenarios (opt-in; boots Electron, switches native ABI)
+web-gate-parity: web-data-verify ## Run Layer 3 parity scenarios (opt-in; boots Electron, switches native ABI)
 	@echo "=== web-gate-parity (opt-in; switches native module to Electron ABI) ==="
 	@if [ -z "$$VARLENS_PG_URL" ]; then echo "VARLENS_PG_URL is required for web-gate-parity. This validates desktop↔web parity against PostgreSQL."; exit 2; fi
 	@if [ ! -f out/main/index.js ]; then echo "out/main/index.js missing — running 'make build' first"; npm run build; fi

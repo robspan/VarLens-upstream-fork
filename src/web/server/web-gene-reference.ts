@@ -1,6 +1,6 @@
-import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 
 import type { AssemblyInfo, GeneRefInfo } from '../../shared/types/gene-reference'
 
@@ -24,7 +24,11 @@ export interface WebGeneReferenceDb {
   getAssemblies: () => AssemblyInfo[]
 }
 
-let instance: WebGeneReferenceDb | null = null
+interface WebGeneReferenceDbInstance extends WebGeneReferenceDb {
+  close: () => void
+}
+
+let instance: WebGeneReferenceDbInstance | null = null
 
 function resolveWebGeneReferencePath(): string {
   const explicit = process.env.VARLENS_GENE_REF_DB_PATH
@@ -43,42 +47,47 @@ function resolveWebGeneReferencePath(): string {
   )
 }
 
-function queryJson<T>(dbPath: string, sql: string): T[] {
-  const output = execFileSync('sqlite3', ['-json', dbPath, sql], { encoding: 'utf8' }).trim()
-  if (output === '') return []
-  return JSON.parse(output) as T[]
+function queryRows<T>(db: DatabaseSync, sql: string): T[] {
+  return db.prepare(sql).all() as T[]
 }
 
-function firstCount(dbPath: string, tableName: string): number {
-  return queryJson<CountRow>(dbPath, `SELECT COUNT(*) AS c FROM ${tableName}`)[0]?.c ?? 0
+function firstCount(db: DatabaseSync, tableName: string): number {
+  return queryRows<CountRow>(db, `SELECT COUNT(*) AS c FROM ${tableName}`)[0]?.c ?? 0
 }
 
-function createWebGeneReferenceDb(dbPath: string): WebGeneReferenceDb {
+function createWebGeneReferenceDb(dbPath: string): WebGeneReferenceDbInstance {
+  const db = new DatabaseSync(dbPath, { readOnly: true })
+
   return {
     getInfo() {
-      const assemblies = queryJson<{ id: string }>(dbPath, 'SELECT id FROM assemblies').map(
-        (row) => row.id
-      )
+      const assemblies = queryRows<{ id: string }>(
+        db,
+        'SELECT id FROM assemblies ORDER BY rowid'
+      ).map((row) => row.id)
       const builtAt =
-        queryJson<BuiltAtRow>(dbPath, 'SELECT built_at FROM assemblies LIMIT 1')[0]?.built_at ?? 0
+        queryRows<BuiltAtRow>(db, 'SELECT built_at FROM assemblies ORDER BY rowid LIMIT 1')[0]
+          ?.built_at ?? 0
       return {
-        geneCount: firstCount(dbPath, 'genes'),
-        aliasCount: firstCount(dbPath, 'gene_aliases'),
-        coordinateCount: firstCount(dbPath, 'gene_coordinates'),
+        geneCount: firstCount(db, 'genes'),
+        aliasCount: firstCount(db, 'gene_aliases'),
+        coordinateCount: firstCount(db, 'gene_coordinates'),
         assemblies,
         builtAt
       }
     },
     getAssemblies() {
-      return queryJson<AssemblyRow>(
-        dbPath,
-        'SELECT id, display_name, aliases, source_version FROM assemblies'
+      return queryRows<AssemblyRow>(
+        db,
+        'SELECT id, display_name, aliases, source_version FROM assemblies ORDER BY rowid'
       ).map((row) => ({
         id: row.id,
         display_name: row.display_name,
         aliases: JSON.parse(row.aliases) as string[],
         source_version: row.source_version
       }))
+    },
+    close() {
+      db.close()
     }
   }
 }
@@ -89,5 +98,6 @@ export function getWebGeneReferenceDb(): WebGeneReferenceDb {
 }
 
 export function closeWebGeneReferenceDb(): void {
+  instance?.close()
   instance = null
 }

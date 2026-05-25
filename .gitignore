@@ -119,3 +119,6 @@ e2e-screenshots/
 # Exception: documentation screenshots are tracked so the published docs site
 # can render them without requiring a local Playwright run + ONT fixture.
 !docs/public/screenshots/*.png
+
+# Understand-Anything knowledge graph artifacts (regenerable via /understand)
+.understand-anything/

@@ -22,10 +22,17 @@ function labelKey(labels: Labels): string {
     .join('\n')
 }
 
+function escapeLabelValue(value: LabelValue): string {
+  return String(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/\r\n|\r|\n/g, '\\n')
+    .replace(/"/g, '\\"')
+}
+
 function labelText(labels: Labels): string {
   return Object.keys(labels)
     .sort()
-    .map((key) => `${key}="${String(labels[key]).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`)
+    .map((key) => `${key}="${escapeLabelValue(labels[key])}"`)
     .join(',')
 }
 
@@ -40,6 +47,24 @@ function pathName(url: string): string {
   } catch {
     return 'unknown'
   }
+}
+
+function normalizeMetricsPath(path: string | undefined): string {
+  const raw = path ?? '/metrics'
+  const trimmed = raw.trim()
+  if (
+    trimmed === '' ||
+    !trimmed.startsWith('/') ||
+    trimmed.startsWith('//') ||
+    trimmed.includes('?') ||
+    trimmed.includes('#')
+  ) {
+    throw new Error(
+      'VARLENS_METRICS_PATH must be an absolute URL path without query or fragment, ' +
+        `got: ${JSON.stringify(raw)}`
+    )
+  }
+  return trimmed
 }
 
 export function resolveMetricsRoute(method: string, url: string): string {
@@ -180,10 +205,22 @@ export class AppMetrics {
 }
 
 export function createAppMetricsFromEnv(env: NodeJS.ProcessEnv = process.env): AppMetrics {
+  const app = nonEmptyTrimmed(env.VARLENS_OBSERVABILITY_APP) ?? 'varlens'
+  const environment =
+    nonEmptyTrimmed(env.VARLENS_OBSERVABILITY_ENVIRONMENT) ??
+    nonEmptyTrimmed(env.NODE_ENV) ??
+    'unknown'
+
   return new AppMetrics({
-    app: env.VARLENS_OBSERVABILITY_APP?.trim() || 'varlens',
-    environment: env.VARLENS_OBSERVABILITY_ENVIRONMENT?.trim() || env.NODE_ENV || 'unknown'
+    app,
+    environment
   })
+}
+
+function nonEmptyTrimmed(value: string | undefined): string | undefined {
+  const trimmed = value?.trim()
+  if (trimmed === undefined || trimmed === '') return undefined
+  return trimmed
 }
 
 export function registerRequestMetrics(app: FastifyInstance, metrics: AppMetrics): void {
@@ -214,13 +251,13 @@ function recordResponse(
   requests.delete(request)
 }
 
-export function startMetricsServer(options: {
+export async function startMetricsServer(options: {
   metrics: AppMetrics
   host: string
   port: number
   path?: string
 }): Promise<Server> {
-  const metricsPath = options.path ?? '/metrics'
+  const metricsPath = normalizeMetricsPath(options.path)
   const server = createServer((request, response) => {
     if (request.method !== 'GET' || pathName(request.url ?? '/') !== metricsPath) {
       response.writeHead(404, { 'content-type': 'application/json' })
@@ -231,7 +268,7 @@ export function startMetricsServer(options: {
     response.end(options.metrics.metricsText())
   })
 
-  return new Promise((resolve, reject) => {
+  return await new Promise((resolve, reject) => {
     server.once('error', reject)
     server.listen(options.port, options.host, () => {
       server.off('error', reject)

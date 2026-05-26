@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { AppMetrics, resolveMetricsRoute } from '../../src/web/server/metrics'
+import { AppMetrics, resolveMetricsRoute, startMetricsServer } from '../../src/web/server/metrics'
 
 describe('web metrics route labels', () => {
   test('uses documented OpenAPI paths as stable API route labels', () => {
@@ -29,5 +29,38 @@ describe('web metrics route labels', () => {
     expect(text).toContain('http_requests_in_flight')
     expect(text).toContain('varlens_database_healthy{app="varlens",environment="test"} 1')
     expect(text).toContain('process_resident_memory_bytes')
+  })
+
+  test('escapes line breaks in label values', () => {
+    const metrics = new AppMetrics({ app: 'varlens', environment: 'prod\ncanary' })
+    metrics.beginRequest('POST', '/api/auth/login')
+    metrics.endRequest('POST', '/api/auth/login', 200, 0.021)
+
+    const text = metrics.metricsText()
+    expect(text).toContain('environment="prod\\ncanary"')
+    expect(text).not.toContain('environment="prod\ncanary"')
+  })
+
+  test('rejects invalid metrics scrape paths before binding', async () => {
+    const result = await startMetricsServer({
+      metrics: new AppMetrics({ app: 'varlens', environment: 'test' }),
+      host: '127.0.0.1',
+      port: 0,
+      path: 'metrics'
+    }).then(
+      async (server) => {
+        await new Promise<void>((resolve, reject) => {
+          server.close((error) => {
+            if (error !== undefined) reject(error)
+            else resolve()
+          })
+        })
+        return 'resolved'
+      },
+      (error: unknown) => error
+    )
+
+    expect(result).toBeInstanceOf(Error)
+    expect((result as Error).message).toContain('VARLENS_METRICS_PATH')
   })
 })

@@ -46,3 +46,7 @@ export function appendDocumentedDispatcherPaths(document: OpenApiDocument): Open
     }
   }
 }
+
+export function buildDocumentedDispatcherPathSet(): Set<string> {
+  return new Set(Object.keys(appendDocumentedDispatcherPaths({ paths: {} }).paths ?? {}))
+}

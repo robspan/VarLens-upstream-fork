@@ -64,6 +64,7 @@ FROM node:24.15.0-bookworm-slim AS runtime
 
 ENV NODE_ENV=production \
     VARLENS_WEB_PORT=8080 \
+    VARLENS_METRICS_PORT=9090 \
     VARLENS_LOG_LEVEL=info
 
 # Web mode is Postgres-only. The runtime must provide VARLENS_PG_URL.
@@ -102,7 +103,7 @@ COPY --from=builder \
 
 USER varlens
 
-EXPOSE 8080
+EXPOSE 8080 9090
 VOLUME ["/data"]
 
 # Self-describing liveness — operators do not have to re-encode the probe.

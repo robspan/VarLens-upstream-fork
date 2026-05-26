@@ -30,6 +30,8 @@ import { resolve } from 'node:path'
 
 import type { FastifyInstance } from 'fastify'
 
+import { buildLoginPageRateLimitConfig } from './rate-limit'
+
 const LOGIN_HTML_FILENAME = 'login.html'
 
 export const DEFAULT_APP_PATH_PREFIX = '/varlens'
@@ -148,6 +150,8 @@ export function renderLoginPage(appPathPrefix: string, redirectTo: string): stri
 
 export function registerLoginRoute(app: FastifyInstance): void {
   const appPathPrefix = resolveAppPathPrefix()
+  const loginPageRateLimit = buildLoginPageRateLimitConfig()
+  const loginPageRateLimiter = app.rateLimit(loginPageRateLimit)
 
   const handler = async (
     request: { query: unknown },
@@ -168,6 +172,20 @@ export function registerLoginRoute(app: FastifyInstance): void {
     return reply.send(html)
   }
 
-  app.get('/login', handler)
-  app.get('/login/', handler)
+  app.get(
+    '/login',
+    {
+      onRequest: [loginPageRateLimiter],
+      config: { rateLimit: loginPageRateLimit }
+    },
+    handler
+  )
+  app.get(
+    '/login/',
+    {
+      onRequest: [loginPageRateLimiter],
+      config: { rateLimit: loginPageRateLimit }
+    },
+    handler
+  )
 }

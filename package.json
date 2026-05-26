@@ -173,6 +173,7 @@
     }
   },
   "dependencies": {
+    "@fastify/rate-limit": "^10.3.0",
     "@fastify/secure-session": "^8.2.0",
     "@fastify/static": "^9.1.1",
     "@fastify/swagger": "^9.7.0",

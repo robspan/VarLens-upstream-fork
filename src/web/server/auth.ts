@@ -34,6 +34,7 @@ import type { FastifyInstance } from 'fastify'
 import secureSession from '@fastify/secure-session'
 
 import type { PostgresWebAuthService } from '../auth/PostgresWebAuthService'
+import { registerAuthLoginRateLimit } from './rate-limit'
 
 declare module '@fastify/secure-session' {
   interface SessionData {
@@ -240,4 +241,6 @@ export async function registerSessions(
       passwordChangedAt: liveUser.password_changed_at
     }
   })
+
+  registerAuthLoginRateLimit(app)
 }

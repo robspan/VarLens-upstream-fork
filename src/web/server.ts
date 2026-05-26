@@ -34,6 +34,7 @@ import { registerSessions } from './server/auth'
 import { registerEventStream, WebEventHub } from './server/events'
 import { registerLoginRoute, resolveAppPathPrefix } from './server/login-route'
 import { registerPageGate } from './server/page-gate'
+import { registerWebRateLimit } from './server/rate-limit'
 import { registerOpenApi } from './server/routes/openapi'
 import { registerStatic } from './server/static'
 import {
@@ -90,6 +91,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   })
   const metrics = options.metrics ?? createAppMetricsFromEnv()
   registerRequestMetrics(app, metrics)
+  await registerWebRateLimit(app)
 
   const session: PostgresStorageSession = await createPostgresStorageSession(pgConfig)
   // Share the storage session's pool with the auth service so we open

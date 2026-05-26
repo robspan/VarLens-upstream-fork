@@ -29,6 +29,10 @@ const HAS_PG = typeof process.env.VARLENS_PG_URL === 'string' && process.env.VAR
 // emitted `out/web/login/login.html`.
 const SOURCE_LOGIN_HTML = resolve(process.cwd(), 'src/web/login/login.html')
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')
+}
+
 describe.skipIf(!isWebBuilt || !HAS_PG)('login-wall integration', () => {
   let app: {
     inject: (
@@ -61,9 +65,7 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('login-wall integration', () => {
     // next request lands at https://<host>/varlens/login on its way
     // back through Caddy.
     const prefix = (process.env.APP_PATH_PREFIX ?? '/varlens').replace(/\/$/, '')
-    expect(location).toMatch(
-      new RegExp('^' + prefix.replace(/\//g, '\\/') + '\\/login(\\?next=|$)')
-    )
+    expect(location).toMatch(new RegExp('^' + escapeRegExp(prefix) + '/login(\\?next=|$)'))
   })
 
   test('anonymous GET /assets/anything is also walled', async () => {

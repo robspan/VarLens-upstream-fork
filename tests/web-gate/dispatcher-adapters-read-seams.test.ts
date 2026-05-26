@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest'
+import { mkdtempSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 
 import { buildDispatcher } from '../../src/web/server/dispatcher'
+import { buildHpoFixtureResponse } from '../../src/web/server/api-fixture-responses'
 import { makeDeps } from './helpers/dispatcher-adapters'
 
 describe('web dispatcher adapters: read seams', () => {
@@ -255,6 +259,24 @@ describe('web dispatcher adapters: read seams', () => {
       else process.env.VARLENS_WEB_PARITY_FIXTURES = previousFixtureFlag
       if (previousFixtureDir === undefined) delete process.env.VARLENS_API_FIXTURES_DIR
       else process.env.VARLENS_API_FIXTURES_DIR = previousFixtureDir
+    }
+  })
+
+  test('reference API fixture reader rejects paths outside the fixture root', () => {
+    const previousFixtureFlag = process.env.VARLENS_WEB_PARITY_FIXTURES
+    const previousFixtureDir = process.env.VARLENS_API_FIXTURES_DIR
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'varlens-web-api-fixtures-'))
+    process.env.VARLENS_WEB_PARITY_FIXTURES = '1'
+    process.env.VARLENS_API_FIXTURES_DIR = fixtureRoot
+
+    try {
+      expect(() => buildHpoFixtureResponse('x/../../../outside')).toThrow(/fixture root/i)
+    } finally {
+      if (previousFixtureFlag === undefined) delete process.env.VARLENS_WEB_PARITY_FIXTURES
+      else process.env.VARLENS_WEB_PARITY_FIXTURES = previousFixtureFlag
+      if (previousFixtureDir === undefined) delete process.env.VARLENS_API_FIXTURES_DIR
+      else process.env.VARLENS_API_FIXTURES_DIR = previousFixtureDir
+      rmSync(fixtureRoot, { recursive: true, force: true })
     }
   })
 

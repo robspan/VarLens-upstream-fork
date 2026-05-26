@@ -63,6 +63,23 @@ temp/
 # because it documents a phase-blocking failure + its resolution.
 !.planning/artifacts/perf/wgs-import/2026-04-25-postgres-blocker.md
 
+# Local web parity run reports
+.planning/artifacts/web/parity/*
+.planning/artifacts/web/test-reporting/*
+.planning/artifacts/web/api-fixtures/raw/*
+
+# Local deploy/operator state. Templates may be tracked, real state/secrets must not be.
+web-deploy/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+*.auto.tfvars
+.terraform/
+.terraform.lock.hcl
+secrets/*.yaml
+!secrets/example.yaml
+
 # Vendor assets copied from node_modules at build time (see npm run copy:molstar)
 src/renderer/public/pdbe-molstar-component.js
 src/renderer/public/pdbe-molstar-light.css

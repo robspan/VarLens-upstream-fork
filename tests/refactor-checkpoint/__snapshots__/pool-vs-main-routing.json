@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-05-04",
+  "entries": [
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "annotations:getGlobal"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "annotations:getPerCase"
+    },
+    {
+      "file": "src/main/statistics/AssociationEngine.ts",
+      "callerFunction": "run",
+      "type": "association:build"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "case-metadata:distinctExternalIdTypes"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "case-metadata:distinctHpoTerms"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "case-metadata:distinctPlatforms"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "case-metadata:get"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "case-metadata:getCaseCohorts"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "case-metadata:getCohortByName"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "case-metadata:getDataInfo"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "case-metadata:getFullMetadata"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "case-metadata:getHpoTerms"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "case-metadata:listCohorts"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "case-metadata:listExternalIds"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "cases:availableBuilds"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteStorageSession.ts",
+      "callerFunction": "listCases",
+      "type": "cases:list"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "cases:query"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "cohort:carriers"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "cohort:columnMeta"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "cohort:geneBurden"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "cohort:summary"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "cohort:variants"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "gene-lists:getGenes"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "gene-lists:list"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "region-files:list"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "tags:getUsageCount"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "tags:getVariantTags"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
+      "type": "tags:list"
+    }
+  ]
+}

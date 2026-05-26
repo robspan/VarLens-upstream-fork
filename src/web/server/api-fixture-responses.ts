@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { isAbsolute, relative, resolve } from 'node:path'
 import {
   AlphaFoldResponseSchema,
   EnsemblGeneLookupSchema,
@@ -39,7 +39,18 @@ function readFixture(path: string): unknown {
   if (root === undefined || root.trim() === '') {
     throw new Error(`${API_FIXTURE_DIR_ENV} is required for web reference API parity`)
   }
-  return JSON.parse(readFileSync(resolve(root, path), 'utf8')) as unknown
+  const rootPath = resolve(root)
+  const fixturePath = resolve(rootPath, path)
+  const pathFromRoot = relative(rootPath, fixturePath)
+  if (
+    pathFromRoot === '' ||
+    pathFromRoot.startsWith('..') ||
+    isAbsolute(pathFromRoot) ||
+    path.includes('\0')
+  ) {
+    throw new Error('Web API fixture path escapes fixture root')
+  }
+  return JSON.parse(readFileSync(fixturePath, 'utf8')) as unknown
 }
 
 export function buildHpoFixtureResponse(query: string, maxResults = 20): HpoSearchResult {

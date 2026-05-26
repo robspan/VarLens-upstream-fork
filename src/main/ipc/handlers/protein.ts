@@ -6,6 +6,7 @@ import { InterProApiClient } from '../../services/api/InterProApiClient'
 import { AlphaFoldApiClient } from '../../services/api/AlphaFoldApiClient'
 import { EnsemblApiClient } from '../../services/api/EnsemblApiClient'
 import { ApiCache } from '../../services/api/ApiCache'
+import { apiFixturesEnabled } from '../../services/api/ApiFixtureLoader'
 import { networkStatus } from '../../services/network/NetworkStatus'
 import { mainLogger } from '../../services/MainLogger'
 
@@ -28,8 +29,9 @@ let ensemblClient: EnsemblApiClient | null = null
 let apiCache: ApiCache | null = null
 
 export function registerProteinHandlers({ ipcMain, getDb }: HandlerDependencies): void {
-  function getSharedCache(): ApiCache {
+  function getSharedCache(): ApiCache | null {
     if (!apiCache) {
+      if (apiFixturesEnabled()) return null
       apiCache = new ApiCache(getDb().database)
     }
     return apiCache

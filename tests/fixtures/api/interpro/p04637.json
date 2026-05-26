@@ -1,0 +1,80 @@
+{
+  "count": 3,
+  "results": [
+    {
+      "metadata": {
+        "accession": "IPR010991",
+        "name": "p53, tetramerisation domain",
+        "type": "domain",
+        "source_database": "interpro"
+      },
+      "proteins": [
+        {
+          "accession": "p04637",
+          "protein_length": 393,
+          "entry_protein_locations": [
+            {
+              "fragments": [
+                {
+                  "start": 319,
+                  "end": 357,
+                  "dc-status": "CONTINUOUS"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "accession": "IPR011615",
+        "name": "p53, DNA-binding domain",
+        "type": "domain",
+        "source_database": "interpro"
+      },
+      "proteins": [
+        {
+          "accession": "p04637",
+          "protein_length": 393,
+          "entry_protein_locations": [
+            {
+              "fragments": [
+                {
+                  "start": 100,
+                  "end": 288,
+                  "dc-status": "CONTINUOUS"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "accession": "IPR013872",
+        "name": "p53, transactivation domain",
+        "type": "domain",
+        "source_database": "interpro"
+      },
+      "proteins": [
+        {
+          "accession": "p04637",
+          "protein_length": 393,
+          "entry_protein_locations": [
+            {
+              "fragments": [
+                {
+                  "start": 6,
+                  "end": 30,
+                  "dc-status": "CONTINUOUS"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

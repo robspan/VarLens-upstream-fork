@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-05-04",
+  "entries": [
+    {
+      "file": "src/main/database/BaseRepository.ts",
+      "callerFunction": "runTransaction",
+      "assignedTo": "transactionFn"
+    },
+    {
+      "file": "src/main/database/CohortSummaryService.ts",
+      "callerFunction": "incrementalAdd",
+      "assignedTo": "addTransaction"
+    },
+    {
+      "file": "src/main/database/CohortSummaryService.ts",
+      "callerFunction": "incrementalRemove",
+      "assignedTo": "removeTransaction"
+    },
+    {
+      "file": "src/main/database/CohortSummaryService.ts",
+      "callerFunction": "rebuild",
+      "assignedTo": "rebuildTransaction"
+    },
+    {
+      "file": "src/main/database/DatabaseService.ts",
+      "callerFunction": "runTransaction",
+      "assignedTo": "transactionFn"
+    },
+    {
+      "file": "src/main/database/migrations.ts",
+      "callerFunction": "runMigrations",
+      "assignedTo": "cleanupTransaction"
+    },
+    {
+      "file": "src/main/database/migrations.ts",
+      "callerFunction": "runMigrations",
+      "assignedTo": "seedTransaction"
+    },
+    {
+      "file": "src/main/database/VariantFilterBuilder.ts",
+      "callerFunction": "setupPanelIntervalsTable",
+      "assignedTo": "insertMany"
+    },
+    {
+      "file": "src/main/database/VariantRepository.ts",
+      "callerFunction": "insertBatch",
+      "assignedTo": "runTransaction"
+    },
+    {
+      "file": "src/main/services/auth/AuthService.ts",
+      "callerFunction": "createFirstUser",
+      "assignedTo": "createUser"
+    },
+    {
+      "file": "src/main/workers/delete-operations.ts",
+      "callerFunction": "deleteAllCases",
+      "assignedTo": "deleteAll"
+    },
+    {
+      "file": "src/main/workers/delete-operations.ts",
+      "callerFunction": "deleteCaseBatch",
+      "assignedTo": "deleteBatch"
+    },
+    {
+      "file": "src/main/workers/import-pipeline.ts",
+      "callerFunction": "prepareStatements",
+      "assignedTo": "insertBatch"
+    },
+    {
+      "file": "src/main/workers/rebuild-summary-worker.ts",
+      "callerFunction": "<anonymous>",
+      "assignedTo": null
+    },
+    {
+      "file": "src/main/workers/worker-db.ts",
+      "callerFunction": "rebuildCohortSummary",
+      "assignedTo": null
+    }
+  ]
+}

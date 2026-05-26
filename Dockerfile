@@ -23,6 +23,7 @@ WORKDIR /app
 
 # Native deps for any optional rebuilds.
 RUN apt-get update \
+ && apt-get upgrade -y \
  && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
@@ -35,7 +36,7 @@ RUN npm ci --ignore-scripts \
  && npm rebuild better-sqlite3-multiple-ciphers @node-rs/argon2
 
 COPY . .
-RUN npm run build:web
+RUN VARLENS_WEB_BASE=/ npm run build:web
 
 # Reduce to production deps only.
 RUN npm prune --omit=dev --ignore-scripts
@@ -75,6 +76,7 @@ WORKDIR /app
 # for any future subprocess (workers, native helpers) and the standard
 # Docker-best-practice posture.
 RUN apt-get update \
+ && apt-get upgrade -y \
  && apt-get install -y --no-install-recommends tini wget ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 

@@ -19,6 +19,12 @@ if (process.env.VARLENS_USER_DATA_DIR !== undefined && process.env.VARLENS_USER_
   app.setPath('userData', process.env.VARLENS_USER_DATA_DIR)
 }
 
+const hideE2eWindow = process.env.VARLENS_E2E_HIDE_WINDOW === '1'
+
+if (hideE2eWindow && process.platform === 'darwin') {
+  app.dock?.hide()
+}
+
 // Disable GPU hardware acceleration when --disable-gpu flag is passed.
 // This prevents blank/white windows on Windows systems with outdated or
 // incompatible GPU drivers. Users can add this flag to the shortcut target.
@@ -77,6 +83,10 @@ function createWindow(): void {
   const rendererUrl = process.env['ELECTRON_RENDERER_URL']
 
   mainWindow.on('ready-to-show', () => {
+    if (hideE2eWindow) {
+      return
+    }
+
     mainWindow.show()
 
     // Open DevTools automatically in development

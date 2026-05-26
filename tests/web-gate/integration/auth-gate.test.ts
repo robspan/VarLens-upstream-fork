@@ -112,6 +112,46 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web auth gate', () => {
     }
   })
 
+  test('public auth login API is rate-limited by client address', async () => {
+    const isolated = await startIsolatedWebSchema('auth_gate_login_rate_limit')
+    const previousLimit = process.env.VARLENS_AUTH_LOGIN_RATE_LIMIT_MAX
+    process.env.VARLENS_AUTH_LOGIN_RATE_LIMIT_MAX = '2'
+    try {
+      const { defaultPasswordProvider } =
+        await import('../../../src/main/auth/providers/argon2-provider')
+      const passwordHash = await defaultPasswordProvider.hashPassword(PASSWORD)
+      const { buildApp } = await import('../../../src/web/server')
+      const app = await buildApp({
+        admin: { username: USERNAME, passwordHash, displayName: 'Rate Limit Admin' }
+      })
+      try {
+        const attempt = async (): Promise<InjectResult> =>
+          (await app.inject({
+            method: 'POST',
+            url: '/api/auth/login',
+            payload: { args: [USERNAME, 'wrong-password'] },
+            headers: SAME_ORIGIN_HEADERS
+          })) as unknown as InjectResult
+
+        expect((await attempt()).statusCode).toBe(200)
+        expect((await attempt()).statusCode).toBe(200)
+
+        const limited = await attempt()
+        expect(limited.statusCode, limited.body).toBe(429)
+        expect(limited.json()).toMatchObject({
+          code: 'RATE_LIMITED',
+          message: 'login rate limit exceeded'
+        })
+      } finally {
+        await app.close()
+      }
+    } finally {
+      if (previousLimit === undefined) delete process.env.VARLENS_AUTH_LOGIN_RATE_LIMIT_MAX
+      else process.env.VARLENS_AUTH_LOGIN_RATE_LIMIT_MAX = previousLimit
+      await isolated.close()
+    }
+  })
+
   test('production login sets a host-only secure strict session cookie', async () => {
     const isolated = await startIsolatedWebSchema('auth_gate_cookie')
     process.env.NODE_ENV = 'production'

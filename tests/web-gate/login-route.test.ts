@@ -9,14 +9,20 @@
  * gate suite.
  */
 import { describe, expect, test, beforeEach, afterEach } from 'vitest'
+import Fastify from 'fastify'
+import rateLimit from '@fastify/rate-limit'
+import { resolve } from 'path'
 
 import {
   DEFAULT_APP_PATH_PREFIX,
   LOGIN_PAGE_CSP,
+  registerLoginRoute,
   renderLoginPage,
   resolveAppPathPrefix,
   sanitizeNextParam
 } from '../../src/web/server/login-route'
+
+const SOURCE_LOGIN_HTML = resolve(process.cwd(), 'src/web/login/login.html')
 
 describe('resolveAppPathPrefix', () => {
   const original = process.env.APP_PATH_PREFIX
@@ -134,5 +140,30 @@ describe('login page CSP', () => {
     expect(LOGIN_PAGE_CSP).toContain("default-src 'none'")
     expect(LOGIN_PAGE_CSP).toContain("connect-src 'self'")
     expect(LOGIN_PAGE_CSP).toContain("frame-ancestors 'none'")
+  })
+})
+
+describe('login page rate limiting', () => {
+  test('limits /login and /login/ as one public-page group', async () => {
+    const previousHtmlPath = process.env.VARLENS_LOGIN_HTML_PATH
+    const previousMax = process.env.VARLENS_LOGIN_PAGE_RATE_LIMIT_MAX
+    process.env.VARLENS_LOGIN_HTML_PATH = SOURCE_LOGIN_HTML
+    process.env.VARLENS_LOGIN_PAGE_RATE_LIMIT_MAX = '2'
+
+    const app = Fastify({ logger: false })
+    try {
+      await app.register(rateLimit, { global: false })
+      registerLoginRoute(app)
+
+      expect((await app.inject({ method: 'GET', url: '/login' })).statusCode).toBe(200)
+      expect((await app.inject({ method: 'GET', url: '/login/' })).statusCode).toBe(200)
+      expect((await app.inject({ method: 'GET', url: '/login' })).statusCode).toBe(429)
+    } finally {
+      await app.close()
+      if (previousHtmlPath === undefined) delete process.env.VARLENS_LOGIN_HTML_PATH
+      else process.env.VARLENS_LOGIN_HTML_PATH = previousHtmlPath
+      if (previousMax === undefined) delete process.env.VARLENS_LOGIN_PAGE_RATE_LIMIT_MAX
+      else process.env.VARLENS_LOGIN_PAGE_RATE_LIMIT_MAX = previousMax
+    }
   })
 })

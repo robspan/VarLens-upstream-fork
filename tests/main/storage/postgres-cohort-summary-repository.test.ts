@@ -464,6 +464,210 @@ describe.skipIf(!RUN)('PostgresCohortSummaryRepository.incrementalAdd/Remove —
   }, 60_000)
 })
 
+describe.skipIf(!RUN)('refreshColumnMetas + removeColumnMetas — C2', () => {
+  let schema: string
+  let pool: Pool
+  let probe: Client
+  const now = Date.now()
+
+  beforeEach(async () => {
+    schema = `varlens_test_cvs_meta_${Date.now()}_${randomBytes(4).toString('hex')}`
+    const provisioner = new Client({ connectionString: PG_URL })
+    await provisioner.connect()
+    await provisioner.query(`CREATE SCHEMA IF NOT EXISTS "${schema}"`)
+    await provisioner.end()
+
+    pool = new Pool({ connectionString: PG_URL, max: 2 })
+    probe = new Client({ connectionString: PG_URL })
+    await probe.connect()
+
+    await new PostgresMigrationRunner(pool, schema, POSTGRES_MIGRATIONS).migrate()
+  }, 60_000)
+
+  afterEach(async () => {
+    if (probe) await probe.end()
+    if (pool) await pool.end()
+    const cleaner = new Client({ connectionString: PG_URL })
+    await cleaner.connect()
+    await cleaner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
+    await cleaner.end()
+  }, 60_000)
+
+  async function seedCase(name: string, genomeBuild = 'GRCh38'): Promise<number> {
+    const res = await probe.query<{ id: number }>(
+      `INSERT INTO "${schema}".cases (name, file_path, file_size, created_at, genome_build)
+           VALUES ($1, $2, 0, $3, $4) RETURNING id`,
+      [name, `/tmp/${name}.json`, now, genomeBuild]
+    )
+    return res.rows[0].id
+  }
+
+  async function seedVariant(v: {
+    caseId: number
+    chr: string
+    pos: number
+    ref: string
+    alt: string
+    geneSymbol?: string | null
+    gnomadAf?: number | null
+    cadd?: number | null
+    consequence?: string | null
+  }): Promise<number> {
+    const res = await probe.query<{ id: number }>(
+      `INSERT INTO "${schema}".variants
+           (case_id, chr, pos, ref, alt, variant_type, gene_symbol, gnomad_af, cadd, consequence)
+           VALUES ($1, $2, $3, $4, $5, 'snv', $6, $7, $8, $9) RETURNING id`,
+      [
+        v.caseId,
+        v.chr,
+        v.pos,
+        v.ref,
+        v.alt,
+        v.geneSymbol ?? null,
+        v.gnomadAf ?? null,
+        v.cadd ?? null,
+        v.consequence ?? null
+      ]
+    )
+    return res.rows[0].id
+  }
+
+  async function withClient<T>(fn: (client: Client) => Promise<T>): Promise<T> {
+    const client = await pool.connect()
+    try {
+      return await fn(client as unknown as Client)
+    } finally {
+      ;(client as { release: () => void }).release()
+    }
+  }
+
+  const repo = new PostgresCohortSummaryRepository()
+
+  it('refreshColumnMetas writes one row per (case_id, column_name) tuple', async () => {
+    const caseA = await seedCase('meta-a')
+    await seedVariant({
+      caseId: caseA,
+      chr: '1',
+      pos: 100,
+      ref: 'A',
+      alt: 'T',
+      geneSymbol: 'BRCA1',
+      gnomadAf: 0.01,
+      cadd: 12.5,
+      consequence: 'HIGH'
+    })
+    await seedVariant({
+      caseId: caseA,
+      chr: '2',
+      pos: 200,
+      ref: 'C',
+      alt: 'G',
+      geneSymbol: 'TP53',
+      gnomadAf: 0.5,
+      cadd: 30,
+      consequence: 'MODERATE'
+    })
+
+    await withClient((client) =>
+      repo.refreshColumnMetas({ schema, client: client as never, caseId: caseA })
+    )
+
+    const rows = await probe.query<{
+      column_name: string
+      min_value: unknown
+      max_value: unknown
+      distinct_count: number
+      distinct_values: unknown
+    }>(
+      `SELECT column_name, min_value, max_value, distinct_count, distinct_values
+         FROM "${schema}".cohort_column_meta WHERE case_id = $1`,
+      [caseA]
+    )
+
+    // One row per BASE_SORTABLE_COLUMNS key (21 columns).
+    expect(rows.rows.length).toBe(21)
+    const byName = new Map(rows.rows.map((r) => [r.column_name, r]))
+
+    // Numeric column: min/max populated, distinct_count = 2.
+    const gnomad = byName.get('gnomad_af')!
+    expect(Number(gnomad.min_value)).toBeCloseTo(0.01)
+    expect(Number(gnomad.max_value)).toBeCloseTo(0.5)
+    expect(Number(gnomad.distinct_count)).toBe(2)
+
+    const cadd = byName.get('cadd')!
+    expect(Number(cadd.min_value)).toBeCloseTo(12.5)
+    expect(Number(cadd.max_value)).toBeCloseTo(30)
+
+    // `pos` is BIGINT in the variants table — node-pg returns BIGINT as a JS
+    // string, so min/max must be coerced to JSON numbers before storage,
+    // matching SQLite's raw-number shape (not a JSON string).
+    const pos = byName.get('pos')!
+    expect(typeof pos.min_value).toBe('number')
+    expect(typeof pos.max_value).toBe('number')
+    expect(pos.min_value).toBe(100)
+    expect(pos.max_value).toBe(200)
+
+    // Text column: low cardinality → distinct_values populated, no min/max.
+    const consequence = byName.get('consequence')!
+    expect(Number(consequence.distinct_count)).toBe(2)
+    expect(consequence.min_value).toBeNull()
+    expect(consequence.max_value).toBeNull()
+    expect(consequence.distinct_values).toEqual(['HIGH', 'MODERATE'])
+
+    const gene = byName.get('gene_symbol')!
+    expect(Number(gene.distinct_count)).toBe(2)
+    expect(gene.distinct_values).toEqual(['BRCA1', 'TP53'])
+  }, 60_000)
+
+  it('refreshColumnMetas deletes existing rows before reinserting', async () => {
+    const caseA = await seedCase('meta-refresh-a')
+    await seedVariant({ caseId: caseA, chr: '1', pos: 100, ref: 'A', alt: 'T', geneSymbol: 'AAA' })
+
+    // Pre-populate a stale row that must be wiped.
+    await probe.query(
+      `INSERT INTO "${schema}".cohort_column_meta (case_id, column_name, distinct_count)
+         VALUES ($1, 'gene_symbol', 999)`,
+      [caseA]
+    )
+
+    await withClient((client) =>
+      repo.refreshColumnMetas({ schema, client: client as never, caseId: caseA })
+    )
+
+    const res = await probe.query<{ distinct_count: number }>(
+      `SELECT distinct_count FROM "${schema}".cohort_column_meta
+         WHERE case_id = $1 AND column_name = 'gene_symbol'`,
+      [caseA]
+    )
+    expect(res.rows).toHaveLength(1)
+    expect(Number(res.rows[0].distinct_count)).toBe(1)
+  }, 60_000)
+
+  it('removeColumnMetas deletes only the target case rows', async () => {
+    const caseA = await seedCase('meta-rm-a')
+    const caseB = await seedCase('meta-rm-b')
+    await seedVariant({ caseId: caseA, chr: '1', pos: 100, ref: 'A', alt: 'T', geneSymbol: 'AAA' })
+    await seedVariant({ caseId: caseB, chr: '2', pos: 200, ref: 'C', alt: 'G', geneSymbol: 'BBB' })
+
+    await withClient(async (client) => {
+      await repo.refreshColumnMetas({ schema, client: client as never, caseId: caseA })
+      await repo.refreshColumnMetas({ schema, client: client as never, caseId: caseB })
+      await repo.removeColumnMetas({ schema, client: client as never, caseId: caseA })
+    })
+
+    const aCount = await probe.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM "${schema}".cohort_column_meta WHERE case_id = $1`,
+      [caseA]
+    )
+    const bCount = await probe.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM "${schema}".cohort_column_meta WHERE case_id = $1`,
+      [caseB]
+    )
+    expect(Number(aCount.rows[0].count)).toBe(0)
+    expect(Number(bCount.rows[0].count)).toBe(21)
+  }, 60_000)
+})
+
 describe.skipIf(RUN)('PostgresCohortSummaryRepository.rebuild — Sprint A C2 (skipped)', () => {
   it('runs only when VARLENS_RUN_POSTGRES_E2E=1 and `make pg-up` is up', () => {
     expect(RUN).toBe(false)

@@ -31,6 +31,50 @@ interface ScopedClient {
  * src/shared/sql/cohort-summary-rebuild.ts. Higher rank wins; the textual
  * label is reconstructed from the winning rank.
  */
+/**
+ * Filterable base columns mirrored verbatim from the SQLite source of truth
+ * BASE_SORTABLE_COLUMNS (src/main/database/VariantFilterBuilder.ts) — the exact
+ * column set whose per-case metadata getAllColumnMetas computes in SQLite. The
+ * Postgres `variants` table uses identical physical column names, so key and
+ * SQL column coincide. Kept local because VariantFilterBuilder is Kysely/SQLite
+ * side and must not be imported into the Postgres path.
+ */
+const META_COLUMNS = [
+  'chr',
+  'pos',
+  'gene_symbol',
+  'omim_mim_number',
+  'func',
+  'consequence',
+  'transcript',
+  'cdna',
+  'aa_change',
+  'gt_num',
+  'gnomad_af',
+  'cadd',
+  'qual',
+  'hpo_sim_score',
+  'clinvar',
+  'moi',
+  'variant_type',
+  'end_pos',
+  'sv_type',
+  'sv_length',
+  'caller'
+] as const
+
+/**
+ * Numeric columns get MIN/MAX in min_value/max_value, mirroring SQLite's
+ * NUMERIC_COLUMNS set in src/main/database/VariantRepository.ts.
+ */
+const META_NUMERIC_COLUMNS = new Set<string>(['pos', 'gnomad_af', 'cadd', 'qual', 'hpo_sim_score'])
+
+/**
+ * Low-cardinality threshold mirroring SQLite's DISTINCT_THRESHOLD — columns at
+ * or below this distinct count get their distinct_values array materialised.
+ */
+const META_DISTINCT_THRESHOLD = 50
+
 const ACMG_RANK_SQL = (col: string) => `CASE ${col}
   WHEN 'Pathogenic' THEN 5
   WHEN 'Likely pathogenic' THEN 4
@@ -335,11 +379,119 @@ export class PostgresCohortSummaryRepository {
 
     await client.query(`DELETE FROM ${tbl('cohort_variant_summary')} WHERE carrier_count <= 0`)
   }
-  async refreshColumnMetas(_args: ScopedClient & { caseId: number }): Promise<void> {
-    throw new Error('TODO PR3-4')
+  /**
+   * Recompute the per-case filter metadata cache. Mirrors SQLite's
+   * getAllColumnMetas (src/main/database/VariantRepository.ts): one row per
+   * filterable base column with distinct_count for every column, MIN/MAX for
+   * numerics, and the sorted distinct_values array for low-cardinality columns
+   * (≤ META_DISTINCT_THRESHOLD). DELETE-then-INSERT per C5a HIGH #2 so a refresh
+   * fully repopulates the case's rows.
+   */
+  async refreshColumnMetas({
+    schema,
+    client,
+    caseId
+  }: ScopedClient & { caseId: number }): Promise<void> {
+    const tbl = (t: string): string => `"${schema}"."${t}"`
+
+    await client.query(`DELETE FROM ${tbl('cohort_column_meta')} WHERE case_id = $1`, [caseId])
+
+    // Single scan: COUNT(DISTINCT col) for every column, plus MIN/MAX for
+    // numerics. Aliases are positional so the column order is deterministic.
+    const aggSelect: string[] = []
+    for (const col of META_COLUMNS) {
+      aggSelect.push(`COUNT(DISTINCT "${col}") AS "cnt_${col}"`)
+      if (META_NUMERIC_COLUMNS.has(col)) {
+        aggSelect.push(`MIN("${col}") AS "min_${col}"`)
+        aggSelect.push(`MAX("${col}") AS "max_${col}"`)
+      }
+    }
+    const aggRes = await client.query(
+      `SELECT ${aggSelect.join(', ')} FROM ${tbl('variants')} WHERE case_id = $1`,
+      [caseId]
+    )
+    const aggRow = (aggRes.rows[0] ?? {}) as Record<string, string | number | null>
+
+    // Second scan: distinct values for low-cardinality columns only.
+    const lowCardinality = META_COLUMNS.filter((col) => {
+      const cnt = Number(aggRow[`cnt_${col}`] ?? 0)
+      return cnt > 0 && cnt <= META_DISTINCT_THRESHOLD
+    })
+
+    const distinctValuesByColumn = new Map<string, string[]>()
+    if (lowCardinality.length > 0) {
+      const unionParts = lowCardinality.map(
+        (col) =>
+          `SELECT '${col}' AS col_key, CAST("${col}" AS TEXT) AS val
+             FROM ${tbl('variants')}
+             WHERE case_id = $1 AND "${col}" IS NOT NULL
+             GROUP BY "${col}"`
+      )
+      const distinctRes = await client.query<{ col_key: string; val: string }>(
+        unionParts.join(' UNION ALL '),
+        [caseId]
+      )
+      for (const row of distinctRes.rows) {
+        let arr = distinctValuesByColumn.get(row.col_key)
+        if (arr === undefined) {
+          arr = []
+          distinctValuesByColumn.set(row.col_key, arr)
+        }
+        arr.push(row.val)
+      }
+    }
+
+    // Single multi-row INSERT for all columns (one round trip). min_value /
+    // max_value / distinct_values are JSONB. Numeric min/max are coerced through
+    // Number(...) before JSON.stringify so BIGINT-backed columns like `pos`
+    // (node-pg returns these as strings) store as JSON numbers, matching
+    // SQLite's raw-number shape and the float8 columns (gnomad_af, cadd, qual,
+    // hpo_sim_score) which node-pg already returns as numbers.
+    const valuesClauses: string[] = []
+    const params: unknown[] = []
+    for (const col of META_COLUMNS) {
+      const distinctCount = Number(aggRow[`cnt_${col}`] ?? 0)
+      const isNumeric = META_NUMERIC_COLUMNS.has(col)
+      const minRaw = isNumeric ? (aggRow[`min_${col}`] ?? null) : null
+      const maxRaw = isNumeric ? (aggRow[`max_${col}`] ?? null) : null
+      const values = distinctValuesByColumn.get(col)
+      const distinctValues =
+        values !== undefined ? [...values].sort((a, b) => a.localeCompare(b)) : null
+
+      const base = params.length
+      valuesClauses.push(
+        `($${base + 1}, $${base + 2}, $${base + 3}::jsonb, $${base + 4}::jsonb, $${base + 5}, $${base + 6}::jsonb)`
+      )
+      params.push(
+        caseId,
+        col,
+        minRaw === null ? null : JSON.stringify(Number(minRaw)),
+        maxRaw === null ? null : JSON.stringify(Number(maxRaw)),
+        distinctCount,
+        distinctValues === null ? null : JSON.stringify(distinctValues)
+      )
+    }
+
+    await client.query(
+      `INSERT INTO ${tbl('cohort_column_meta')}
+         (case_id, column_name, min_value, max_value, distinct_count, distinct_values)
+       VALUES ${valuesClauses.join(', ')}`,
+      params
+    )
   }
-  async removeColumnMetas(_args: ScopedClient & { caseId: number }): Promise<void> {
-    throw new Error('TODO PR3-4')
+
+  /**
+   * Drop a single case's column-meta rows. The ON DELETE CASCADE from C1 makes
+   * this redundant when the case row is deleted in the same transaction, but C3
+   * calls it explicitly to support the "remove without deleting case" path.
+   */
+  async removeColumnMetas({
+    schema,
+    client,
+    caseId
+  }: ScopedClient & { caseId: number }): Promise<void> {
+    const tbl = (t: string): string => `"${schema}"."${t}"`
+    await client.query(`DELETE FROM ${tbl('cohort_column_meta')} WHERE case_id = $1`, [caseId])
   }
   async getState(_args: ScopedClient): Promise<{ is_stale: boolean; last_rebuilt_at: number }> {
     throw new Error('TODO PR3-9')

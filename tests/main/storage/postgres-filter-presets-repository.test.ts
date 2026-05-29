@@ -46,9 +46,11 @@ describe('PostgresFilterPresetsRepository', () => {
     ])
 
     expect(pool.query).toHaveBeenCalledWith(
-      expect.stringContaining('"tenant""schema"."filter_presets"')
+      expect.objectContaining({
+        text: expect.stringContaining('"tenant""schema"."filter_presets"')
+      })
     )
-    const sql = pool.query.mock.calls[0][0] as string
+    const sql = (pool.query.mock.calls[0][0] as { text: string }).text
     expect(sql).toContain('ORDER BY sort_order, name')
   })
 
@@ -72,7 +74,9 @@ describe('PostgresFilterPresetsRepository', () => {
     await repo.createPreset({ name: 'User filter', filterJson: { genes: ['BRCA1'] } })
 
     expect(pool.query).toHaveBeenCalledTimes(1)
-    const [sql, params] = pool.query.mock.calls[0]
+    const createSpec = pool.query.mock.calls[0][0] as { text: string; values: unknown[] }
+    const sql = createSpec.text
+    const params = createSpec.values
     expect(sql).toContain('INSERT INTO "public"."filter_presets"')
     expect(sql).toContain('RETURNING *')
     expect(params).toEqual([

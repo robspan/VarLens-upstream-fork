@@ -58,7 +58,10 @@
           <v-text-field
             v-if="selectedSamples.includes(sample)"
             :model-value="caseNames.get(sample) || sample"
+            :aria-label="`Case name for ${sample}`"
+            :data-testid="`vcf-case-name-${sample}`"
             label="Case name"
+            name="caseName"
             variant="outlined"
             density="compact"
             hide-details

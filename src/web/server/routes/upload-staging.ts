@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { createWriteStream, existsSync } from 'node:fs'
+import { createReadStream, createWriteStream, existsSync } from 'node:fs'
 import { mkdir, rm, stat } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join } from 'node:path'
 import { Readable, Transform } from 'node:stream'
@@ -113,6 +113,23 @@ export function registerImportUploadRoutes(app: FastifyInstance): void {
       fileName: upload.originalName,
       size: upload.size
     }
+  })
+}
+
+export async function stageExistingFileUpload(params: {
+  userId: number
+  originalName: string
+  sourcePath: string
+}): Promise<StagedUpload> {
+  const safeName = sanitizeUploadName(params.originalName)
+  if (!isAllowedUploadName(safeName)) {
+    throw new Error(`Unsupported uploaded file type: ${params.originalName}`)
+  }
+  return await stageUpload({
+    userId: params.userId,
+    originalName: params.originalName,
+    safeName,
+    source: createReadStream(params.sourcePath)
   })
 }
 

@@ -483,7 +483,9 @@ describe('annotations:upsertPerCase — variants:annotationChanged broadcast', (
       )
       .run('Other Case', '/tmp/other.json', 1, 0, Date.now()).lastInsertRowid as number
     db.database
-      .prepare('INSERT INTO variants (case_id, chr, pos, ref, alt, gt_num) VALUES (?, ?, ?, ?, ?, ?)')
+      .prepare(
+        'INSERT INTO variants (case_id, chr, pos, ref, alt, gt_num) VALUES (?, ?, ?, ?, ?, ?)'
+      )
       .run(otherCaseId, '1', 200, 'A', 'T', '0/1')
 
     // Renderer spoofs caseId=otherCaseId but passes the FIRST case's variantId.

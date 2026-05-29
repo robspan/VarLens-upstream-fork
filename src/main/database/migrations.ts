@@ -1733,9 +1733,7 @@ export function runMigrations(db: Database.Database): void {
   // Required so the case-less coordinate JOIN in AnnotationRepository.getBatch
   // can index-scan rather than table-scan.
   if (currentVersion < 29) {
-    db.exec(
-      'CREATE INDEX IF NOT EXISTS idx_variants_coords ON variants(chr, pos, ref, alt)'
-    )
+    db.exec('CREATE INDEX IF NOT EXISTS idx_variants_coords ON variants(chr, pos, ref, alt)')
     db.exec('PRAGMA user_version = 29')
   }
 }

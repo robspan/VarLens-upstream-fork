@@ -13,7 +13,10 @@ describe('filterSerialization — reactive input handling (Pass-9 #4)', () => {
   }
 
   it('buildFilterIpcParams handles reactive input and produces identical output to plain', () => {
-    const reactiveState = reactive({ ...baseState, columnFilters: reactive(baseState.columnFilters) })
+    const reactiveState = reactive({
+      ...baseState,
+      columnFilters: reactive(baseState.columnFilters)
+    })
     const fromReactive = buildFilterIpcParams(reactiveState)
     const fromPlain = buildFilterIpcParams(baseState)
     expect(fromReactive).toEqual(fromPlain)
@@ -21,7 +24,10 @@ describe('filterSerialization — reactive input handling (Pass-9 #4)', () => {
   })
 
   it('buildVariantFilterFromState handles reactive input', () => {
-    const reactiveState = reactive({ ...baseState, columnFilters: reactive(baseState.columnFilters) })
+    const reactiveState = reactive({
+      ...baseState,
+      columnFilters: reactive(baseState.columnFilters)
+    })
     const fromReactive = buildVariantFilterFromState(reactiveState, 'snv')
     const fromPlain = buildVariantFilterFromState(baseState, 'snv')
     expect(fromReactive).toEqual(fromPlain)

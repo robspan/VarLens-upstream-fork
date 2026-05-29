@@ -100,9 +100,11 @@ describe('AnnotationRepository.getBatch — call-count guarantee (Sprint A A1)',
       variantId: i + 1
     }))
     const result = repo.getBatch(1, keys)
-    expect(Object.keys(result).sort()).toEqual(
-      ['chr1:10000:A:G', 'chr1:10001:A:G', 'chr1:10002:A:G']
-    )
+    expect(Object.keys(result).sort()).toEqual([
+      'chr1:10000:A:G',
+      'chr1:10001:A:G',
+      'chr1:10002:A:G'
+    ])
     expect(result['chr1:10000:A:G']).toEqual({
       global: null,
       perCase: expect.objectContaining({ starred: 1 })

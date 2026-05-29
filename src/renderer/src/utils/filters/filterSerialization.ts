@@ -159,10 +159,7 @@ export function buildVariantFilterFromState(
     variantFilter.column_filters = ipcParams.column_filters
   }
 
-  const allConsequences = [
-    ...(selectedImpactPresets ?? []),
-    ...(plainState.consequences ?? [])
-  ]
+  const allConsequences = [...(selectedImpactPresets ?? []), ...(plainState.consequences ?? [])]
   if (allConsequences.length > 0) {
     variantFilter.consequences = [...new Set(allConsequences)]
   }

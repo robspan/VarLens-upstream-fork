@@ -5,6 +5,7 @@ import { classifyPostgresFailureMessage } from './PostgresHealthDiagnostics'
 import { PostgresStorageSession } from './PostgresStorageSession'
 import { POSTGRES_MIGRATIONS } from './migrations/definitions'
 import { PostgresMigrationRunner } from './migrations/PostgresMigrationRunner'
+import { wrapPoolForCounters } from './query-counters'
 
 export async function createPostgresStorageSession(
   config: PostgresStorageConfig
@@ -18,9 +19,11 @@ export async function createPostgresStorageSession(
       POSTGRES_MIGRATIONS
     ).migrate()
 
+    const wrappedPool = wrapPoolForCounters(pool)
+
     return new PostgresStorageSession({
       config,
-      pool,
+      pool: wrappedPool,
       migrationResult
     })
   } catch (error) {

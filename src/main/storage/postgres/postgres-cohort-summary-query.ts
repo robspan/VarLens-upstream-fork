@@ -25,6 +25,61 @@ export interface SummaryQueryParts {
   values: unknown[]
 }
 
+/** `WHERE ...` clause (or empty string) for a summary-page query. */
+function summaryWhereClause(whereParts: string[]): string {
+  return whereParts.length > 0 ? `WHERE ${whereParts.join('\n         AND ')}` : ''
+}
+
+/** COUNT(*) SQL for the materialised cohort_variant_summary page. */
+export function buildSummaryCountSql(qualifiedTable: string, whereParts: string[]): string {
+  return `SELECT COUNT(*)::bigint AS total_count
+      FROM ${qualifiedTable} cvs
+      ${summaryWhereClause(whereParts)}`
+}
+
+/**
+ * Page SQL for the materialised cohort_variant_summary read. Aliases the stored
+ * `cadd` / `omim_mim_number` columns to the CohortVariant field names
+ * (`cadd_phred`, `omim_id`) so toCohortVariant maps them unchanged. `totalCases`
+ * is interpolated (it is a number, never user input) to surface total_cases per
+ * row the same way the live path does.
+ */
+export function buildSummaryPageSql(
+  qualifiedTable: string,
+  whereParts: string[],
+  orderBy: string,
+  totalCases: number,
+  limitParamIndex: number,
+  offsetParamIndex: number
+): string {
+  return `SELECT
+      cvs.chr,
+      cvs.pos,
+      cvs.ref,
+      cvs.alt,
+      cvs.gene_symbol,
+      cvs.cdna,
+      cvs.aa_change,
+      cvs.carrier_count,
+      ${totalCases}::bigint AS total_cases,
+      cvs.cohort_frequency,
+      cvs.het_count,
+      cvs.hom_count,
+      cvs.variant_key,
+      cvs.consequence,
+      cvs.func,
+      cvs.clinvar,
+      cvs.gnomad_af,
+      cvs.cadd AS cadd_phred,
+      cvs.transcript,
+      cvs.omim_mim_number AS omim_id
+    FROM ${qualifiedTable} cvs
+    ${summaryWhereClause(whereParts)}
+    ${orderBy}
+    LIMIT $${limitParamIndex}
+    OFFSET $${offsetParamIndex}`
+}
+
 export interface BuildSummaryResult {
   parts: SummaryQueryParts
   /** true → caller falls back to the live `buildQueryParts` path. */

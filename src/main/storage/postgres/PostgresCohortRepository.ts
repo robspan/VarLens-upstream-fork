@@ -13,7 +13,13 @@ import type {
 import { mainLogger } from '../../services/MainLogger'
 import { getGeneReferenceDb } from '../../database/geneReferenceLoader'
 import { quoteIdentifier } from './identifiers'
+import { runNamed, runNamedDynamic } from './named-query'
 import { POSTGRES_VARIANT_COLUMN_DEFINITIONS } from './postgres-variant-columns'
+import {
+  buildSummaryCountSql,
+  buildSummaryPageSql,
+  buildSummaryQueryParts
+} from './postgres-cohort-summary-query'
 
 type CohortPool = Pick<Pool, 'query' | 'connect'>
 type CohortClient = Pick<PoolClient, 'query' | 'release'>
@@ -81,6 +87,30 @@ const COLUMN_META_KEYS = [
   'cadd_phred',
   'transcript'
 ]
+
+/**
+ * Filter-UI key → stored column on `cohort_variant_summary`. Every key is a
+ * physical column on the summary table; `cadd_phred` is the only rename
+ * (stored as `cadd`). Used by the cohort-view getColumnMeta read (C4 Step 2) so
+ * COUNT(DISTINCT)/MIN/MAX run against the already-deduped summary rows rather
+ * than a live GROUP BY (Pass-3 HIGH #3 — SUM across cohort_column_meta would
+ * overcount).
+ */
+const COLUMN_META_SUMMARY_COLUMNS: Record<string, string> = {
+  chr: 'chr',
+  pos: 'pos',
+  gene_symbol: 'gene_symbol',
+  carrier_count: 'carrier_count',
+  cohort_frequency: 'cohort_frequency',
+  het_count: 'het_count',
+  hom_count: 'hom_count',
+  consequence: 'consequence',
+  func: 'func',
+  clinvar: 'clinvar',
+  gnomad_af: 'gnomad_af',
+  cadd_phred: 'cadd',
+  transcript: 'transcript'
+}
 
 type CohortColumnFilterLocation = 'where' | 'having'
 
@@ -201,6 +231,7 @@ function withoutActivePanelFields(params: CohortSearchParams): CohortSearchParam
 }
 
 export class PostgresCohortRepository {
+  private readonly schema: string
   private readonly schemaName: string
   private readonly panelIntervalResolver: PanelIntervalResolver
   private columnMetaCache: ColumnFilterMeta[] | null = null
@@ -210,18 +241,92 @@ export class PostgresCohortRepository {
     schema: string,
     panelIntervalResolver?: PanelIntervalResolver
   ) {
+    this.schema = schema
     this.schemaName = quoteIdentifier(schema)
     this.panelIntervalResolver = panelIntervalResolver ?? this.resolvePanelIntervals.bind(this)
+  }
+
+  private tbl(table: string): string {
+    return `${this.schemaName}."${table}"`
   }
 
   async queryVariants(params: CohortSearchParams): Promise<CohortPaginatedResult> {
     const resolvedParams = await this.resolvePanelParams(params)
     this.assertSupportedColumnFilters(resolvedParams)
     const totalCases = await this.getTotalCases(this.pool, resolvedParams)
-    const queryParts = this.buildQueryParts(resolvedParams, totalCases)
+
+    // C4: prefer the materialised cohort_variant_summary page query. Falls back
+    // to live aggregation when buildSummaryQueryParts reports the predicate set
+    // is not materialisable (extension-table filters — Sprint B).
+    const summaryResult = await this.querySummaryPage(resolvedParams, totalCases)
+    if (summaryResult !== null) return summaryResult
+
+    return this.queryLivePage(resolvedParams, totalCases)
+  }
+
+  /**
+   * C4 summary-page read. Builds predicate parts against `cohort_variant_summary`
+   * via buildSummaryQueryParts and runs count + page in one materialised path.
+   * Returns null when the predicate set is not materialisable so the caller can
+   * fall back to live aggregation.
+   */
+  private async querySummaryPage(
+    params: CohortSearchParams,
+    totalCases: number
+  ): Promise<CohortPaginatedResult | null> {
+    const summary = buildSummaryQueryParts(params, totalCases)
+    if (summary.unavailable) return null
+
+    const { whereParts, orderBy, values } = summary.parts
+    const table = this.tbl('cohort_variant_summary')
 
     let totalCount = 0
     if (params._count_needed !== false) {
+      const countResult = await runNamedDynamic<{ total_count?: unknown }>(this.pool as Pool, {
+        baseName: 'cohort:summary_count',
+        text: buildSummaryCountSql(table, whereParts),
+        values,
+        schema: this.schema
+      })
+      totalCount = toNumber(
+        (countResult.rows[0] as { total_count?: unknown } | undefined)?.total_count
+      )
+    }
+
+    const limit = params.limit ?? 50
+    const offset = params.offset ?? 0
+    const dataValues = [...values, limit, offset]
+    const dataResult = await runNamedDynamic<Record<string, unknown>>(this.pool as Pool, {
+      baseName: 'cohort:summary_page',
+      text: buildSummaryPageSql(
+        table,
+        whereParts,
+        orderBy,
+        totalCases,
+        dataValues.length - 1,
+        dataValues.length
+      ),
+      values: dataValues,
+      schema: this.schema
+    })
+
+    return {
+      data: (dataResult.rows as Array<Record<string, unknown>>).map((row) =>
+        this.toCohortVariant(row, totalCases)
+      ),
+      total_count: totalCount
+    }
+  }
+
+  /** Live-aggregation page query (fallback path when the summary is unavailable). */
+  private async queryLivePage(
+    resolvedParams: CohortSearchParams,
+    totalCases: number
+  ): Promise<CohortPaginatedResult> {
+    const queryParts = this.buildQueryParts(resolvedParams, totalCases)
+
+    let totalCount = 0
+    if (resolvedParams._count_needed !== false) {
       const countResult = await this.pool.query(
         `SELECT COUNT(*)::bigint AS total_count FROM (
            ${this.buildGroupedSelect(queryParts, totalCases, false)}
@@ -375,32 +480,37 @@ export class PostgresCohortRepository {
     }))
   }
 
+  /**
+   * Cohort-view per-column metadata (C4 Step 2). Reads COUNT(DISTINCT)/MIN/MAX
+   * directly from the already-deduped `cohort_variant_summary` table — mirroring
+   * SQLite cohort.ts:getColumnMeta. Aggregating across `cohort_column_meta`
+   * would SUM per-case distinct counts and overcount (Pass-3 HIGH #3), so the
+   * cohort path reads the summary table, not the per-case meta cache.
+   */
   async getColumnMeta(): Promise<ColumnFilterMeta[]> {
     if (this.columnMetaCache !== null) return this.columnMetaCache
 
-    const totalCases = await this.getTotalCases(this.pool)
-    const queryParts = this.buildQueryParts({}, totalCases)
-    const groupedSql = this.buildGroupedSelect(queryParts, totalCases, false)
     const meta: ColumnFilterMeta[] = []
     const selectParts = COLUMN_META_KEYS.flatMap((key) => {
-      const sqlColumn = SORTABLE_COLUMNS[key]
+      const sqlColumn = COLUMN_META_SUMMARY_COLUMNS[key]
       const parts = [`COUNT(DISTINCT ${sqlColumn})::bigint AS cnt_${key}`]
       if (NUMERIC_COLUMNS.has(key)) {
         parts.push(`MIN(${sqlColumn}) AS min_${key}`, `MAX(${sqlColumn}) AS max_${key}`)
       }
       return parts
     })
-    const aggregateResult = await this.pool.query(
-      `SELECT ${selectParts.join(', ')}
-       FROM (${groupedSql}) cohort_columns`,
-      queryParts.params
-    )
+    const aggregateResult = await runNamed<Record<string, unknown>>(this.pool as Pool, {
+      name: 'cohort:column_meta_agg:v1',
+      text: `SELECT ${selectParts.join(', ')} FROM ${this.tbl('cohort_variant_summary')}`,
+      values: [],
+      schema: this.schema
+    })
     const aggregateRow = (aggregateResult.rows[0] ?? {}) as Record<string, unknown>
     const lowCardinalityColumns: Array<{ key: string; sqlColumn: string }> = []
 
     for (const key of COLUMN_META_KEYS) {
       const isNumeric = NUMERIC_COLUMNS.has(key)
-      const sqlColumn = SORTABLE_COLUMNS[key]
+      const sqlColumn = COLUMN_META_SUMMARY_COLUMNS[key]
       const entry: ColumnFilterMeta = {
         key,
         dataType: isNumeric ? 'numeric' : 'text',
@@ -423,16 +533,20 @@ export class PostgresCohortRepository {
         .map(
           ({ key, sqlColumn }) =>
             `SELECT '${key}' AS col_key, ${sqlColumn}::text AS value
-             FROM cohort_columns
+             FROM ${this.tbl('cohort_variant_summary')}
              WHERE ${sqlColumn} IS NOT NULL
              GROUP BY ${sqlColumn}`
         )
         .join('\nUNION ALL\n')
-      const unionSql = `WITH cohort_columns AS MATERIALIZED (
-        ${groupedSql}
+      const valuesResult = await runNamedDynamic<{ col_key: string; value: unknown }>(
+        this.pool as Pool,
+        {
+          baseName: 'cohort:column_meta_values',
+          text: unionParts,
+          values: [],
+          schema: this.schema
+        }
       )
-      ${unionParts}`
-      const valuesResult = await this.pool.query(unionSql, queryParts.params)
       const valuesByKey = new Map<string, string[]>()
       for (const row of valuesResult.rows as Array<{ col_key: string; value: unknown }>) {
         const values = valuesByKey.get(row.col_key) ?? []

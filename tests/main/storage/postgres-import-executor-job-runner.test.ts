@@ -193,3 +193,451 @@ describe('PostgresImportExecutor.importSingleFile — Sprint A D3 (i) / Gate 12'
     ])
   })
 })
+
+// ---------------------------------------------------------------------------
+// Gate 12 four-dimension coverage for D3 wire site (ii):
+//   PostgresImportExecutor.importMultiFile is routed through the SAME
+//   module-singleton JobRunner kind ('import_single') as importSingleFile
+//   (Pass-9 #9 — the pre-PR-4 `inProgress` flag gated BOTH paths). These tests
+//   assert the four invariants the wiring must preserve:
+//     (a) return payload (StorageImportMultiFileResult) unchanged
+//     (b) single-flight conflict message preserved — including the cross-path
+//         case where a single-file import blocks a multi-file import (and vice
+//         versa) because both share the 'import_single' kind
+//     (c) cancellation routed through worker client.cancel() (posts
+//         {type:'cancel'}, NOT terminate())
+//     (d) import:progress phase/count/skipped + onFileComplete mapping unchanged
+// ---------------------------------------------------------------------------
+
+const MULTI_FILES = [
+  { filePath: '/tmp/a.vcf', variantType: 'small', caller: null, annotationFormat: null }
+]
+
+describe('PostgresImportExecutor.importMultiFile — Sprint A D3 (ii) / Gate 12', () => {
+  it('(a) return payload: returns StorageImportMultiFileResult unchanged', async () => {
+    const fakeClient = {
+      start: vi.fn(
+        (_msg: PostgresImportWorkerStartMessage, callbacks: PostgresImportWorkerCallbacks) => {
+          queueMicrotask(() => {
+            callbacks.onComplete({
+              type: 'complete',
+              mode: 'multi-file',
+              result: {
+                caseId: 7,
+                variantCount: 500,
+                files: [{ filePath: '/tmp/a.vcf', variantType: 'small', variantCount: 500 }],
+                skipped: 3,
+                errors: ['warnM'],
+                elapsed: 99
+              }
+            })
+          })
+        }
+      ),
+      cancel: vi.fn()
+    }
+
+    const executor = makeExecutor(fakeClient)
+    const result = await executor.importMultiFile({
+      caseName: 'MultiA',
+      files: MULTI_FILES,
+      throttleMs: 0
+    })
+
+    expect(result).toEqual({
+      caseId: 7,
+      variantCount: 500,
+      files: [{ filePath: '/tmp/a.vcf', variantType: 'small', variantCount: 500 }],
+      skipped: 3,
+      errors: ['warnM'],
+      elapsed: 99
+    })
+  })
+
+  it('(a) return payload: missing worker files coerce to empty array', async () => {
+    const fakeClient = {
+      start: vi.fn(
+        (_msg: PostgresImportWorkerStartMessage, callbacks: PostgresImportWorkerCallbacks) => {
+          queueMicrotask(() => {
+            callbacks.onComplete({
+              type: 'complete',
+              mode: 'multi-file',
+              result: { caseId: 8, variantCount: 0, skipped: 0, errors: [], elapsed: 1 }
+            })
+          })
+        }
+      ),
+      cancel: vi.fn()
+    }
+
+    const executor = makeExecutor(fakeClient)
+    const result = await executor.importMultiFile({
+      caseName: 'MultiEmpty',
+      files: MULTI_FILES,
+      throttleMs: 0
+    })
+
+    expect(result.files).toEqual([])
+  })
+
+  it('(b) conflict: second concurrent multi-file call rejects with "An import is already in progress"', async () => {
+    let capturedCallbacks!: PostgresImportWorkerCallbacks
+    const fakeClient = {
+      start: vi.fn(
+        (_msg: PostgresImportWorkerStartMessage, callbacks: PostgresImportWorkerCallbacks) => {
+          capturedCallbacks = callbacks
+          // Do not complete — keep the import_single slot occupied.
+        }
+      ),
+      cancel: vi.fn()
+    }
+
+    const executor = makeExecutor(fakeClient)
+
+    const first = executor.importMultiFile({
+      caseName: 'M1',
+      files: MULTI_FILES,
+      throttleMs: 0
+    })
+
+    await expect(
+      executor.importMultiFile({ caseName: 'M2', files: MULTI_FILES, throttleMs: 0 })
+    ).rejects.toThrow('An import is already in progress')
+
+    capturedCallbacks.onComplete({
+      type: 'complete',
+      mode: 'multi-file',
+      result: { caseId: 1, variantCount: 1, files: [], skipped: 0, errors: [], elapsed: 1 }
+    })
+    const result = await first
+    expect(result.errors).toEqual([])
+  })
+
+  it('(b) conflict cross-path: an in-flight single-file import blocks importMultiFile (shared import_single kind)', async () => {
+    let capturedCallbacks!: PostgresImportWorkerCallbacks
+    const fakeClient = {
+      start: vi.fn(
+        (_msg: PostgresImportWorkerStartMessage, callbacks: PostgresImportWorkerCallbacks) => {
+          capturedCallbacks = callbacks
+        }
+      ),
+      cancel: vi.fn()
+    }
+
+    const executor = makeExecutor(fakeClient)
+
+    const single = executor.importSingleFile({
+      filePath: '/tmp/single.json',
+      caseName: 'S1',
+      throttleMs: 0
+    })
+
+    await expect(
+      executor.importMultiFile({ caseName: 'MX', files: MULTI_FILES, throttleMs: 0 })
+    ).rejects.toThrow('An import is already in progress')
+
+    capturedCallbacks.onComplete({
+      type: 'complete',
+      mode: 'single-file',
+      result: { caseId: 1, variantCount: 1, skipped: 0, errors: [], elapsed: 1 }
+    })
+    await single
+  })
+
+  it('(b) conflict cross-path: an in-flight multi-file import blocks importSingleFile (shared import_single kind)', async () => {
+    let capturedCallbacks!: PostgresImportWorkerCallbacks
+    const fakeClient = {
+      start: vi.fn(
+        (_msg: PostgresImportWorkerStartMessage, callbacks: PostgresImportWorkerCallbacks) => {
+          capturedCallbacks = callbacks
+        }
+      ),
+      cancel: vi.fn()
+    }
+
+    const executor = makeExecutor(fakeClient)
+
+    const multi = executor.importMultiFile({
+      caseName: 'MB',
+      files: MULTI_FILES,
+      throttleMs: 0
+    })
+
+    await expect(
+      executor.importSingleFile({ filePath: '/tmp/blocked.json', caseName: 'SB', throttleMs: 0 })
+    ).rejects.toThrow('An import is already in progress')
+
+    capturedCallbacks.onComplete({
+      type: 'complete',
+      mode: 'multi-file',
+      result: { caseId: 1, variantCount: 1, files: [], skipped: 0, errors: [], elapsed: 1 }
+    })
+    await multi
+  })
+
+  it('(c) cancellation: jobRunner.cancel triggers worker client.cancel() (posts {type:"cancel"})', async () => {
+    let capturedCallbacks!: PostgresImportWorkerCallbacks
+    const fakeClient = {
+      start: vi.fn(
+        (_msg: PostgresImportWorkerStartMessage, callbacks: PostgresImportWorkerCallbacks) => {
+          capturedCallbacks = callbacks
+        }
+      ),
+      cancel: vi.fn()
+    }
+
+    const executor = makeExecutor(fakeClient)
+
+    const importPromise = executor.importMultiFile({
+      caseName: 'MZ',
+      files: MULTI_FILES,
+      throttleMs: 0
+    })
+
+    await new Promise((r) => queueMicrotask(r as () => void))
+
+    const running = jobRunner.list({ kind: 'import_single', status: 'running' })
+    expect(running.length).toBe(1)
+    await jobRunner.cancel(running[0].id)
+
+    expect(fakeClient.cancel).toHaveBeenCalledTimes(1)
+
+    capturedCallbacks.onComplete({
+      type: 'complete',
+      mode: 'multi-file',
+      result: {
+        caseId: 0,
+        variantCount: 0,
+        files: [],
+        skipped: 0,
+        errors: ['Import cancelled by user'],
+        elapsed: 0
+      }
+    })
+    await importPromise
+  })
+
+  it('(d) progress mapping: phase/count/skipped emissions are unchanged from pre-PR-4', async () => {
+    const fakeClient = {
+      start: vi.fn(
+        (_msg: PostgresImportWorkerStartMessage, callbacks: PostgresImportWorkerCallbacks) => {
+          queueMicrotask(() => {
+            callbacks.onProgress({ type: 'progress', phase: 'parsing', rowsProcessed: 0 })
+            callbacks.onProgress({ type: 'progress', phase: 'inserting', rowsProcessed: 250 })
+            callbacks.onProgress({ type: 'progress', phase: 'inserting', rowsProcessed: 500 })
+            callbacks.onComplete({
+              type: 'complete',
+              mode: 'multi-file',
+              result: {
+                caseId: 1,
+                variantCount: 500,
+                files: [],
+                skipped: 0,
+                errors: [],
+                elapsed: 10
+              }
+            })
+          })
+        }
+      ),
+      cancel: vi.fn()
+    }
+
+    const executor = makeExecutor(fakeClient)
+    const recorded: Array<{ phase: string; count: number; skipped: number }> = []
+    await executor.importMultiFile({
+      caseName: 'MP',
+      files: MULTI_FILES,
+      throttleMs: 0,
+      onProgress: (data) => {
+        recorded.push({ phase: data.phase, count: data.count, skipped: data.skipped })
+      }
+    })
+
+    expect(recorded).toEqual([
+      { phase: 'parsing', count: 0, skipped: 0 },
+      { phase: 'inserting', count: 250, skipped: 0 },
+      { phase: 'inserting', count: 500, skipped: 0 }
+    ])
+  })
+
+  it('(d) onFileComplete mapping: per-file completion events forwarded unchanged', async () => {
+    const fakeClient = {
+      start: vi.fn(
+        (_msg: PostgresImportWorkerStartMessage, callbacks: PostgresImportWorkerCallbacks) => {
+          queueMicrotask(() => {
+            callbacks.onFileComplete({
+              type: 'file-complete',
+              filePath: '/tmp/a.vcf',
+              caseId: 11,
+              variantCount: 120
+            })
+            callbacks.onComplete({
+              type: 'complete',
+              mode: 'multi-file',
+              result: {
+                caseId: 11,
+                variantCount: 120,
+                files: [{ filePath: '/tmp/a.vcf', variantType: 'small', variantCount: 120 }],
+                skipped: 0,
+                errors: [],
+                elapsed: 5
+              }
+            })
+          })
+        }
+      ),
+      cancel: vi.fn()
+    }
+
+    const executor = makeExecutor(fakeClient)
+    const files: Array<{ filePath: string; caseId: number; variantCount: number }> = []
+    await executor.importMultiFile({
+      caseName: 'MFC',
+      files: MULTI_FILES,
+      throttleMs: 0,
+      onFileComplete: (event) => {
+        files.push({
+          filePath: event.filePath,
+          caseId: event.caseId,
+          variantCount: event.variantCount
+        })
+      }
+    })
+
+    expect(files).toEqual([{ filePath: '/tmp/a.vcf', caseId: 11, variantCount: 120 }])
+  })
+
+  it('(d) error propagation: worker onError rejects with the worker message', async () => {
+    const fakeClient = {
+      start: vi.fn(
+        (_msg: PostgresImportWorkerStartMessage, callbacks: PostgresImportWorkerCallbacks) => {
+          queueMicrotask(() => {
+            callbacks.onError({ type: 'error', message: 'multi import boom' })
+          })
+        }
+      ),
+      cancel: vi.fn()
+    }
+
+    const executor = makeExecutor(fakeClient)
+    await expect(
+      executor.importMultiFile({ caseName: 'ME', files: MULTI_FILES, throttleMs: 0 })
+    ).rejects.toThrow('multi import boom')
+  })
+
+  it('(d) start message: forwards multi-file mode, files and filters to the worker', async () => {
+    let captured!: PostgresImportWorkerStartMessage
+    const fakeClient = {
+      start: vi.fn(
+        (msg: PostgresImportWorkerStartMessage, callbacks: PostgresImportWorkerCallbacks) => {
+          captured = msg
+          queueMicrotask(() => {
+            callbacks.onComplete({
+              type: 'complete',
+              mode: 'multi-file',
+              result: { caseId: 1, variantCount: 0, files: [], skipped: 0, errors: [], elapsed: 1 }
+            })
+          })
+        }
+      ),
+      cancel: vi.fn()
+    }
+
+    const executor = makeExecutor(fakeClient)
+    await executor.importMultiFile({
+      caseName: 'MStart',
+      files: MULTI_FILES,
+      throttleMs: 0,
+      filters: {
+        bedFilePath: '/tmp/regions.bed',
+        bedPadding: 10,
+        passOnly: true,
+        minQual: 20,
+        minGq: 30,
+        minDp: 8
+      }
+    })
+
+    expect(captured.mode).toBe('multi-file')
+    expect(captured.caseName).toBe('MStart')
+    expect(captured.files).toEqual(MULTI_FILES)
+    expect(captured.filters).toEqual({
+      bedFilePath: '/tmp/regions.bed',
+      bedPadding: 10,
+      passOnly: true,
+      minQual: 20,
+      minGq: 30,
+      minDp: 8
+    })
+  })
+
+  it('(d) start message: omits filters when none provided', async () => {
+    let captured!: PostgresImportWorkerStartMessage
+    const fakeClient = {
+      start: vi.fn(
+        (msg: PostgresImportWorkerStartMessage, callbacks: PostgresImportWorkerCallbacks) => {
+          captured = msg
+          queueMicrotask(() => {
+            callbacks.onComplete({
+              type: 'complete',
+              mode: 'multi-file',
+              result: { caseId: 1, variantCount: 0, files: [], skipped: 0, errors: [], elapsed: 1 }
+            })
+          })
+        }
+      ),
+      cancel: vi.fn()
+    }
+
+    const executor = makeExecutor(fakeClient)
+    await executor.importMultiFile({
+      caseName: 'MNoFilter',
+      files: MULTI_FILES,
+      throttleMs: 0
+    })
+
+    expect(captured.filters).toBeUndefined()
+  })
+
+  it('(a) return payload: top-level worker errors surface in StorageImportMultiFileResult.errors', async () => {
+    const fakeClient = {
+      start: vi.fn(
+        (_msg: PostgresImportWorkerStartMessage, callbacks: PostgresImportWorkerCallbacks) => {
+          queueMicrotask(() => {
+            callbacks.onComplete({
+              type: 'complete',
+              mode: 'multi-file',
+              result: {
+                caseId: 0,
+                variantCount: 0,
+                files: [
+                  {
+                    filePath: '/tmp/a.vcf',
+                    variantType: 'small',
+                    variantCount: 0,
+                    error: 'bad row'
+                  }
+                ],
+                skipped: 0,
+                errors: ['session failed'],
+                elapsed: 2
+              }
+            })
+          })
+        }
+      ),
+      cancel: vi.fn()
+    }
+
+    const executor = makeExecutor(fakeClient)
+    const result = await executor.importMultiFile({
+      caseName: 'MErr',
+      files: MULTI_FILES,
+      throttleMs: 0
+    })
+
+    expect(result.errors).toEqual(['session failed'])
+    expect(result.files[0].error).toBe('bad row')
+  })
+})

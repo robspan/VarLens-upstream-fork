@@ -30,7 +30,6 @@ export interface PostgresImportExecutorOptions {
 
 export class PostgresImportExecutor implements StorageImportExecutor {
   private currentClient: PostgresImportWorkerClient | null = null
-  private inProgress = false
 
   constructor(private readonly options: PostgresImportExecutorOptions) {}
 
@@ -60,7 +59,6 @@ export class PostgresImportExecutor implements StorageImportExecutor {
   private async _performImport(
     params: StorageImportSingleFileParams
   ): Promise<StorageImportSingleFileResult> {
-    this.inProgress = true
     const startedAt = Date.now()
     try {
       const start: PostgresImportWorkerStartMessage = {
@@ -82,7 +80,6 @@ export class PostgresImportExecutor implements StorageImportExecutor {
         elapsed: result.elapsed
       }
     } finally {
-      this.inProgress = false
       this.currentClient = null
     }
   }
@@ -90,17 +87,27 @@ export class PostgresImportExecutor implements StorageImportExecutor {
   async importMultiFile(
     params: StorageImportMultiFileParams
   ): Promise<StorageImportMultiFileResult> {
-    // INTERIM (PR4-3 → PR4-4): importSingleFile now routes through
-    // jobRunner('import_single') while importMultiFile still guards on the
-    // local `inProgress` flag. This is an intentional, asymmetric intermediate
-    // state: cross-path mutual exclusion between single and multi imports is
-    // NOT enforced at this commit. PR4-4 wires importMultiFile through the same
-    // jobRunner 'import_single' kind and removes `inProgress` entirely,
-    // restoring the pre-PR-4 cross-path single-flight invariant. Do not ship a
-    // release/merge boundary between PR4-3 and PR4-4 — the guard is only
-    // correct once both paths share the runner.
-    if (this.inProgress) throw new Error('An import is already in progress')
-    this.inProgress = true
+    // Shares the 'import_single' JobKind with importSingleFile (Pass-9 #9): the
+    // pre-PR-4 `inProgress` flag gated BOTH paths, so cross-path mutual
+    // exclusion between single- and multi-file imports is preserved by routing
+    // both through the same runner kind. The flag is now gone — single-flight
+    // is enforced entirely by the runner's per-kind concurrency limit.
+    const handle = jobRunner.enqueue<StorageImportMultiFileParams, StorageImportMultiFileResult>(
+      'import_single',
+      params,
+      async (ctx, p) => {
+        // Cancellation posts { type: 'cancel' } to the worker via the client's
+        // cancel() method (PostgresImportWorkerClient.cancel), NOT terminate().
+        ctx.registerCancel(() => this.currentClient?.cancel())
+        return await this._performMultiImport(p)
+      }
+    )
+    return handle.result
+  }
+
+  private async _performMultiImport(
+    params: StorageImportMultiFileParams
+  ): Promise<StorageImportMultiFileResult> {
     const startedAt = Date.now()
     try {
       const start: PostgresImportWorkerStartMessage = {
@@ -138,7 +145,6 @@ export class PostgresImportExecutor implements StorageImportExecutor {
         elapsed: result.elapsed
       }
     } finally {
-      this.inProgress = false
       this.currentClient = null
     }
   }

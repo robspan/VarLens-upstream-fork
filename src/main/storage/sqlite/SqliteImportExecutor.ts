@@ -17,6 +17,7 @@
  */
 import { ImportWorkerClient } from '../../workers/import-worker-client'
 import { mainLogger } from '../../services/MainLogger'
+import { jobRunner } from '../../services/jobs/runner'
 import { BedFilter } from '../../import/vcf/bed-filter'
 import type { DatabaseService } from '../../database/DatabaseService'
 import type { ImportFilters } from '../../import/vcf/import-filters'
@@ -107,11 +108,25 @@ export class SqliteImportExecutor implements StorageImportExecutor {
     }
   }
 
-  importSingleFile(params: StorageImportSingleFileParams): Promise<StorageImportSingleFileResult> {
-    if (this.workerClient !== null && this.workerClient.isRunning) {
-      return Promise.reject(new Error('An import is already in progress'))
-    }
+  async importSingleFile(
+    params: StorageImportSingleFileParams
+  ): Promise<StorageImportSingleFileResult> {
+    const handle = jobRunner.enqueue<StorageImportSingleFileParams, StorageImportSingleFileResult>(
+      'import_single',
+      params,
+      async (ctx, p) => {
+        // Cancellation posts { type: 'cancel' } to the worker via the client's
+        // cancel() method (ImportWorkerClient.cancel), NOT terminate().
+        ctx.registerCancel(() => this.workerClient?.cancel())
+        return await this._performImport(p)
+      }
+    )
+    return await handle.result
+  }
 
+  private _performImport(
+    params: StorageImportSingleFileParams
+  ): Promise<StorageImportSingleFileResult> {
     const db = this.getDatabaseService()
     const worker = this.createWorkerClient()
     this.workerClient = worker

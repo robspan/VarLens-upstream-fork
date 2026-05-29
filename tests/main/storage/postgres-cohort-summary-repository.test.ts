@@ -828,6 +828,180 @@ describe.skipIf(!RUN)(
   }
 )
 
+describe.skipIf(!RUN)('cohort_summary_state lifecycle — C2 + C1', () => {
+  let schema: string
+  let pool: Pool
+  let probe: Client
+  const now = Date.now()
+
+  beforeEach(async () => {
+    schema = `varlens_test_cvs_state_${Date.now()}_${randomBytes(4).toString('hex')}`
+    const provisioner = new Client({ connectionString: PG_URL })
+    await provisioner.connect()
+    await provisioner.query(`CREATE SCHEMA IF NOT EXISTS "${schema}"`)
+    await provisioner.end()
+
+    pool = new Pool({ connectionString: PG_URL, max: 2 })
+    probe = new Client({ connectionString: PG_URL })
+    await probe.connect()
+
+    await new PostgresMigrationRunner(pool, schema, POSTGRES_MIGRATIONS).migrate()
+  }, 60_000)
+
+  afterEach(async () => {
+    if (probe) await probe.end()
+    if (pool) await pool.end()
+    const cleaner = new Client({ connectionString: PG_URL })
+    await cleaner.connect()
+    await cleaner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
+    await cleaner.end()
+  }, 60_000)
+
+  async function seedCase(name: string, genomeBuild = 'GRCh38'): Promise<number> {
+    const res = await probe.query<{ id: number }>(
+      `INSERT INTO "${schema}".cases (name, file_path, file_size, created_at, genome_build)
+           VALUES ($1, $2, 0, $3, $4) RETURNING id`,
+      [name, `/tmp/${name}.json`, now, genomeBuild]
+    )
+    return res.rows[0].id
+  }
+
+  async function seedVariant(v: SeedVariant): Promise<number> {
+    const res = await probe.query<{ id: number }>(
+      `INSERT INTO "${schema}".variants
+           (case_id, chr, pos, ref, alt, variant_type, gene_symbol, gt_num)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [
+        v.caseId,
+        v.chr,
+        v.pos,
+        v.ref,
+        v.alt,
+        v.variantType ?? 'snv',
+        v.geneSymbol ?? null,
+        v.gtNum ?? null
+      ]
+    )
+    return res.rows[0].id
+  }
+
+  async function withClient<T>(fn: (client: Client) => Promise<T>): Promise<T> {
+    const client = await pool.connect()
+    try {
+      return await fn(client as unknown as Client)
+    } finally {
+      ;(client as { release: () => void }).release()
+    }
+  }
+
+  async function stateRow(): Promise<{
+    is_stale: boolean
+    stale_reason: string | null
+    stale_at: Date | null
+    last_rebuilt_at: Date | null
+    last_incremental_at: Date | null
+  }> {
+    const res = await probe.query<{
+      is_stale: boolean
+      stale_reason: string | null
+      stale_at: Date | null
+      last_rebuilt_at: Date | null
+      last_incremental_at: Date | null
+    }>(
+      `SELECT is_stale, stale_reason, stale_at, last_rebuilt_at, last_incremental_at
+         FROM "${schema}".cohort_summary_state WHERE id = 1`
+    )
+    return res.rows[0]
+  }
+
+  const repo = new PostgresCohortSummaryRepository()
+
+  it('rebuild() sets is_stale=false, last_rebuilt_at=now()', async () => {
+    // Pre-flag stale so the rebuild has something to clear.
+    await withClient((client) =>
+      repo.markStale({ schema, client: client as never, reason: 'before-rebuild' })
+    )
+    const before = await stateRow()
+    expect(before.is_stale).toBe(true)
+    expect(before.last_rebuilt_at).toBeNull()
+
+    const caseA = await seedCase('state-rebuild-a')
+    await seedVariant({ caseId: caseA, chr: '1', pos: 100, ref: 'A', alt: 'T', gtNum: '0/1' })
+
+    await withClient((client) => repo.rebuild({ schema, client: client as never }))
+
+    const after = await stateRow()
+    expect(after.is_stale).toBe(false)
+    expect(after.stale_reason).toBeNull()
+    expect(after.stale_at).toBeNull()
+    expect(after.last_rebuilt_at).not.toBeNull()
+  }, 60_000)
+
+  it('markStale(reason) sets is_stale=true, stale_reason=<reason>, stale_at=now()', async () => {
+    // Establish a non-stale baseline with a recorded rebuild time first.
+    await withClient((client) => repo.rebuild({ schema, client: client as never }))
+    const baseline = await stateRow()
+    expect(baseline.is_stale).toBe(false)
+    expect(baseline.last_rebuilt_at).not.toBeNull()
+
+    await withClient((client) =>
+      repo.markStale({ schema, client: client as never, reason: 'case_deleted' })
+    )
+
+    const after = await stateRow()
+    expect(after.is_stale).toBe(true)
+    expect(after.stale_reason).toBe('case_deleted')
+    expect(after.stale_at).not.toBeNull()
+    // markStale must preserve rebuild history (last_rebuilt_at untouched).
+    // node-pg deserialises TIMESTAMPTZ to Date, so compare by epoch value.
+    expect(new Date(after.last_rebuilt_at!).getTime()).toBe(
+      new Date(baseline.last_rebuilt_at!).getTime()
+    )
+  }, 60_000)
+
+  it('incrementalAdd does NOT touch is_stale', async () => {
+    // Force is_stale=true, then add a case incrementally; the flag must remain.
+    await withClient((client) =>
+      repo.markStale({ schema, client: client as never, reason: 'pending' })
+    )
+    const caseA = await seedCase('state-incr-a')
+    await seedVariant({ caseId: caseA, chr: '1', pos: 100, ref: 'A', alt: 'T', gtNum: '0/1' })
+
+    await withClient((client) =>
+      repo.incrementalAdd({ schema, client: client as never, caseId: caseA, genomeBuild: 'GRCh38' })
+    )
+
+    const after = await stateRow()
+    expect(after.is_stale).toBe(true)
+    expect(after.stale_reason).toBe('pending')
+    // Incremental maintenance is recorded but does not clear staleness.
+    expect(after.last_incremental_at).not.toBeNull()
+  }, 60_000)
+
+  it('getState maps TIMESTAMPTZ → epoch ms via EXTRACT(EPOCH)*1000 (Pass-9 #6)', async () => {
+    // Pin last_rebuilt_at to a known instant and assert the epoch-ms mapping.
+    const fixedIso = '2026-05-01T12:00:00.000Z'
+    const fixedMs = Date.parse(fixedIso)
+    await probe.query(
+      `UPDATE "${schema}".cohort_summary_state
+         SET is_stale = false, last_rebuilt_at = $1::timestamptz WHERE id = 1`,
+      [fixedIso]
+    )
+
+    const state = await withClient((client) => repo.getState({ schema, client: client as never }))
+    expect(state.is_stale).toBe(false)
+    expect(typeof state.last_rebuilt_at).toBe('number')
+    expect(state.last_rebuilt_at).toBe(fixedMs)
+  }, 60_000)
+
+  it('getState returns last_rebuilt_at=0 when never rebuilt (NULL coalesce)', async () => {
+    // Fresh schema with no variants seeds is_stale=false, last_rebuilt_at NULL.
+    const state = await withClient((client) => repo.getState({ schema, client: client as never }))
+    expect(state.is_stale).toBe(false)
+    expect(state.last_rebuilt_at).toBe(0)
+  }, 60_000)
+})
+
 describe.skipIf(RUN)('PostgresCohortSummaryRepository.rebuild — Sprint A C2 (skipped)', () => {
   it('runs only when VARLENS_RUN_POSTGRES_E2E=1 and `make pg-up` is up', () => {
     expect(RUN).toBe(false)

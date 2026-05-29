@@ -21,6 +21,7 @@
  * The remaining methods are stubbed for the subsequent Sprint A tasks.
  */
 import type { PoolClient } from 'pg'
+import { getCohortSummaryState, markCohortSummaryStale } from './cohort-summary-state-sql'
 
 interface ScopedClient {
   schema: string
@@ -252,6 +253,15 @@ export class PostgresCohortSummaryRepository {
     // inside the same transaction. Mirrors SQLite's RECOMPUTE_ALL_FREQUENCIES_SQL
     // (CohortSummaryService.rebuild). The NULL written above is overwritten here.
     await this.recomputeCohortFrequency({ schema, client })
+
+    // C1 lifecycle (Pass-7 MED #4): a completed rebuild clears the staleness
+    // flags and records the rebuild time. last_rebuilt_at maps back to epoch ms
+    // via getState's EXTRACT(EPOCH) (Pass-9 #6).
+    await client.query(
+      `UPDATE ${tbl('cohort_summary_state')}
+       SET is_stale = false, stale_reason = NULL, stale_at = NULL, last_rebuilt_at = now()
+       WHERE id = 1`
+    )
   }
 
   /**
@@ -389,6 +399,12 @@ export class PostgresCohortSummaryRepository {
       client,
       affectedBuilds: genomeBuild !== undefined ? [genomeBuild] : undefined
     })
+
+    // C1 lifecycle: incremental maintenance records its time but never touches
+    // is_stale — the summary stays valid (Pass-7 MED #4).
+    await client.query(
+      `UPDATE ${tbl('cohort_summary_state')} SET last_incremental_at = now() WHERE id = 1`
+    )
   }
 
   /**
@@ -433,6 +449,12 @@ export class PostgresCohortSummaryRepository {
       client,
       affectedBuilds: genomeBuild !== undefined ? [genomeBuild] : undefined
     })
+
+    // C1 lifecycle: incremental maintenance records its time but never touches
+    // is_stale — the summary stays valid (Pass-7 MED #4).
+    await client.query(
+      `UPDATE ${tbl('cohort_summary_state')} SET last_incremental_at = now() WHERE id = 1`
+    )
   }
   /**
    * Recompute the per-case filter metadata cache. Mirrors SQLite's
@@ -548,10 +570,21 @@ export class PostgresCohortSummaryRepository {
     const tbl = (t: string): string => `"${schema}"."${t}"`
     await client.query(`DELETE FROM ${tbl('cohort_column_meta')} WHERE case_id = $1`, [caseId])
   }
-  async getState(_args: ScopedClient): Promise<{ is_stale: boolean; last_rebuilt_at: number }> {
-    throw new Error('TODO PR3-9')
+  /**
+   * Return the singleton lifecycle state in the existing IPC shape
+   * { is_stale, last_rebuilt_at:number }. Delegates to getCohortSummaryState
+   * in ./cohort-summary-state-sql (Pass-7 MED #4 + Pass-8 #7 + Pass-9 #6).
+   */
+  async getState(scope: ScopedClient): Promise<{ is_stale: boolean; last_rebuilt_at: number }> {
+    return getCohortSummaryState(scope)
   }
-  async markStale(_args: ScopedClient & { reason: string }): Promise<void> {
-    throw new Error('TODO PR3-9')
+
+  /**
+   * Flag the summary stale with an explicit reason. Delegates to
+   * markCohortSummaryStale in ./cohort-summary-state-sql (Pass-7 MED #4);
+   * leaves last_rebuilt_at untouched so rebuild history is preserved.
+   */
+  async markStale(scope: ScopedClient & { reason: string }): Promise<void> {
+    return markCohortSummaryStale(scope)
   }
 }

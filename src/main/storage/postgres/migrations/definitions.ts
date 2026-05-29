@@ -48,6 +48,11 @@ const MIGRATION_FILES: readonly MigrationFile[] = [
     version: '0009',
     name: 'idx_variants_coords',
     fileName: '0009_idx_variants_coords.sql'
+  },
+  {
+    version: '0010',
+    name: 'cohort_summary',
+    fileName: '0010_cohort_summary.sql'
   }
 ]
 

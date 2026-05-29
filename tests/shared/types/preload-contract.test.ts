@@ -14,7 +14,7 @@ import { describe, it, expect, expectTypeOf, vi, beforeEach, afterEach } from 'v
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { ErrorCode } from '../../../src/shared/types/errors'
-import type { WindowAPI, Case } from '../../../src/shared/types/api'
+import type { WindowAPI, Case, BatchAnnotationKey } from '../../../src/shared/types/api'
 import type { IpcResult } from '../../../src/shared/types/errors'
 
 const ROOT = resolve(__dirname, '..', '..', '..')
@@ -537,5 +537,15 @@ describe('cases preload domain behavior', () => {
     expect(invoke).toHaveBeenCalledWith('cases:list')
     expect(invoke).toHaveBeenCalledWith('cases:deleteBatch', [8, 9])
     expect(invoke).toHaveBeenCalledWith('cases:availableBuilds')
+  })
+})
+
+describe('annotations.batchGet — A1 contract extension', () => {
+  it('BatchAnnotationKey carries optional variantId (Pass-8 #1)', () => {
+    const coordsOnly: BatchAnnotationKey = { chr: 'chr1', pos: 1, ref: 'A', alt: 'G' }
+    const withId: BatchAnnotationKey = { chr: 'chr1', pos: 1, ref: 'A', alt: 'G', variantId: 42 }
+    // Compile-time assertion: both shapes type-check. Runtime no-op.
+    expect(coordsOnly.chr).toBe('chr1')
+    expect(withId.variantId).toBe(42)
   })
 })

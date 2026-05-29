@@ -4,7 +4,8 @@ import { PostgresOverviewRepository } from '../../../src/main/storage/postgres/P
 
 describe('PostgresOverviewRepository', () => {
   it('returns a database overview matching the SQLite overview shape', async () => {
-    const query = vi.fn(async (sql: string) => {
+    const query = vi.fn(async (config: string | { text: string }) => {
+      const sql = typeof config === 'string' ? config : config.text
       if (sql.includes('COUNT(*)::int AS total_cases')) {
         return { rows: [{ total_cases: '2' }] }
       }

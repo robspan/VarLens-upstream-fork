@@ -1,6 +1,7 @@
 import type { Pool } from 'pg'
 
 import type { Case } from '../../../shared/types/database'
+import { runNamed } from './named-query'
 
 function quoteIdentifier(identifier: string): string {
   return `"${identifier.split('"').join('""')}"`
@@ -27,7 +28,12 @@ export class PostgresCaseListRepository {
       ORDER BY created_at DESC
     `
 
-    const result = await this.pool.query(query)
+    const result = await runNamed(this.pool, {
+      name: 'cases:list_all:v1',
+      text: query,
+      values: [],
+      schema: this.schema
+    })
 
     return result.rows.map((row) => ({
       id: Number(row.id),

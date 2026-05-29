@@ -31,6 +31,13 @@ export interface UseFilterLifecycleOptions {
   onCaseSwitch?: () => void
   /** Load filter options for a case */
   loadFilterOptions: (caseId: number) => Promise<void>
+  /**
+   * Optional visibility gate (Sprint A A3 / Pass-9 #3). When provided and
+   * `false`, the case-switch watcher resets filter state but does NOT fire
+   * `loadFilterOptions` — deferring the IPC round-trip until the toolbar is
+   * actually shown. Defaults to always-visible when omitted.
+   */
+  visibleRef?: Ref<boolean>
 }
 
 /**
@@ -60,7 +67,8 @@ export function useFilterLifecycle(options: UseFilterLifecycleOptions): UseFilte
     resetPresets,
     onFiltersUpdate,
     onCaseSwitch,
-    loadFilterOptions
+    loadFilterOptions,
+    visibleRef
   } = options
 
   /**
@@ -88,8 +96,11 @@ export function useFilterLifecycle(options: UseFilterLifecycleOptions): UseFilte
       // Emit reset filters immediately (bypass debounce for case switch)
       onFiltersUpdate({})
 
-      // Reload filter options for the new case
-      await loadFilterOptions(newCaseId)
+      // Reload filter options for the new case — gated on visibility so a
+      // hidden/deferred toolbar does not fire the IPC until it is shown.
+      if (visibleRef === undefined || visibleRef.value) {
+        await loadFilterOptions(newCaseId)
+      }
     }
   })
 

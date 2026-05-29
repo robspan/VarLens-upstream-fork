@@ -1727,4 +1727,13 @@ export function runMigrations(db: Database.Database): void {
     db.exec('CREATE INDEX IF NOT EXISTS idx_variants_case_type ON variants(case_id, variant_type)')
     db.exec('PRAGMA user_version = 28')
   }
+
+  // Migration v29: covering index on variants(chr, pos, ref, alt)
+  // Sprint A PR-1 A1-prereq (risk-table mitigation). Mirrors PG 0009.
+  // Required so the case-less coordinate JOIN in AnnotationRepository.getBatch
+  // can index-scan rather than table-scan.
+  if (currentVersion < 29) {
+    db.exec('CREATE INDEX IF NOT EXISTS idx_variants_coords ON variants(chr, pos, ref, alt)')
+    db.exec('PRAGMA user_version = 29')
+  }
 }

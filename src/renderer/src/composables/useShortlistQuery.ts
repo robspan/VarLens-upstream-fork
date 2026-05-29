@@ -29,7 +29,7 @@
  * Spec: .planning/specs/2026-04-11-unified-shortlist-ranked-view-design.md (§6)
  */
 
-import { ref, computed, watch, onBeforeUnmount, type Ref } from 'vue'
+import { ref, shallowRef, markRaw, computed, watch, onBeforeUnmount, type Ref } from 'vue'
 import { useFilterPresetStore } from './useFilterPresetStore'
 import { useApiService } from './useApiService'
 import { logService } from '../services/LogService'
@@ -63,7 +63,10 @@ export function useShortlistQuery(caseId: Ref<number>) {
 
   const selectedPresetId = ref<number | null>(null)
 
-  const result = ref<ShortlistResult | null>(null)
+  // `result` holds the shortlist envelope. Use `shallowRef` so Vue does not
+  // deep-walk the row buffer into reactive proxies, and `markRaw` each ingested
+  // row on assignment (below) to cut per-row proxy overhead on the hot path.
+  const result = shallowRef<ShortlistResult | null>(null)
   const loading = ref(false)
   const error = ref<Error | null>(null)
 
@@ -105,7 +108,10 @@ export function useShortlistQuery(caseId: Ref<number>) {
       // Drop stale results — a newer request has been issued since this
       // call started, so we let the newer call commit its own state.
       if (requestId !== activeRequestId) return
-      result.value = envelope
+      // `markRaw` each ingested row so Vue never wraps them in reactive
+      // proxies. Paired with the `shallowRef` above this keeps the shortlist
+      // row buffer proxy-free on the hot path.
+      result.value = { ...envelope, rows: envelope.rows.map((r) => markRaw(r)) }
       logService.info(
         `shortlist loaded: ${envelope.rows.length} rows in ${envelope.elapsedMs}ms`,
         'shortlist.fetch'

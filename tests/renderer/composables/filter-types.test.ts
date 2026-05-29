@@ -4,7 +4,7 @@ import { FILTER_DEFAULTS } from '../../../src/shared/filters/filterDefaults'
 import {
   buildFilterIpcParams as sharedBuildFilterIpcParams,
   buildVariantFilterFromState as sharedBuildVariantFilterFromState
-} from '../../../src/shared/filters/filterSerialization'
+} from '../../../src/renderer/src/utils/filters/filterSerialization'
 import {
   buildFilterFromState,
   type FilterState

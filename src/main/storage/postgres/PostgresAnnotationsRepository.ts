@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from 'pg'
 
+import type { BatchAnnotationKey } from '../../../shared/types/api'
 import type {
   AcmgClassification,
   CaseVariantAnnotation,
@@ -77,16 +78,6 @@ function toPerCaseAnnotation(row: Record<string, unknown>): CaseVariantAnnotatio
 
 function variantKey(key: VariantKey): string {
   return `${key.chr}:${key.pos}:${key.ref}:${key.alt}`
-}
-
-function valuesListForVariantKeys(keys: VariantKey[], params: unknown[]): string {
-  return keys
-    .map((key) => {
-      params.push(key.chr, key.pos, key.ref, key.alt)
-      const base = params.length - 3
-      return `($${base}, $${base + 1}, $${base + 2}, $${base + 3})`
-    })
-    .join(', ')
 }
 
 async function rollbackTransaction(client: Pick<PoolClient, 'query'>): Promise<void> {
@@ -394,7 +385,7 @@ export class PostgresAnnotationsRepository {
 
   async getBatch(
     caseId: number | null,
-    variantKeys: VariantKey[]
+    variantKeys: BatchAnnotationKey[]
   ): Promise<
     Record<string, { global: VariantAnnotation | null; perCase: CaseVariantAnnotation | null }>
   > {
@@ -408,64 +399,60 @@ export class PostgresAnnotationsRepository {
     if (variantKeys.length === 0) return annotations
 
     const schemaName = quoteIdentifier(this.schema)
-    const globalParams: unknown[] = []
-    const globalValues = valuesListForVariantKeys(variantKeys, globalParams)
+
+    // Four parallel arrays — one element per key. Binding the coordinate tuples
+    // as UNNEST(text[], int8[], text[], text[]) keeps the SQL text invariant
+    // regardless of batch size (Pass-9 #1), which qualifies the statement for
+    // runNamed in PR-2 B2. pos is BIGINT in the PG schema, so the array is int8[].
+    const chrs = variantKeys.map((key) => key.chr)
+    const positions = variantKeys.map((key) => key.pos)
+    const refs = variantKeys.map((key) => key.ref)
+    const alts = variantKeys.map((key) => key.alt)
+
+    // Global lookup — always runs (1 query, fixed text).
     const globalResult = await this.pool.query(
       `
-        WITH input(chr, pos, ref, alt) AS (
-          VALUES ${globalValues}
+        SELECT va.chr, va.pos, va.ref, va.alt, va.starred, va.global_comment,
+               va.acmg_classification, va.acmg_evidence, va.id,
+               va.created_at, va.updated_at
+        FROM ${schemaName}."variant_annotations" va
+        WHERE (va.chr, va.pos, va.ref, va.alt) = ANY (
+          SELECT chr, pos, ref, alt
+          FROM UNNEST($1::text[], $2::int8[], $3::text[], $4::text[]) AS k(chr, pos, ref, alt)
         )
-        SELECT va.*
-        FROM input i
-        INNER JOIN ${schemaName}."variant_annotations" va
-          ON va.chr = i.chr
-         AND va.pos = i.pos::bigint
-         AND va.ref = i.ref
-         AND va.alt = i.alt
       `,
-      globalParams
+      [chrs, positions, refs, alts]
     )
     for (const row of globalResult.rows) {
       const global = toGlobalAnnotation(row)
       annotations[variantKey(global)].global = global
     }
 
+    // Per-case lookup — only when caseId !== null (2nd query, fixed text).
     if (caseId === null) return annotations
 
-    const perCaseParams: unknown[] = [caseId]
-    const perCaseValues = valuesListForVariantKeys(variantKeys, perCaseParams)
+    // The cardinality($6) = 0 short-circuit lets a single SQL text serve both
+    // the with-variantId and without-variantId paths. The defensive join on
+    // both cva.case_id AND v.case_id rejects any spoofed variantId crossing a
+    // case boundary (Pass-8 #2).
+    const variantIds = variantKeys
+      .map((key) => key.variantId)
+      .filter((value): value is number => typeof value === 'number')
     const perCaseResult = await this.pool.query(
       `
-        WITH input(chr, pos, ref, alt) AS (
-          VALUES ${perCaseValues}
-        ),
-        matched_variants AS (
-          SELECT
-            i.chr AS key_chr,
-            i.pos::bigint AS key_pos,
-            i.ref AS key_ref,
-            i.alt AS key_alt,
-            v.id AS variant_id
-          FROM input i
-          INNER JOIN ${schemaName}."variants" v
-            ON v.case_id = $1
-           AND v.chr = i.chr
-           AND v.pos = i.pos::bigint
-           AND v.ref = i.ref
-           AND v.alt = i.alt
-        )
-        SELECT
-          mv.key_chr,
-          mv.key_pos,
-          mv.key_ref,
-          mv.key_alt,
-          cva.*
-        FROM matched_variants mv
-        INNER JOIN ${schemaName}."case_variant_annotations" cva
-          ON cva.case_id = $1
-         AND cva.variant_id = mv.variant_id
+        SELECT v.chr AS key_chr, v.pos AS key_pos, v.ref AS key_ref, v.alt AS key_alt,
+               cva.*
+        FROM ${schemaName}."case_variant_annotations" cva
+        JOIN ${schemaName}."variants" v ON v.id = cva.variant_id
+        WHERE cva.case_id = $1
+          AND v.case_id = $1
+          AND (v.chr, v.pos, v.ref, v.alt) = ANY (
+            SELECT chr, pos, ref, alt
+            FROM UNNEST($2::text[], $3::int8[], $4::text[], $5::text[]) AS k(chr, pos, ref, alt)
+          )
+          AND (cardinality($6::int[]) = 0 OR v.id = ANY ($6::int[]))
       `,
-      perCaseParams
+      [caseId, chrs, positions, refs, alts, variantIds]
     )
     for (const row of perCaseResult.rows) {
       const key = variantKey({

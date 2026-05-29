@@ -177,7 +177,7 @@ import type { ColumnFilter, ColumnFiltersParam } from '../../../shared/types/col
 import type { ActiveFilter } from '../../../shared/types/filters'
 import type { FilterDrawerState } from './filterDrawerTypes'
 import { ACMG_FILTER_OPTIONS, applyPresetStateToFilters, isPresetDiverged } from '../utils/filters'
-import { cloneForIpc } from '../utils/cloneForIpc'
+import { stripVueProxies } from '../utils/stripVueProxies'
 import { useResponsiveLayout } from '../composables/useResponsiveLayout'
 import { useApiService } from '../composables/useApiService'
 import {
@@ -457,7 +457,7 @@ async function handleSavePreset(data: { name: string; description: string | null
   if (!(await canUseOrWarn('workflow.filterPresets'))) return
   savingPreset.value = true
   try {
-    const plainFilters = cloneForIpc(filters.value)
+    const plainFilters = stripVueProxies(filters.value)
     await savePreset({
       name: data.name,
       description: data.description,

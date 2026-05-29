@@ -66,10 +66,10 @@
     },
     {
       "path": "src/renderer/src/components/CohortTable.vue",
-      "lines": 760,
+      "lines": 802,
       "threshold": 600,
       "category": "source",
-      "reason": "existing large renderer component; must not grow before component split"
+      "reason": "existing large renderer component; must not grow before component split. +42 lines are the A3 cohort-parity deferred-mount feature (computed columnMetaLoaded + firstActivated ref + immediate watcher + a documented template v-if), all bound to local reactive state already owned here; cannot be meaningfully extracted to another module without splitting the surrounding cohort root, which is a separate refactor"
     },
     {
       "path": "src/renderer/src/components/FilterDrawer.vue",

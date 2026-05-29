@@ -15,10 +15,7 @@ export { FILTER_DEFAULTS } from '../../../../shared/filters/filterDefaults'
 export { clearFilter, clearAllFilters, type FilterId } from './filterClearing'
 
 // IPC serialization
-export {
-  buildFilterIpcParams,
-  buildIpcParams
-} from '../../../../shared/filters/filterSerialization'
+export { buildFilterIpcParams, buildIpcParams } from './filterSerialization'
 
 // Active filters computation
 export { buildActiveFiltersList } from './activeFilters'

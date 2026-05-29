@@ -443,6 +443,59 @@ describe('annotations:upsertPerCase — variants:annotationChanged broadcast', (
     expect(result).toHaveProperty('code')
     expect(sentMessages).toHaveLength(0)
   })
+
+  // ── annotations:batchGet — variantId survives Zod validation ───────────────
+  // The handler validates variantKeys through VariantKeysSchema before they
+  // reach getBatch. Because z.object strips unknown keys by default, an optional
+  // `variantId` field must be declared in the schema or it is silently dropped,
+  // permanently disabling the per-case `AND v.id IN (...)` narrowing in the live
+  // IPC path. These tests exercise the full handler → Zod → getBatch path so a
+  // regression that removes variantId from the schema fails here.
+  it('threads variantId through Zod validation into the per-case join', async () => {
+    db.annotations.upsertPerCaseAnnotation(caseId, variantId, {
+      per_case_comment: 'Per-case note',
+      starred: 1
+    })
+
+    const result = (await invoke('annotations:batchGet', caseId, [
+      { chr: '1', pos: 200, ref: 'A', alt: 'T', variantId }
+    ])) as Record<
+      string,
+      {
+        global: unknown | null
+        perCase: { per_case_comment: string | null } | null
+      }
+    >
+
+    expect(result).not.toHaveProperty('code')
+    expect(result['1:200:A:T'].perCase).not.toBeNull()
+    expect(result['1:200:A:T'].perCase!.per_case_comment).toBe('Per-case note')
+  })
+
+  it('rejects a spoofed variantId that belongs to another case (defensive join)', async () => {
+    // Annotation lives on (caseId, variantId).
+    db.annotations.upsertPerCaseAnnotation(caseId, variantId, { starred: 1 })
+
+    // A second case with its own variant at the SAME coordinates.
+    const otherCaseId = db.database
+      .prepare(
+        'INSERT INTO cases (name, file_path, file_size, variant_count, created_at) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run('Other Case', '/tmp/other.json', 1, 0, Date.now()).lastInsertRowid as number
+    db.database
+      .prepare(
+        'INSERT INTO variants (case_id, chr, pos, ref, alt, gt_num) VALUES (?, ?, ?, ?, ?, ?)'
+      )
+      .run(otherCaseId, '1', 200, 'A', 'T', '0/1')
+
+    // Renderer spoofs caseId=otherCaseId but passes the FIRST case's variantId.
+    const result = (await invoke('annotations:batchGet', otherCaseId, [
+      { chr: '1', pos: 200, ref: 'A', alt: 'T', variantId }
+    ])) as Record<string, { perCase: unknown | null }>
+
+    // The dual case_id predicate rejects the cross-case variantId → no leak.
+    expect(result['1:200:A:T'].perCase).toBeNull()
+  })
 })
 
 describe('annotation PostgreSQL audit routing', () => {

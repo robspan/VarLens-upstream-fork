@@ -375,4 +375,74 @@ describe('CaseView — Shortlist tab integration', () => {
     expect(state.panelOpen.value).toBe(true)
     expect(state.selectedPanelVariant.value).toMatchObject({ id: 42 })
   })
+
+  // ── PR1-12 (A3): FilterToolbar deferred mount ───────────────────
+  //
+  // Pass-9 #3 — the FilterToolbar must NOT mount (and therefore must
+  // not fire its `loadFilterOptions` IPC round-trip) until variant type
+  // counts have arrived. The outer per-type region stays on `v-show`
+  // (preserving VariantTable selection/scroll), only the FilterToolbar
+  // is gated behind `v-if="firstActivated"`.
+
+  it('does NOT mount FilterToolbar before variant type counts load', () => {
+    // Pending typeCounts promise — counts have not resolved yet.
+    let resolveCounts!: (v: Record<string, number>) => void
+    typeCountsMock.mockReturnValue(
+      new Promise<Record<string, number>>((resolve) => {
+        resolveCounts = resolve
+      })
+    )
+    const { wrapper } = mountCaseView(1)
+    // Synchronously after mount, before counts resolve: no FilterToolbar.
+    expect(wrapper.findComponent({ name: 'FilterToolbarStub' }).exists()).toBe(false)
+    expect((wrapper.vm as unknown as { firstActivated: boolean }).firstActivated).toBe(false)
+    // Resolve so we don't leak an unhandled pending promise.
+    resolveCounts({ snv: 10, sv: 3 })
+  })
+
+  it('mounts FilterToolbar once type counts arrive on a per-type tab', async () => {
+    const { useSettingsStore } = await import('../../../src/renderer/src/stores/settingsStore')
+    const settings = useSettingsStore()
+    settings.defaultCaseTab = 'snv'
+
+    typeCountsMock.mockResolvedValue({ snv: 10, sv: 3 })
+    const { wrapper } = mountCaseView(1)
+    await flushPromises()
+    expect((wrapper.vm as unknown as { firstActivated: boolean }).firstActivated).toBe(true)
+    expect(wrapper.findComponent({ name: 'FilterToolbarStub' }).exists()).toBe(true)
+  })
+
+  it('keeps FilterToolbar mounted after toggling to Shortlist (firstActivated never resets)', async () => {
+    const { useSettingsStore } = await import('../../../src/renderer/src/stores/settingsStore')
+    const settings = useSettingsStore()
+    settings.defaultCaseTab = 'snv'
+
+    typeCountsMock.mockResolvedValue({ snv: 10, sv: 3 })
+    const { wrapper } = mountCaseView(1)
+    await flushPromises()
+    // Activated on the per-type tab.
+    expect(wrapper.findComponent({ name: 'FilterToolbarStub' }).exists()).toBe(true)
+
+    // Toggle to Shortlist — firstActivated must stay true, FilterToolbar mounted.
+    const tabs = wrapper.findComponent({ name: 'VTabs' })
+    await tabs.vm.$emit('update:modelValue', 'shortlist')
+    await flushPromises()
+    expect((wrapper.vm as unknown as { firstActivated: boolean }).firstActivated).toBe(true)
+    expect(wrapper.findComponent({ name: 'FilterToolbarStub' }).exists()).toBe(true)
+  })
+
+  it('does not activate FilterToolbar while the case lands on Shortlist (counts loaded, shortlist tab)', async () => {
+    // Default preference = shortlist → after counts load the active tab is
+    // 'shortlist'. firstActivated must remain false until a per-type tab is
+    // shown, so the FilterToolbar IPC is deferred while the user sits on
+    // Shortlist.
+    typeCountsMock.mockResolvedValue({ snv: 10, sv: 3 })
+    const { wrapper } = mountCaseView(1)
+    await flushPromises()
+    expect((wrapper.vm as unknown as { selectedVariantType: string }).selectedVariantType).toBe(
+      'shortlist'
+    )
+    expect((wrapper.vm as unknown as { firstActivated: boolean }).firstActivated).toBe(false)
+    expect(wrapper.findComponent({ name: 'FilterToolbarStub' }).exists()).toBe(false)
+  })
 })

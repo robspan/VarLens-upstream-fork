@@ -110,6 +110,34 @@ const variantTableType = computed<PerTypeTab>(() =>
 
 const typeCounts = ref<Record<string, number>>({})
 
+/**
+ * True once `loadTypeCounts` has resolved with at least one count key.
+ * `{}` is the not-yet-loaded sentinel; any populated record means the
+ * IPC round-trip finished. Drives the deferred FilterToolbar mount.
+ */
+const typeCountsLoaded = computed(() => Object.keys(typeCounts.value).length > 0)
+
+/**
+ * Pass-9 #3 (Sprint A A3): deferred FilterToolbar mount. Flips true the
+ * first time type counts have loaded AND we are not sitting on the
+ * Shortlist tab — i.e. a per-type table is actually showing. Once true
+ * it never resets, so the user can toggle freely between a per-type tab
+ * and Shortlist without remounting the FilterToolbar (which would re-run
+ * its `loadFilterOptions` IPC). The outer per-type region stays on
+ * `v-show` so VariantTable selection/scroll/expansion survive the toggle.
+ */
+const firstActivated = ref(false)
+
+watch(
+  [typeCountsLoaded, selectedVariantType],
+  ([loaded, type]) => {
+    if (loaded && type !== 'shortlist' && !firstActivated.value) {
+      firstActivated.value = true
+    }
+  },
+  { immediate: true }
+)
+
 async function loadTypeCounts(caseId: number | null): Promise<void> {
   if (caseId === null || caseId === 0 || api === undefined) {
     typeCounts.value = {}
@@ -366,7 +394,14 @@ defineExpose({
     -->
     <div v-show="selectedVariantType !== 'shortlist'" class="per-type-region">
       <div class="filter-bar-container">
+        <!--
+          Pass-9 #3: deferred mount. FilterToolbar is gated on
+          `firstActivated` so its `loadFilterOptions` IPC does not fire
+          until type counts arrive on a per-type tab. The outer region
+          stays on `v-show` (above) so VariantTable state is preserved.
+        -->
         <FilterToolbar
+          v-if="firstActivated"
           ref="filterToolbarRef"
           :case-id="selectedCaseId"
           :case-name="selectedCaseName"

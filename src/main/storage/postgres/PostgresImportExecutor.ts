@@ -7,6 +7,7 @@
  * batching, and SQL writes happen in the postgres-import-worker.
  */
 import { mainLogger } from '../../services/MainLogger'
+import { jobRunner } from '../../services/jobs/runner'
 import type {
   StorageImportExecutor,
   StorageImportSingleFileParams,
@@ -29,7 +30,6 @@ export interface PostgresImportExecutorOptions {
 
 export class PostgresImportExecutor implements StorageImportExecutor {
   private currentClient: PostgresImportWorkerClient | null = null
-  private inProgress = false
 
   constructor(private readonly options: PostgresImportExecutorOptions) {}
 
@@ -43,10 +43,22 @@ export class PostgresImportExecutor implements StorageImportExecutor {
     if ('filters' in (params as object)) {
       throw new Error('Filters are only supported on import:startMultiFile')
     }
-    if (this.inProgress) {
-      throw new Error('An import is already in progress')
-    }
-    this.inProgress = true
+    const handle = jobRunner.enqueue<StorageImportSingleFileParams, StorageImportSingleFileResult>(
+      'import_single',
+      params,
+      async (ctx, p) => {
+        // Cancellation posts { type: 'cancel' } to the worker via the client's
+        // cancel() method (PostgresImportWorkerClient.cancel), NOT terminate().
+        ctx.registerCancel(() => this.currentClient?.cancel())
+        return await this._performImport(p)
+      }
+    )
+    return handle.result
+  }
+
+  private async _performImport(
+    params: StorageImportSingleFileParams
+  ): Promise<StorageImportSingleFileResult> {
     const startedAt = Date.now()
     try {
       const start: PostgresImportWorkerStartMessage = {
@@ -68,7 +80,6 @@ export class PostgresImportExecutor implements StorageImportExecutor {
         elapsed: result.elapsed
       }
     } finally {
-      this.inProgress = false
       this.currentClient = null
     }
   }
@@ -76,8 +87,27 @@ export class PostgresImportExecutor implements StorageImportExecutor {
   async importMultiFile(
     params: StorageImportMultiFileParams
   ): Promise<StorageImportMultiFileResult> {
-    if (this.inProgress) throw new Error('An import is already in progress')
-    this.inProgress = true
+    // Shares the 'import_single' JobKind with importSingleFile (Pass-9 #9): the
+    // pre-PR-4 `inProgress` flag gated BOTH paths, so cross-path mutual
+    // exclusion between single- and multi-file imports is preserved by routing
+    // both through the same runner kind. The flag is now gone — single-flight
+    // is enforced entirely by the runner's per-kind concurrency limit.
+    const handle = jobRunner.enqueue<StorageImportMultiFileParams, StorageImportMultiFileResult>(
+      'import_single',
+      params,
+      async (ctx, p) => {
+        // Cancellation posts { type: 'cancel' } to the worker via the client's
+        // cancel() method (PostgresImportWorkerClient.cancel), NOT terminate().
+        ctx.registerCancel(() => this.currentClient?.cancel())
+        return await this._performMultiImport(p)
+      }
+    )
+    return handle.result
+  }
+
+  private async _performMultiImport(
+    params: StorageImportMultiFileParams
+  ): Promise<StorageImportMultiFileResult> {
     const startedAt = Date.now()
     try {
       const start: PostgresImportWorkerStartMessage = {
@@ -115,7 +145,6 @@ export class PostgresImportExecutor implements StorageImportExecutor {
         elapsed: result.elapsed
       }
     } finally {
-      this.inProgress = false
       this.currentClient = null
     }
   }

@@ -182,7 +182,7 @@ describe('SqliteImportExecutor', () => {
       createWorkerClient: () => worker as never
     })
 
-    void executor.importSingleFile({
+    const first = executor.importSingleFile({
       filePath: '/tmp/input.json',
       caseName: 'Imported',
       throttleMs: 100
@@ -195,6 +195,31 @@ describe('SqliteImportExecutor', () => {
         throttleMs: 100
       })
     ).rejects.toThrow('An import is already in progress')
+
+    // Single-file imports now share the process-wide JobRunner `import_single`
+    // slot, so the first (still-running) import must be settled before the test
+    // ends — otherwise its slot leaks into later tests in this file.
+    running = false
+    const callbacks = start.mock.calls[0][0]
+    callbacks.onComplete({
+      type: 'complete',
+      results: {
+        succeeded: 1,
+        failed: 0,
+        skipped: 0,
+        cancelled: false,
+        details: [
+          {
+            filePath: '/tmp/input.json',
+            fileName: 'input.json',
+            caseName: 'Imported',
+            status: 'success',
+            variantCount: 1
+          }
+        ]
+      }
+    })
+    await first
   })
 
   it('translates vcfOptions.selectedSample into vcfSelectedSamples and maps finalizing progress to inserting', async () => {
@@ -217,7 +242,7 @@ describe('SqliteImportExecutor', () => {
     })
 
     const onProgress = vi.fn()
-    void executor.importSingleFile({
+    const promise = executor.importSingleFile({
       filePath: '/tmp/input.vcf',
       caseName: 'Imported',
       vcfOptions: { selectedSample: 'NA12878', genomeBuild: 'GRCh38' },
@@ -254,6 +279,28 @@ describe('SqliteImportExecutor', () => {
       elapsed: 0,
       skipped: 1
     })
+
+    // Settle the import so the shared JobRunner `import_single` slot is freed
+    // for later tests in this file.
+    callbacks.onComplete({
+      type: 'complete',
+      results: {
+        succeeded: 1,
+        failed: 0,
+        skipped: 0,
+        cancelled: false,
+        details: [
+          {
+            filePath: '/tmp/input.vcf',
+            fileName: 'input.vcf',
+            caseName: 'Imported',
+            status: 'success',
+            variantCount: 10
+          }
+        ]
+      }
+    })
+    await promise
   })
 
   it('clears the worker reference if worker.start() throws synchronously so later imports are not blocked', async () => {
@@ -297,12 +344,38 @@ describe('SqliteImportExecutor', () => {
     expect(cancel).not.toHaveBeenCalled()
 
     // Second attempt reaches start() again rather than being blocked.
-    void executor.importSingleFile({
+    const second = executor.importSingleFile({
       filePath: '/tmp/input2.json',
       caseName: 'Second',
       throttleMs: 100
     })
+    // start() runs synchronously inside the JobRunner handler, so the second
+    // call's start invocation is observable before awaiting.
+    await new Promise((r) => queueMicrotask(r as () => void))
     expect(start).toHaveBeenCalledTimes(2)
+
+    // Settle the second import so the shared JobRunner `import_single` slot is
+    // freed for later tests in this file.
+    const callbacks = start.mock.calls[1][0]
+    callbacks.onComplete({
+      type: 'complete',
+      results: {
+        succeeded: 1,
+        failed: 0,
+        skipped: 0,
+        cancelled: false,
+        details: [
+          {
+            filePath: '/tmp/input2.json',
+            fileName: 'input2.json',
+            caseName: 'Second',
+            status: 'success',
+            variantCount: 1
+          }
+        ]
+      }
+    })
+    await second
   })
 })
 
@@ -508,7 +581,7 @@ describe('SqliteImportExecutor.importMultiFile', () => {
     })
 
     // Start a single-file import to occupy the worker slot
-    void executor.importSingleFile({
+    const first = executor.importSingleFile({
       filePath: '/tmp/a.vcf',
       caseName: 'First',
       throttleMs: 100
@@ -522,6 +595,30 @@ describe('SqliteImportExecutor.importMultiFile', () => {
         ]
       })
     ).rejects.toThrow('An import is already in progress')
+
+    // Settle the single-file import so the shared JobRunner `import_single` slot
+    // is freed for later tests in this file.
+    running = false
+    const callbacks = start.mock.calls[0][0]
+    callbacks.onComplete({
+      type: 'complete',
+      results: {
+        succeeded: 1,
+        failed: 0,
+        skipped: 0,
+        cancelled: false,
+        details: [
+          {
+            filePath: '/tmp/a.vcf',
+            fileName: 'a.vcf',
+            caseName: 'First',
+            status: 'success',
+            variantCount: 1
+          }
+        ]
+      }
+    })
+    await first
   })
 
   it('uses fallback elapsed (Date.now() - start) when delegate returns elapsed=0', async () => {

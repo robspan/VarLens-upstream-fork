@@ -136,10 +136,10 @@
     },
     {
       "path": "src/shared/types/api.ts",
-      "lines": 927,
+      "lines": 929,
       "threshold": 600,
       "category": "source",
-      "reason": "existing shared contract surface; must not grow before contract split. Sprint A additions to this central interface are structurally unavoidable: PR-1 A1 added the `BatchAnnotationKey` type (Pass-8 #1) used across the annotations IPC contract; PR-2 added a new top-level WindowAPI domain key (`debug: DebugAPI`) plus its import and the `DebugAPI` alias that resolves the Gate 10c preload-contract test back to the domain contract. PR-3 PR3-17 (C5/Gate 10b) widened the existing `CohortAPI.getVariants` return shape with an optional `warnings?: { staleSummary?: boolean }` field — a same-method contract extension that must live on the central interface and cannot be split out. Neither can be split out without breaking the contract or its tests."
+      "reason": "existing shared contract surface; must not grow before contract split. Sprint A additions to this central interface are structurally unavoidable: PR-1 A1 added the `BatchAnnotationKey` type (Pass-8 #1) used across the annotations IPC contract; PR-2 added a new top-level WindowAPI domain key (`debug: DebugAPI`) plus its import and the `DebugAPI` alias that resolves the Gate 10c preload-contract test back to the domain contract. PR-3 PR3-17 (C5/Gate 10b) widened the existing `CohortAPI.getVariants` return shape with an optional `warnings?: { staleSummary?: boolean }` field — a same-method contract extension that must live on the central interface and cannot be split out. PR-4 PR4-8 (D4/Gate 11) added a new top-level WindowAPI domain key (`jobs: JobsAPI`) plus its `import type { JobsApi }` import and the `JobsAPI` alias, following the existing DebugAPI alias pattern (+2 lines, 927->929) — the jobs-domain WindowAPI wiring cannot be split out without diverging from the contract. None can be split out without breaking the contract or its tests."
     },
     {
       "path": "src/shared/types/database.ts",

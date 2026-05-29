@@ -68,7 +68,14 @@ const EXEMPT_TABLES = new Set([
   'audit_log', // has its own user_name → user_id migration tracked by audit-shape.test.ts
   'users', // identity itself
   'case_import_files', // provenance
-  'api_cache' // ephemeral
+  'api_cache', // ephemeral
+  // Multi-tenancy scope registry (Sprint A PR-4 D5). `projects` maps a project
+  // id to its schema_name, which IS the tenant boundary (PG schema / SQLite
+  // path) threaded through every repository as the `schema` arg. It defines
+  // scopes rather than holding per-user rows; per-project / multi-tenant auth
+  // is explicitly Out of scope (Sprint F+) per .planning/specs/2026-05-28-
+  // multi-project-architecture.md. Like `users`, it never carries user_id.
+  'projects'
 ])
 
 // Snapshot of tables that today lack `user_id` and need it added during

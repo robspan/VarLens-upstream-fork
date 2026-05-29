@@ -17,6 +17,7 @@
  */
 import { ImportWorkerClient } from '../../workers/import-worker-client'
 import { mainLogger } from '../../services/MainLogger'
+import { jobRunner } from '../../services/jobs/runner'
 import { BedFilter } from '../../import/vcf/bed-filter'
 import type { DatabaseService } from '../../database/DatabaseService'
 import type { ImportFilters } from '../../import/vcf/import-filters'
@@ -107,11 +108,25 @@ export class SqliteImportExecutor implements StorageImportExecutor {
     }
   }
 
-  importSingleFile(params: StorageImportSingleFileParams): Promise<StorageImportSingleFileResult> {
-    if (this.workerClient !== null && this.workerClient.isRunning) {
-      return Promise.reject(new Error('An import is already in progress'))
-    }
+  async importSingleFile(
+    params: StorageImportSingleFileParams
+  ): Promise<StorageImportSingleFileResult> {
+    const handle = jobRunner.enqueue<StorageImportSingleFileParams, StorageImportSingleFileResult>(
+      'import_single',
+      params,
+      async (ctx, p) => {
+        // Cancellation posts { type: 'cancel' } to the worker via the client's
+        // cancel() method (ImportWorkerClient.cancel), NOT terminate().
+        ctx.registerCancel(() => this.workerClient?.cancel())
+        return await this._performImport(p)
+      }
+    )
+    return await handle.result
+  }
 
+  private _performImport(
+    params: StorageImportSingleFileParams
+  ): Promise<StorageImportSingleFileResult> {
     const db = this.getDatabaseService()
     const worker = this.createWorkerClient()
     this.workerClient = worker
@@ -216,10 +231,28 @@ export class SqliteImportExecutor implements StorageImportExecutor {
   async importMultiFile(
     params: StorageImportMultiFileParams
   ): Promise<StorageImportMultiFileResult> {
-    if (this.workerClient !== null && this.workerClient.isRunning) {
-      throw new Error('An import is already in progress')
-    }
+    // Shares the 'import_single' JobKind with importSingleFile, mirroring
+    // PostgresImportExecutor.importMultiFile: routing both paths through the same
+    // runner kind gives a true cross-path single-flight (a running single-file
+    // import blocks a multi-file import and vice versa). The multi-file path
+    // goes through startMultiFileImport, which never sets `this.workerClient`,
+    // so the cancel registration is best-effort (no-op unless a sibling
+    // single-file worker happens to be referenced); the runner's per-kind
+    // concurrency limit is what enforces exclusion here.
+    const handle = jobRunner.enqueue<StorageImportMultiFileParams, StorageImportMultiFileResult>(
+      'import_single',
+      params,
+      async (ctx, p) => {
+        ctx.registerCancel(() => this.workerClient?.cancel())
+        return await this._performMultiImport(p)
+      }
+    )
+    return await handle.result
+  }
 
+  private async _performMultiImport(
+    params: StorageImportMultiFileParams
+  ): Promise<StorageImportMultiFileResult> {
     const startedAt = Date.now()
     const filters = this.translateFilters(params.filters)
 

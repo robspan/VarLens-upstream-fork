@@ -14,6 +14,7 @@ import type { DbPool } from '../../database/DbPool'
 import type { RebuildWorkerResponse, RebuildPhase } from '../../workers/rebuild-summary-worker'
 import type { StorageSession } from '../../storage/session'
 import { AssociationEngine } from '../../statistics/AssociationEngine'
+import { jobRunner } from '../../services/jobs/runner'
 import { computePanelIntervals } from './panelIntervalHelper'
 import { convertBigInts } from '../../utils/convertBigInts'
 import type { ValidatedCohortSearchParams } from '../../../shared/types/ipc-schemas'
@@ -311,36 +312,50 @@ export async function runGeneBurdenCompare(
   getDbPool?: () => DbPool | null,
   onProgress?: (data: { completed: number; total: number }) => void
 ): Promise<unknown> {
-  // Prevent concurrent runs
-  if (activeEngine !== null) {
-    throw new Error('An association analysis is already running')
-  }
-
-  // Validate no overlap between groups
+  // Validate no overlap between groups (preserved from pre-PR-4; runs before the
+  // engine is constructed so a bad request never occupies the single-flight slot).
   const groupASet = new Set(config.groupA_ids)
   const overlap = config.groupB_ids.filter((id) => groupASet.has(id))
   if (overlap.length > 0) {
     throw new Error(`Groups overlap: case IDs ${overlap.join(', ')} appear in both groups`)
   }
 
-  const db = getDb()
-  const pool = getDbPool?.() ?? null
+  // Single-flight gating moves to the shared JobRunner (kind 'association').
+  // The 'association' single-flight message in JobRunner is identical to the
+  // pre-PR-4 guard text ('An association analysis is already running').
+  const handle = jobRunner.enqueue<AssociationConfig, unknown>(
+    'association',
+    config,
+    async (ctx) => {
+      let engineRef: AssociationEngine | null = null
+      // Cancellation chains to engine.abort() (Pass-9 #9 — NOT terminate()).
+      ctx.registerCancel(() => engineRef?.abort())
 
-  activeEngine = new AssociationEngine(
-    db.database,
-    (completed, total) => {
-      onProgress?.({ completed, total })
-    },
-    pool
+      const db = getDb()
+      const pool = getDbPool?.() ?? null
+
+      engineRef = new AssociationEngine(
+        db.database,
+        (completed, total) => {
+          onProgress?.({ completed, total })
+        },
+        pool
+      )
+      // Preserve the module-level reference so the existing
+      // cohort:cancelAssociation IPC path keeps calling activeEngine.abort().
+      activeEngine = engineRef
+
+      try {
+        const results = await engineRef.run(config)
+        // Deep clone for IPC serialization
+        return JSON.parse(JSON.stringify(results))
+      } finally {
+        activeEngine = null
+      }
+    }
   )
 
-  try {
-    const results = await activeEngine.run(config)
-    // Deep clone for IPC serialization
-    return JSON.parse(JSON.stringify(results))
-  } finally {
-    activeEngine = null
-  }
+  return handle.result
 }
 
 /**

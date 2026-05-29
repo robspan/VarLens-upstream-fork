@@ -1755,4 +1755,23 @@ export function runMigrations(db: Database.Database): void {
     )
     db.exec('PRAGMA user_version = 30')
   }
+
+  // Migration v31: projects registry
+  // Sprint A PR-4 D5. Mirrors PG 0011. Single-row default backfill so Sprint E
+  // doesn't have to handle projectless databases. No code references this table
+  // in Sprint A. (Plan named this v30; v30 was already taken by PR-3's
+  // cohort_variant_summary.end_pos migration, so this lands as v31.)
+  if (currentVersion < 31) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS projects (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        schema_name TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT OR IGNORE INTO projects (id, name, schema_name)
+        VALUES (1, 'default', 'main');
+    `)
+    db.exec('PRAGMA user_version = 31')
+  }
 }

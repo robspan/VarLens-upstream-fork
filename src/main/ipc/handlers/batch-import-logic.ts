@@ -7,10 +7,12 @@
  */
 import { basename } from 'path'
 import { mainLogger } from '../../services/MainLogger'
+import { jobRunner } from '../../services/jobs/runner'
 import { checkDuplicates } from '../../import/batch-utils'
 import { ZipExtractor, TempDirectoryManager } from '../../import'
 import { ImportWorkerClient } from '../../workers/import-worker-client'
 import { API_CONFIG } from '../../../shared/config'
+import type { FileImportRequest } from '../../../shared/types/import-worker'
 import type { DatabaseService } from '../../database/DatabaseService'
 import type { DuplicateChoice } from '../../../shared/types/api'
 
@@ -58,17 +60,8 @@ export function checkDuplicateFiles(
   }
 }
 
-/**
- * Start batch import with a pre-determined duplicate strategy.
- * Delegates to import worker thread.
- */
-export async function startBatchImport(
-  getDb: () => DatabaseService,
-  filePaths: string[],
-  duplicateStrategy: DuplicateChoice,
-  stripText: string | undefined,
-  callbacks: BatchImportCallbacks
-): Promise<{
+/** Result payload returned by {@link startBatchImport}. */
+export interface BatchImportResult {
   succeeded: number
   failed: number
   skipped: number
@@ -81,13 +74,31 @@ export async function startBatchImport(
     variantCount?: number
     error?: string
   }>
-}> {
+}
+
+/** Params tracked on the `import_batch` job (see {@link JobRunner}). */
+interface BatchImportParams {
+  files: FileImportRequest[]
+}
+
+/**
+ * Start batch import with a pre-determined duplicate strategy.
+ * Delegates to import worker thread.
+ *
+ * The actual worker run is enqueued on the shared {@link jobRunner} under the
+ * `import_batch` kind, which enforces single-flight (message "A batch import is
+ * already in progress") and routes cancellation to {@link ImportWorkerClient.cancel}.
+ * `callbacks.onCohortStale` and the per-file IPC emissions are unchanged.
+ */
+export async function startBatchImport(
+  getDb: () => DatabaseService,
+  filePaths: string[],
+  duplicateStrategy: DuplicateChoice,
+  stripText: string | undefined,
+  callbacks: BatchImportCallbacks
+): Promise<BatchImportResult> {
   try {
     const db = getDb()
-
-    if (workerClient?.isRunning === true) {
-      throw new Error('A batch import is already in progress')
-    }
 
     callbacks.onCohortStale?.({ is_stale: true })
 
@@ -101,89 +112,15 @@ export async function startBatchImport(
       duplicateStrategy
     }))
 
-    workerClient = new ImportWorkerClient()
-
-    return await new Promise((resolve, reject) => {
-      workerClient!.start({
-        files,
-        dbPath: db.getPath(),
-        encryptionKey: db.getEncryptionKey(),
-        throttleMs: API_CONFIG.PROGRESS_THROTTLE_MS,
-        onProgress: (msg) => {
-          callbacks.onProgress?.({
-            currentIndex: msg.fileIndex,
-            totalFiles: msg.totalFiles,
-            currentFileName: msg.fileName,
-            overallPercent: msg.overallPercent,
-            fileProgress: {
-              phase: msg.phase,
-              count: msg.variantCount,
-              elapsed: 0,
-              skipped: msg.skipped
-            }
-          })
-        },
-        onFileComplete: () => {
-          // File complete -- progress already sent via onProgress
-        },
-        onComplete: (msg) => {
-          workerClient = null
-
-          // Update internal variant frequency counts for successful imports
-          try {
-            for (const detail of msg.results.details) {
-              if (detail.status === 'success' && detail.caseName) {
-                const c = db.cases.getCaseByName(detail.caseName)
-                db.variants.updateFrequencies(c.id)
-              }
-            }
-          } catch (freqError) {
-            mainLogger.warn(`Failed to update variant frequencies: ${freqError}`, 'batch-import')
-          }
-
-          // Send final progress
-          callbacks.onProgress?.({
-            currentIndex: msg.results.details.length,
-            totalFiles: msg.results.details.length,
-            currentFileName: '',
-            overallPercent: 100
-          })
-
-          callbacks.onCohortStale?.({ is_stale: false })
-
-          // Build a plain-data result object. Use JSON round-trip to
-          // guarantee structured-clone compatibility.
-          const batchResult = JSON.parse(
-            JSON.stringify({
-              succeeded: msg.results.succeeded,
-              failed: msg.results.failed,
-              skipped: msg.results.skipped,
-              cancelled: msg.results.cancelled,
-              details: msg.results.details.map((d) => ({
-                filePath: d.filePath,
-                fileName: d.fileName,
-                status: d.status,
-                caseName: d.caseName,
-                variantCount: d.variantCount,
-                error: d.error
-              }))
-            })
-          )
-
-          // Notify renderer globally that import completed
-          callbacks.onComplete?.(batchResult)
-
-          resolve(batchResult)
-        },
-        onError: (msg) => {
-          if (msg.fileIndex === -1) {
-            // Fatal error
-            workerClient = null
-            reject(new Error(msg.error))
-          }
-        }
-      })
-    })
+    const handle = jobRunner.enqueue<BatchImportParams, BatchImportResult>(
+      'import_batch',
+      { files },
+      async (ctx, p) => {
+        ctx.registerCancel(() => workerClient?.cancel())
+        return await runBatchWorker(db, p.files, callbacks)
+      }
+    )
+    return await handle.result
   } catch (error) {
     workerClient = null
     mainLogger.error(`batch-import:start error: ${error}`, 'import')
@@ -200,6 +137,102 @@ export async function startBatchImport(
       }))
     }
   }
+}
+
+/**
+ * Run the import worker for a prepared batch and resolve to the aggregated
+ * result. The progress / completion / cohort-stale emissions are identical to
+ * the pre-JobRunner path; only the single-flight gate and cancellation hook
+ * moved up into {@link startBatchImport}.
+ */
+function runBatchWorker(
+  db: DatabaseService,
+  files: FileImportRequest[],
+  callbacks: BatchImportCallbacks
+): Promise<BatchImportResult> {
+  workerClient = new ImportWorkerClient()
+
+  return new Promise((resolve, reject) => {
+    workerClient!.start({
+      files,
+      dbPath: db.getPath(),
+      encryptionKey: db.getEncryptionKey(),
+      throttleMs: API_CONFIG.PROGRESS_THROTTLE_MS,
+      onProgress: (msg) => {
+        callbacks.onProgress?.({
+          currentIndex: msg.fileIndex,
+          totalFiles: msg.totalFiles,
+          currentFileName: msg.fileName,
+          overallPercent: msg.overallPercent,
+          fileProgress: {
+            phase: msg.phase,
+            count: msg.variantCount,
+            elapsed: 0,
+            skipped: msg.skipped
+          }
+        })
+      },
+      onFileComplete: () => {
+        // File complete -- progress already sent via onProgress
+      },
+      onComplete: (msg) => {
+        workerClient = null
+
+        // Update internal variant frequency counts for successful imports
+        try {
+          for (const detail of msg.results.details) {
+            if (detail.status === 'success' && detail.caseName) {
+              const c = db.cases.getCaseByName(detail.caseName)
+              db.variants.updateFrequencies(c.id)
+            }
+          }
+        } catch (freqError) {
+          mainLogger.warn(`Failed to update variant frequencies: ${freqError}`, 'batch-import')
+        }
+
+        // Send final progress
+        callbacks.onProgress?.({
+          currentIndex: msg.results.details.length,
+          totalFiles: msg.results.details.length,
+          currentFileName: '',
+          overallPercent: 100
+        })
+
+        callbacks.onCohortStale?.({ is_stale: false })
+
+        // Build a plain-data result object. Use JSON round-trip to
+        // guarantee structured-clone compatibility.
+        const batchResult = JSON.parse(
+          JSON.stringify({
+            succeeded: msg.results.succeeded,
+            failed: msg.results.failed,
+            skipped: msg.results.skipped,
+            cancelled: msg.results.cancelled,
+            details: msg.results.details.map((d) => ({
+              filePath: d.filePath,
+              fileName: d.fileName,
+              status: d.status,
+              caseName: d.caseName,
+              variantCount: d.variantCount,
+              error: d.error
+            }))
+          })
+        )
+
+        // Notify renderer globally that import completed
+        callbacks.onComplete?.(batchResult)
+
+        resolve(batchResult)
+      },
+      onError: (msg) => {
+        if (msg.fileIndex === -1) {
+          // Fatal error
+          workerClient = null
+          reject(new Error(msg.error))
+        }
+      }
+    })
+  })
 }
 
 /**

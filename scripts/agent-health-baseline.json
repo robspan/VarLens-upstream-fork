@@ -31,10 +31,10 @@
     },
     {
       "path": "src/main/workers/postgres-import-worker.ts",
-      "lines": 964,
+      "lines": 1066,
       "threshold": 600,
       "category": "source",
-      "reason": "existing large storage/import module; must not grow before responsibility split"
+      "reason": "existing large storage/import module; grew for Sprint A PR-3 C3 — the cohort-summary incrementalAdd/recompute/refreshColumnMetas update MUST run inside the worker's existing post-loop transaction (the worker is the real txn owner, Pass-2 #5), wrapped in a SAVEPOINT and wired into all three commit sites; the logic is already extracted into the named updateCohortSummaryAfterImport helper, so further splitting the worker is a separate responsibility-split task"
     },
     {
       "path": "src/renderer/src/components/CaseList.vue",

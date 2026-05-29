@@ -1,5 +1,5 @@
 import { Readable } from 'node:stream'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Phase 16+: VCF imports write via runBulkCopy (pg-copy-streams). The mock
 // here drains the rows iterator so the worker's per-batch contract still
@@ -16,6 +16,23 @@ vi.mock('../../../src/main/storage/postgres/postgres-bulk-write', () => ({
       }
     }
   )
+}))
+
+// C3: spy on the cohort summary repo so the import-wiring tests can assert the
+// post-loop SAVEPOINT block calls incrementalAdd / recomputeCohortFrequency /
+// refreshColumnMetas without standing up a real Postgres. Each test overrides
+// the mock implementations via the exported spies below.
+const incrementalAddSpy = vi.fn(async () => undefined)
+const recomputeCohortFrequencySpy = vi.fn(async () => undefined)
+const refreshColumnMetasSpy = vi.fn(async () => undefined)
+const markStaleSpy = vi.fn(async () => undefined)
+vi.mock('../../../src/main/storage/postgres/PostgresCohortSummaryRepository', () => ({
+  PostgresCohortSummaryRepository: class {
+    incrementalAdd = incrementalAddSpy
+    recomputeCohortFrequency = recomputeCohortFrequencySpy
+    refreshColumnMetas = refreshColumnMetasSpy
+    markStale = markStaleSpy
+  }
 }))
 
 import { runImport } from '../../../src/main/workers/postgres-import-worker'
@@ -439,5 +456,185 @@ describe('postgres-import-worker runImport', () => {
       passOnly: true,
       minQual: 30
     })
+  })
+})
+
+describe('postgres-import-worker — C3 import wiring', () => {
+  beforeEach(() => {
+    incrementalAddSpy.mockReset().mockResolvedValue(undefined)
+    recomputeCohortFrequencySpy.mockReset().mockResolvedValue(undefined)
+    refreshColumnMetasSpy.mockReset().mockResolvedValue(undefined)
+    markStaleSpy.mockReset().mockResolvedValue(undefined)
+  })
+
+  const fakeVariant = {
+    chr: '1',
+    pos: 100,
+    ref: 'A',
+    alt: 'T',
+    gene_symbol: 'BRCA1',
+    omim_mim_number: null,
+    consequence: 'HIGH',
+    gnomad_af: null,
+    cadd: null,
+    clinvar: null,
+    gt_num: '0/1',
+    func: 'missense_variant',
+    qual: 50,
+    hpo_sim_score: null,
+    transcript: 'ENST1',
+    cdna: 'c.1A>T',
+    aa_change: 'p.M1I',
+    hpo_match: null,
+    moi: null,
+    gq: 99,
+    dp: 30,
+    ad_ref: 15,
+    ad_alt: 15,
+    ab: 0.5,
+    filter: 'PASS',
+    info_json: null,
+    source_format: 'vcf',
+    variant_type: 'snv',
+    end_pos: null,
+    sv_type: null,
+    sv_length: null,
+    caller: null
+  }
+
+  const makeClient = (
+    queries: string[]
+  ): {
+    connect: ReturnType<typeof vi.fn>
+    query: ReturnType<typeof vi.fn>
+    end: ReturnType<typeof vi.fn>
+  } => ({
+    connect: vi.fn(async () => undefined),
+    query: vi.fn(async (sql: string | { text: string }, params?: unknown[]) => {
+      const text = typeof sql === 'string' ? sql : sql.text
+      queries.push(text)
+      if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] }
+      if (text.startsWith('SELECT id FROM') && text.includes('"cases"')) return { rows: [] }
+      if (text.startsWith('INSERT INTO') && text.includes('"cases"')) return { rows: [{ id: 13 }] }
+      if (text.includes('pg_get_serial_sequence') && text.includes('generate_series')) {
+        const n = (params?.[1] as number) ?? 0
+        return {
+          rows: Array.from({ length: n }, (_, i) => ({ ordinal: String(i), id: String(5000 + i) }))
+        }
+      }
+      return { rows: [] }
+    }),
+    end: vi.fn(async () => undefined)
+  })
+
+  const runVcfSingleFile = async (
+    client: ReturnType<typeof makeClient>,
+    messages: unknown[]
+  ): Promise<void> => {
+    await runImport(
+      {
+        createClient: () => client as never,
+        detectFormat: async () => ({ format: 'vcf', caseKey: '' }) as never,
+        createVcfMappedStream: async () => Readable.from([fakeVariant]) as never,
+        createMapperPipeline: async () => Readable.from([]),
+        statFile: () => ({ size: 0 })
+      },
+      {
+        type: 'start',
+        client: { connectionString: 'postgres://x' },
+        schema: 'public',
+        mode: 'single-file',
+        caseName: 'VCF case',
+        filePath: '/tmp/a.vcf.gz',
+        format: 'vcf',
+        vcfOptions: { selectedSample: 'NA12878', genomeBuild: 'GRCh38' }
+      },
+      (m) => messages.push(m)
+    )
+  }
+
+  it('updates cohort_variant_summary after a successful import', async () => {
+    const queries: string[] = []
+    const client = makeClient(queries)
+    const messages: unknown[] = []
+    await runVcfSingleFile(client, messages)
+
+    // The summary update is wrapped in a SAVEPOINT inside the post-loop txn.
+    expect(queries).toContain('SAVEPOINT cohort_summary')
+    expect(queries).toContain('RELEASE SAVEPOINT cohort_summary')
+    expect(queries).not.toContain('ROLLBACK TO SAVEPOINT cohort_summary')
+
+    expect(incrementalAddSpy).toHaveBeenCalledTimes(1)
+    expect(incrementalAddSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ schema: 'public', caseId: 13, genomeBuild: 'GRCh38' })
+    )
+    expect(recomputeCohortFrequencySpy).toHaveBeenCalledWith(
+      expect.objectContaining({ schema: 'public', affectedBuilds: ['GRCh38'] })
+    )
+    expect(refreshColumnMetasSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ schema: 'public', caseId: 13 })
+    )
+
+    // SAVEPOINT must come AFTER the variant_count bookkeeping and BEFORE the
+    // final COMMIT (Pass-3 HIGH #1 + Pass-4 HIGH #2).
+    const savepointIdx = queries.indexOf('SAVEPOINT cohort_summary')
+    const bookkeepingIdx = queries.findIndex(
+      (q) => q.startsWith('UPDATE') && q.includes('variant_count')
+    )
+    expect(bookkeepingIdx).toBeGreaterThanOrEqual(0)
+    expect(savepointIdx).toBeGreaterThan(bookkeepingIdx)
+    expect(queries.at(-1)).toBe('COMMIT')
+
+    expect(markStaleSpy).not.toHaveBeenCalled()
+  })
+
+  it('preserves variant_count + rebuildVariantFrequencyForCase on summary failure', async () => {
+    incrementalAddSpy.mockRejectedValueOnce(new Error('boom in incrementalAdd'))
+    const queries: string[] = []
+    const client = makeClient(queries)
+    const messages: unknown[] = []
+    await runVcfSingleFile(client, messages)
+
+    // Bookkeeping committed: the variant_count UPDATE and the variant_frequency
+    // rebuild ran before the savepoint and survive the savepoint rollback.
+    expect(queries.find((q) => q.startsWith('UPDATE') && q.includes('variant_count'))).toBeDefined()
+    expect(queries.find((q) => q.includes('"variant_frequency"'))).toBeDefined()
+
+    // Savepoint opened, then rolled back; the outer transaction still committed.
+    expect(queries).toContain('SAVEPOINT cohort_summary')
+    expect(queries).toContain('ROLLBACK TO SAVEPOINT cohort_summary')
+    expect(queries).not.toContain('RELEASE SAVEPOINT cohort_summary')
+    expect(queries).toContain('COMMIT')
+
+    // markStale runs in a separate tiny transaction (BEGIN/COMMIT after the
+    // outer COMMIT) so the bookkeeping commit survives regardless.
+    expect(markStaleSpy).toHaveBeenCalledTimes(1)
+    expect(markStaleSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'post_import_summary_failed_case_13' })
+    )
+
+    // Import still reports success — staleness lives in cohort_summary_state.
+    const complete = messages.find(
+      (m): m is { type: 'complete' } => (m as { type: string }).type === 'complete'
+    )
+    expect(complete).toBeDefined()
+  })
+
+  it('ImportResult shape carries NO warnings field (Pass-4 HIGH #3)', async () => {
+    incrementalAddSpy.mockRejectedValueOnce(new Error('boom'))
+    const queries: string[] = []
+    const client = makeClient(queries)
+    const messages: unknown[] = []
+    await runVcfSingleFile(client, messages)
+
+    const complete = messages.find(
+      (m): m is { type: 'complete'; result: Record<string, unknown> } =>
+        (m as { type: string }).type === 'complete'
+    )
+    expect(complete).toBeDefined()
+    expect(complete!.result).not.toHaveProperty('warnings')
+    expect(Object.keys(complete!.result).sort()).toEqual(
+      ['caseId', 'elapsed', 'errors', 'skipped', 'variantCount'].sort()
+    )
   })
 })

@@ -410,28 +410,29 @@ export class PostgresAnnotationsRepository {
     const schemaName = quoteIdentifier(this.schema)
 
     // Four parallel arrays — one element per key. Binding the coordinate tuples
-    // as UNNEST(text[], int8[], text[], text[]) keeps the SQL text invariant
-    // regardless of batch size (Pass-9 #1), which qualifies the statement for
-    // runNamed in PR-2 B2. pos is BIGINT in the PG schema, so the array is int8[].
+    // as UNNEST(text[], bigint[], text[], text[]) keeps the SQL text invariant
+    // regardless of batch size (Pass-9 #1), and both SELECTs are issued via
+    // runNamed (PR-2 B2) for prepared-statement reuse. pos is BIGINT in PG.
     const chrs = variantKeys.map((key) => key.chr)
     const positions = variantKeys.map((key) => key.pos)
     const refs = variantKeys.map((key) => key.ref)
     const alts = variantKeys.map((key) => key.alt)
 
-    // Global lookup — always runs (1 query, fixed text).
-    const globalResult = await this.pool.query(
-      `
-        SELECT va.chr, va.pos, va.ref, va.alt, va.starred, va.global_comment,
-               va.acmg_classification, va.acmg_evidence, va.id,
-               va.created_at, va.updated_at
-        FROM ${schemaName}."variant_annotations" va
-        WHERE (va.chr, va.pos, va.ref, va.alt) = ANY (
-          SELECT chr, pos, ref, alt
-          FROM UNNEST($1::text[], $2::int8[], $3::text[], $4::text[]) AS k(chr, pos, ref, alt)
-        )
+    // Global lookup — always runs (1 named query, fixed text).
+    const globalResult = await runNamed(this.pool as Pool, {
+      name: 'annotations:get_batch_global:v1',
+      text: `
+        SELECT va.*
+        FROM UNNEST($1::text[], $2::bigint[], $3::text[], $4::text[]) AS k(chr, pos, ref, alt)
+        INNER JOIN ${schemaName}."variant_annotations" va
+          ON va.chr = k.chr
+         AND va.pos = k.pos
+         AND va.ref = k.ref
+         AND va.alt = k.alt
       `,
-      [chrs, positions, refs, alts]
-    )
+      values: [chrs, positions, refs, alts],
+      schema: this.schema
+    })
     for (const row of globalResult.rows) {
       const global = toGlobalAnnotation(row)
       annotations[variantKey(global)].global = global
@@ -440,29 +441,37 @@ export class PostgresAnnotationsRepository {
     // Per-case lookup — only when caseId !== null (2nd query, fixed text).
     if (caseId === null) return annotations
 
-    // The cardinality($6) = 0 short-circuit lets a single SQL text serve both
-    // the with-variantId and without-variantId paths. The defensive join on
-    // both cva.case_id AND v.case_id rejects any spoofed variantId crossing a
-    // case boundary (Pass-8 #2).
+    // The defensive join on BOTH cva.case_id AND v.case_id rejects any spoofed
+    // variantId crossing a case boundary (Pass-8 #2). The cardinality($6) = 0
+    // short-circuit lets the single named SQL text serve both the with-variantId
+    // and coords-only paths.
     const variantIds = variantKeys
       .map((key) => key.variantId)
       .filter((value): value is number => typeof value === 'number')
-    const perCaseResult = await this.pool.query(
-      `
-        SELECT v.chr AS key_chr, v.pos AS key_pos, v.ref AS key_ref, v.alt AS key_alt,
-               cva.*
-        FROM ${schemaName}."case_variant_annotations" cva
-        JOIN ${schemaName}."variants" v ON v.id = cva.variant_id
-        WHERE cva.case_id = $1
-          AND v.case_id = $1
-          AND (v.chr, v.pos, v.ref, v.alt) = ANY (
-            SELECT chr, pos, ref, alt
-            FROM UNNEST($2::text[], $3::int8[], $4::text[], $5::text[]) AS k(chr, pos, ref, alt)
-          )
-          AND (cardinality($6::int[]) = 0 OR v.id = ANY ($6::int[]))
+    const perCaseResult = await runNamed(this.pool as Pool, {
+      name: 'annotations:get_batch_per_case:v1',
+      text: `
+        SELECT
+          k.chr AS key_chr,
+          k.pos AS key_pos,
+          k.ref AS key_ref,
+          k.alt AS key_alt,
+          cva.*
+        FROM UNNEST($2::text[], $3::bigint[], $4::text[], $5::text[]) AS k(chr, pos, ref, alt)
+        INNER JOIN ${schemaName}."variants" v
+          ON v.case_id = $1
+         AND v.chr = k.chr
+         AND v.pos = k.pos
+         AND v.ref = k.ref
+         AND v.alt = k.alt
+         AND (cardinality($6::int[]) = 0 OR v.id = ANY ($6::int[]))
+        INNER JOIN ${schemaName}."case_variant_annotations" cva
+          ON cva.case_id = $1
+         AND cva.variant_id = v.id
       `,
-      [caseId, chrs, positions, refs, alts, variantIds]
-    )
+      values: [caseId, chrs, positions, refs, alts, variantIds],
+      schema: this.schema
+    })
     for (const row of perCaseResult.rows) {
       const key = variantKey({
         chr: String(row.key_chr),

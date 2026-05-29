@@ -43,6 +43,11 @@ const MIGRATION_FILES: readonly MigrationFile[] = [
     version: '0008',
     name: 'create_users_and_settings',
     fileName: '0008_create_users_and_settings.sql'
+  },
+  {
+    version: '0009',
+    name: 'idx_variants_coords',
+    fileName: '0009_idx_variants_coords.sql'
   }
 ]
 

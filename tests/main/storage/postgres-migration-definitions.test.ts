@@ -4,7 +4,7 @@ import { POSTGRES_MIGRATIONS } from '../../../src/main/storage/postgres/migratio
 
 describe('Postgres migration definitions', () => {
   it('loads the PostgreSQL migrations with SQL and sha256 checksums', () => {
-    expect(POSTGRES_MIGRATIONS).toHaveLength(8)
+    expect(POSTGRES_MIGRATIONS).toHaveLength(9)
     expect(POSTGRES_MIGRATIONS.map((migration) => migration.version)).toEqual([
       '0001',
       '0002',
@@ -13,7 +13,8 @@ describe('Postgres migration definitions', () => {
       '0005',
       '0006',
       '0007',
-      '0008'
+      '0008',
+      '0009'
     ])
     expect(POSTGRES_MIGRATIONS.map((migration) => migration.name)).toEqual([
       'create_cases',
@@ -23,7 +24,8 @@ describe('Postgres migration definitions', () => {
       'create_workflow_tables',
       'create_audit_log',
       'perf_indexes',
-      'create_users_and_settings'
+      'create_users_and_settings',
+      'idx_variants_coords'
     ])
 
     for (const migration of POSTGRES_MIGRATIONS) {
@@ -42,5 +44,11 @@ describe('Postgres migration definitions', () => {
     const authMigration = POSTGRES_MIGRATIONS.find((migration) => migration.version === '0008')
     expect(authMigration?.name).toBe('create_users_and_settings')
     expect(authMigration?.sql).toContain('CREATE TABLE IF NOT EXISTS "__schema__"."users"')
+
+    const coordsMigration = POSTGRES_MIGRATIONS.find((migration) => migration.version === '0009')
+    expect(coordsMigration?.name).toBe('idx_variants_coords')
+    expect(coordsMigration?.sql).toContain(
+      'CREATE INDEX IF NOT EXISTS variants_coords\n  ON "__schema__"."variants" (chr, pos, ref, alt)'
+    )
   })
 })

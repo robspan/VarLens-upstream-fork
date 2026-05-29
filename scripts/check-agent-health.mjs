@@ -468,11 +468,60 @@ async function bootstrapPostgresBaseline() {
   console.log(`Wrote scripts/agent-health-postgres-baseline.json`)
 }
 
+async function checkRunNamedVersionSuffix(root) {
+  // B4 (Pass-2 verdict #2): every `runNamed(... { name: '...' })` logical name
+  // must carry a `:vN` suffix. The version suffix is the only protection
+  // against node-postgres's client-side "Prepared statements must be unique"
+  // error — a same-name/different-text collision on one connection cannot be
+  // recovered by the wrapper's 26000/42704 retry. `runNamedDynamic` keys via a
+  // text hash on `baseName`, so its calls are exempt from the suffix rule.
+  const { readdirSync, readFileSync, existsSync } = await import('node:fs')
+  const { join } = await import('node:path')
+  const repoDir = join(root, 'src/main/storage/postgres')
+  if (!existsSync(repoDir)) {
+    return []
+  }
+
+  const violations = []
+  // A `name:` property only matters when it sits inside a runNamed / runNamedDynamic
+  // call object. We track call context so unrelated `name:` literals (e.g. a
+  // `table(name: 'tags' | 'variant_tags')` type annotation) never trip the guard.
+  for (const file of readdirSync(repoDir)) {
+    if (!file.endsWith('.ts')) continue
+    const lines = readFileSync(join(repoDir, file), 'utf-8').split('\n')
+    let inRunNamedCall = false
+    lines.forEach((line, idx) => {
+      if (/\brunNamed(Dynamic)?\s*[<(]/.test(line)) {
+        inRunNamedCall = true
+      }
+      if (!inRunNamedCall) return
+      // Close the call context once the call object's closing `})` is reached.
+      if (/\}\s*\)/.test(line)) {
+        inRunNamedCall = false
+        // Still inspect this line: the `name:` may share the line, though in
+        // practice it is on its own line above the closer.
+      }
+      const m = line.match(/(?<![A-Za-z0-9_])name:\s*['"`]([^'"`@]+)['"`]/)
+      if (!m) return
+      const logicalName = m[1]
+      if (!/:v\d+$/.test(logicalName)) {
+        violations.push({
+          file,
+          line: idx + 1,
+          name: logicalName,
+          snippet: line.trim().slice(0, 120)
+        })
+      }
+    })
+  }
+  return violations.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line)
+}
+
 async function checkPostgresBaseline() {
   const { readFileSync, existsSync } = await import('node:fs')
   const baselinePath = 'scripts/agent-health-postgres-baseline.json'
   if (!existsSync(baselinePath)) {
-    console.warn(`(skip) ${baselinePath} not found — run --bootstrap-postgres-baseline to seed`)
+    console.log(`(skip) ${baselinePath} not found — run --bootstrap-postgres-baseline to seed`)
     return
   }
   const baseline = JSON.parse(readFileSync(baselinePath, 'utf-8'))
@@ -510,5 +559,17 @@ const reportExit = printReport(options, comparison)
 // Postgres pool.query(<literal>) monotonic-decrease gate (Sprint A PR-2 B4).
 // checkPostgresBaseline() exits the process directly when violations increase.
 await checkPostgresBaseline()
+
+// runNamed :vN version-suffix grep guard (Sprint A PR-2 B4, Pass-2 verdict #2).
+const versionSuffixViolations = await checkRunNamedVersionSuffix(options.root)
+if (versionSuffixViolations.length > 0) {
+  console.error(
+    `::error::runNamed logical names must carry a ":vN" version suffix (${versionSuffixViolations.length} violation(s))`
+  )
+  for (const v of versionSuffixViolations) {
+    console.error(`  + ${v.file}:${v.line}  name "${v.name}" lacks a :vN suffix  ${v.snippet}`)
+  }
+  process.exit(1)
+}
 
 process.exit(reportExit)

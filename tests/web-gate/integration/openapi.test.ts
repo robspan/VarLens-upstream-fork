@@ -60,14 +60,14 @@ const TAG_PATHS = [
 ] as const
 
 describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
-  test('requires an authenticated session and exposes dispatcher and auth method paths', async () => {
+  test('serves the public contract and exposes dispatcher and auth method paths', async () => {
     const driver = await startWebDriver()
     try {
       const unauthenticated = await driver.app.inject({
         method: 'GET',
         url: '/api/openapi.json'
       })
-      expect(unauthenticated.statusCode, unauthenticated.body).toBe(401)
+      expect(unauthenticated.statusCode, unauthenticated.body).toBe(200)
 
       const authenticated = await driver.app.inject({
         method: 'GET',
@@ -76,7 +76,9 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
       })
       expect(authenticated.statusCode, authenticated.body).toBe(200)
 
-      const spec = authenticated.json() as {
+      expect(authenticated.statusCode, authenticated.body).toBe(200)
+
+      const spec = unauthenticated.json() as {
         openapi?: string
         info?: { title?: string }
         paths?: Record<string, unknown>

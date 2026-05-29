@@ -53,6 +53,7 @@ export type StorageReadTask =
     }
   | { type: 'cohort:query'; params: [params: CohortSearchParams] }
   | { type: 'cohort:summary'; params: [] }
+  | { type: 'cohort:summaryStatus'; params: [] }
   | { type: 'cohort:columnMeta'; params: [] }
   | { type: 'cohort:carriers'; params: [chr: string, pos: number, ref: string, alt: string] }
   | { type: 'cohort:geneBurden'; params: [] }

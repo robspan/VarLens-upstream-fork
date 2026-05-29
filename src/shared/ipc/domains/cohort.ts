@@ -9,9 +9,14 @@ import type { ColumnFilterMeta } from '../../types/column-filters'
 import type { IpcResult } from '../../types/errors'
 
 export interface CohortDomainContract {
-  getVariants: (
-    params: CohortSearchParams
-  ) => Promise<IpcResult<{ data: CohortVariant[]; total_count: number }>>
+  getVariants: (params: CohortSearchParams) => Promise<
+    IpcResult<{
+      data: CohortVariant[]
+      total_count: number
+      /** Optional same-load read warnings (Sprint A PR-3 C5). */
+      warnings?: { staleSummary?: boolean }
+    }>
+  >
   getColumnMeta: () => Promise<IpcResult<ColumnFilterMeta[]>>
   getSummary: () => Promise<IpcResult<CohortSummary>>
   getCarriers: (

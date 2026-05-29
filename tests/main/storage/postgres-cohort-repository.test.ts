@@ -16,6 +16,21 @@ function normalizeSql(sql: string): string {
   return sql.replace(/\s+/g, ' ').trim()
 }
 
+// queryVariants / getColumnMeta route through runNamed / runNamedDynamic, which
+// call pool.query with a { name, text, values } spec object rather than
+// positional (text, values). These helpers read the SQL/params from either
+// shape so the assertions stay shape-agnostic.
+function callText(call: unknown[]): string {
+  const arg = call[0]
+  return typeof arg === 'string' ? arg : ((arg as { text?: string }).text ?? '')
+}
+
+function callParams(call: unknown[]): unknown[] {
+  const arg = call[0]
+  if (typeof arg === 'string') return (call[1] as unknown[]) ?? []
+  return ((arg as { values?: unknown[] }).values as unknown[]) ?? []
+}
+
 describe('PostgresCohortRepository', () => {
   it('queries total cases, grouped variant count, then rows and maps numeric strings', async () => {
     const query = vi
@@ -84,7 +99,9 @@ describe('PostgresCohortRepository', () => {
     })
   })
 
-  it('builds grouped cohort SQL with parameterized base filters', async () => {
+  it('builds summary-page cohort SQL with parameterized base filters (C4)', async () => {
+    // C4: materialisable predicates read from cohort_variant_summary (alias
+    // `cvs`) instead of the live variants GROUP BY.
     const query = vi
       .fn()
       .mockResolvedValueOnce({ rows: [{ total_cases: '10' }] })
@@ -105,25 +122,26 @@ describe('PostgresCohortRepository', () => {
       offset: 0
     })
 
-    const countSql = normalizeSql(query.mock.calls[1][0] as string)
-    const countParams = query.mock.calls[1][1] as unknown[]
-    const dataSql = normalizeSql(query.mock.calls[2][0] as string)
-    const dataParams = query.mock.calls[2][1] as unknown[]
+    const countSql = normalizeSql(callText(query.mock.calls[1]))
+    const countParams = callParams(query.mock.calls[1])
+    const dataSql = normalizeSql(callText(query.mock.calls[2]))
+    const dataParams = callParams(query.mock.calls[2])
 
-    expect(dataSql).toContain('FROM "tenant""schema"."variants" v')
-    expect(dataSql).toContain('GROUP BY v.chr, v.pos, v.ref, v.alt')
-    expect(dataSql).toContain('COUNT(DISTINCT v.case_id)::bigint AS carrier_count')
-    expect(dataSql).toContain('HAVING COUNT(DISTINCT v.case_id) >= $')
-    expect(countSql).toContain('SELECT COUNT(*)::bigint AS total_count FROM (')
-    expect(countSql).toContain('GROUP BY v.chr, v.pos, v.ref, v.alt')
-    expect(dataSql).toContain('(v.chr = $')
-    expect(dataSql).toContain('v.pos <= $')
-    expect(dataSql).toContain('COALESCE(v.end_pos, v.pos) >= $')
-    expect(dataSql).toContain('v.gene_symbol = $')
-    expect(dataSql).toContain('v.consequence IN ($')
-    expect(dataSql).toContain('v.clinvar IN ($')
-    expect(dataSql).toContain('(v.gnomad_af IS NULL OR v.gnomad_af <= $')
-    expect(dataSql).toContain('(v.cadd IS NULL OR v.cadd >= $')
+    expect(dataSql).toContain('FROM "tenant""schema"."cohort_variant_summary" cvs')
+    expect(dataSql).not.toContain('GROUP BY')
+    expect(dataSql).not.toContain('HAVING')
+    expect(dataSql).toContain('cvs.carrier_count')
+    expect(countSql).toContain('SELECT COUNT(*)::bigint AS total_count')
+    expect(countSql).toContain('FROM "tenant""schema"."cohort_variant_summary" cvs')
+    expect(dataSql).toContain('(cvs.chr = $')
+    expect(dataSql).toContain('cvs.pos <= $')
+    expect(dataSql).toContain('COALESCE(cvs.end_pos, cvs.pos) >= $')
+    expect(dataSql).toContain('cvs.gene_symbol = $')
+    expect(dataSql).toContain('cvs.consequence IN ($')
+    expect(dataSql).toContain('cvs.clinvar IN ($')
+    expect(dataSql).toContain('(cvs.gnomad_af IS NULL OR cvs.gnomad_af <= $')
+    expect(dataSql).toContain('(cvs.cadd IS NULL OR cvs.cadd >= $')
+    expect(dataSql).toContain('cvs.carrier_count >= $')
     expect(dataSql).toContain('ILIKE $')
     expect(dataSql).not.toContain('DROP TABLE')
     expect(dataSql).not.toContain('OR TRUE')
@@ -164,13 +182,13 @@ describe('PostgresCohortRepository', () => {
       offset: 0
     })
 
-    const dataSql = normalizeSql(query.mock.calls[3][0] as string)
-    const dataParams = query.mock.calls[3][1] as unknown[]
+    const dataSql = normalizeSql(callText(query.mock.calls[3]))
+    const dataParams = callParams(query.mock.calls[3])
 
     expect(resolveIntervals).toHaveBeenCalledWith([3, 4], 'GRCh37', 7500, false)
-    expect(dataSql).toContain('(v.chr = $')
-    expect(dataSql).toContain('v.pos <= $')
-    expect(dataSql).toContain('COALESCE(v.end_pos, v.pos) >= $')
+    expect(dataSql).toContain('(cvs.chr = $')
+    expect(dataSql).toContain('cvs.pos <= $')
+    expect(dataSql).toContain('COALESCE(cvs.end_pos, cvs.pos) >= $')
     expect(dataSql).not.toContain('panel_genes')
     expect(dataSql).not.toContain('case_active_panels')
     expect(dataParams).toEqual(['1', 200, 100, 'GRCh37', 10, 0])
@@ -207,15 +225,15 @@ describe('PostgresCohortRepository', () => {
       offset: 0
     })
 
-    const panelSql = normalizeSql(query.mock.calls[1][0] as string)
-    const panelParams = query.mock.calls[1][1] as unknown[]
-    const dataSql = normalizeSql(query.mock.calls[4][0] as string)
-    const dataParams = query.mock.calls[4][1] as unknown[]
+    const panelSql = normalizeSql(callText(query.mock.calls[1]))
+    const panelParams = callParams(query.mock.calls[1])
+    const dataSql = normalizeSql(callText(query.mock.calls[4]))
+    const dataParams = callParams(query.mock.calls[4])
 
     expect(panelSql).toContain('FROM "public"."panel_genes"')
     expect(panelParams).toEqual([[3]])
     expect(geneReferenceMocks.getCoordinatesForGenes).toHaveBeenCalledWith(['HGNC:1100'], 'GRCh38')
-    expect(dataSql).toContain('(v.chr = $')
+    expect(dataSql).toContain('(cvs.chr = $')
     expect(dataSql).not.toContain('panel_genes')
     expect(dataSql).not.toContain('case_active_panels')
     expect(dataParams).toEqual(['chr1', 7000, 1, 10, 0])
@@ -237,13 +255,13 @@ describe('PostgresCohortRepository', () => {
       offset: 0
     })
 
-    const dataSql = normalizeSql(query.mock.calls[2][0] as string)
-    const dataParams = query.mock.calls[2][1] as unknown[]
+    const dataSql = normalizeSql(callText(query.mock.calls[2]))
+    const dataParams = callParams(query.mock.calls[2])
 
     expect(resolveIntervals).not.toHaveBeenCalled()
-    expect(dataSql).toContain('(v.chr = $')
-    expect(dataSql).toContain('v.pos <= $')
-    expect(dataSql).toContain('COALESCE(v.end_pos, v.pos) >= $')
+    expect(dataSql).toContain('(cvs.chr = $')
+    expect(dataSql).toContain('cvs.pos <= $')
+    expect(dataSql).toContain('COALESCE(cvs.end_pos, cvs.pos) >= $')
     expect(dataSql).not.toContain('panel_genes')
     expect(dataSql).not.toContain('case_active_panels')
     expect(dataParams).toEqual(['1', 200, 100, 10, 0])
@@ -268,24 +286,27 @@ describe('PostgresCohortRepository', () => {
       }
     })
 
-    const dataSql = normalizeSql(query.mock.calls[2][0] as string)
-    const dataParams = query.mock.calls[2][1] as unknown[]
+    const dataSql = normalizeSql(callText(query.mock.calls[2]))
+    const dataParams = callParams(query.mock.calls[2])
 
-    expect(dataSql).toContain('v.gene_symbol ILIKE $')
-    expect(dataSql).toContain('COUNT(DISTINCT v.case_id) >= $')
-    expect(dataSql).toContain('COUNT(DISTINCT v.case_id)::double precision / NULLIF(10, 0) <= $')
-    expect(dataSql).toContain('(v.cadd IS NULL OR v.cadd > $')
-    expect(dataSql).toContain('v.gnomad_af <= $')
-    expect(dataSql).toContain('v.clinvar IN ($')
+    expect(dataSql).toContain('cvs.gene_symbol ILIKE $')
+    // Aggregate columns are stored columns on the summary table — plain
+    // comparisons, no COUNT(DISTINCT)/HAVING.
+    expect(dataSql).toContain('cvs.carrier_count >= $')
+    expect(dataSql).toContain('cvs.cohort_frequency <= $')
+    expect(dataSql).toContain('cvs.cadd > $')
+    expect(dataSql).toContain('cvs.gnomad_af <= $')
+    expect(dataSql).toContain('cvs.clinvar IN ($')
+    expect(dataSql).not.toContain('COUNT(DISTINCT')
     expect(dataSql).not.toContain('OR TRUE')
     expect(dataParams).toEqual([
       `%BRCA%' OR TRUE --%`,
-      'Pathogenic',
-      'Likely pathogenic',
-      0.01,
-      20,
       2,
       0.5,
+      20,
+      0.01,
+      'Pathogenic',
+      'Likely pathogenic',
       50,
       0
     ])
@@ -391,11 +412,15 @@ describe('PostgresCohortRepository', () => {
 
     expect(normalizeSql(query.mock.calls[0][0] as string)).toContain('WHERE genome_build = $1')
     expect(query.mock.calls[0][1]).toEqual(['GRCh38'])
-    const dataSql = normalizeSql(query.mock.calls[2][0] as string)
-    expect(dataSql).toContain('COUNT(DISTINCT v.case_id)::double precision / NULLIF(6, 0) <= $')
+    const dataSql = normalizeSql(callText(query.mock.calls[2]))
+    // cohort_frequency is a stored column on the summary table.
+    expect(dataSql).toContain('cvs.genome_build = $')
+    expect(dataSql).toContain('cvs.cohort_frequency <= $')
   })
 
-  it('checks global and per-case annotations for cohort annotation filters', async () => {
+  it('reads C5a-maintained annotation flags from the summary table', async () => {
+    // C4: annotation filters read the stored cvs.has_star / has_comment /
+    // acmg_best columns (kept current by C5a) — no live annotation joins.
     const query = vi
       .fn()
       .mockResolvedValueOnce({ rows: [{ total_cases: '10' }] })
@@ -409,15 +434,12 @@ describe('PostgresCohortRepository', () => {
       acmg_classifications: ['Pathogenic']
     })
 
-    const dataSql = normalizeSql(query.mock.calls[2][0] as string)
-    expect(dataSql).toContain('case_variant_annotations')
-    expect(dataSql).toContain('variant_annotations')
-    expect(dataSql).toContain('cva.starred')
-    expect(dataSql).toContain('va.starred')
-    expect(dataSql).toContain('cva.per_case_comment')
-    expect(dataSql).toContain('va.global_comment')
-    expect(dataSql).toContain('cva.acmg_classification IN')
-    expect(dataSql).toContain('va.acmg_classification IN')
+    const dataSql = normalizeSql(callText(query.mock.calls[2]))
+    expect(dataSql).toContain('cvs.has_star = true')
+    expect(dataSql).toContain('cvs.has_comment = true')
+    expect(dataSql).toContain('cvs.acmg_best IN ($')
+    expect(dataSql).not.toContain('case_variant_annotations')
+    expect(dataSql).not.toContain('variant_annotations')
   })
 
   it("treats variant_type 'snv' as snv plus indel", async () => {
@@ -430,9 +452,9 @@ describe('PostgresCohortRepository', () => {
 
     await repository.queryVariants({ variant_type: 'snv' })
 
-    const dataSql = normalizeSql(query.mock.calls[2][0] as string)
-    expect(dataSql).toContain("v.variant_type IN ('snv', 'indel')")
-    expect(query.mock.calls[2][1]).toEqual([50, 0])
+    const dataSql = normalizeSql(callText(query.mock.calls[2]))
+    expect(dataSql).toContain("cvs.variant_type IN ('snv', 'indel')")
+    expect(callParams(query.mock.calls[2])).toEqual([50, 0])
   })
 
   it('maps cohort summary statistics and ACMG counts from numeric strings', async () => {
@@ -550,7 +572,6 @@ describe('PostgresCohortRepository', () => {
     }
     const query = vi
       .fn()
-      .mockResolvedValueOnce({ rows: [{ total_cases: '10' }] })
       .mockResolvedValueOnce({ rows: [aggregateRow] })
       .mockResolvedValueOnce({
         rows: [
@@ -586,14 +607,17 @@ describe('PostgresCohortRepository', () => {
     expect(byKey.get('pos')?.max).toBe(10)
     expect(byKey.get('gene_symbol')?.dataType).toBe('text')
     expect(byKey.get('chr')?.distinctValues).toEqual(['1'])
-    expect(query).toHaveBeenCalledTimes(3)
-    expect(normalizeSql(query.mock.calls[1][0] as string)).toContain('COUNT(DISTINCT chr)')
-    expect(normalizeSql(query.mock.calls[1][0] as string)).not.toContain('ARRAY_AGG')
-    expect(normalizeSql(query.mock.calls[2][0] as string)).toContain(
-      'WITH cohort_columns AS MATERIALIZED'
-    )
-    expect(normalizeSql(query.mock.calls[2][0] as string)).toContain('UNION ALL')
-    expect(normalizeSql(query.mock.calls[2][0] as string)).not.toContain('FROM (SELECT')
+    // C4 Step 2: read directly from the deduped summary table — no total_cases
+    // query, no live GROUP BY subquery.
+    expect(query).toHaveBeenCalledTimes(2)
+    const aggSql = normalizeSql(callText(query.mock.calls[0]))
+    expect(aggSql).toContain('COUNT(DISTINCT chr)')
+    expect(aggSql).toContain('FROM "public"."cohort_variant_summary"')
+    expect(aggSql).not.toContain('ARRAY_AGG')
+    const valuesSql = normalizeSql(callText(query.mock.calls[1]))
+    expect(valuesSql).toContain('UNION ALL')
+    expect(valuesSql).toContain('FROM "public"."cohort_variant_summary"')
+    expect(valuesSql).not.toContain('GROUP BY v.chr')
   })
 
   it('streams cohort rows through pg-query-stream and releases the client', async () => {

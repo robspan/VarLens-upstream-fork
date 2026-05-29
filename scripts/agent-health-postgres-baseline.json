@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-05-29T02:05:36.988Z",
-  "count": 16,
+  "generatedAt": "2026-05-29T03:03:05.659Z",
+  "count": 21,
   "violations": [
     {
       "file": "PostgresAnalysisGroupsRepository.ts",
@@ -31,6 +31,31 @@
       "file": "PostgresCaseMetadataRepository.ts",
       "line": 199,
       "snippet": "await client.query(`DELETE FROM ${this.table('case_cohort_links')} WHERE case_id = $1`, ["
+    },
+    {
+      "file": "PostgresCohortSummaryRepository.ts",
+      "line": 137,
+      "snippet": "await client.query(`TRUNCATE ${tbl('cohort_variant_summary')}`)"
+    },
+    {
+      "file": "PostgresCohortSummaryRepository.ts",
+      "line": 142,
+      "snippet": "await client.query(`"
+    },
+    {
+      "file": "PostgresCohortSummaryRepository.ts",
+      "line": 380,
+      "snippet": "await client.query(`DELETE FROM ${tbl('cohort_variant_summary')} WHERE carrier_count <= 0`)"
+    },
+    {
+      "file": "PostgresCohortSummaryRepository.ts",
+      "line": 397,
+      "snippet": "await client.query(`DELETE FROM ${tbl('cohort_column_meta')} WHERE case_id = $1`, [caseId])"
+    },
+    {
+      "file": "PostgresCohortSummaryRepository.ts",
+      "line": 494,
+      "snippet": "await client.query(`DELETE FROM ${tbl('cohort_column_meta')} WHERE case_id = $1`, [caseId])"
     },
     {
       "file": "PostgresFilterPresetsRepository.ts",

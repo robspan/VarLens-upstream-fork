@@ -29,6 +29,7 @@ import {
   profileCount
 } from '../storage/postgres/postgres-import-profile'
 import { quoteIdentifier } from '../storage/postgres/identifiers'
+import { PostgresCohortSummaryRepository } from '../storage/postgres/PostgresCohortSummaryRepository'
 import { detectFormat as defaultDetectFormat } from '../import/format-detection'
 import type { FormatInfo } from '../import/strategies/ImportStrategy'
 import { createMapperPipeline as defaultCreateMapperPipeline } from './import-pipeline'
@@ -214,6 +215,82 @@ export async function relaxImportSessionLimits(client: Pick<Client, 'query'>): P
   await client.query('SET statement_timeout = 0')
   await client.query('SET idle_in_transaction_session_timeout = 0')
   await client.query('SET lock_timeout = 0')
+}
+
+/**
+ * C3 (Pass-2 #5 + Pass-3 HIGH #1 + Pass-4 HIGH #2 + Pass-5 HIGH #2): incremental
+ * cohort-summary update for ONE imported case, run ONCE after the batch loop and
+ * the bookkeeping rows (variant_count UPDATE + rebuildVariantFrequencyForCase),
+ * still INSIDE the post-loop transaction the caller owns.
+ *
+ * The summary update is wrapped in a SAVEPOINT so a failure here cannot lose the
+ * bookkeeping. On failure: ROLLBACK TO SAVEPOINT (keeps variant_count +
+ * variant_frequency), COMMIT the outer transaction, then markStale in a separate
+ * tiny transaction so the bookkeeping commit survives regardless. Staleness lives
+ * in cohort_summary_state — it is NOT surfaced on the ImportResult (Pass-4 HIGH
+ * #3); the next cohort-page load detects it and rebuilds.
+ *
+ * Returns `true` when the caller still owns an open transaction it must COMMIT,
+ * `false` when this helper already committed the outer transaction (failure path).
+ */
+async function updateCohortSummaryAfterImport(args: {
+  client: Pick<Client, 'query'>
+  schema: string
+  caseId: number
+  genomeBuild: string
+}): Promise<boolean> {
+  const { client, schema, caseId, genomeBuild } = args
+  const summary = new PostgresCohortSummaryRepository()
+  const scoped = client as unknown as Parameters<
+    PostgresCohortSummaryRepository['incrementalAdd']
+  >[0]['client']
+  try {
+    await client.query('SAVEPOINT cohort_summary')
+    await summary.incrementalAdd({ schema, client: scoped, caseId, genomeBuild })
+    await summary.recomputeCohortFrequency({
+      schema,
+      client: scoped,
+      affectedBuilds: [genomeBuild]
+    })
+    await summary.refreshColumnMetas({ schema, client: scoped, caseId })
+    await client.query('RELEASE SAVEPOINT cohort_summary')
+    return true
+  } catch (savepointErr) {
+    await client.query('ROLLBACK TO SAVEPOINT cohort_summary')
+    // Commit the outer transaction NOW so the bookkeeping (variant_count +
+    // rebuildVariantFrequencyForCase) is durable before the stale-marking
+    // tiny transaction runs.
+    await client.query('COMMIT')
+    // Mark stale in a separate tiny transaction so the bookkeeping commit
+    // survives even if marking fails. Reuses the same idle client (this worker
+    // owns a single short-lived connection; the outer txn is already committed).
+    try {
+      await client.query('BEGIN')
+      await summary.markStale({
+        schema,
+        client: scoped,
+        reason: `post_import_summary_failed_case_${caseId}`
+      })
+      await client.query('COMMIT')
+    } catch (markErr) {
+      try {
+        await client.query('ROLLBACK')
+      } catch {
+        // swallow — nothing more we can do; the outer commit already landed.
+      }
+      // Worker has no mainLogger access; console.warn is the documented worker
+      // exception (see AGENTS.md).
+      console.warn(
+        '[postgres-import-worker] Failed to mark cohort summary stale after post-import failure:',
+        markErr instanceof Error ? markErr.message : String(markErr)
+      )
+    }
+    console.warn(
+      `[postgres-import-worker] Cohort summary update failed for case ${caseId}; marked stale:`,
+      savepointErr instanceof Error ? savepointErr.message : String(savepointErr)
+    )
+    return false
+  }
 }
 
 function clientConfigFromMessage(message: PostgresClientConfig): ClientConfig {
@@ -434,7 +511,20 @@ export async function runImport(
           }
           // Report success only after this commit fsyncs all prior async-committed batches.
           await client.query('SET LOCAL synchronous_commit = ON')
-          await client.query('COMMIT')
+          // C3: incremental cohort-summary update inside this txn (SAVEPOINT-
+          // wrapped). On failure the helper rolls back to the savepoint and
+          // commits the outer txn itself, returning false.
+          if (caseId !== 0) {
+            const stillOwnsTxn = await updateCohortSummaryAfterImport({
+              client,
+              schema: start.schema,
+              caseId,
+              genomeBuild
+            })
+            if (stillOwnsTxn) await client.query('COMMIT')
+          } else {
+            await client.query('COMMIT')
+          }
           committed = true
 
           profileFlush()
@@ -548,7 +638,16 @@ export async function runImport(
         start.schema,
         caseId
       )
-      await client.query('COMMIT')
+      // C3: incremental cohort-summary update inside this txn (SAVEPOINT-wrapped).
+      {
+        const stillOwnsTxn = await updateCohortSummaryAfterImport({
+          client,
+          schema: start.schema,
+          caseId,
+          genomeBuild: start.vcfOptions?.genomeBuild ?? 'GRCh38'
+        })
+        if (stillOwnsTxn) await client.query('COMMIT')
+      }
       committed = true
 
       post({
@@ -859,7 +958,15 @@ export async function runImport(
               start.schema,
               caseId
             )
-            await client.query('COMMIT')
+            // C3: incremental cohort-summary update inside this txn (SAVEPOINT-
+            // wrapped). On failure the helper commits the outer txn itself.
+            const stillOwnsTxn = await updateCohortSummaryAfterImport({
+              client,
+              schema: start.schema,
+              caseId,
+              genomeBuild
+            })
+            if (stillOwnsTxn) await client.query('COMMIT')
             beganTransaction = false
             committed = true
           } catch (err) {

@@ -1736,4 +1736,23 @@ export function runMigrations(db: Database.Database): void {
     db.exec('CREATE INDEX IF NOT EXISTS idx_variants_coords ON variants(chr, pos, ref, alt)')
     db.exec('PRAGMA user_version = 29')
   }
+
+  // Migration v30: end_pos on cohort_variant_summary for SV/CNV interval-overlap.
+  // Sprint A PR-3 (C7 / Gate 9 parity gap-fill). The PG cohort summary built in
+  // this PR supports spanning-SV panel-interval queries via end_pos overlap; this
+  // mirrors that on SQLite so backend parity holds (Pass-9 #7). Sourced from
+  // variants.end_pos; SNVs leave it NULL and COALESCE(end_pos, pos) preserves the
+  // prior point-in-interval behaviour. Idempotent ALTER (mirrors the v14 pattern).
+  if (currentVersion < 30) {
+    const cvsCols30 = db.prepare('PRAGMA table_info(cohort_variant_summary)').all() as {
+      name: string
+    }[]
+    if (!new Set(cvsCols30.map((c) => c.name)).has('end_pos')) {
+      db.exec('ALTER TABLE cohort_variant_summary ADD COLUMN end_pos INTEGER')
+    }
+    db.exec(
+      'CREATE INDEX IF NOT EXISTS idx_cvs_end_pos ON cohort_variant_summary(chr, end_pos) WHERE end_pos IS NOT NULL'
+    )
+    db.exec('PRAGMA user_version = 30')
+  }
 }

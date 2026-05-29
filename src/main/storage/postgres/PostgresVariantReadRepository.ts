@@ -10,6 +10,16 @@ import type {
 import type { FilterOptions } from '../../../shared/types/api'
 import type { ColumnFilterMeta } from '../../../shared/types/column-filters'
 import { quoteIdentifier } from './identifiers'
+import {
+  columnMetaRowToFilterMeta,
+  emptyColumnMeta,
+  reshapeFilterOptions
+} from './postgres-column-meta-cache'
+import type { ColumnMetaRow } from './postgres-column-meta-cache'
+import {
+  getCategoricalColumnMetaLive,
+  getNumericColumnMetaLive
+} from './postgres-variant-column-meta-live'
 import { runNamed, runNamedDynamic } from './named-query'
 import { POSTGRES_VARIANT_COLUMN_DEFINITIONS } from './postgres-variant-columns'
 import type { PostgresVariantColumnDefinition } from './postgres-variant-columns'
@@ -50,12 +60,6 @@ function toNumber(value: unknown): number {
   if (typeof value === 'number') return value
   if (typeof value === 'string') return Number(value)
   return 0
-}
-
-function toOptionalNumber(value: unknown): number | undefined {
-  if (value === null || value === undefined) return undefined
-  const numberValue = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(numberValue) ? numberValue : undefined
 }
 
 function toPrefixTsQuery(query: string): string {
@@ -454,26 +458,24 @@ export class PostgresVariantReadRepository {
     }
   }
 
+  /**
+   * Per-case filter options (C4 Step 3). Reads the materialised
+   * `cohort_column_meta` cache (populated by C2's refreshColumnMetas on import +
+   * delete + rebuild) instead of live-aggregating the `variants` table. The
+   * cache mirrors SQLite getAllColumnMetas — one row per filterable base column,
+   * so the reshaped output matches the SQLite FilterOptions shape (base columns
+   * only; extension columns are fetched on demand via getColumnMeta).
+   */
   async getFilterOptions(caseId: number): Promise<FilterOptions> {
-    const columnMeta = await Promise.all(
-      Object.keys(POSTGRES_VARIANT_COLUMN_DEFINITIONS).map((columnKey) =>
-        this.getColumnMeta({ caseId }, columnKey)
-      )
-    )
-    const metaByKey = new Map(columnMeta.map((meta) => [meta.key, meta]))
-    const caddMeta = metaByKey.get('cadd')
-    const gnomadAfMeta = metaByKey.get('gnomad_af')
-
-    return {
-      consequences: metaByKey.get('consequence')?.distinctValues ?? [],
-      funcs: metaByKey.get('func')?.distinctValues ?? [],
-      clinvars: metaByKey.get('clinvar')?.distinctValues ?? [],
-      minCadd: caddMeta?.min ?? null,
-      maxCadd: caddMeta?.max ?? null,
-      minGnomadAf: gnomadAfMeta?.min ?? null,
-      maxGnomadAf: gnomadAfMeta?.max ?? null,
-      columnMeta
-    }
+    const result = await runNamed<ColumnMetaRow>(this.pool as Pool, {
+      name: 'variants:filter_options_per_case:v1',
+      text: `SELECT column_name, min_value, max_value, distinct_count, distinct_values
+             FROM ${this.schemaName}."cohort_column_meta"
+             WHERE case_id = $1`,
+      values: [caseId],
+      schema: this.schema
+    })
+    return reshapeFilterOptions(result.rows)
   }
 
   async getColumnMeta(
@@ -483,6 +485,14 @@ export class PostgresVariantReadRepository {
     const definition = POSTGRES_VARIANT_COLUMN_DEFINITIONS[columnKey]
     if (definition === undefined) {
       return { key: columnKey, dataType: 'text', distinctCount: 0 }
+    }
+
+    // Per-case base columns read the materialised cohort_column_meta cache (C4
+    // Step 3). Extension columns (sv.*, cnv.*, str.*) are not materialised there,
+    // and the multi-case branch stays live-aggregating to avoid cross-case
+    // distinct overcount (Pass-5 MED #1).
+    if ('caseId' in scope && !columnKey.includes('.')) {
+      return this.getPerCaseColumnMeta(scope.caseId, definition)
     }
 
     const caseIds = 'caseId' in scope ? [scope.caseId] : scope.caseIds
@@ -495,96 +505,40 @@ export class PostgresVariantReadRepository {
     }
 
     return definition.kind === 'numeric'
-      ? this.getNumericColumnMeta(caseIds, definition)
-      : this.getCategoricalColumnMeta(caseIds, definition)
+      ? getNumericColumnMetaLive(
+          this.pool as Pool,
+          this.schema,
+          this.schemaName,
+          caseIds,
+          definition
+        )
+      : getCategoricalColumnMetaLive(
+          this.pool as Pool,
+          this.schema,
+          this.schemaName,
+          caseIds,
+          definition
+        )
   }
 
-  private async getNumericColumnMeta(
-    caseIds: number[],
+  /** Single base column for one case, read from the cohort_column_meta cache. */
+  private async getPerCaseColumnMeta(
+    caseId: number,
     definition: PostgresVariantColumnDefinition
   ): Promise<ColumnFilterMeta> {
-    const result = await runNamedDynamic<{ distinct_count: unknown; min: unknown; max: unknown }>(
-      this.pool as Pool,
-      {
-        baseName: 'variants:column_meta',
-        text: `SELECT COUNT(DISTINCT ${definition.sql})::int AS distinct_count,
-              MIN(${definition.sql}) AS min,
-              MAX(${definition.sql}) AS max
-       FROM ${this.schemaName}."variants" v
-       ${this.buildColumnMetaJoins(definition.key)}
-       WHERE v.case_id = ANY($1::bigint[])`,
-        values: [caseIds],
-        schema: this.schema
-      }
-    )
-    const row = result.rows[0] as
-      | { distinct_count?: unknown; min?: unknown; max?: unknown }
-      | undefined
-    const meta: ColumnFilterMeta = {
-      key: definition.key,
-      dataType: 'numeric',
-      distinctCount: toNumber(row?.distinct_count)
-    }
-    const min = toOptionalNumber(row?.min)
-    const max = toOptionalNumber(row?.max)
-    if (min !== undefined) meta.min = min
-    if (max !== undefined) meta.max = max
-    return meta
-  }
-
-  private async getCategoricalColumnMeta(
-    caseIds: number[],
-    definition: PostgresVariantColumnDefinition
-  ): Promise<ColumnFilterMeta> {
-    const joins = this.buildColumnMetaJoins(definition.key)
-    const countResult = await runNamedDynamic<{ distinct_count: unknown }>(this.pool as Pool, {
-      baseName: 'variants:column_meta',
-      text: `SELECT COUNT(DISTINCT ${definition.sql})::int AS distinct_count
-       FROM ${this.schemaName}."variants" v
-       ${joins}
-       WHERE v.case_id = ANY($1::bigint[])`,
-      values: [caseIds],
+    const result = await runNamed<ColumnMetaRow>(this.pool as Pool, {
+      name: 'variants:column_meta_per_case:v1',
+      text: `SELECT column_name, min_value, max_value, distinct_count, distinct_values
+             FROM ${this.schemaName}."cohort_column_meta"
+             WHERE case_id = $1 AND column_name = $2`,
+      values: [caseId, definition.key],
       schema: this.schema
     })
-    const distinctCount = toNumber(
-      (countResult.rows[0] as { distinct_count?: unknown } | undefined)?.distinct_count
-    )
-    const meta: ColumnFilterMeta = {
-      key: definition.key,
-      dataType: 'text',
-      distinctCount
+    const row = result.rows[0]
+    const isNumeric = definition.kind === 'numeric'
+    if (row === undefined) {
+      return emptyColumnMeta(definition.key, isNumeric)
     }
-
-    if (distinctCount > 0 && distinctCount <= 50) {
-      const valuesResult = await runNamedDynamic<{ value: unknown }>(this.pool as Pool, {
-        baseName: 'variants:column_meta',
-        text: `SELECT DISTINCT ${definition.sql} AS value
-         FROM ${this.schemaName}."variants" v
-         ${joins}
-         WHERE v.case_id = ANY($1::bigint[])
-           AND ${definition.sql} IS NOT NULL
-         ORDER BY ${definition.sql}`,
-        values: [caseIds],
-        schema: this.schema
-      })
-      meta.distinctValues = (valuesResult.rows as Array<{ value: unknown }>).map((row) =>
-        String(row.value)
-      )
-    }
-
-    return meta
-  }
-
-  private buildColumnMetaJoins(columnKey: string): string {
-    if (columnKey.startsWith('sv.')) {
-      return `LEFT JOIN ${this.schemaName}."variant_sv" sv ON sv.variant_id = v.id`
-    }
-    if (columnKey.startsWith('cnv.')) {
-      return `LEFT JOIN ${this.schemaName}."variant_cnv" cnv ON cnv.variant_id = v.id`
-    }
-    if (columnKey.startsWith('str.')) {
-      return `LEFT JOIN ${this.schemaName}."variant_str" str_ext ON str_ext.variant_id = v.id`
-    }
-    return ''
+    return columnMetaRowToFilterMeta(definition.key, isNumeric, row)
   }
 }

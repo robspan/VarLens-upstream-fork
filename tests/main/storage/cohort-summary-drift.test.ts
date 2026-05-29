@@ -1,0 +1,312 @@
+/**
+ * Sprint A PR-3 C8 + Gate 10 — cohort-summary drift detection.
+ *
+ * Guards against incremental-vs-full-rebuild drift: a full rebuild() establishes
+ * the source-of-truth snapshot, then N incremental no-op shuffles
+ * (incrementalRemove immediately followed by incrementalAdd for the same case)
+ * must leave cohort_variant_summary byte-identical to that rebuild. The shuffle
+ * is a no-op in aggregate, so the post-incremental snapshot must deep-equal the
+ * first full-rebuild snapshot — any divergence means the incremental path and
+ * the full-rebuild path disagree, which is exactly the class of bug users would
+ * hit silently. A trailing second rebuild() is asserted as well to confirm full
+ * rebuilds remain deterministic from the unchanged source tables.
+ *
+ * Gated by VARLENS_RUN_POSTGRES_E2E=1. Requires `make pg-up`.
+ */
+import { randomBytes } from 'node:crypto'
+
+import { Client, Pool } from 'pg'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+
+import { POSTGRES_MIGRATIONS } from '../../../src/main/storage/postgres/migrations/definitions'
+import { PostgresMigrationRunner } from '../../../src/main/storage/postgres/migrations/PostgresMigrationRunner'
+import { PostgresCohortSummaryRepository } from '../../../src/main/storage/postgres/PostgresCohortSummaryRepository'
+
+const RUN = process.env.VARLENS_RUN_POSTGRES_E2E === '1'
+const PG_URL =
+  process.env.VARLENS_PG_URL ??
+  'postgres://varlens:varlens_dev_password@127.0.0.1:55432/varlens_dev'
+
+interface SeedVariant {
+  caseId: number
+  chr: string
+  pos: number
+  ref: string
+  alt: string
+  variantType?: string
+  geneSymbol?: string | null
+  gtNum?: string | null
+}
+
+describe.skipIf(!RUN)('cohort-summary drift detection — Sprint A C8 / Gate 10', () => {
+  let schema: string
+  let pool: Pool
+  let probe: Client
+  const now = Date.now()
+
+  beforeEach(async () => {
+    schema = `varlens_test_cvs_drift_${Date.now()}_${randomBytes(4).toString('hex')}`
+    const provisioner = new Client({ connectionString: PG_URL })
+    await provisioner.connect()
+    await provisioner.query(`CREATE SCHEMA IF NOT EXISTS "${schema}"`)
+    await provisioner.end()
+
+    pool = new Pool({ connectionString: PG_URL, max: 2 })
+    probe = new Client({ connectionString: PG_URL })
+    await probe.connect()
+
+    await new PostgresMigrationRunner(pool, schema, POSTGRES_MIGRATIONS).migrate()
+  }, 60_000)
+
+  afterEach(async () => {
+    if (probe) await probe.end()
+    if (pool) await pool.end()
+    const cleaner = new Client({ connectionString: PG_URL })
+    await cleaner.connect()
+    await cleaner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
+    await cleaner.end()
+  }, 60_000)
+
+  async function seedCase(name: string, genomeBuild = 'GRCh38'): Promise<number> {
+    const res = await probe.query<{ id: number }>(
+      `INSERT INTO "${schema}".cases (name, file_path, file_size, created_at, genome_build)
+         VALUES ($1, $2, 0, $3, $4) RETURNING id`,
+      [name, `/tmp/${name}.json`, now, genomeBuild]
+    )
+    return res.rows[0].id
+  }
+
+  async function seedVariant(v: SeedVariant): Promise<number> {
+    const res = await probe.query<{ id: number }>(
+      `INSERT INTO "${schema}".variants
+         (case_id, chr, pos, ref, alt, variant_type, gene_symbol, gt_num)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [
+        v.caseId,
+        v.chr,
+        v.pos,
+        v.ref,
+        v.alt,
+        v.variantType ?? 'snv',
+        v.geneSymbol ?? null,
+        v.gtNum ?? null
+      ]
+    )
+    return res.rows[0].id
+  }
+
+  async function withClient<T>(fn: (client: Client) => Promise<T>): Promise<T> {
+    const client = await pool.connect()
+    try {
+      return await fn(client as unknown as Client)
+    } finally {
+      ;(client as { release: () => void }).release()
+    }
+  }
+
+  /**
+   * Full deterministic snapshot of cohort_variant_summary. Selects every
+   * non-volatile column (the deduped aggregate + derived flags + frequency) and
+   * orders by the full natural key so two snapshots are directly comparable.
+   * Counts are coerced to numbers because node-pg returns BIGINT as strings.
+   */
+  async function snapshotSummary(): Promise<unknown[]> {
+    const res = await probe.query<{
+      chr: string
+      pos: string
+      end_pos: string | null
+      ref: string
+      alt: string
+      variant_type: string
+      genome_build: string
+      gene_symbol: string | null
+      cdna: string | null
+      aa_change: string | null
+      consequence: string | null
+      func: string | null
+      clinvar: string | null
+      gnomad_af: number | null
+      cadd: number | null
+      transcript: string | null
+      omim_mim_number: string | null
+      carrier_count: string
+      het_count: string
+      hom_count: string
+      variant_key: string
+      has_star: boolean
+      has_comment: boolean
+      acmg_best: string | null
+      cohort_frequency: number | null
+    }>(
+      `SELECT chr, pos, end_pos, ref, alt, variant_type, genome_build,
+              gene_symbol, cdna, aa_change, consequence, func, clinvar,
+              gnomad_af, cadd, transcript, omim_mim_number,
+              carrier_count, het_count, hom_count, variant_key,
+              has_star, has_comment, acmg_best, cohort_frequency
+         FROM "${schema}".cohort_variant_summary
+        ORDER BY genome_build, variant_type, chr, pos, ref, alt`
+    )
+    return res.rows.map((r) => ({
+      chr: r.chr,
+      pos: Number(r.pos),
+      end_pos: r.end_pos === null ? null : Number(r.end_pos),
+      ref: r.ref,
+      alt: r.alt,
+      variant_type: r.variant_type,
+      genome_build: r.genome_build,
+      gene_symbol: r.gene_symbol,
+      cdna: r.cdna,
+      aa_change: r.aa_change,
+      consequence: r.consequence,
+      func: r.func,
+      clinvar: r.clinvar,
+      gnomad_af: r.gnomad_af,
+      cadd: r.cadd,
+      transcript: r.transcript,
+      omim_mim_number: r.omim_mim_number,
+      carrier_count: Number(r.carrier_count),
+      het_count: Number(r.het_count),
+      hom_count: Number(r.hom_count),
+      variant_key: r.variant_key,
+      has_star: r.has_star,
+      has_comment: r.has_comment,
+      acmg_best: r.acmg_best,
+      cohort_frequency: r.cohort_frequency
+    }))
+  }
+
+  const repo = new PostgresCohortSummaryRepository()
+
+  it('rebuild + N incremental ops + rebuild = byte-identical', async () => {
+    // 1. Seed N cases + variants. Mix of shared/distinct coordinates, het/hom
+    //    genotypes, and an annotated variant so the snapshot exercises every
+    //    derived column (counts, flags, acmg_best, frequency).
+    const N = 4
+    const caseIds: number[] = []
+    const buildByCase = new Map<number, string>()
+    for (let i = 0; i < N; i++) {
+      const build = i % 2 === 0 ? 'GRCh38' : 'GRCh37'
+      const id = await seedCase(`drift-case-${i}`, build)
+      caseIds.push(id)
+      buildByCase.set(id, build)
+    }
+
+    // Shared GRCh38 coordinate carried by the two GRCh38 cases (indices 0, 2).
+    await seedVariant({
+      caseId: caseIds[0],
+      chr: '1',
+      pos: 100,
+      ref: 'A',
+      alt: 'T',
+      gtNum: '0/1',
+      geneSymbol: 'BRCA1'
+    })
+    await seedVariant({
+      caseId: caseIds[2],
+      chr: '1',
+      pos: 100,
+      ref: 'A',
+      alt: 'T',
+      gtNum: '1/1',
+      geneSymbol: 'BRCA1'
+    })
+    // Distinct per-case coordinates on each case (covers single-carrier rows).
+    for (let i = 0; i < N; i++) {
+      await seedVariant({
+        caseId: caseIds[i],
+        chr: '2',
+        pos: 200 + i,
+        ref: 'C',
+        alt: 'G',
+        gtNum: i % 2 === 0 ? '0/1' : '1/1',
+        geneSymbol: 'TP53'
+      })
+    }
+    // A duplicate per-case row (dedup must collapse it to one carrier).
+    await seedVariant({
+      caseId: caseIds[0],
+      chr: '3',
+      pos: 300,
+      ref: 'G',
+      alt: 'A',
+      gtNum: '0/1'
+    })
+    await seedVariant({
+      caseId: caseIds[0],
+      chr: '3',
+      pos: 300,
+      ref: 'G',
+      alt: 'A',
+      gtNum: '0/1'
+    })
+    // Global annotation so has_star / has_comment / acmg_best are non-default.
+    await probe.query(
+      `INSERT INTO "${schema}".variant_annotations
+         (chr, pos, ref, alt, global_comment, starred, acmg_classification, created_at, updated_at)
+         VALUES ('1', 100, 'A', 'T', 'noted', 1, 'Pathogenic', $1, $1)`,
+      [now]
+    )
+
+    // 2. Full rebuild, then snapshot.
+    await withClient((client) => repo.rebuild({ schema, client: client as never }))
+    const firstSnapshot = await snapshotSummary()
+    // Sanity: the seeding actually produced rows, otherwise the equality below
+    // would be a vacuous pass.
+    expect(firstSnapshot.length).toBeGreaterThan(0)
+
+    // 3. For each case: incrementalRemove then incrementalAdd (a no-op shuffle).
+    //    Scope each op to the case's own genome_build so the frequency recompute
+    //    matches the per-build behaviour the production callers use. Run the whole
+    //    shuffle inside ONE explicit transaction on a single client, mirroring the
+    //    production cohort-summary maintenance boundary (rebuild + incremental ops
+    //    execute as a single atomic unit) so a transaction-isolation regression
+    //    is exercised by this path too.
+    await withClient(async (client) => {
+      await client.query('BEGIN')
+      try {
+        for (const caseId of caseIds) {
+          const genomeBuild = buildByCase.get(caseId)!
+          await repo.incrementalRemove({
+            schema,
+            client: client as never,
+            caseId,
+            genomeBuild
+          })
+          await repo.incrementalAdd({
+            schema,
+            client: client as never,
+            caseId,
+            genomeBuild
+          })
+        }
+        await client.query('COMMIT')
+      } catch (err) {
+        await client.query('ROLLBACK')
+        throw err
+      }
+    })
+
+    // 4. Snapshot AFTER the incremental shuffle but BEFORE any further rebuild.
+    //    This is the load-bearing assertion: it compares the incremental-only
+    //    state directly against the full-rebuild source of truth. Because the
+    //    shuffle is a no-op in aggregate, the incremental path must reproduce the
+    //    rebuild exactly. Any drift (wrong counter delta, stale flag, missed
+    //    frequency recompute, leftover zero-carrier row) shows up here — a later
+    //    full rebuild would silently correct it, so it must be checked first.
+    const postIncrementalSnapshot = await snapshotSummary()
+    expect(postIncrementalSnapshot).toEqual(firstSnapshot)
+
+    // 5. Secondary determinism check: a second full rebuild from the unchanged
+    //    source tables must still match the first rebuild. This guards the
+    //    rebuild path's own reproducibility independent of the incremental path.
+    await withClient((client) => repo.rebuild({ schema, client: client as never }))
+    const secondSnapshot = await snapshotSummary()
+    expect(secondSnapshot).toEqual(firstSnapshot)
+  }, 120_000)
+})
+
+describe.skipIf(RUN)('cohort-summary drift detection — Sprint A C8 / Gate 10 (skipped)', () => {
+  it('runs only when VARLENS_RUN_POSTGRES_E2E=1 and `make pg-up` is up', () => {
+    expect(RUN).toBe(false)
+  })
+})

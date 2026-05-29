@@ -8,7 +8,7 @@
 export const REBUILD_VARIANT_SUMMARY_SQL = `
   DELETE FROM cohort_variant_summary;
   INSERT INTO cohort_variant_summary (
-    chr, pos, ref, alt, gene_symbol, cdna, aa_change,
+    chr, pos, ref, alt, end_pos, gene_symbol, cdna, aa_change,
     consequence, func, clinvar, gnomad_af, cadd,
     transcript, omim_mim_number,
     carrier_count, het_count, hom_count,
@@ -16,7 +16,7 @@ export const REBUILD_VARIANT_SUMMARY_SQL = `
     variant_key, variant_type, genome_build
   )
   SELECT
-    d.chr, d.pos, d.ref, d.alt,
+    d.chr, d.pos, d.ref, d.alt, d.end_pos,
     d.gene_symbol, d.cdna, d.aa_change,
     d.consequence, d.func, d.clinvar, d.gnomad_af, d.cadd,
     d.transcript, d.omim_mim_number,
@@ -36,12 +36,14 @@ export const REBUILD_VARIANT_SUMMARY_SQL = `
         MAX(v.func) AS func, MAX(v.clinvar) AS clinvar,
         MAX(v.gnomad_af) AS gnomad_af, MAX(v.cadd) AS cadd,
         MAX(v.transcript) AS transcript, MAX(v.omim_mim_number) AS omim_mim_number,
-        MAX(v.gt_num) AS gt_num
+        MAX(v.gt_num) AS gt_num,
+        MAX(v.end_pos) AS end_pos
       FROM variants v
       JOIN cases c ON c.id = v.case_id
       GROUP BY v.chr, v.pos, v.ref, v.alt, v.case_id, v.variant_type, c.genome_build
     )
     SELECT chr, pos, ref, alt, variant_type, genome_build,
+      MAX(end_pos) AS end_pos,
       MAX(gene_symbol) AS gene_symbol, MAX(cdna) AS cdna,
       MAX(aa_change) AS aa_change, MAX(consequence) AS consequence,
       MAX(func) AS func, MAX(clinvar) AS clinvar,
@@ -133,7 +135,7 @@ export const CHECK_TABLE_EXISTS_SQL =
 
 export const INCREMENTAL_ADD_SQL = `
   INSERT INTO cohort_variant_summary (
-    chr, pos, ref, alt, gene_symbol, cdna, aa_change,
+    chr, pos, ref, alt, end_pos, gene_symbol, cdna, aa_change,
     consequence, func, clinvar, gnomad_af, cadd,
     transcript, omim_mim_number,
     carrier_count, het_count, hom_count,
@@ -141,7 +143,7 @@ export const INCREMENTAL_ADD_SQL = `
     variant_key, variant_type, genome_build
   )
   SELECT
-    v.chr, v.pos, v.ref, v.alt,
+    v.chr, v.pos, v.ref, v.alt, MAX(v.end_pos),
     MAX(v.gene_symbol), MAX(v.cdna), MAX(v.aa_change),
     MAX(v.consequence), MAX(v.func), MAX(v.clinvar),
     MAX(v.gnomad_af), MAX(v.cadd), MAX(v.transcript), MAX(v.omim_mim_number),

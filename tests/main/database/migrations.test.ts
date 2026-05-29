@@ -131,7 +131,7 @@ describe('Schema Migrations', () => {
       const versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(29)
+      expect(versionResult.user_version).toBe(30)
 
       service.close()
 
@@ -141,7 +141,7 @@ describe('Schema Migrations', () => {
       const versionAfterReopen = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionAfterReopen.user_version).toBe(29)
+      expect(versionAfterReopen.user_version).toBe(30)
 
       service.close()
     })
@@ -468,7 +468,7 @@ describe('Schema Migrations', () => {
       let versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(29)
+      expect(versionResult.user_version).toBe(30)
 
       service.close()
 
@@ -488,7 +488,7 @@ describe('Schema Migrations', () => {
       versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(29)
+      expect(versionResult.user_version).toBe(30)
 
       service.close()
     })
@@ -522,7 +522,7 @@ describe('Schema Migrations', () => {
       const versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(29)
+      expect(versionResult.user_version).toBe(30)
 
       service.close()
     })
@@ -760,7 +760,7 @@ describe('Schema Migrations', () => {
       const version = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(version.user_version).toBe(29)
+      expect(version.user_version).toBe(30)
 
       service.close()
     })
@@ -801,7 +801,7 @@ describe('Schema Migrations', () => {
 
       // Verify user_version = latest (v15 + v16 + v17 + v18 + … + v28 + v29 all run)
       const version = db.pragma('user_version', { simple: true }) as number
-      expect(version).toBe(29)
+      expect(version).toBe(30)
 
       service.close()
     })
@@ -1257,9 +1257,9 @@ describe('migration v27 — filter_presets.kind + shortlist seeds', () => {
     expect(idx).toBeTruthy()
   })
 
-  it('PRAGMA user_version = 29 after migration', () => {
+  it('PRAGMA user_version = 30 after migration', () => {
     const v = db.pragma('user_version', { simple: true })
-    expect(v).toBe(29)
+    expect(v).toBe(30)
   })
 })
 

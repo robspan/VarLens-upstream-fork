@@ -110,6 +110,11 @@
     {
       "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
       "callerFunction": "execute",
+      "type": "cohort:summaryStatus"
+    },
+    {
+      "file": "src/main/storage/sqlite/SqliteReadExecutor.ts",
+      "callerFunction": "execute",
       "type": "cohort:variants"
     },
     {

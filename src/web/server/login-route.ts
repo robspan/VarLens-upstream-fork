@@ -175,6 +175,7 @@ export function registerLoginRoute(app: FastifyInstance): void {
   app.get(
     '/login',
     {
+      schema: { hide: true },
       onRequest: [loginPageRateLimiter],
       config: { rateLimit: loginPageRateLimit }
     },
@@ -183,6 +184,7 @@ export function registerLoginRoute(app: FastifyInstance): void {
   app.get(
     '/login/',
     {
+      schema: { hide: true },
       onRequest: [loginPageRateLimiter],
       config: { rateLimit: loginPageRateLimit }
     },

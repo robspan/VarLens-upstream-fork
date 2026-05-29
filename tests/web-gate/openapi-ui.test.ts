@@ -27,6 +27,7 @@ describe('web OpenAPI UI', () => {
 
       expect(initializer.statusCode, initializer.body).toBe(200)
       expect(initializer.body).toContain('/api/openapi.json')
+      expect(initializer.body).toContain('"urls.primaryName":"VarLens Web API"')
     } finally {
       await app.close()
     }

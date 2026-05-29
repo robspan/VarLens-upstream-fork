@@ -23,7 +23,6 @@ import {
   appendDocumentedDispatcherPaths,
   toOpenApiJsonSchema
 } from '../../src/web/server/routes/openapi'
-import { READ_TASK_TYPES, WRITE_TASK_TYPES } from '../../src/web/server/task-types'
 
 type JsonObject = Record<string, unknown>
 
@@ -91,15 +90,11 @@ function nullableSchema(type: string): JsonObject {
 }
 
 describe('shared API schemas', () => {
-  test('documents every executor-backed dispatcher autoroute', () => {
+  test('publishes only the documented web API surface', () => {
     const paths = documentedPaths()
-    const taskTypes = [...READ_TASK_TYPES, ...WRITE_TASK_TYPES]
 
-    const missing = taskTypes
-      .map((taskType) => `/api/${taskType.replace(':', '/')}`)
-      .filter((path) => paths[path] === undefined)
-
-    expect(missing).toEqual([])
+    expect(paths).not.toHaveProperty('/api/{domain}/{method}')
+    expect(JSON.stringify(paths)).not.toContain('Generic RPC fallback')
   })
 
   test('documents tag request argument tuples', () => {

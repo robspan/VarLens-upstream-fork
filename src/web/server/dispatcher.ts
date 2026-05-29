@@ -207,6 +207,7 @@ export function registerDispatcher(
     '/api/:domain/:method',
     {
       schema: {
+        hide: true,
         tags: ['web-dispatcher'],
         summary: 'Invoke a VarLens API method through the generic RPC fallback',
         description:

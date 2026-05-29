@@ -8,6 +8,7 @@ import type {
 } from '../../../shared/types/database'
 import { globalAnnotationAuditEntries, perCaseAnnotationAuditEntries } from '../annotation-audit'
 import { quoteIdentifier } from './identifiers'
+import { runNamed } from './named-query'
 import { PostgresAuditLogRepository } from './PostgresAuditLogRepository'
 
 type QueryablePool = Pick<Pool, 'query'>
@@ -142,8 +143,9 @@ export class PostgresAnnotationsRepository {
       acmgEvidenceProvided
     ]
 
-    const result = await this.pool.query(
-      `
+    const result = await runNamed(this.pool as Pool, {
+      name: 'annotations:upsert_global:v1',
+      text: `
         INSERT INTO ${schemaName}."variant_annotations" (
           chr,
           pos,
@@ -177,8 +179,9 @@ export class PostgresAnnotationsRepository {
           updated_at = EXCLUDED.updated_at
         RETURNING *
       `,
-      params
-    )
+      values: params,
+      schema: this.schema
+    })
 
     return toGlobalAnnotation(result.rows[0])
   }
@@ -216,13 +219,15 @@ export class PostgresAnnotationsRepository {
 
   async deleteGlobalAnnotation(chr: string, pos: number, ref: string, alt: string): Promise<void> {
     const schemaName = quoteIdentifier(this.schema)
-    await this.pool.query(
-      `
+    await runNamed(this.pool as Pool, {
+      name: 'annotations:delete_global:v1',
+      text: `
         DELETE FROM ${schemaName}."variant_annotations"
         WHERE chr = $1 AND pos = $2 AND ref = $3 AND alt = $4
       `,
-      [chr, pos, ref, alt]
-    )
+      values: [chr, pos, ref, alt],
+      schema: this.schema
+    })
   }
 
   async getPerCaseAnnotation(
@@ -267,8 +272,9 @@ export class PostgresAnnotationsRepository {
       acmgEvidenceProvided
     ]
 
-    const result = await this.pool.query(
-      `
+    const result = await runNamed(this.pool as Pool, {
+      name: 'annotations:upsert_per_case:v1',
+      text: `
         INSERT INTO ${schemaName}."case_variant_annotations" (
           case_id,
           variant_id,
@@ -300,8 +306,9 @@ export class PostgresAnnotationsRepository {
           updated_at = EXCLUDED.updated_at
         RETURNING *
       `,
-      params
-    )
+      values: params,
+      schema: this.schema
+    })
 
     return toPerCaseAnnotation(result.rows[0])
   }
@@ -338,13 +345,15 @@ export class PostgresAnnotationsRepository {
 
   async deletePerCaseAnnotation(caseId: number, variantId: number): Promise<void> {
     const schemaName = quoteIdentifier(this.schema)
-    await this.pool.query(
-      `
+    await runNamed(this.pool as Pool, {
+      name: 'annotations:delete_per_case:v1',
+      text: `
         DELETE FROM ${schemaName}."case_variant_annotations"
         WHERE case_id = $1 AND variant_id = $2
       `,
-      [caseId, variantId]
-    )
+      values: [caseId, variantId],
+      schema: this.schema
+    })
   }
 
   async getAnnotationsForVariant(

@@ -76,7 +76,9 @@ describe('PostgresAnnotationsRepository', () => {
       unsupported_field: 'ignored'
     } as never)
 
-    const [sql, params] = pool.query.mock.calls[0]
+    const spec = pool.query.mock.calls[0][0] as { text: string; values: unknown[] }
+    const sql = spec.text
+    const params = spec.values
     expect(sql).toContain('ON CONFLICT (chr, pos, ref, alt) DO UPDATE')
     expect(sql).toContain('"public"."variant_annotations"')
     expect(sql).not.toContain('unsupported_field')
@@ -262,8 +264,10 @@ describe('PostgresAnnotationsRepository', () => {
     await repository.deleteGlobalAnnotation('1', 12345, 'A', 'G')
 
     expect(pool.query).toHaveBeenCalledWith(
-      expect.stringContaining('DELETE FROM "public"."variant_annotations"'),
-      ['1', 12345, 'A', 'G']
+      expect.objectContaining({
+        text: expect.stringContaining('DELETE FROM "public"."variant_annotations"'),
+        values: ['1', 12345, 'A', 'G']
+      })
     )
   })
 
@@ -320,10 +324,21 @@ describe('PostgresAnnotationsRepository', () => {
       starred: 0
     })
 
-    const [upsertSql, upsertParams] = pool.query.mock.calls[1]
-    expect(upsertSql).toContain('ON CONFLICT (case_id, variant_id) DO UPDATE')
-    expect(upsertSql).toContain('"public"."case_variant_annotations"')
-    expect(upsertParams).toStrictEqual([2, 3, 'updated', 0, null, null, true, true, false, false])
+    const upsertSpec = pool.query.mock.calls[1][0] as { text: string; values: unknown[] }
+    expect(upsertSpec.text).toContain('ON CONFLICT (case_id, variant_id) DO UPDATE')
+    expect(upsertSpec.text).toContain('"public"."case_variant_annotations"')
+    expect(upsertSpec.values).toStrictEqual([
+      2,
+      3,
+      'updated',
+      0,
+      null,
+      null,
+      true,
+      true,
+      false,
+      false
+    ])
   })
 
   it('upserts per-case annotations and audit entries in one transaction', async () => {
@@ -441,8 +456,10 @@ describe('PostgresAnnotationsRepository', () => {
     await repository.deletePerCaseAnnotation(2, 3)
 
     expect(pool.query).toHaveBeenCalledWith(
-      expect.stringContaining('DELETE FROM "public"."case_variant_annotations"'),
-      [2, 3]
+      expect.objectContaining({
+        text: expect.stringContaining('DELETE FROM "public"."case_variant_annotations"'),
+        values: [2, 3]
+      })
     )
   })
 

@@ -91,7 +91,7 @@ const ACMG_RANK_SQL = (col: string) => `CASE ${col}
  * collapse to one carrier (Pass-2 #4). Emits carrier/het/hom deltas so both
  * the add and remove paths can reuse the same shape.
  */
-const SCOPED_DEDUPED_AGG_SQL = (tbl: (t: string) => string) => `
+export const SCOPED_DEDUPED_AGG_SQL = (tbl: (t: string) => string) => `
   WITH deduped AS (
     SELECT v.chr, v.pos, v.ref, v.alt, v.variant_type, c.genome_build,
            MAX(v.end_pos) AS end_pos,

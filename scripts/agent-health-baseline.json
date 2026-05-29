@@ -136,10 +136,10 @@
     },
     {
       "path": "src/shared/types/api.ts",
-      "lines": 910,
+      "lines": 920,
       "threshold": 600,
       "category": "source",
-      "reason": "existing shared contract surface; must not grow before contract split. Sprint A PR-2 (debug domain): adding a new top-level WindowAPI domain key (`debug: DebugAPI`) plus its import and the `DebugAPI` alias unavoidably touches this central interface; the alias resolves the Gate 10c preload-contract test back to the domain contract and cannot be split out without breaking that resolution."
+      "reason": "existing shared contract surface; must not grow before contract split. Sprint A additions to this central interface are structurally unavoidable: PR-1 A1 added the `BatchAnnotationKey` type (Pass-8 #1) used across the annotations IPC contract; PR-2 added a new top-level WindowAPI domain key (`debug: DebugAPI`) plus its import and the `DebugAPI` alias that resolves the Gate 10c preload-contract test back to the domain contract. Neither can be split out without breaking the contract or its tests."
     },
     {
       "path": "src/shared/types/database.ts",

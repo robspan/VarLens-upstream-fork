@@ -180,9 +180,8 @@ describe('runNamedDynamic — Sprint A B1 (Pass-8 #3)', () => {
     // Implementation detail: cap is process-level, configurable via a test-only
     // setter exposed by the module (e.g. __setCapForTests(n)). Set a small cap
     // and overflow it.
-    const { __setCapForTests, __resetCapForTests } = await import(
-      '../../../src/main/storage/postgres/named-query'
-    )
+    const { __setCapForTests, __resetCapForTests } =
+      await import('../../../src/main/storage/postgres/named-query')
     // Clear the module-level seenDynamicNames set so this test exercises the
     // documented "first N named, rest unnamed" contract against a clean set
     // (the set is module-level and is NOT reset by vi.clearAllMocks).

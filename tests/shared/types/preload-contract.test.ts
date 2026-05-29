@@ -576,9 +576,9 @@ describe('debug domain — Sprint A PR-2 Gate 10c', () => {
   })
 
   it('compile-time check: WindowAPI debug methods return IpcResult', () => {
-    expectTypeOf<
-      Awaited<ReturnType<WindowAPI['debug']['queryCountersReset']>>
-    >().toEqualTypeOf<IpcResult<{ enabled: boolean }>>()
+    expectTypeOf<Awaited<ReturnType<WindowAPI['debug']['queryCountersReset']>>>().toEqualTypeOf<
+      IpcResult<{ enabled: boolean }>
+    >()
   })
 })
 

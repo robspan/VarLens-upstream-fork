@@ -17,11 +17,7 @@ export function resetCounters(): void {
 }
 
 function increment(arg: unknown): void {
-  if (
-    typeof arg === 'object' &&
-    arg !== null &&
-    typeof (arg as QueryConfig).name === 'string'
-  ) {
+  if (typeof arg === 'object' && arg !== null && typeof (arg as QueryConfig).name === 'string') {
     const name = (arg as QueryConfig).name as string
     state.named[name] = (state.named[name] ?? 0) + 1
   } else {

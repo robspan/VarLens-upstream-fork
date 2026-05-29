@@ -12,7 +12,7 @@ import { ImportServerPathArgSchema } from '../../../shared/api/schemas/import'
 import type { BatchResult, DuplicateChoice } from '../../../shared/types/api'
 import { serverPathImportDisabled, serverPathImportDisabledResponse } from './server-path-import'
 import type { OverrideHandler } from './types'
-import { isWebUploadRef, resolveWebUploadRef } from './upload-staging'
+import { isWebUploadRef, resolveWebUploadRef, stageExistingFileUpload } from './upload-staging'
 
 const DELETE_CASE_TASK_TYPE = ['cases', 'delete'].join(':')
 
@@ -113,16 +113,35 @@ export function buildBatchImportOverrides(): Record<string, OverrideHandler> {
     },
 
     'batch-import:extractZip': {
-      async handle(args, _request, reply) {
-        if (serverPathImportDisabled()) {
-          reply.code(403)
-          return serverPathImportDisabledResponse()
-        }
+      async handle(args, request, reply) {
         const [zipPath, password] = args
         const validatedZipPath = ImportServerPathArgSchema.safeParse(zipPath)
-        if (!validatedZipPath.success || !isAbsolute(validatedZipPath.data)) {
+        if (!validatedZipPath.success) {
           reply.code(400)
-          return { error: 'invalid-zip-path', message: 'zipPath must be an absolute path' }
+          return { error: 'invalid-zip-path', message: 'zipPath must be a file path' }
+        }
+
+        if (isWebUploadRef(validatedZipPath.data)) {
+          const result = await extractWebUploadZip(
+            validatedZipPath.data,
+            request.session.user?.id,
+            typeof password === 'string' ? password : undefined
+          )
+          if (result === null) {
+            reply.code(404)
+            return {
+              error: 'upload-not-found',
+              message: 'Uploaded ZIP file is no longer available'
+            }
+          }
+          return result
+        }
+
+        if (serverPathImportDisabled() || !isAbsolute(validatedZipPath.data)) {
+          reply.code(serverPathImportDisabled() ? 403 : 400)
+          return serverPathImportDisabled()
+            ? serverPathImportDisabledResponse()
+            : { error: 'invalid-zip-path', message: 'zipPath must be an absolute path' }
         }
         return await extractZip(
           validatedZipPath.data,
@@ -132,16 +151,31 @@ export function buildBatchImportOverrides(): Record<string, OverrideHandler> {
     },
 
     'batch-import:testZipPassword': {
-      handle(args, _request, reply) {
-        if (serverPathImportDisabled()) {
-          reply.code(403)
-          return serverPathImportDisabledResponse()
-        }
+      handle(args, request, reply) {
         const [zipPath, password] = args
         const validatedZipPath = ImportServerPathArgSchema.safeParse(zipPath)
-        if (!validatedZipPath.success || !isAbsolute(validatedZipPath.data)) {
+        if (!validatedZipPath.success) {
           reply.code(400)
-          return { error: 'invalid-zip-path', message: 'zipPath must be an absolute path' }
+          return { error: 'invalid-zip-path', message: 'zipPath must be a file path' }
+        }
+
+        if (isWebUploadRef(validatedZipPath.data)) {
+          const upload = resolveUploadedFile(validatedZipPath.data, request.session.user?.id)
+          if (upload === null) {
+            reply.code(404)
+            return {
+              error: 'upload-not-found',
+              message: 'Uploaded ZIP file is no longer available'
+            }
+          }
+          return testZipPassword(upload.storedPath, typeof password === 'string' ? password : '')
+        }
+
+        if (serverPathImportDisabled() || !isAbsolute(validatedZipPath.data)) {
+          reply.code(serverPathImportDisabled() ? 403 : 400)
+          return serverPathImportDisabled()
+            ? serverPathImportDisabledResponse()
+            : { error: 'invalid-zip-path', message: 'zipPath must be an absolute path' }
         }
         return testZipPassword(validatedZipPath.data, typeof password === 'string' ? password : '')
       }
@@ -155,6 +189,43 @@ export function buildBatchImportOverrides(): Record<string, OverrideHandler> {
   }
 }
 
+function resolveUploadedFile(value: string, userId: number | undefined): ResolvedBatchFile | null {
+  if (userId === undefined) return null
+  const upload = resolveWebUploadRef(value, userId)
+  if (upload === null) return null
+  return {
+    inputPath: upload.ref,
+    storedPath: upload.storedPath,
+    fileName: upload.originalName
+  }
+}
+
+async function extractWebUploadZip(
+  zipRef: string,
+  userId: number | undefined,
+  password: string | undefined
+): Promise<{ files: string[]; errors: string[] } | null> {
+  const upload = resolveUploadedFile(zipRef, userId)
+  if (upload === null || userId === undefined) return null
+
+  const result = await extractZip(upload.storedPath, password)
+  const stagedFiles = []
+  for (const filePath of result.files) {
+    stagedFiles.push(
+      await stageExistingFileUpload({
+        userId,
+        originalName: basename(filePath),
+        sourcePath: filePath
+      })
+    )
+  }
+  cleanupZipTemp()
+  return {
+    files: stagedFiles.map((file) => file.ref),
+    errors: result.errors
+  }
+}
+
 function resolveBatchFiles(
   values: unknown[],
   userId: number | undefined
@@ -165,14 +236,9 @@ function resolveBatchFiles(
     if (!parsed.success) return null
 
     if (isWebUploadRef(parsed.data)) {
-      if (userId === undefined) return null
-      const upload = resolveWebUploadRef(parsed.data, userId)
+      const upload = resolveUploadedFile(parsed.data, userId)
       if (upload === null) return null
-      resolved.push({
-        inputPath: upload.ref,
-        storedPath: upload.storedPath,
-        fileName: upload.originalName
-      })
+      resolved.push(upload)
       continue
     }
 

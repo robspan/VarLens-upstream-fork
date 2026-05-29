@@ -48,38 +48,31 @@
 
       <!-- Step 1: Source Selection -->
       <v-card-text v-if="step === 1" class="pa-4">
-        <div class="text-caption text-medium-emphasis mb-3">Choose import source</div>
-        <div class="d-flex flex-wrap ga-3">
-          <v-card
-            v-for="src in sources"
-            :key="src.mode"
-            variant="outlined"
-            class="import-source-card flex-grow-1"
-            min-width="130"
-            @click="selectSource(src.mode)"
-          >
-            <v-card-text class="d-flex flex-column align-center text-center pa-3">
-              <v-icon :icon="src.icon" size="24" color="primary" class="mb-1" />
-              <div class="text-body-2 font-weight-medium">{{ src.title }}</div>
-              <div class="text-caption text-medium-emphasis">{{ src.subtitle }}</div>
-            </v-card-text>
-          </v-card>
-        </div>
-        <input
-          ref="webFileInput"
-          type="file"
-          class="web-file-input"
-          accept=".vcf,.vcf.gz,.json,.json.gz,.gz"
-          :multiple="webInputMultiple"
-          @change="handleWebFileInput"
+        <WebImportSourcePicker
+          v-if="isWebMode"
+          :sources="allSources"
+          :upload-pending="webUploadPending"
+          @files-selected="handleWebFilesSelected"
         />
-        <v-progress-linear
-          v-if="webUploadPending"
-          indeterminate
-          color="primary"
-          class="mt-4"
-          aria-label="Uploading selected files"
-        />
+        <template v-else>
+          <div class="text-caption text-medium-emphasis mb-3">Choose import source</div>
+          <div class="d-flex flex-wrap ga-3">
+            <v-card
+              v-for="src in sources"
+              :key="src.mode"
+              variant="outlined"
+              class="import-source-card flex-grow-1"
+              min-width="130"
+              @click="selectSource(src.mode)"
+            >
+              <v-card-text class="d-flex flex-column align-center text-center pa-3">
+                <v-icon :icon="src.icon" size="24" color="primary" class="mb-1" />
+                <div class="text-body-2 font-weight-medium">{{ src.title }}</div>
+                <div class="text-caption text-medium-emphasis">{{ src.subtitle }}</div>
+              </v-card-text>
+            </v-card>
+          </div>
+        </template>
 
         <!-- ZIP password (inline, shown when needed) -->
         <v-expand-transition>
@@ -219,6 +212,8 @@ import BatchReviewPhase from '../batch-import/BatchReviewPhase.vue'
 import BatchProgressPhase from '../batch-import/BatchProgressPhase.vue'
 import BatchSummaryPhase from '../batch-import/BatchSummaryPhase.vue'
 import VcfPreviewStep from './VcfPreviewStep.vue'
+import WebImportSourcePicker from './WebImportSourcePicker.vue'
+import type { WebImportMode } from './WebImportSourcePicker.vue'
 import {
   mdiChevronRight,
   mdiClose,
@@ -281,19 +276,14 @@ const allSources = [
   { mode: 'zip' as ImportMode, icon: mdiZipBox, title: 'ZIP Archive', subtitle: 'Extract & import' }
 ]
 
-const sources = computed(() => {
-  if (!isWebMode) return allSources
-  return allSources.filter((source) => source.mode === 'single' || source.mode === 'files')
-})
+const sources = computed(() => allSources)
 
 // File selection state
 const selectedMode = ref<ImportMode | null>(null)
 const selectedFilePaths = ref<string[]>([])
 const isZipImport = ref(false)
 const zipPath = ref('')
-const webFileInput = ref<HTMLInputElement | null>(null)
 const webUploadPending = ref(false)
-const webInputMultiple = computed(() => selectedMode.value !== 'single')
 
 // ZIP password state
 const zipPasswordNeeded = ref(false)
@@ -371,11 +361,6 @@ async function selectSource(mode: ImportMode): Promise<void> {
   selectedMode.value = mode
 
   try {
-    if (isWebMode && (mode === 'single' || mode === 'files')) {
-      webFileInput.value?.click()
-      return
-    }
-
     if (mode === 'zip') {
       const result = unwrapIpcResult(await api!.batchImport.selectZip())
       if (result === null) return
@@ -429,20 +414,29 @@ async function selectSource(mode: ImportMode): Promise<void> {
   }
 }
 
-async function handleWebFileInput(event: Event): Promise<void> {
-  const input = event.target as HTMLInputElement
-  const files = Array.from(input.files ?? [])
-  input.value = ''
+async function handleWebFilesSelected(payload: {
+  mode: WebImportMode
+  files: File[]
+}): Promise<void> {
+  const files = payload.files
   if (!isWebMode || files.length === 0) return
 
-  const mode = selectedMode.value ?? (files.length === 1 ? 'single' : 'files')
+  const mode = payload.mode
   selectedMode.value = mode
 
   try {
     webUploadPending.value = true
-    const uploaded = await uploadWebImportFiles(mode === 'single' ? files.slice(0, 1) : files)
+    const selectedFiles = mode === 'single' || mode === 'zip' ? files.slice(0, 1) : files
+    const uploaded = await uploadWebImportFiles(selectedFiles)
     const filePaths = uploaded.map((file) => file.ref)
     if (filePaths.length === 0) return
+
+    if (mode === 'zip') {
+      zipPath.value = filePaths[0]
+      isZipImport.value = true
+      await extractAndAdvance(filePaths[0])
+      return
+    }
 
     selectedFilePaths.value = filePaths
     if (filePaths.length === 1) {
@@ -845,13 +839,5 @@ defineExpose({ show, reopen })
 .import-source-card:hover {
   border-color: rgb(var(--v-theme-primary));
   background: rgba(var(--v-theme-primary), 0.04);
-}
-
-.web-file-input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
 }
 </style>

@@ -1,7 +1,18 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+
 import { describe, expect, test } from 'vitest'
 
 import { buildDispatcher } from '../../src/web/server/dispatcher'
+import { stageExistingFileUpload } from '../../src/web/server/routes/upload-staging'
 import { makeDeps } from './helpers/dispatcher-adapters'
+
+const ZIP_WITH_ONE_VCF_BASE64 =
+  'UEsDBBQAAAAIAEhVvVwJgEHLUQAAAFMAAAAQAAAAd2ViLXppcC1jYXNlLnZjZlNWTsvMSU3LL8pN' +
+  'LLENc3YrM9Ez4lJ29gjy9+UM8A/m9HThDHJ143T0CeEMDHX04XTz9AlxDeL09HPz5zLkNDQw4NTj' +
+  'dOR0B7MCHIODOfW4AFBLAQIUAxQAAAAIAEhVvVwJgEHLUQAAAFMAAAAQAAAAAAAAAAAAAACAAQA' +
+  'AAAB3ZWItemlwLWNhc2UudmNmUEsFBgAAAAABAAEAPgAAAH8AAAAAAA=='
 
 describe('web dispatcher adapters: auth and import', () => {
   test('auth.isAccountsEnabled delegates to the web auth service', async () => {
@@ -70,6 +81,45 @@ describe('web dispatcher adapters: auth and import', () => {
       else process.env.NODE_ENV = prevNodeEnv
       if (prevAllow === undefined) delete process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT
       else process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT = prevAllow
+    }
+  })
+
+  test('batch import zip extraction accepts web upload refs and returns web upload refs', async () => {
+    const prevNodeEnv = process.env.NODE_ENV
+    const prevRecoveryDir = process.env.VARLENS_RECOVERY_KEY_DIR
+    const tempDir = await mkdtemp(join(tmpdir(), 'varlens-web-zip-'))
+    process.env.NODE_ENV = 'production'
+    process.env.VARLENS_RECOVERY_KEY_DIR = tempDir
+    try {
+      const zipPath = join(tempDir, 'batch.zip')
+      await writeFile(zipPath, Buffer.from(ZIP_WITH_ONE_VCF_BASE64, 'base64'))
+      const upload = await stageExistingFileUpload({
+        userId: 7,
+        originalName: 'batch.zip',
+        sourcePath: zipPath
+      })
+
+      const { deps, reply } = makeDeps()
+      const { overrides } = buildDispatcher(deps)
+      const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
+
+      const result = (await overrides['batch-import:extractZip'].handle(
+        [upload.ref],
+        request as never,
+        reply as never,
+        deps
+      )) as { files: string[]; errors: string[] }
+
+      expect(reply.code).not.toHaveBeenCalledWith(403)
+      expect(result.errors).toEqual([])
+      expect(result.files).toHaveLength(1)
+      expect(result.files[0]).toMatch(/^web-upload:/)
+    } finally {
+      if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = prevNodeEnv
+      if (prevRecoveryDir === undefined) delete process.env.VARLENS_RECOVERY_KEY_DIR
+      else process.env.VARLENS_RECOVERY_KEY_DIR = prevRecoveryDir
+      await rm(tempDir, { recursive: true, force: true })
     }
   })
 

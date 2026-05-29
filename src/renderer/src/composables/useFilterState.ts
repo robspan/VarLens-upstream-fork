@@ -20,7 +20,7 @@ import { useTags } from './useTags'
 import { useApiService } from './useApiService'
 import { APP_CONFIG } from '../../../shared/config'
 import { createFilterState } from '../../../shared/filters/filterDefaults'
-import { buildVariantFilterFromState } from '../../../shared/filters/filterSerialization'
+import { buildVariantFilterFromState } from '../utils/filters/filterSerialization'
 import {
   type FilterState,
   type UseFilterStateOptions,

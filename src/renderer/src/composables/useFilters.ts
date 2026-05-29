@@ -18,7 +18,7 @@
 import { ref, computed, watch, inject } from 'vue'
 import type { Ref, ComputedRef, InjectionKey } from 'vue'
 import { createFilterState } from '../../../shared/filters/filterDefaults'
-import { buildFilterIpcParams } from '../../../shared/filters/filterSerialization'
+import { buildFilterIpcParams } from '../utils/filters/filterSerialization'
 import {
   clearFilter as clearFilterUtil,
   buildActiveFiltersList,

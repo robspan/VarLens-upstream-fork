@@ -18,7 +18,7 @@ export { clearFilter, clearAllFilters, type FilterId } from './filterClearing'
 export {
   buildFilterIpcParams,
   buildIpcParams
-} from '../../../../shared/filters/filterSerialization'
+} from './filterSerialization'
 
 // Active filters computation
 export { buildActiveFiltersList } from './activeFilters'

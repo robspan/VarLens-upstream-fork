@@ -3,7 +3,7 @@ import type { FilterOptions, VariantFilter } from '../../../shared/types/api'
 import type { Tag } from '../../../shared/types/database-entities'
 import type { FilterState, ActiveFilter } from '../../../shared/types/filters'
 import { FILTER_DEFAULTS } from '../../../shared/filters/filterDefaults'
-export { buildVariantFilterFromState as buildFilterFromState } from '../../../shared/filters/filterSerialization'
+export { buildVariantFilterFromState as buildFilterFromState } from '../utils/filters/filterSerialization'
 
 // Re-export for existing consumers
 export type { FilterState, ActiveFilter } from '../../../shared/types/filters'

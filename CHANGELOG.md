@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.68.0] — 2026-05-29
+
+Sprint A — Foundations for 1000-genome scale. Four independently-reviewed PRs
+(#241–#244) plus a follow-up fix (#245).
+
+### Added
+
+- **Materialised PostgreSQL cohort summary** (`cohort_variant_summary`,
+  `cohort_column_meta`, `cohort_summary_state`; migration `0010`) with incremental
+  add/remove maintenance inside the import transaction, column-meta refresh,
+  per-build `cohort_frequency` recompute, staleness state, and cohort-read
+  `warnings.staleSummary` with synchronous/background rebuild bootstrap.
+- **`JobRunner` tracking wrapper** over the five long-running-work sites
+  (Postgres single/multi import, batch import, gene-burden compare, SQLite import),
+  preserving existing behaviour and single-flight guards.
+- **`jobs:` IPC domain** (registered, not yet consumed) and **`debug:` IPC domain**
+  for query-counter observability.
+- **Multi-project architecture design doc** and a **projects registry** migration
+  (PG `0011` / SQLite `v31`).
+
+### Changed / Performance
+
+- **Annotation `getBatch`** reduced from N+1 to 1–2 batched SELECTs per call on
+  both SQLite and PostgreSQL, backed by a `(chr, pos, ref, alt)` covering index
+  (PG `0009` / SQLite `v29`); per-case lookups defensively reject spoofed variantIds.
+- **PostgreSQL named/prepared statements** (`runNamed` / `runNamedDynamic`) rolled
+  out across the top read sites, with UNNEST-array batch bindings and a coverage gate.
+- **Renderer IPC param sanitisation** via `stripVueProxies`; `cloneForIpc` now
+  backed by `structuredClone`. Deferred mount for the case + cohort filter toolbars;
+  `shallowRef` + `markRaw` for the shortlist row buffer.
+- **SQLite cohort SV/CNV interval-overlap parity** with PostgreSQL (`end_pos` on
+  `cohort_variant_summary`, migration `v30`).
+
+### Fixed
+
+- Renderer `mockApi` now implements the `jobs` domain so it satisfies `WindowAPI`.
+
 ## [0.59.5] — 2026-05-25
 
 ### Security

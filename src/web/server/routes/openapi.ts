@@ -15,6 +15,9 @@ import { appendDocumentedDispatcherPaths } from './openapi-paths'
 export { appendDocumentedDispatcherPaths } from './openapi-paths'
 export { toOpenApiJsonSchema } from './openapi-utils'
 
+const OPENAPI_JSON_URL = '/api/openapi.json'
+const OPENAPI_DOCUMENT_NAME = 'VarLens Web API'
+
 export async function registerOpenApi(app: FastifyInstance): Promise<void> {
   app.setValidatorCompiler(validatorCompiler)
   app.setSerializerCompiler(serializerCompiler)
@@ -44,7 +47,8 @@ export async function registerOpenApi(app: FastifyInstance): Promise<void> {
     routePrefix: '/api/docs',
     staticCSP: true,
     uiConfig: {
-      url: '/api/openapi.json',
+      urls: [{ url: OPENAPI_JSON_URL, name: OPENAPI_DOCUMENT_NAME }],
+      'urls.primaryName': OPENAPI_DOCUMENT_NAME,
       deepLinking: true,
       docExpansion: 'list'
     },
@@ -54,7 +58,7 @@ export async function registerOpenApi(app: FastifyInstance): Promise<void> {
   })
 
   app.withTypeProvider<ZodTypeProvider>().get(
-    '/api/openapi.json',
+    OPENAPI_JSON_URL,
     {
       schema: {
         hide: true,

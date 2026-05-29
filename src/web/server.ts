@@ -132,7 +132,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   registerDispatcher(app, dispatcherDeps, overrides)
   registerEventStream(app, events)
 
-  app.get('/healthz', async (_request, reply) => {
+  app.get('/healthz', { schema: { hide: true } }, async (_request, reply) => {
     const open = await isPostgresHealthy(pool)
     metrics.setDatabaseHealthy(open)
     if (!open) {

@@ -85,10 +85,14 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
       }
       expect(spec.openapi).toMatch(/^3\./)
       expect(spec.info?.title).toBe('VarLens Web API')
-      expect(spec.paths).toHaveProperty('/api/{domain}/{method}')
       expect(spec.paths).toHaveProperty('/api/auth/login')
       expect(spec.paths).toHaveProperty('/api/auth/createUser')
       expect(spec.paths).toHaveProperty('/api/auth/changePassword')
+      expect(spec.paths).not.toHaveProperty('/api/{domain}/{method}')
+      expect(spec.paths).not.toHaveProperty('/login')
+      expect(spec.paths).not.toHaveProperty('/login/')
+      expect(spec.paths).not.toHaveProperty('/api/events')
+      expect(spec.paths).not.toHaveProperty('/healthz')
       for (const path of ANNOTATION_PATHS) {
         expect(spec.paths).toHaveProperty(path)
       }
@@ -193,6 +197,9 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
       expect(paths['/api/variants/query']?.post?.responses?.['200']).toBeDefined()
       expect(paths['/api/variants/getFilterOptions']?.post?.requestBody).toBeDefined()
       expect(paths['/api/variants/getFilterOptions']?.post?.responses?.['200']).toBeDefined()
+
+      const specText = JSON.stringify(spec)
+      expect(specText).not.toContain('Generic RPC fallback')
     } finally {
       await driver.close()
     }

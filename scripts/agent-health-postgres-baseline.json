@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-05-29T02:44:39.323Z",
-  "count": 18,
+  "generatedAt": "2026-05-29T02:51:21.150Z",
+  "count": 19,
   "violations": [
     {
       "file": "PostgresAnalysisGroupsRepository.ts",
@@ -34,13 +34,18 @@
     },
     {
       "file": "PostgresCohortSummaryRepository.ts",
-      "line": 46,
+      "line": 93,
       "snippet": "await client.query(`TRUNCATE ${tbl('cohort_variant_summary')}`)"
     },
     {
       "file": "PostgresCohortSummaryRepository.ts",
-      "line": 51,
+      "line": 98,
       "snippet": "await client.query(`"
+    },
+    {
+      "file": "PostgresCohortSummaryRepository.ts",
+      "line": 336,
+      "snippet": "await client.query(`DELETE FROM ${tbl('cohort_variant_summary')} WHERE carrier_count <= 0`)"
     },
     {
       "file": "PostgresFilterPresetsRepository.ts",

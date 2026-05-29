@@ -246,6 +246,224 @@ describe.skipIf(!RUN)('PostgresCohortSummaryRepository.rebuild — Sprint A C2',
   }, 60_000)
 })
 
+describe.skipIf(!RUN)('PostgresCohortSummaryRepository.incrementalAdd/Remove — Sprint A C2', () => {
+  let schema: string
+  let pool: Pool
+  let probe: Client
+  const now = Date.now()
+
+  beforeEach(async () => {
+    schema = `varlens_test_cvs_incr_${Date.now()}_${randomBytes(4).toString('hex')}`
+    const provisioner = new Client({ connectionString: PG_URL })
+    await provisioner.connect()
+    await provisioner.query(`CREATE SCHEMA IF NOT EXISTS "${schema}"`)
+    await provisioner.end()
+
+    pool = new Pool({ connectionString: PG_URL, max: 2 })
+    probe = new Client({ connectionString: PG_URL })
+    await probe.connect()
+
+    await new PostgresMigrationRunner(pool, schema, POSTGRES_MIGRATIONS).migrate()
+  }, 60_000)
+
+  afterEach(async () => {
+    if (probe) await probe.end()
+    if (pool) await pool.end()
+    const cleaner = new Client({ connectionString: PG_URL })
+    await cleaner.connect()
+    await cleaner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
+    await cleaner.end()
+  }, 60_000)
+
+  async function seedCase(name: string, genomeBuild = 'GRCh38'): Promise<number> {
+    const res = await probe.query<{ id: number }>(
+      `INSERT INTO "${schema}".cases (name, file_path, file_size, created_at, genome_build)
+           VALUES ($1, $2, 0, $3, $4) RETURNING id`,
+      [name, `/tmp/${name}.json`, now, genomeBuild]
+    )
+    return res.rows[0].id
+  }
+
+  async function seedVariant(v: SeedVariant): Promise<number> {
+    const res = await probe.query<{ id: number }>(
+      `INSERT INTO "${schema}".variants
+           (case_id, chr, pos, ref, alt, variant_type, gene_symbol, gt_num)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [
+        v.caseId,
+        v.chr,
+        v.pos,
+        v.ref,
+        v.alt,
+        v.variantType ?? 'snv',
+        v.geneSymbol ?? null,
+        v.gtNum ?? null
+      ]
+    )
+    return res.rows[0].id
+  }
+
+  async function withClient<T>(fn: (client: Client) => Promise<T>): Promise<T> {
+    const client = await pool.connect()
+    try {
+      return await fn(client as unknown as Client)
+    } finally {
+      ;(client as { release: () => void }).release()
+    }
+  }
+
+  async function summaryRow(chr: string): Promise<{
+    carrier_count: number
+    het_count: number
+    hom_count: number
+    has_star: boolean
+    has_comment: boolean
+    acmg_best: string | null
+  } | null> {
+    const res = await probe.query<{
+      carrier_count: string
+      het_count: string
+      hom_count: string
+      has_star: boolean
+      has_comment: boolean
+      acmg_best: string | null
+    }>(
+      `SELECT carrier_count, het_count, hom_count, has_star, has_comment, acmg_best
+           FROM "${schema}".cohort_variant_summary WHERE chr = $1`,
+      [chr]
+    )
+    if (res.rows.length === 0) return null
+    const r = res.rows[0]
+    return {
+      carrier_count: Number(r.carrier_count),
+      het_count: Number(r.het_count),
+      hom_count: Number(r.hom_count),
+      has_star: r.has_star,
+      has_comment: r.has_comment,
+      acmg_best: r.acmg_best
+    }
+  }
+
+  const repo = new PostgresCohortSummaryRepository()
+
+  it('incrementalAdd inserts a brand-new row from the deduped CTE', async () => {
+    const caseA = await seedCase('add-new-a')
+    await seedVariant({ caseId: caseA, chr: '1', pos: 100, ref: 'A', alt: 'T', gtNum: '0/1' })
+    await seedVariant({ caseId: caseA, chr: '2', pos: 200, ref: 'C', alt: 'G', gtNum: '1/1' })
+
+    await withClient((client) =>
+      repo.incrementalAdd({ schema, client: client as never, caseId: caseA })
+    )
+
+    const het = await summaryRow('1')
+    expect(het).not.toBeNull()
+    expect(het!.carrier_count).toBe(1)
+    expect(het!.het_count).toBe(1)
+    expect(het!.hom_count).toBe(0)
+
+    const hom = await summaryRow('2')
+    expect(hom!.carrier_count).toBe(1)
+    expect(hom!.het_count).toBe(0)
+    expect(hom!.hom_count).toBe(1)
+  }, 60_000)
+
+  it('incrementalAdd bumps all three counters on conflict', async () => {
+    const caseA = await seedCase('add-bump-a')
+    const caseB = await seedCase('add-bump-b')
+    await seedVariant({ caseId: caseA, chr: '1', pos: 100, ref: 'A', alt: 'T', gtNum: '0/1' })
+    await seedVariant({ caseId: caseB, chr: '1', pos: 100, ref: 'A', alt: 'T', gtNum: '1/1' })
+
+    await withClient(async (client) => {
+      await repo.incrementalAdd({ schema, client: client as never, caseId: caseA })
+      await repo.incrementalAdd({ schema, client: client as never, caseId: caseB })
+    })
+
+    const row = await summaryRow('1')
+    expect(row!.carrier_count).toBe(2)
+    expect(row!.het_count).toBe(1)
+    expect(row!.hom_count).toBe(1)
+  }, 60_000)
+
+  it('incrementalAdd dedups duplicate per-case rows (counts once)', async () => {
+    const caseA = await seedCase('add-dedup-a')
+    await seedVariant({ caseId: caseA, chr: '3', pos: 300, ref: 'G', alt: 'A', gtNum: '0/1' })
+    await seedVariant({ caseId: caseA, chr: '3', pos: 300, ref: 'G', alt: 'A', gtNum: '0/1' })
+
+    await withClient((client) =>
+      repo.incrementalAdd({ schema, client: client as never, caseId: caseA })
+    )
+
+    const row = await summaryRow('3')
+    expect(row!.carrier_count).toBe(1)
+  }, 60_000)
+
+  it('incrementalAdd preserves existing flags (OR semantics, no clear)', async () => {
+    const caseA = await seedCase('add-flag-a')
+    const caseB = await seedCase('add-flag-b')
+    const vA = await seedVariant({
+      caseId: caseA,
+      chr: '4',
+      pos: 400,
+      ref: 'T',
+      alt: 'C',
+      gtNum: '0/1'
+    })
+    void vA
+    // Global star + comment annotation so caseA's add sets the flags true.
+    await probe.query(
+      `INSERT INTO "${schema}".variant_annotations
+           (chr, pos, ref, alt, global_comment, starred, acmg_classification, created_at, updated_at)
+           VALUES ('4', 400, 'T', 'C', 'noted', 1, 'Pathogenic', $1, $1)`,
+      [now]
+    )
+    await seedVariant({ caseId: caseB, chr: '4', pos: 400, ref: 'T', alt: 'C', gtNum: '0/1' })
+
+    await withClient(async (client) => {
+      await repo.incrementalAdd({ schema, client: client as never, caseId: caseA })
+      // caseB add must not clear the flags set by caseA's add.
+      await repo.incrementalAdd({ schema, client: client as never, caseId: caseB })
+    })
+
+    const row = await summaryRow('4')
+    expect(row!.carrier_count).toBe(2)
+    expect(row!.has_star).toBe(true)
+    expect(row!.has_comment).toBe(true)
+    expect(row!.acmg_best).toBe('Pathogenic')
+  }, 60_000)
+
+  it('incrementalRemove subtracts all three counters simultaneously', async () => {
+    const caseA = await seedCase('rm-a')
+    const caseB = await seedCase('rm-b')
+    await seedVariant({ caseId: caseA, chr: '1', pos: 100, ref: 'A', alt: 'T', gtNum: '0/1' })
+    await seedVariant({ caseId: caseB, chr: '1', pos: 100, ref: 'A', alt: 'T', gtNum: '1/1' })
+
+    await withClient(async (client) => {
+      await repo.incrementalAdd({ schema, client: client as never, caseId: caseA })
+      await repo.incrementalAdd({ schema, client: client as never, caseId: caseB })
+      // Remove caseB (the hom carrier).
+      await repo.incrementalRemove({ schema, client: client as never, caseId: caseB })
+    })
+
+    const row = await summaryRow('1')
+    expect(row!.carrier_count).toBe(1)
+    expect(row!.het_count).toBe(1)
+    expect(row!.hom_count).toBe(0)
+  }, 60_000)
+
+  it('incrementalRemove deletes rows that drop to zero carriers', async () => {
+    const caseA = await seedCase('rm-zero-a')
+    await seedVariant({ caseId: caseA, chr: '5', pos: 500, ref: 'A', alt: 'G', gtNum: '0/1' })
+
+    await withClient(async (client) => {
+      await repo.incrementalAdd({ schema, client: client as never, caseId: caseA })
+      await repo.incrementalRemove({ schema, client: client as never, caseId: caseA })
+    })
+
+    const row = await summaryRow('5')
+    expect(row).toBeNull()
+  }, 60_000)
+})
+
 describe.skipIf(RUN)('PostgresCohortSummaryRepository.rebuild — Sprint A C2 (skipped)', () => {
   it('runs only when VARLENS_RUN_POSTGRES_E2E=1 and `make pg-up` is up', () => {
     expect(RUN).toBe(false)

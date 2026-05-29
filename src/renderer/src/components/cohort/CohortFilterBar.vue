@@ -159,7 +159,7 @@ import {
   applyPresetStateToFilters,
   isPresetDiverged
 } from '../../utils/filters'
-import { cloneForIpc } from '../../utils/cloneForIpc'
+import { stripVueProxies } from '../../utils/stripVueProxies'
 import { logService } from '../../services/LogService'
 import { isIpcError, unwrapIpcResult } from '../../../../shared/types/errors'
 import { useApiService } from '../../composables/useApiService'
@@ -295,7 +295,7 @@ async function handleSavePreset(data: { name: string; description: string | null
   if (!(await canUseOrWarn('workflow.filterPresets'))) return
   savingPreset.value = true
   try {
-    const plainFilters = cloneForIpc(filters.value)
+    const plainFilters = stripVueProxies(filters.value)
     await savePreset({
       name: data.name,
       description: data.description,

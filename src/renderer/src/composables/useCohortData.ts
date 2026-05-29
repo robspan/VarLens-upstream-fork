@@ -22,7 +22,7 @@ import type { ColumnFilterMeta } from '../../../shared/types/column-filters'
 import type { ColumnFiltersParam } from '../../../shared/types/column-filters'
 import type { AvailableBuild } from '../../../shared/types/database'
 import { useApiService } from './useApiService'
-import { cloneForIpc } from '../utils/cloneForIpc'
+import { stripVueProxies } from '../utils/stripVueProxies'
 import { logService } from '../services/LogService'
 import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
@@ -320,7 +320,7 @@ export function useCohortData(): UseCohortDataReturn {
     }
     if (params.column_filters !== undefined) {
       // Deep-clone to strip Vue reactive proxies for IPC serialization
-      ipcParams.column_filters = cloneForIpc(params.column_filters)
+      ipcParams.column_filters = stripVueProxies(params.column_filters)
     }
     if (params.active_panel_ids !== undefined && params.active_panel_ids.length > 0) {
       ipcParams.active_panel_ids = [...params.active_panel_ids]

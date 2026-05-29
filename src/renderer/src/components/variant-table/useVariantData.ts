@@ -7,7 +7,7 @@ import { logService } from '../../services/LogService'
 import { useColumnFilters } from '../../composables/useColumnFilters'
 import { useDebounce } from '../../composables/useDebounce'
 import { useApiService } from '../../composables/useApiService'
-import { cloneForIpc } from '../../utils/cloneForIpc'
+import { stripVueProxies } from '../../utils/stripVueProxies'
 import { traceStart, traceEnd } from '../../services/PerfTrace'
 import type { PerfBudgetKey } from '../../../../shared/config/perf-budgets'
 import { unwrapIpcResult } from '../../../../shared/types/errors'
@@ -82,7 +82,7 @@ export function useVariantData(options: UseVariantDataOptions) {
       // Deep-clone to strip Vue reactive proxies for IPC serialization
       const colFilters = getColumnFiltersParam()
       const rawFilters = filters.value
-      const plainFilters = cloneForIpc({
+      const plainFilters = stripVueProxies({
         ...rawFilters,
         ...(colFilters !== undefined || rawFilters.column_filters !== undefined
           ? {

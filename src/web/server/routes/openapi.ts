@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import swagger from '@fastify/swagger'
+import swaggerUi from '@fastify/swagger-ui'
 import {
   jsonSchemaTransform,
   serializerCompiler,
@@ -37,6 +38,19 @@ export async function registerOpenApi(app: FastifyInstance): Promise<void> {
     },
     transform: jsonSchemaTransform,
     transformObject: ({ openapiObject }) => appendDocumentedDispatcherPaths(openapiObject)
+  })
+
+  await app.register(swaggerUi, {
+    routePrefix: '/api/docs',
+    staticCSP: true,
+    uiConfig: {
+      url: '/api/openapi.json',
+      deepLinking: true,
+      docExpansion: 'list'
+    },
+    theme: {
+      title: 'VarLens Web API Docs'
+    }
   })
 
   app.withTypeProvider<ZodTypeProvider>().get(

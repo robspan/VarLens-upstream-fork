@@ -1215,5 +1215,11 @@ export const mockApi: WindowAPI = {
   debug: {
     queryCountersGet: async () => ({ named: {}, unnamed: 0, enabled: false }),
     queryCountersReset: async () => ({ enabled: false })
+  },
+
+  jobs: {
+    list: async () => [],
+    get: async () => null,
+    progress: async () => null
   }
 }

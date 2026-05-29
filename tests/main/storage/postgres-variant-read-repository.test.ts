@@ -18,7 +18,9 @@ describe('PostgresVariantReadRepository', () => {
     const repository = new PostgresVariantReadRepository(pool as never, 'public')
 
     await expect(repository.getVariantTypeCounts(1)).resolves.toStrictEqual({ snv: 2, sv: 1 })
-    expect(pool.query).toHaveBeenCalledWith(expect.stringMatching(/\bvariants\b/), [1])
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringMatching(/\bvariants\b/), values: [1] })
+    )
   })
 
   it('returns distinct variant types for a case scope', async () => {
@@ -41,7 +43,9 @@ describe('PostgresVariantReadRepository', () => {
     const repository = new PostgresVariantReadRepository(pool as never, 'public')
 
     await expect(repository.getGeneSymbols(1, 'br', 20)).resolves.toStrictEqual(['BRCA1'])
-    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('ILIKE'), [1, 'br%', 20])
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('ILIKE'), values: [1, 'br%', 20] })
+    )
   })
 
   it('searches the full search document instead of narrowing to gene_symbol', async () => {

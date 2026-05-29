@@ -10,6 +10,7 @@ import type {
 import type { FilterOptions } from '../../../shared/types/api'
 import type { ColumnFilterMeta } from '../../../shared/types/column-filters'
 import { quoteIdentifier } from './identifiers'
+import { runNamed } from './named-query'
 import { POSTGRES_VARIANT_COLUMN_DEFINITIONS } from './postgres-variant-columns'
 import type { PostgresVariantColumnDefinition } from './postgres-variant-columns'
 import { addPostgresClinicalVariantFilters } from './postgres-variant-clinical-filter-sql'
@@ -318,23 +319,27 @@ function buildPostgresVariantOrderBy(sortBy?: SortItem[]): string {
 
 export class PostgresVariantReadRepository {
   private readonly schemaName: string
+  private readonly schema: string
 
   constructor(
     private readonly pool: Pick<Pool, 'query'>,
     schema: string
   ) {
+    this.schema = schema
     this.schemaName = quoteIdentifier(schema)
   }
 
   async getVariantTypeCounts(caseId: number): Promise<Record<string, number>> {
-    const result = await this.pool.query(
-      `SELECT variant_type, COUNT(*)::int AS count
+    const result = await runNamed<{ variant_type: string; count: unknown }>(this.pool as Pool, {
+      name: 'variants:type_counts:v1',
+      text: `SELECT variant_type, COUNT(*)::int AS count
        FROM ${this.schemaName}."variants"
        WHERE case_id = $1
        GROUP BY variant_type
        ORDER BY variant_type`,
-      [caseId]
-    )
+      values: [caseId],
+      schema: this.schema
+    })
     const counts: Record<string, number> = {}
     for (const row of result.rows as Array<{ variant_type: string; count: unknown }>) {
       counts[row.variant_type] = toNumber(row.count)
@@ -361,17 +366,19 @@ export class PostgresVariantReadRepository {
   }
 
   async getGeneSymbols(caseId: number, query: string, limit: number): Promise<string[]> {
-    const result = await this.pool.query(
-      `SELECT DISTINCT gene_symbol
+    const result = await runNamed<{ gene_symbol: string }>(this.pool as Pool, {
+      name: 'variants:gene_symbols:v1',
+      text: `SELECT DISTINCT gene_symbol
        FROM ${this.schemaName}."variants"
        WHERE case_id = $1
          AND gene_symbol IS NOT NULL
          AND gene_symbol ILIKE $2
        ORDER BY gene_symbol
        LIMIT $3`,
-      [caseId, `${query}%`, limit]
-    )
-    return (result.rows as Array<{ gene_symbol: string }>).map((row) => row.gene_symbol)
+      values: [caseId, `${query}%`, limit],
+      schema: this.schema
+    })
+    return result.rows.map((row) => row.gene_symbol)
   }
 
   async searchVariants(caseId: number, query: string, limit: number): Promise<Variant[]> {

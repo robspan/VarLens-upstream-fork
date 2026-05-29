@@ -413,6 +413,47 @@ function printReport(options, comparison) {
   return failed ? 1 : 0
 }
 
+const args = process.argv.slice(2)
+if (args.includes('--bootstrap-postgres-baseline')) {
+  await bootstrapPostgresBaseline()
+  process.exit(0)
+}
+
+async function bootstrapPostgresBaseline() {
+  const { readdirSync, readFileSync, writeFileSync } = await import('node:fs')
+  const { join } = await import('node:path')
+  const repoDir = 'src/main/storage/postgres'
+  const violations = []
+  for (const f of readdirSync(repoDir)) {
+    if (!f.endsWith('Repository.ts')) continue
+    const text = readFileSync(join(repoDir, f), 'utf-8')
+    const lines = text.split('\n')
+    lines.forEach((line, idx) => {
+      // Match pool.query('...') OR pool.query(`...`) OR client.query('...')
+      // that is NOT inside a runNamed / runNamedDynamic call. Heuristic: the
+      // call begins with pool.query or client.query, followed immediately by
+      // a string literal opener.
+      const m = line.match(/\b(pool|client)\.query\(\s*['"`]/)
+      if (m) {
+        violations.push({ file: f, line: idx + 1, snippet: line.trim().slice(0, 120) })
+      }
+    })
+  }
+  const baseline = {
+    generatedAt: new Date().toISOString(),
+    count: violations.length,
+    violations: violations.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line)
+  }
+  writeFileSync(
+    'scripts/agent-health-postgres-baseline.json',
+    JSON.stringify(baseline, null, 2) + '\n'
+  )
+  console.log(
+    `Bootstrap baseline: ${baseline.count} violations across ${new Set(violations.map((v) => v.file)).size} files`
+  )
+  console.log(`Wrote scripts/agent-health-postgres-baseline.json`)
+}
+
 const options = parseArgs(process.argv.slice(2))
 validateRoot(options.root)
 const current = buildCurrentInventory(options)

@@ -53,6 +53,7 @@ export type MockApi = {
   analysisGroups: MockApiDomain<WindowAPI['analysisGroups']>
   perf: MockApiDomain<WindowAPI['perf']>
   debug: MockApiDomain<WindowAPI['debug']>
+  jobs: MockApiDomain<WindowAPI['jobs']>
 }
 
 const TEST_SQLITE_CAPABILITIES: StorageCapabilities = {
@@ -429,6 +430,12 @@ export function createMockApi(): MockApi {
     debug: {
       queryCountersGet: vi.fn().mockResolvedValue({ named: {}, unnamed: 0, enabled: false }),
       queryCountersReset: vi.fn().mockResolvedValue({ enabled: false })
+    },
+
+    jobs: {
+      list: vi.fn().mockResolvedValue({ data: [] }),
+      get: vi.fn().mockResolvedValue({ data: null }),
+      progress: vi.fn().mockResolvedValue({ data: null })
     }
   }
 

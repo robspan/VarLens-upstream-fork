@@ -18,6 +18,8 @@ import type { WindowAPI, Case, BatchAnnotationKey } from '../../../src/shared/ty
 import type { IpcResult } from '../../../src/shared/types/errors'
 import type { ImportResult } from '../../../src/shared/types/import'
 import { DEBUG_CHANNELS } from '../../../src/shared/ipc/domains/debug'
+import { JOBS_CHANNELS } from '../../../src/shared/ipc/domains/jobs'
+import type { Job } from '../../../src/shared/types/jobs'
 
 const ROOT = resolve(__dirname, '..', '..', '..')
 
@@ -25,7 +27,8 @@ const DOMAIN_CONTRACT_PATHS: Record<string, string> = {
   CasesDomainContract: 'src/shared/ipc/domains/cases.ts',
   DatabaseDomainContract: 'src/shared/ipc/domains/database.ts',
   FilterPresetsDomainContract: 'src/shared/ipc/domains/filter-presets.ts',
-  DebugApi: 'src/shared/ipc/domains/debug.ts'
+  DebugApi: 'src/shared/ipc/domains/debug.ts',
+  JobsApi: 'src/shared/ipc/domains/jobs.ts'
 }
 
 /**
@@ -580,6 +583,58 @@ describe('debug domain — Sprint A PR-2 Gate 10c', () => {
     expectTypeOf<Awaited<ReturnType<WindowAPI['debug']['queryCountersReset']>>>().toEqualTypeOf<
       IpcResult<{ enabled: boolean }>
     >()
+  })
+})
+
+describe('jobs domain — Sprint A PR-4 Gate 11', () => {
+  it('exposes jobs:list / jobs:get / jobs:progress', () => {
+    expect(JOBS_CHANNELS.list).toBe('jobs:list')
+    expect(JOBS_CHANNELS.get).toBe('jobs:get')
+    expect(JOBS_CHANNELS.progress).toBe('jobs:progress')
+  })
+
+  it('WindowAPI carries a jobs top-level key wired to the JobsApi contract', () => {
+    const apiKeys = extractWindowApiKeys()
+    expect(apiKeys).toContain('jobs')
+
+    const jobsMethods = extractSubInterfaceKeys('JobsAPI')
+    expect(jobsMethods).toEqual(['get', 'list', 'progress'])
+  })
+
+  it('create-window-api assembles the jobs domain', () => {
+    const source = readFileSync(
+      resolve(ROOT, 'src/preload/window-api/create-window-api.ts'),
+      'utf-8'
+    )
+    expect(source).toContain("import { createJobsApi } from '../domains/jobs'")
+    expect(source).toContain('jobs: createJobsApi()')
+  })
+
+  it('main process registers the jobs handlers', () => {
+    const source = readFileSync(resolve(ROOT, 'src/main/ipc/index.ts'), 'utf-8')
+    expect(source).toContain("import { registerJobsHandlers } from './domains/jobs'")
+    expect(source).toContain('registerJobsHandlers()')
+  })
+
+  it('compile-time check: WindowAPI jobs methods return IpcResult', () => {
+    expectTypeOf<Awaited<ReturnType<WindowAPI['jobs']['list']>>>().toEqualTypeOf<IpcResult<Job[]>>()
+    expectTypeOf<Awaited<ReturnType<WindowAPI['jobs']['get']>>>().toEqualTypeOf<
+      IpcResult<Job | null>
+    >()
+    expectTypeOf<Awaited<ReturnType<WindowAPI['jobs']['progress']>>>().toEqualTypeOf<
+      IpcResult<Job['progress']>
+    >()
+  })
+
+  it('existing import contract is unchanged by the jobs domain', () => {
+    // Byte-identity guard: the import domain's start signature and the
+    // import:progress event channel must be untouched by PR-4.
+    expectTypeOf<Awaited<ReturnType<WindowAPI['import']['start']>>>().toEqualTypeOf<
+      IpcResult<ImportResult>
+    >()
+
+    const coreApiSource = readFileSync(resolve(ROOT, 'src/preload/window-api/core-api.ts'), 'utf-8')
+    expect(coreApiSource).toContain("subscribeToIpcEvent('import:progress', callback)")
   })
 })
 

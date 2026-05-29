@@ -111,6 +111,7 @@ import type { PerfSnapshot } from './perf'
 import type { CasesDomainContract } from '../ipc/domains/cases'
 import type { DatabaseDomainContract } from '../ipc/domains/database'
 import type { DebugApi } from '../ipc/domains/debug'
+import type { JobsApi } from '../ipc/domains/jobs'
 export type { DatabaseInfo, DatabaseOpenResult, RecentDatabase } from '../ipc/domains/database'
 
 // Re-export for convenience
@@ -861,9 +862,12 @@ export interface WindowAPI {
   gnomad: GnomadAPI
   perf: PerfAPI
   debug: DebugAPI
+  jobs: JobsAPI
 }
 
 export type DebugAPI = DebugApi
+
+export type JobsAPI = JobsApi
 
 export interface PresetsAPI {
   list: () => Promise<IpcResult<FilterPreset[]>>

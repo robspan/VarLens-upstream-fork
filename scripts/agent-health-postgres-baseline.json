@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-05-29T00:15:04.692Z",
-  "count": 42,
+  "generatedAt": "2026-05-29T02:05:36.988Z",
+  "count": 16,
   "violations": [
     {
       "file": "PostgresAnalysisGroupsRepository.ts",
@@ -8,49 +8,9 @@
       "snippet": "await this.pool.query(`DELETE FROM ${this.groupsTable()} WHERE id = $1`, [id])"
     },
     {
-      "file": "PostgresAnnotationsRepository.ts",
-      "line": 94,
-      "snippet": "await client.query('ROLLBACK')"
-    },
-    {
-      "file": "PostgresAnnotationsRepository.ts",
-      "line": 204,
-      "snippet": "await client.query('BEGIN')"
-    },
-    {
-      "file": "PostgresAnnotationsRepository.ts",
-      "line": 216,
-      "snippet": "await client.query('COMMIT')"
-    },
-    {
-      "file": "PostgresAnnotationsRepository.ts",
-      "line": 325,
-      "snippet": "await client.query('BEGIN')"
-    },
-    {
-      "file": "PostgresAnnotationsRepository.ts",
-      "line": 338,
-      "snippet": "await client.query('COMMIT')"
-    },
-    {
-      "file": "PostgresCaseLifecycleRepository.ts",
-      "line": 21,
-      "snippet": "await client.query('BEGIN')"
-    },
-    {
       "file": "PostgresCaseLifecycleRepository.ts",
       "line": 22,
       "snippet": "await client.query(`DELETE FROM ${this.schemaName}.\"cases\" WHERE id = $1`, [caseId])"
-    },
-    {
-      "file": "PostgresCaseLifecycleRepository.ts",
-      "line": 24,
-      "snippet": "await client.query('COMMIT')"
-    },
-    {
-      "file": "PostgresCaseLifecycleRepository.ts",
-      "line": 27,
-      "snippet": "await client.query('ROLLBACK')"
     },
     {
       "file": "PostgresCaseLifecycleRepository.ts",
@@ -69,43 +29,13 @@
     },
     {
       "file": "PostgresCaseMetadataRepository.ts",
-      "line": 198,
-      "snippet": "await client.query('BEGIN')"
-    },
-    {
-      "file": "PostgresCaseMetadataRepository.ts",
       "line": 199,
       "snippet": "await client.query(`DELETE FROM ${this.table('case_cohort_links')} WHERE case_id = $1`, ["
     },
     {
-      "file": "PostgresCaseMetadataRepository.ts",
-      "line": 211,
-      "snippet": "await client.query('COMMIT')"
-    },
-    {
-      "file": "PostgresCaseMetadataRepository.ts",
-      "line": 213,
-      "snippet": "await client.query('ROLLBACK')"
-    },
-    {
       "file": "PostgresFilterPresetsRepository.ts",
-      "line": 178,
+      "line": 188,
       "snippet": "await this.pool.query(`DELETE FROM ${this.tableName()} WHERE id = $1`, [id])"
-    },
-    {
-      "file": "PostgresFilterPresetsRepository.ts",
-      "line": 189,
-      "snippet": "await client.query('BEGIN')"
-    },
-    {
-      "file": "PostgresFilterPresetsRepository.ts",
-      "line": 197,
-      "snippet": "await client.query('COMMIT')"
-    },
-    {
-      "file": "PostgresFilterPresetsRepository.ts",
-      "line": 200,
-      "snippet": "await client.query('ROLLBACK')"
     },
     {
       "file": "PostgresJsonImportRepository.ts",
@@ -148,69 +78,9 @@
       "snippet": "await this.pool.query(`DELETE FROM ${this.table('region_files')} WHERE id = $1`, [id])"
     },
     {
-      "file": "PostgresPanelsRepository.ts",
-      "line": 477,
-      "snippet": "await client.query('BEGIN')"
-    },
-    {
-      "file": "PostgresPanelsRepository.ts",
-      "line": 479,
-      "snippet": "await client.query('COMMIT')"
-    },
-    {
-      "file": "PostgresPanelsRepository.ts",
-      "line": 482,
-      "snippet": "await client.query('ROLLBACK').catch(() => undefined)"
-    },
-    {
       "file": "PostgresTagsRepository.ts",
       "line": 112,
       "snippet": "const result = await this.pool.query(`DELETE FROM ${this.table('tags')} WHERE id = $1`, [id])"
-    },
-    {
-      "file": "PostgresTagsRepository.ts",
-      "line": 176,
-      "snippet": "await client.query('BEGIN')"
-    },
-    {
-      "file": "PostgresTagsRepository.ts",
-      "line": 193,
-      "snippet": "await client.query('COMMIT')"
-    },
-    {
-      "file": "PostgresTagsRepository.ts",
-      "line": 196,
-      "snippet": "await client.query('ROLLBACK')"
-    },
-    {
-      "file": "PostgresTranscriptsRepository.ts",
-      "line": 63,
-      "snippet": "await client.query('BEGIN')"
-    },
-    {
-      "file": "PostgresTranscriptsRepository.ts",
-      "line": 70,
-      "snippet": "await client.query('COMMIT')"
-    },
-    {
-      "file": "PostgresTranscriptsRepository.ts",
-      "line": 73,
-      "snippet": "await client.query('ROLLBACK')"
-    },
-    {
-      "file": "PostgresTranscriptsRepository.ts",
-      "line": 86,
-      "snippet": "await client.query('BEGIN')"
-    },
-    {
-      "file": "PostgresTranscriptsRepository.ts",
-      "line": 111,
-      "snippet": "await client.query('COMMIT')"
-    },
-    {
-      "file": "PostgresTranscriptsRepository.ts",
-      "line": 114,
-      "snippet": "await client.query('ROLLBACK')"
     }
   ]
 }

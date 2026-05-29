@@ -419,8 +419,8 @@ if (args.includes('--bootstrap-postgres-baseline')) {
   process.exit(0)
 }
 
-async function bootstrapPostgresBaseline() {
-  const { readdirSync, readFileSync, writeFileSync } = await import('node:fs')
+async function collectPostgresViolations() {
+  const { readdirSync, readFileSync } = await import('node:fs')
   const { join } = await import('node:path')
   const repoDir = 'src/main/storage/postgres'
   const violations = []
@@ -434,15 +434,29 @@ async function bootstrapPostgresBaseline() {
       // call begins with pool.query or client.query, followed immediately by
       // a string literal opener.
       const m = line.match(/\b(pool|client)\.query\(\s*['"`]/)
-      if (m) {
-        violations.push({ file: f, line: idx + 1, snippet: line.trim().slice(0, 120) })
+      if (!m) return
+      // Exclude bare transaction-control statements (BEGIN/COMMIT/ROLLBACK/
+      // SAVEPOINT). These are correct, parameterless usage that will never be
+      // converted to runNamed, so counting them inflates the baseline and lets
+      // a real anti-pattern regression hide behind an unrelated txn-control
+      // refactor. Only the parameterized / dynamic-SQL literal pattern the gate
+      // is meant to drive down should be tracked.
+      if (/\b(pool|client)\.query\(\s*['"`](BEGIN|COMMIT|ROLLBACK|SAVEPOINT)\b/i.test(line)) {
+        return
       }
+      violations.push({ file: f, line: idx + 1, snippet: line.trim().slice(0, 120) })
     })
   }
+  return violations.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line)
+}
+
+async function bootstrapPostgresBaseline() {
+  const { writeFileSync } = await import('node:fs')
+  const violations = await collectPostgresViolations()
   const baseline = {
     generatedAt: new Date().toISOString(),
     count: violations.length,
-    violations: violations.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line)
+    violations
   }
   writeFileSync(
     'scripts/agent-health-postgres-baseline.json',
@@ -452,6 +466,32 @@ async function bootstrapPostgresBaseline() {
     `Bootstrap baseline: ${baseline.count} violations across ${new Set(violations.map((v) => v.file)).size} files`
   )
   console.log(`Wrote scripts/agent-health-postgres-baseline.json`)
+}
+
+async function checkPostgresBaseline() {
+  const { readFileSync, existsSync } = await import('node:fs')
+  const baselinePath = 'scripts/agent-health-postgres-baseline.json'
+  if (!existsSync(baselinePath)) {
+    console.warn(`(skip) ${baselinePath} not found — run --bootstrap-postgres-baseline to seed`)
+    return
+  }
+  const baseline = JSON.parse(readFileSync(baselinePath, 'utf-8'))
+
+  // Re-run the same grep as bootstrapPostgresBaseline to get the current set.
+  const current = await collectPostgresViolations()
+
+  if (current.length > baseline.count) {
+    console.error(
+      `::error::pool.query(<literal>) violations increased from ${baseline.count} to ${current.length}`
+    )
+    const baselineSet = new Set(baseline.violations.map((v) => `${v.file}:${v.line}`))
+    const newOnes = current.filter((v) => !baselineSet.has(`${v.file}:${v.line}`))
+    for (const v of newOnes) {
+      console.error(`  + ${v.file}:${v.line}  ${v.snippet}`)
+    }
+    process.exit(1)
+  }
+  console.log(`postgres baseline: ${current.length}/${baseline.count} violations remain`)
 }
 
 const options = parseArgs(process.argv.slice(2))
@@ -465,4 +505,10 @@ if (options.printCurrentJson) {
 
 const baseline = readBaseline(options.baseline)
 const comparison = compareInventory(current, baseline, options.root)
-process.exit(printReport(options, comparison))
+const reportExit = printReport(options, comparison)
+
+// Postgres pool.query(<literal>) monotonic-decrease gate (Sprint A PR-2 B4).
+// checkPostgresBaseline() exits the process directly when violations increase.
+await checkPostgresBaseline()
+
+process.exit(reportExit)

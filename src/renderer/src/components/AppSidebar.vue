@@ -19,7 +19,7 @@
           <div>Right-click for context menu</div>
         </div>
       </v-tooltip>
-      <v-menu v-if="!isWebMode" location="bottom end" offset="4">
+      <v-menu location="bottom end" offset="4">
         <template #activator="{ props: menuProps }">
           <v-btn icon size="small" variant="text" v-bind="menuProps">
             <v-icon :icon="mdiPlus" />
@@ -28,6 +28,7 @@
         </template>
         <v-list density="compact">
           <v-list-item
+            v-if="!isWebMode"
             :prepend-icon="mdiFileDocumentMultiple"
             title="Import VCF Files"
             subtitle="Multi-file case (SNV + SV + CNV + STR)"

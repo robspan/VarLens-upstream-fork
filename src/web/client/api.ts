@@ -29,6 +29,12 @@ interface InvokeBody {
   args: unknown[]
 }
 
+interface UploadedFileRef {
+  ref: string
+  fileName: string
+  size: number
+}
+
 // Vite's `base` config materialises here at build time. The browser
 // loads the SPA from BASE_URL (e.g. `/varlens/`), so API calls have to
 // share that prefix or reverse-proxy path routing won't match.
@@ -76,6 +82,62 @@ async function httpInvoke(domain: string, method: string, args: unknown[]): Prom
     return JSON.parse(text)
   } catch {
     throw new Error(`web rpc ${domain}.${method}: ${res.status} ${res.statusText}: ${text}`)
+  }
+}
+
+async function uploadImportFile(file: File): Promise<UploadedFileRef> {
+  const res = await fetch(`${API_BASE}/import/upload`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'content-type': 'application/octet-stream',
+      'x-varlens-file-name': file.name
+    },
+    body: file
+  })
+  const text = await res.text()
+  if (!res.ok) {
+    throw new Error(`web upload: ${res.status} ${res.statusText}: ${text}`)
+  }
+  return JSON.parse(text) as UploadedFileRef
+}
+
+async function uploadImportFiles(files: readonly File[]): Promise<UploadedFileRef[]> {
+  const uploaded: UploadedFileRef[] = []
+  for (const file of files) {
+    uploaded.push(await uploadImportFile(file))
+  }
+  return uploaded
+}
+
+async function pickAndUploadFiles(params: {
+  multiple: boolean
+  accept: string
+  directory?: boolean
+}): Promise<string[]> {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = params.accept
+  input.multiple = params.multiple
+  if (params.directory === true) {
+    input.setAttribute('webkitdirectory', '')
+  }
+  input.style.display = 'none'
+  document.body.append(input)
+  try {
+    const files = await new Promise<File[]>((resolve) => {
+      input.addEventListener(
+        'change',
+        () => {
+          resolve(Array.from(input.files ?? []))
+        },
+        { once: true }
+      )
+      input.click()
+    })
+    return (await uploadImportFiles(files)).map((file) => file.ref)
+  } finally {
+    input.remove()
   }
 }
 
@@ -159,6 +221,69 @@ function buildImportApi(): unknown {
           return (callback: (progress: unknown) => void) =>
             subscribeWebEvent('import:progress', callback)
         }
+        if (prop === 'selectFile') {
+          return async () => {
+            const refs = await pickAndUploadFiles({
+              multiple: false,
+              accept: '.vcf,.vcf.gz,.json,.json.gz,.gz'
+            })
+            return refs[0] ?? null
+          }
+        }
+        if (prop === 'selectFiles') {
+          return () =>
+            pickAndUploadFiles({
+              multiple: true,
+              accept: '.vcf,.vcf.gz,.json,.json.gz,.gz'
+            })
+        }
+        if (prop === 'selectBedFile') {
+          return async () => {
+            const refs = await pickAndUploadFiles({ multiple: false, accept: '.bed' })
+            return refs[0] ?? null
+          }
+        }
+        return typeof prop === 'string' ? rpc[prop] : undefined
+      }
+    }
+  )
+}
+
+function buildBatchImportApi(): unknown {
+  const rpc = buildDomainProxy('batch-import') as Record<string, unknown>
+  return new Proxy(
+    {},
+    {
+      get(_target, prop: string | symbol) {
+        if (prop === 'onProgress') {
+          return (callback: (progress: unknown) => void) =>
+            subscribeWebEvent('batch-import:progress', callback)
+        }
+        if (prop === 'onComplete') {
+          return (callback: (result: unknown) => void) =>
+            subscribeWebEvent('batch-import:complete', callback)
+        }
+        if (prop === 'selectFiles') {
+          return () =>
+            pickAndUploadFiles({
+              multiple: true,
+              accept: '.vcf,.vcf.gz,.json,.json.gz,.gz'
+            })
+        }
+        if (prop === 'selectFolder') {
+          return () =>
+            pickAndUploadFiles({
+              multiple: true,
+              directory: true,
+              accept: '.vcf,.vcf.gz,.json,.json.gz,.gz'
+            })
+        }
+        if (prop === 'selectZip') {
+          return async () => {
+            const refs = await pickAndUploadFiles({ multiple: false, accept: '.zip' })
+            return refs[0] === undefined ? null : { filePath: refs[0], isEncrypted: false }
+          }
+        }
         return typeof prop === 'string' ? rpc[prop] : undefined
       }
     }
@@ -166,6 +291,8 @@ function buildImportApi(): unknown {
 }
 
 const DOMAIN_OVERRIDES: Record<string, unknown> = {
+  batchImport: buildBatchImportApi(),
+  'batch-import': buildBatchImportApi(),
   import: buildImportApi(),
   perf: PERF_API,
   shell: SHELL_API,

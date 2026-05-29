@@ -65,6 +65,21 @@
             </v-card-text>
           </v-card>
         </div>
+        <input
+          ref="webFileInput"
+          type="file"
+          class="web-file-input"
+          accept=".vcf,.vcf.gz,.json,.json.gz,.gz"
+          :multiple="webInputMultiple"
+          @change="handleWebFileInput"
+        />
+        <v-progress-linear
+          v-if="webUploadPending"
+          indeterminate
+          color="primary"
+          class="mt-4"
+          aria-label="Uploading selected files"
+        />
 
         <!-- ZIP password (inline, shown when needed) -->
         <v-expand-transition>
@@ -197,6 +212,8 @@ import type { VcfPreviewResult } from '../../../../shared/types/vcf'
 import { useApiService } from '../../composables/useApiService'
 import { useImportStatusStore } from '../../stores/importStatusStore'
 import { logService } from '../../services/LogService'
+import { isWebRuntime } from '../../utils/runtime-mode'
+import { uploadWebImportFiles } from '../../utils/web-import-upload'
 import { isIpcError, unwrapIpcResult } from '../../../../shared/types/errors'
 import BatchReviewPhase from '../batch-import/BatchReviewPhase.vue'
 import BatchProgressPhase from '../batch-import/BatchProgressPhase.vue'
@@ -218,6 +235,7 @@ type ImportMode = 'single' | 'files' | 'folder' | 'zip'
 
 const { api } = useApiService()
 const importStore = useImportStatusStore()
+const isWebMode = isWebRuntime()
 
 const emit = defineEmits<{
   'import-complete': [result: { caseId: number; variantCount: number; caseName: string }]
@@ -241,7 +259,7 @@ const stepLabels = computed(() => {
   return ['Source', 'Review', 'Import', 'Summary']
 })
 
-const sources = [
+const allSources = [
   {
     mode: 'single' as ImportMode,
     icon: mdiFileDocument,
@@ -263,11 +281,19 @@ const sources = [
   { mode: 'zip' as ImportMode, icon: mdiZipBox, title: 'ZIP Archive', subtitle: 'Extract & import' }
 ]
 
+const sources = computed(() => {
+  if (!isWebMode) return allSources
+  return allSources.filter((source) => source.mode === 'single' || source.mode === 'files')
+})
+
 // File selection state
 const selectedMode = ref<ImportMode | null>(null)
 const selectedFilePaths = ref<string[]>([])
 const isZipImport = ref(false)
 const zipPath = ref('')
+const webFileInput = ref<HTMLInputElement | null>(null)
+const webUploadPending = ref(false)
+const webInputMultiple = computed(() => selectedMode.value !== 'single')
 
 // ZIP password state
 const zipPasswordNeeded = ref(false)
@@ -345,6 +371,11 @@ async function selectSource(mode: ImportMode): Promise<void> {
   selectedMode.value = mode
 
   try {
+    if (isWebMode && (mode === 'single' || mode === 'files')) {
+      webFileInput.value?.click()
+      return
+    }
+
     if (mode === 'zip') {
       const result = unwrapIpcResult(await api!.batchImport.selectZip())
       if (result === null) return
@@ -395,6 +426,44 @@ async function selectSource(mode: ImportMode): Promise<void> {
       'ImportWizard'
     )
     importStore.importError(err instanceof Error ? err.message : 'File selection failed')
+  }
+}
+
+async function handleWebFileInput(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = ''
+  if (!isWebMode || files.length === 0) return
+
+  const mode = selectedMode.value ?? (files.length === 1 ? 'single' : 'files')
+  selectedMode.value = mode
+
+  try {
+    webUploadPending.value = true
+    const uploaded = await uploadWebImportFiles(mode === 'single' ? files.slice(0, 1) : files)
+    const filePaths = uploaded.map((file) => file.ref)
+    if (filePaths.length === 0) return
+
+    selectedFilePaths.value = filePaths
+    if (filePaths.length === 1) {
+      const fp = filePaths[0].toLowerCase()
+      if (fp.endsWith('.vcf') || fp.endsWith('.vcf.gz')) {
+        isVcfImport.value = true
+        vcfFilePath.value = filePaths[0]
+        step.value = 2
+        return
+      }
+    }
+
+    await checkDuplicatesAndAdvance(filePaths)
+  } catch (err) {
+    logService.error(
+      `Browser file upload failed: ${err instanceof Error ? err.message : String(err)}`,
+      'ImportWizard'
+    )
+    importStore.importError(err instanceof Error ? err.message : 'Browser file upload failed')
+  } finally {
+    webUploadPending.value = false
   }
 }
 
@@ -674,6 +743,7 @@ function resetState(): void {
   vcfCaseNames.value = new Map()
   isZipImport.value = false
   zipPath.value = ''
+  webUploadPending.value = false
   zipPasswordNeeded.value = false
   zipPassword.value = ''
   zipError.value = ''
@@ -775,5 +845,13 @@ defineExpose({ show, reopen })
 .import-source-card:hover {
   border-color: rgb(var(--v-theme-primary));
   background: rgba(var(--v-theme-primary), 0.04);
+}
+
+.web-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 </style>

@@ -7,6 +7,11 @@ import type {
   VariantAnnotation
 } from '../../../shared/types/database'
 import { globalAnnotationAuditEntries, perCaseAnnotationAuditEntries } from '../annotation-audit'
+import {
+  applyAnnotationFlagsGlobal,
+  applyAnnotationFlagsOnCaseDelete,
+  applyAnnotationFlagsPerCase
+} from './cohort-annotation-flags-sql'
 import { quoteIdentifier } from './identifiers'
 import { runNamed } from './named-query'
 import { PostgresAuditLogRepository } from './PostgresAuditLogRepository'
@@ -123,7 +128,19 @@ export class PostgresAnnotationsRepository {
     alt: string,
     updates: GlobalAnnotationUpdates
   ): Promise<VariantAnnotation> {
-    return this._upsertGlobalAnnotationOn(this.pool, chr, pos, ref, alt, updates)
+    const client = await this.connect()
+    try {
+      await client.query('BEGIN')
+      const result = await this._upsertGlobalAnnotationOn(client, chr, pos, ref, alt, updates)
+      await applyAnnotationFlagsGlobal(client, { schema: this.schema, chr, pos, ref, alt })
+      await client.query('COMMIT')
+      return result
+    } catch (error) {
+      await rollbackTransaction(client)
+      throw error
+    } finally {
+      client.release()
+    }
   }
 
   // Raw-SQL helper — operates on the passed client/pool, no BEGIN/COMMIT.
@@ -221,6 +238,7 @@ export class PostgresAnnotationsRepository {
       )) {
         await audit.append(entry)
       }
+      await applyAnnotationFlagsGlobal(client, { schema: this.schema, chr, pos, ref, alt })
       await client.query('COMMIT')
       return result
     } catch (error) {
@@ -232,7 +250,18 @@ export class PostgresAnnotationsRepository {
   }
 
   async deleteGlobalAnnotation(chr: string, pos: number, ref: string, alt: string): Promise<void> {
-    await this._deleteGlobalAnnotationOn(this.pool, chr, pos, ref, alt)
+    const client = await this.connect()
+    try {
+      await client.query('BEGIN')
+      await this._deleteGlobalAnnotationOn(client, chr, pos, ref, alt)
+      await applyAnnotationFlagsGlobal(client, { schema: this.schema, chr, pos, ref, alt })
+      await client.query('COMMIT')
+    } catch (error) {
+      await rollbackTransaction(client)
+      throw error
+    } finally {
+      client.release()
+    }
   }
 
   // Raw-SQL helper — operates on the passed client/pool, no BEGIN/COMMIT.
@@ -279,7 +308,19 @@ export class PostgresAnnotationsRepository {
     variantId: number,
     updates: PerCaseAnnotationUpdates
   ): Promise<CaseVariantAnnotation> {
-    return this._upsertPerCaseAnnotationOn(this.pool, caseId, variantId, updates)
+    const client = await this.connect()
+    try {
+      await client.query('BEGIN')
+      const result = await this._upsertPerCaseAnnotationOn(client, caseId, variantId, updates)
+      await applyAnnotationFlagsPerCase(client, { schema: this.schema, caseId, variantId })
+      await client.query('COMMIT')
+      return result
+    } catch (error) {
+      await rollbackTransaction(client)
+      throw error
+    } finally {
+      client.release()
+    }
   }
 
   // Raw-SQL helper — operates on the passed client/pool, no BEGIN/COMMIT.
@@ -368,6 +409,7 @@ export class PostgresAnnotationsRepository {
       )) {
         await audit.append(entry)
       }
+      await applyAnnotationFlagsPerCase(client, { schema: this.schema, caseId, variantId })
       await client.query('COMMIT')
       return result
     } catch (error) {
@@ -379,7 +421,18 @@ export class PostgresAnnotationsRepository {
   }
 
   async deletePerCaseAnnotation(caseId: number, variantId: number): Promise<void> {
-    await this._deletePerCaseAnnotationOn(this.pool, caseId, variantId)
+    const client = await this.connect()
+    try {
+      await client.query('BEGIN')
+      await this._deletePerCaseAnnotationOn(client, caseId, variantId)
+      await applyAnnotationFlagsPerCase(client, { schema: this.schema, caseId, variantId })
+      await client.query('COMMIT')
+    } catch (error) {
+      await rollbackTransaction(client)
+      throw error
+    } finally {
+      client.release()
+    }
   }
 
   // Raw-SQL helper — operates on the passed client/pool, no BEGIN/COMMIT.
@@ -426,6 +479,20 @@ export class PostgresAnnotationsRepository {
         : await this.getPerCaseAnnotation(caseId, toNumber(variantId))
 
     return { global, perCase }
+  }
+
+  /**
+   * On-case-delete annotation write-hook (C5a / Pass-5 HIGH #1). Public (unlike
+   * the global/per-case hooks, which only fire from this class's own methods)
+   * because C3's PostgresCaseLifecycleRepository invokes it across the class
+   * boundary BEFORE deleting the case. Thin delegate to the shared executor in
+   * cohort-annotation-flags-sql.ts; see that module for the exclusion semantics.
+   */
+  async _applyAnnotationFlagsOnCaseDelete(
+    client: QueryablePool,
+    args: { schema: string; deletedCaseId: number }
+  ): Promise<void> {
+    await applyAnnotationFlagsOnCaseDelete(client, args)
   }
 
   private async connect(): Promise<PoolClient> {

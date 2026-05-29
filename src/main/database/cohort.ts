@@ -109,8 +109,13 @@ export class CohortService {
     // Panel interval filter (region-based, cohort-specific — not in buildBaseWhere)
     if (params.panel_intervals && params.panel_intervals.length > 0) {
       const intervalConditions = params.panel_intervals.map((iv) => {
-        paramsArray.push(iv.chr, iv.start, iv.end)
-        return '(cvs.chr = ? AND cvs.pos BETWEEN ? AND ?)'
+        // Interval-overlap (not point-in-interval) so a spanning SV/CNV whose
+        // start lies outside [start,end] but which covers the region is still
+        // included — parity with the PG cohort query (Pass-9 #7 / Gate 9).
+        // COALESCE(end_pos, pos) makes SNVs (end_pos NULL) behave exactly as the
+        // prior `pos BETWEEN start AND end`.
+        paramsArray.push(iv.chr, iv.end, iv.start)
+        return '(cvs.chr = ? AND cvs.pos <= ? AND COALESCE(cvs.end_pos, cvs.pos) >= ?)'
       })
       whereConditions.push(`(${intervalConditions.join(' OR ')})`)
     }

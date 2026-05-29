@@ -303,7 +303,9 @@ describe('PostgresReadExecutor', () => {
     })()
     const cohort = {
       queryVariants: vi.fn().mockResolvedValue({ data: [], total_count: 0 }),
+      queryVariantsWithStaleness: vi.fn().mockResolvedValue({ data: [], total_count: 0 }),
       getSummary: vi.fn().mockResolvedValue({ total_cases: 1 }),
+      getSummaryStatus: vi.fn().mockResolvedValue({ is_stale: false, last_rebuilt_at: 0 }),
       getColumnMeta: vi.fn().mockResolvedValue([{ key: 'gene_symbol' }]),
       getCarriers: vi.fn().mockResolvedValue([{ case_id: 1 }]),
       getGeneBurden: vi.fn().mockResolvedValue([{ gene_symbol: 'BRCA1' }]),
@@ -329,6 +331,9 @@ describe('PostgresReadExecutor', () => {
       total_cases: 1
     })
     await expect(
+      executor.execute({ type: 'cohort:summaryStatus', params: [] })
+    ).resolves.toStrictEqual({ is_stale: false, last_rebuilt_at: 0 })
+    await expect(
       executor.execute({ type: 'cohort:columnMeta', params: [] })
     ).resolves.toStrictEqual([{ key: 'gene_symbol' }])
     await expect(
@@ -341,8 +346,9 @@ describe('PostgresReadExecutor', () => {
       cohortRows
     )
 
-    expect(cohort.queryVariants).toHaveBeenCalledWith(cohortParams)
+    expect(cohort.queryVariantsWithStaleness).toHaveBeenCalledWith(cohortParams)
     expect(cohort.getSummary).toHaveBeenCalledWith()
+    expect(cohort.getSummaryStatus).toHaveBeenCalledWith()
     expect(cohort.getColumnMeta).toHaveBeenCalledWith()
     expect(cohort.getCarriers).toHaveBeenCalledWith('chr1', 100, 'A', 'T')
     expect(cohort.getGeneBurden).toHaveBeenCalledWith()

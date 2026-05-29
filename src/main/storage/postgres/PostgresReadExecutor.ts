@@ -24,7 +24,9 @@ interface PostgresReadExecutorRepositories {
   cohort: Pick<
     PostgresCohortRepository,
     | 'queryVariants'
+    | 'queryVariantsWithStaleness'
     | 'getSummary'
+    | 'getSummaryStatus'
     | 'getColumnMeta'
     | 'getCarriers'
     | 'getGeneBurden'
@@ -160,10 +162,13 @@ export class PostgresReadExecutor implements StorageReadExecutor {
         return await this.repositories.variants.getColumnMeta(task.params[0], task.params[1])
 
       case 'cohort:query':
-        return await this.repositories.cohort.queryVariants(task.params[0])
+        return await this.repositories.cohort.queryVariantsWithStaleness(task.params[0])
 
       case 'cohort:summary':
         return await this.repositories.cohort.getSummary()
+
+      case 'cohort:summaryStatus':
+        return await this.repositories.cohort.getSummaryStatus()
 
       case 'cohort:columnMeta':
         return await this.repositories.cohort.getColumnMeta()

@@ -116,6 +116,12 @@ export interface CohortPaginatedResult {
   data: CohortVariant[]
   /** Total count of matching variants */
   total_count: number
+  /**
+   * Optional same-load read warnings (Sprint A PR-3 C5). `staleSummary` is set
+   * when the materialised cohort summary was served while a background rebuild
+   * runs, so the renderer can surface a "refreshing" hint.
+   */
+  warnings?: { staleSummary?: boolean }
 }
 
 /**

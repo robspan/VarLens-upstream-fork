@@ -362,7 +362,10 @@ export async function getSummaryStatus(
 ): Promise<unknown> {
   const postgresSession = getPostgresSession(getSession)
   if (postgresSession !== undefined) {
-    return { is_stale: false, last_rebuilt_at: 0 }
+    return await postgresSession.getReadExecutor().execute({
+      type: 'cohort:summaryStatus',
+      params: []
+    })
   }
 
   const pool = getDbPool?.()

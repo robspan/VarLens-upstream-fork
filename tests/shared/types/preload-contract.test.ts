@@ -16,6 +16,7 @@ import { resolve } from 'path'
 import { ErrorCode } from '../../../src/shared/types/errors'
 import type { WindowAPI, Case, BatchAnnotationKey } from '../../../src/shared/types/api'
 import type { IpcResult } from '../../../src/shared/types/errors'
+import type { ImportResult } from '../../../src/shared/types/import'
 import { DEBUG_CHANNELS } from '../../../src/shared/ipc/domains/debug'
 
 const ROOT = resolve(__dirname, '..', '..', '..')
@@ -579,6 +580,89 @@ describe('debug domain — Sprint A PR-2 Gate 10c', () => {
     expectTypeOf<Awaited<ReturnType<WindowAPI['debug']['queryCountersReset']>>>().toEqualTypeOf<
       IpcResult<{ enabled: boolean }>
     >()
+  })
+})
+
+/**
+ * Return the brace-balanced body of `export interface <name> { ... }` from a
+ * source string (used by Gate 10b to assert import-result types stay
+ * warnings-free without importing main-process modules).
+ */
+function extractInterfaceBlock(source: string, interfaceName: string): string {
+  const startIdx = source.indexOf(`export interface ${interfaceName}`)
+  if (startIdx === -1) throw new Error(`interface ${interfaceName} not found`)
+  const braceStart = source.indexOf('{', startIdx)
+  let depth = 0
+  for (let i = braceStart; i < source.length; i++) {
+    if (source[i] === '{') depth++
+    else if (source[i] === '}') {
+      depth--
+      if (depth === 0) return source.slice(braceStart, i + 1)
+    }
+  }
+  throw new Error(`unbalanced braces for interface ${interfaceName}`)
+}
+
+describe('cohort domain — Sprint A PR-3 Gate 10b', () => {
+  it('cohort getVariants response carries an optional warnings field', () => {
+    type CohortGetVariantsReturn = Awaited<ReturnType<WindowAPI['cohort']['getVariants']>>
+
+    // A response without warnings still satisfies the type (warnings optional).
+    const withoutWarnings: CohortGetVariantsReturn = {
+      data: [],
+      total_count: 0
+    }
+    // A response carrying warnings.staleSummary also type-checks.
+    const withWarnings: CohortGetVariantsReturn = {
+      data: [],
+      total_count: 0,
+      warnings: { staleSummary: true }
+    }
+
+    expect(withoutWarnings.warnings).toBeUndefined()
+    expect(withWarnings.warnings?.staleSummary).toBe(true)
+  })
+
+  it('getSummaryStatus contract shape is unchanged ({ is_stale, last_rebuilt_at:number })', () => {
+    expectTypeOf<Awaited<ReturnType<WindowAPI['cohort']['getSummaryStatus']>>>().toEqualTypeOf<
+      IpcResult<{ is_stale: boolean; last_rebuilt_at: number }>
+    >()
+  })
+
+  it('ImportResult shape unchanged — no warnings field (Pass-4 HIGH #3)', () => {
+    const result: ImportResult = {
+      caseId: 1,
+      variantCount: 0,
+      skipped: 0,
+      errors: [],
+      elapsed: 0
+    }
+    // @ts-expect-error — warnings is intentionally NOT on ImportResult
+    void result.warnings
+    expect(result.caseId).toBe(1)
+  })
+
+  it('StorageImportSingleFileResult + PostgresImportWorkerCompleteMessage stay warnings-free', () => {
+    const importExecutorSource = readFileSync(
+      resolve(ROOT, 'src/main/storage/import-executor.ts'),
+      'utf-8'
+    )
+    const postgresWorkerSource = readFileSync(
+      resolve(ROOT, 'src/shared/types/postgres-import-worker.ts'),
+      'utf-8'
+    )
+
+    const singleFileBlock = extractInterfaceBlock(
+      importExecutorSource,
+      'StorageImportSingleFileResult'
+    )
+    const completeBlock = extractInterfaceBlock(
+      postgresWorkerSource,
+      'PostgresImportWorkerCompleteMessage'
+    )
+
+    expect(singleFileBlock).not.toContain('warnings')
+    expect(completeBlock).not.toContain('warnings')
   })
 })
 

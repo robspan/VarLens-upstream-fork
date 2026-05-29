@@ -381,9 +381,14 @@ export interface BatchImportAPI {
 }
 
 export interface CohortAPI {
-  getVariants: (
-    params: CohortSearchParams
-  ) => Promise<IpcResult<{ data: CohortVariant[]; total_count: number }>>
+  getVariants: (params: CohortSearchParams) => Promise<
+    IpcResult<{
+      data: CohortVariant[]
+      total_count: number
+      /** Optional same-load read warnings (Sprint A PR-3 C5). */
+      warnings?: { staleSummary?: boolean }
+    }>
+  >
   getSummary: () => Promise<IpcResult<CohortSummary>>
   getCarriers: (
     chr: string,

@@ -24,10 +24,10 @@
     },
     {
       "path": "src/main/storage/postgres/PostgresCohortRepository.ts",
-      "lines": 1071,
+      "lines": 1097,
       "threshold": 600,
       "category": "source",
-      "reason": "existing large storage/import module; grew for Sprint A PR-3 C4 — queryVariants now reads the materialised cohort_variant_summary via a summary-page path (querySummaryPage) with a live-aggregation fallback (queryLivePage), and getColumnMeta reads the deduped summary table directly; pure SQL builders are already extracted into postgres-cohort-summary-query.ts and the per-case reshape helpers into postgres-column-meta-cache.ts, so the residual growth is the repo's own orchestration (two read paths + cvs column-meta mapping) — further splitting the live/summary read paths into separate repository classes is a separate responsibility-split task"
+      "reason": "existing large storage/import module; grew for Sprint A PR-3 C4 — queryVariants now reads the materialised cohort_variant_summary via a summary-page path (querySummaryPage) with a live-aggregation fallback (queryLivePage), and getColumnMeta reads the deduped summary table directly; pure SQL builders are already extracted into postgres-cohort-summary-query.ts and the per-case reshape helpers into postgres-column-meta-cache.ts, so the residual growth is the repo's own orchestration (two read paths + cvs column-meta mapping) — further splitting the live/summary read paths into separate repository classes is a separate responsibility-split task. PR3-17 (C5) added two thin delegating accessors (queryVariantsWithStaleness, getSummaryStatus, ~26 lines) that forward to the extracted cohort-read-freshness module; the staleness/bootstrap policy itself lives outside this file so the repo only gains the seam, not the logic"
     },
     {
       "path": "src/main/workers/postgres-import-worker.ts",
@@ -136,10 +136,10 @@
     },
     {
       "path": "src/shared/types/api.ts",
-      "lines": 920,
+      "lines": 927,
       "threshold": 600,
       "category": "source",
-      "reason": "existing shared contract surface; must not grow before contract split. Sprint A additions to this central interface are structurally unavoidable: PR-1 A1 added the `BatchAnnotationKey` type (Pass-8 #1) used across the annotations IPC contract; PR-2 added a new top-level WindowAPI domain key (`debug: DebugAPI`) plus its import and the `DebugAPI` alias that resolves the Gate 10c preload-contract test back to the domain contract. Neither can be split out without breaking the contract or its tests."
+      "reason": "existing shared contract surface; must not grow before contract split. Sprint A additions to this central interface are structurally unavoidable: PR-1 A1 added the `BatchAnnotationKey` type (Pass-8 #1) used across the annotations IPC contract; PR-2 added a new top-level WindowAPI domain key (`debug: DebugAPI`) plus its import and the `DebugAPI` alias that resolves the Gate 10c preload-contract test back to the domain contract. PR-3 PR3-17 (C5/Gate 10b) widened the existing `CohortAPI.getVariants` return shape with an optional `warnings?: { staleSummary?: boolean }` field — a same-method contract extension that must live on the central interface and cannot be split out. Neither can be split out without breaking the contract or its tests."
     },
     {
       "path": "src/shared/types/database.ts",

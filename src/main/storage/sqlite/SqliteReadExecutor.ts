@@ -186,6 +186,12 @@ export class SqliteReadExecutor implements StorageReadExecutor {
         }
         return this.databaseService.cohort.getCohortSummary()
 
+      case 'cohort:summaryStatus':
+        if (this.dbPool !== null) {
+          return await this.dbPool.run({ type: 'cohort:summaryStatus', params: task.params })
+        }
+        return this.databaseService.cohortSummary.getStatus()
+
       case 'cohort:columnMeta':
         if (this.dbPool !== null) {
           return await this.dbPool.run({ type: 'cohort:columnMeta', params: task.params })

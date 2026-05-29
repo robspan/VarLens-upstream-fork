@@ -12,6 +12,11 @@ import type {
 } from '../../../shared/types/cohort'
 import { mainLogger } from '../../services/MainLogger'
 import { getGeneReferenceDb } from '../../database/geneReferenceLoader'
+import {
+  prepareCohortRead,
+  readCohortSummaryStatus,
+  type CohortReadWarnings
+} from './cohort-read-freshness'
 import { quoteIdentifier } from './identifiers'
 import { runNamed, runNamedDynamic } from './named-query'
 import { POSTGRES_VARIANT_COLUMN_DEFINITIONS } from './postgres-variant-columns'
@@ -262,6 +267,27 @@ export class PostgresCohortRepository {
     if (summaryResult !== null) return summaryResult
 
     return this.queryLivePage(resolvedParams, totalCases)
+  }
+
+  /**
+   * C5 (PR3-17): reconcile the materialised summary before serving, then run the
+   * page read. Returns the warnings to merge into the IPC response (staleSummary
+   * when a large cohort is served stale while a background rebuild runs).
+   */
+  async queryVariantsWithStaleness(
+    params: CohortSearchParams
+  ): Promise<CohortPaginatedResult & { warnings?: CohortReadWarnings }> {
+    const { warnings } = await prepareCohortRead({ pool: this.pool, schema: this.schema })
+    const result = await this.queryVariants(params)
+    return warnings === undefined ? result : { ...result, warnings }
+  }
+
+  /**
+   * C5 (PR3-17): cohort_summary_state read in the existing IPC shape
+   * { is_stale, last_rebuilt_at:number }. Replaces the hardcoded handler stub.
+   */
+  async getSummaryStatus(): Promise<{ is_stale: boolean; last_rebuilt_at: number }> {
+    return readCohortSummaryStatus({ pool: this.pool, schema: this.schema })
   }
 
   /**

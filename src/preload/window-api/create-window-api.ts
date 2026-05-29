@@ -1,6 +1,7 @@
 import { createAppApi } from './app-api'
 import { createCoreApi } from './core-api'
 import { createPreloadDomainApis } from './domains'
+import { createDebugApi } from '../domains/debug'
 import type { WindowAPI } from '../../shared/types/api'
 
 export function createWindowApi(): WindowAPI {
@@ -40,6 +41,7 @@ export function createWindowApi(): WindowAPI {
     protein: app.protein,
     gnomad: app.gnomad,
     perf: core.perf,
-    presets: app.presets
+    presets: app.presets,
+    debug: createDebugApi()
   }
 }

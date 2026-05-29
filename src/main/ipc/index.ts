@@ -16,6 +16,7 @@ import { registerCaseMetricsDomain } from './domains/case-metrics'
 import { registerCasesDomain } from './domains/cases'
 import { registerCohortDomain } from './domains/cohort'
 import { registerDatabaseDomain } from './domains/database'
+import { registerDebugHandlers } from './domains/debug'
 import { registerExportDomain } from './domains/export'
 import { registerFilterPresetsDomain } from './domains/filter-presets'
 import { registerGeneListsDomain } from './domains/gene-lists'
@@ -80,6 +81,7 @@ export function registerIpcHandlers(): void {
   registerCasesDomain(ipcMain)
   registerCohortDomain(ipcMain)
   registerDatabaseDomain(ipcMain)
+  registerDebugHandlers()
   registerExportDomain(ipcMain)
   registerFilterPresetsDomain(ipcMain)
   registerGeneListsDomain(ipcMain)

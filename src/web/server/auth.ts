@@ -81,8 +81,17 @@ function isProductionMode(): boolean {
   return env !== 'development' && env !== 'test'
 }
 
-const PUBLIC_API_PATHS = new Set<string>(['/api/auth/login', '/api/auth/isAccountsEnabled'])
+const PUBLIC_API_PATHS = new Set<string>([
+  '/api/auth/login',
+  '/api/auth/isAccountsEnabled',
+  '/api/openapi.json'
+])
+const PUBLIC_API_PREFIXES = ['/api/docs/']
 const UNSAFE_METHODS = new Set<string>(['POST', 'PUT', 'PATCH', 'DELETE'])
+
+function isPublicApiPath(path: string): boolean {
+  return PUBLIC_API_PATHS.has(path) || PUBLIC_API_PREFIXES.some((prefix) => path.startsWith(prefix))
+}
 
 function headerValue(value: string | string[] | undefined): string | undefined {
   if (Array.isArray(value)) return value[0]
@@ -205,7 +214,7 @@ export async function registerSessions(
       })
     }
 
-    if (PUBLIC_API_PATHS.has(path)) return
+    if (isPublicApiPath(path)) return
 
     if (request.session.user === undefined) {
       reply.code(401)

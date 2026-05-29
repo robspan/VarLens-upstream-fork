@@ -91,6 +91,33 @@ describe('runNamed — Sprint A B1', () => {
     expect(result.rows[0]).toEqual({ ok: true })
   })
 
+  it('retries unnamed on PG error 42704 (Gate 7 — undefined_object alternate path)', async () => {
+    let call = 0
+    const queryMock = vi.fn().mockImplementation(async () => {
+      call++
+      if (call === 1) {
+        const err = new Error('prepared statement "foo" does not exist') as Error & {
+          code: string
+        }
+        err.code = '42704'
+        throw err
+      }
+      return { rows: [{ ok: true }], rowCount: 1 }
+    })
+    const pool = { query: queryMock } as unknown as Pool
+
+    const result = await runNamed(pool, {
+      name: 'foo:bar:v1',
+      text: 'SELECT 1',
+      values: [],
+      schema: 'public'
+    })
+
+    expect(call).toBe(2)
+    expect(queryMock.mock.calls[1][0]).not.toHaveProperty('name')
+    expect(result.rows[0]).toEqual({ ok: true })
+  })
+
   it('does NOT swallow client-side "Prepared statements must be unique"', async () => {
     const queryMock = vi
       .fn()

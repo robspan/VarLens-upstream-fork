@@ -325,7 +325,8 @@ export function registerAnnotationHandlers({
       chr: z.string().min(1),
       pos: z.number().int().positive(),
       ref: z.string().min(1),
-      alt: z.string().min(1)
+      alt: z.string().min(1),
+      variantId: z.number().int().positive().optional()
     })
   )
 

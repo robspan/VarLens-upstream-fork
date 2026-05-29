@@ -1,6 +1,7 @@
 import { BaseRepository } from './BaseRepository'
 import { sql } from 'kysely'
 import type { VariantAnnotation, CaseVariantAnnotation } from './types'
+import type { BatchAnnotationKey } from '../../shared/types/api'
 
 export class AnnotationRepository extends BaseRepository {
   getGlobalAnnotation(
@@ -178,37 +179,77 @@ export class AnnotationRepository extends BaseRepository {
     return { global, perCase }
   }
 
+  /**
+   * Sprint A A1: batched annotation lookup.
+   *
+   * Returns a coordinate-keyed map `${chr}:${pos}:${ref}:${alt}` →
+   * `{ global, perCase }` per the IPC contract (VariantAnnotationsResult).
+   *
+   * Call-count invariant (Gate 4):
+   *   - caseId === null  → 1 prepared statement (global SELECT only)
+   *   - caseId !== null  → 2 prepared statements (global + per-case)
+   *
+   * The per-case SELECT defensively joins on BOTH cva.case_id AND v.case_id
+   * even when a variantId is supplied — case_variant_annotations.UNIQUE(case_id,
+   * variant_id) is enforced but the FKs are independent, so a renderer-spoofed
+   * variantId could otherwise read another case's annotation (Pass-8 #2).
+   */
   getBatch(
     caseId: number | null,
-    variantKeys: Array<{ chr: string; pos: number; ref: string; alt: string }>
+    keys: BatchAnnotationKey[]
   ): Record<string, { global: VariantAnnotation | null; perCase: CaseVariantAnnotation | null }> {
     const result: Record<
       string,
       { global: VariantAnnotation | null; perCase: CaseVariantAnnotation | null }
     > = {}
+    if (keys.length === 0) return result
 
-    for (const vk of variantKeys) {
-      const key = `${vk.chr}:${vk.pos}:${vk.ref}:${vk.alt}`
-      const global = this.getGlobalAnnotation(vk.chr, vk.pos, vk.ref, vk.alt)
+    for (const k of keys) {
+      result[`${k.chr}:${k.pos}:${k.ref}:${k.alt}`] = { global: null, perCase: null }
+    }
 
-      let perCase: CaseVariantAnnotation | null = null
-      if (caseId !== null) {
-        const variant = this.execFirst<{ id: number }>(
-          this.kysely
-            .selectFrom('variants')
-            .select('id')
-            .where('case_id', '=', caseId)
-            .where('chr', '=', vk.chr)
-            .where('pos', '=', vk.pos)
-            .where('ref', '=', vk.ref)
-            .where('alt', '=', vk.alt)
+    // Composite-tuple IN list, built textually from keys.length (SQLite only —
+    // node-postgres prepared-statement caching does not apply here).
+    const coordPlaceholders = keys.map(() => '(?, ?, ?, ?)').join(', ')
+    const coordParams: (string | number)[] = []
+    for (const k of keys) coordParams.push(k.chr, k.pos, k.ref, k.alt)
+
+    // Global lookup — always runs (1 prepared statement).
+    const globalRows = this.db
+      .prepare(
+        `SELECT * FROM variant_annotations
+         WHERE (chr, pos, ref, alt) IN (${coordPlaceholders})`
+      )
+      .all(...coordParams) as VariantAnnotation[]
+    for (const row of globalRows) {
+      const key = `${row.chr}:${row.pos}:${row.ref}:${row.alt}`
+      if (key in result) result[key].global = row
+    }
+
+    // Per-case lookup — only when caseId !== null (2nd prepared statement).
+    if (caseId !== null) {
+      const variantIds = keys
+        .map((k) => k.variantId)
+        .filter((v): v is number => typeof v === 'number')
+      const idClause =
+        variantIds.length > 0 ? ` AND v.id IN (${variantIds.map(() => '?').join(', ')})` : ''
+      const perCaseRows = this.db
+        .prepare(
+          `SELECT cva.*, v.chr AS _vchr, v.pos AS _vpos, v.ref AS _vref, v.alt AS _valt
+           FROM case_variant_annotations cva
+           JOIN variants v ON v.id = cva.variant_id
+           WHERE cva.case_id = ?
+             AND v.case_id = ?
+             AND (v.chr, v.pos, v.ref, v.alt) IN (${coordPlaceholders})${idClause}`
         )
-        if (variant) {
-          perCase = this.getPerCaseAnnotation(caseId, variant.id)
-        }
+        .all(caseId, caseId, ...coordParams, ...variantIds) as Array<
+        CaseVariantAnnotation & { _vchr: string; _vpos: number; _vref: string; _valt: string }
+      >
+      for (const row of perCaseRows) {
+        const { _vchr, _vpos, _vref, _valt, ...cva } = row
+        const key = `${_vchr}:${_vpos}:${_vref}:${_valt}`
+        if (key in result) result[key].perCase = cva
       }
-
-      result[key] = { global, perCase }
     }
 
     return result

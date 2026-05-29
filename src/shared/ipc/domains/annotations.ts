@@ -1,8 +1,8 @@
 import type {
+  BatchAnnotationKey,
   GlobalAnnotationUpdates,
   PerCaseAnnotationUpdates,
-  VariantAnnotationsResult,
-  VariantKey
+  VariantAnnotationsResult
 } from '../../types/api'
 import type { VariantAnnotation, CaseVariantAnnotation } from '../../types/database-entities'
 import type { IpcResult } from '../../types/errors'
@@ -41,6 +41,6 @@ export interface AnnotationsDomainContract {
   ) => Promise<IpcResult<VariantAnnotationsResult>>
   batchGet: (
     caseId: number | null,
-    variantKeys: VariantKey[]
+    variantKeys: BatchAnnotationKey[]
   ) => Promise<IpcResult<Record<string, VariantAnnotationsResult>>>
 }

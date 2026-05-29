@@ -448,6 +448,16 @@ export interface VariantKey {
   alt: string
 }
 
+/**
+ * Batched annotation lookup key (Sprint A A1, Pass-8 #1).
+ *
+ * `variantId` is OPTIONAL. The cohort/global batch path omits it; the per-case
+ * path includes it for the defensive join (Pass-8 #2). Renderer code MUST pass
+ * `variantId` when `caseId !== null`; the server-side join validates that the
+ * `variantId` actually belongs to `caseId` — a spoofed `variantId` returns null.
+ */
+export type BatchAnnotationKey = VariantKey & { variantId?: number }
+
 export interface VariantAnnotationsResult {
   global: VariantAnnotation | null
   perCase: CaseVariantAnnotation | null

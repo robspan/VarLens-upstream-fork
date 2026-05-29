@@ -7,6 +7,7 @@
  * batching, and SQL writes happen in the postgres-import-worker.
  */
 import { mainLogger } from '../../services/MainLogger'
+import { jobRunner } from '../../services/jobs/runner'
 import type {
   StorageImportExecutor,
   StorageImportSingleFileParams,
@@ -43,9 +44,22 @@ export class PostgresImportExecutor implements StorageImportExecutor {
     if ('filters' in (params as object)) {
       throw new Error('Filters are only supported on import:startMultiFile')
     }
-    if (this.inProgress) {
-      throw new Error('An import is already in progress')
-    }
+    const handle = jobRunner.enqueue<StorageImportSingleFileParams, StorageImportSingleFileResult>(
+      'import_single',
+      params,
+      async (ctx, p) => {
+        // Cancellation posts { type: 'cancel' } to the worker via the client's
+        // cancel() method (PostgresImportWorkerClient.cancel), NOT terminate().
+        ctx.registerCancel(() => this.currentClient?.cancel())
+        return await this._performImport(p)
+      }
+    )
+    return handle.result
+  }
+
+  private async _performImport(
+    params: StorageImportSingleFileParams
+  ): Promise<StorageImportSingleFileResult> {
     this.inProgress = true
     const startedAt = Date.now()
     try {
@@ -76,6 +90,15 @@ export class PostgresImportExecutor implements StorageImportExecutor {
   async importMultiFile(
     params: StorageImportMultiFileParams
   ): Promise<StorageImportMultiFileResult> {
+    // INTERIM (PR4-3 → PR4-4): importSingleFile now routes through
+    // jobRunner('import_single') while importMultiFile still guards on the
+    // local `inProgress` flag. This is an intentional, asymmetric intermediate
+    // state: cross-path mutual exclusion between single and multi imports is
+    // NOT enforced at this commit. PR4-4 wires importMultiFile through the same
+    // jobRunner 'import_single' kind and removes `inProgress` entirely,
+    // restoring the pre-PR-4 cross-path single-flight invariant. Do not ship a
+    // release/merge boundary between PR4-3 and PR4-4 — the guard is only
+    // correct once both paths share the runner.
     if (this.inProgress) throw new Error('An import is already in progress')
     this.inProgress = true
     const startedAt = Date.now()

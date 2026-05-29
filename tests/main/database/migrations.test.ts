@@ -131,7 +131,7 @@ describe('Schema Migrations', () => {
       const versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(30)
+      expect(versionResult.user_version).toBe(31)
 
       service.close()
 
@@ -141,7 +141,7 @@ describe('Schema Migrations', () => {
       const versionAfterReopen = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionAfterReopen.user_version).toBe(30)
+      expect(versionAfterReopen.user_version).toBe(31)
 
       service.close()
     })
@@ -468,7 +468,7 @@ describe('Schema Migrations', () => {
       let versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(30)
+      expect(versionResult.user_version).toBe(31)
 
       service.close()
 
@@ -488,7 +488,7 @@ describe('Schema Migrations', () => {
       versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(30)
+      expect(versionResult.user_version).toBe(31)
 
       service.close()
     })
@@ -522,7 +522,7 @@ describe('Schema Migrations', () => {
       const versionResult = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(versionResult.user_version).toBe(30)
+      expect(versionResult.user_version).toBe(31)
 
       service.close()
     })
@@ -760,7 +760,7 @@ describe('Schema Migrations', () => {
       const version = service.database.prepare('PRAGMA user_version').get() as {
         user_version: number
       }
-      expect(version.user_version).toBe(30)
+      expect(version.user_version).toBe(31)
 
       service.close()
     })
@@ -801,7 +801,7 @@ describe('Schema Migrations', () => {
 
       // Verify user_version = latest (v15 + v16 + v17 + v18 + … + v28 + v29 all run)
       const version = db.pragma('user_version', { simple: true }) as number
-      expect(version).toBe(30)
+      expect(version).toBe(31)
 
       service.close()
     })
@@ -1257,9 +1257,9 @@ describe('migration v27 — filter_presets.kind + shortlist seeds', () => {
     expect(idx).toBeTruthy()
   })
 
-  it('PRAGMA user_version = 30 after migration', () => {
+  it('PRAGMA user_version = 31 after migration', () => {
     const v = db.pragma('user_version', { simple: true })
-    expect(v).toBe(30)
+    expect(v).toBe(31)
   })
 })
 
@@ -1287,5 +1287,44 @@ describe('migration v28 — variants case/type index', () => {
 
     expect(indexColumns('idx_variants_case_type')).toEqual(['case_id', 'variant_type'])
     expect(indexColumns('idx_variants_type_case')).toEqual(['variant_type', 'case_id'])
+  })
+})
+
+describe('migration v31 — projects registry (D5)', () => {
+  let db: Database.Database
+
+  afterEach(() => {
+    db.close()
+  })
+
+  it('SQLite v31: creates table + seeds default row', () => {
+    db = new Database(':memory:')
+    initializeSchema(db)
+    runMigrations(db)
+
+    const table = db
+      .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='projects'`)
+      .get()
+    expect(table).toBeTruthy()
+
+    const row = db.prepare(`SELECT id, name, schema_name FROM projects WHERE id = 1`).get() as {
+      id: number
+      name: string
+      schema_name: string
+    }
+    expect(row).toEqual({ id: 1, name: 'default', schema_name: 'main' })
+
+    expect(db.pragma('user_version', { simple: true })).toBe(31)
+  })
+
+  it('SQLite v31: re-running migrations is idempotent (single default row)', () => {
+    db = new Database(':memory:')
+    initializeSchema(db)
+    runMigrations(db)
+    expect(() => runMigrations(db)).not.toThrow()
+
+    const count = db.prepare(`SELECT COUNT(*) AS c FROM projects`).get() as { c: number }
+    expect(count.c).toBe(1)
+    expect(db.pragma('user_version', { simple: true })).toBe(31)
   })
 })

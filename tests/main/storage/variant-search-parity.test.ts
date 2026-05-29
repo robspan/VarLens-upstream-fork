@@ -58,7 +58,7 @@ describe('variant search parity', () => {
     expect(postgresResults.map((variant) => variant.consequence)).toEqual(
       sqliteResults.map((variant) => variant.consequence)
     )
-    const sql = String(pool.query.mock.calls[0][0])
+    const sql = (pool.query.mock.calls[0][0] as { text: string }).text
     expect(sql).toContain('search_document @@')
     expect(sql).not.toContain('gene_symbol ILIKE')
   })

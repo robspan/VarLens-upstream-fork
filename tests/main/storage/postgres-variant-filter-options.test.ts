@@ -2,9 +2,18 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { PostgresVariantReadRepository } from '../../../src/main/storage/postgres/PostgresVariantReadRepository'
 
+// getColumnMeta now routes through runNamedDynamic, which calls pool.query with a
+// { name, text, values } spec object rather than positional (text, values). Extract
+// the SQL text regardless of call shape so these branches keep matching.
+function sqlTextOf(arg: unknown): string {
+  if (typeof arg === 'string') return arg
+  return (arg as { text?: string }).text ?? ''
+}
+
 describe('PostgresVariantReadRepository filter metadata', () => {
   it('returns SQLite-compatible filter options for a case', async () => {
-    const query = vi.fn(async (sql: string) => {
+    const query = vi.fn(async (arg: unknown) => {
+      const sql = sqlTextOf(arg)
       if (sql.includes('COUNT(DISTINCT v.cadd)')) {
         return { rows: [{ distinct_count: '2', min: '10', max: '35' }] }
       }
@@ -133,7 +142,8 @@ describe('PostgresVariantReadRepository filter metadata', () => {
   })
 
   it('returns SQLite-compatible categorical column metadata', async () => {
-    const query = vi.fn(async (sql: string) => {
+    const query = vi.fn(async (arg: unknown) => {
+      const sql = sqlTextOf(arg)
       if (sql.includes('COUNT(DISTINCT')) return { rows: [{ distinct_count: '1' }] }
       return { rows: [{ value: 'HIGH' }] }
     })
@@ -161,7 +171,17 @@ describe('PostgresVariantReadRepository filter metadata', () => {
       max: 12
     })
 
-    expect(query).toHaveBeenCalledWith(expect.stringContaining('"variant_sv" sv'), [[1, 2]])
-    expect(query).toHaveBeenCalledWith(expect.stringContaining('ANY($1::bigint[])'), [[1, 2]])
+    expect(query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining('"variant_sv" sv'),
+        values: [[1, 2]]
+      })
+    )
+    expect(query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining('ANY($1::bigint[])'),
+        values: [[1, 2]]
+      })
+    )
   })
 })

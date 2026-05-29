@@ -35,7 +35,9 @@ describe('PostgresVariantReadRepository', () => {
       'snv',
       'str'
     ])
-    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('case_id = $1'), [1])
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('case_id = $1'), values: [1] })
+    )
   })
 
   it('returns gene symbols by prefix case-insensitively', async () => {
@@ -72,11 +74,11 @@ describe('PostgresVariantReadRepository', () => {
       { id: 1, case_id: 1, consequence: 'stop_gained' }
     ])
 
-    const sql = String(pool.query.mock.calls[0][0])
-    expect(sql).toContain('search_document @@')
-    expect(sql).toContain("to_tsquery('simple'")
-    expect(sql).not.toContain('gene_symbol ILIKE')
-    expect(pool.query.mock.calls[0][1]).toEqual([1, 'stop:*', 20, 0])
+    const spec = pool.query.mock.calls[0][0] as { text: string; values: unknown[] }
+    expect(spec.text).toContain('search_document @@')
+    expect(spec.text).toContain("to_tsquery('simple'")
+    expect(spec.text).not.toContain('gene_symbol ILIKE')
+    expect(spec.values).toEqual([1, 'stop:*', 20, 0])
   })
 
   it.each([
@@ -110,7 +112,11 @@ describe('PostgresVariantReadRepository', () => {
     await expect(
       repository.queryVariants({ case_id: 1, ...filter }, 25, 0, undefined, false, false)
     ).resolves.toMatchObject({ data: [] })
-    expect(pool.query.mock.calls.map(([sql]) => String(sql)).join('\n')).toContain(expectedSql)
+    expect(
+      pool.query.mock.calls
+        .map(([arg]) => (typeof arg === 'string' ? arg : ((arg as { text: string }).text ?? '')))
+        .join('\n')
+    ).toContain(expectedSql)
   })
 
   it('queries variants with supported filters, sorting, counts, and unfiltered count', async () => {
@@ -176,8 +182,8 @@ describe('PostgresVariantReadRepository', () => {
       unfiltered_count: 5
     })
 
-    const countSql = pool.query.mock.calls[0][0] as string
-    const dataSql = pool.query.mock.calls[1][0] as string
+    const countSql = (pool.query.mock.calls[0][0] as { text: string }).text
+    const dataSql = (pool.query.mock.calls[1][0] as { text: string }).text
     expect(countSql).toContain('COUNT(*)::int AS count')
     expect(dataSql).toContain('to_tsquery')
     expect(dataSql).toContain(
@@ -233,8 +239,9 @@ describe('PostgresVariantReadRepository', () => {
       false
     )
 
-    expect(pool.query.mock.calls[1][0]).toContain('variant_str')
-    expect(pool.query.mock.calls[1][0]).toContain('_str_repeat_id')
+    const strDataSql = (pool.query.mock.calls[1][0] as { text: string }).text
+    expect(strDataSql).toContain('variant_str')
+    expect(strDataSql).toContain('_str_repeat_id')
   })
 
   it('normalizes numeric extension projection aliases returned as strings', async () => {
@@ -289,7 +296,7 @@ describe('PostgresVariantReadRepository', () => {
       false
     )
 
-    const sql = pool.query.mock.calls[0][0] as string
+    const sql = (pool.query.mock.calls[0][0] as { text: string }).text
     expect(sql).toContain('"variant_sv" sv')
     expect(sql).toContain('sv.support >')
     expect(sql).not.toContain('sv.support IS NULL')

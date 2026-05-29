@@ -5,9 +5,9 @@
  * Verifies the deduped CTE rebuild (Pass-2 #4 — duplicate per-case rows count
  * once) and that has_star/has_comment/acmg_best are derived from the existing
  * variant_annotations + case_variant_annotations tables at rebuild time
- * (Pass-9 #8 — without this, every rebuild resets flags to false). The
- * cohort_frequency column is left NULL by rebuild() and populated by the C2a
- * recompute called by the caller next.
+ * (Pass-9 #8 — without this, every rebuild resets flags to false). Since
+ * Sprint A C2a, rebuild() recomputes cohort_frequency as its final step (per
+ * genome_build), so the column is populated, not NULL, when rebuild() returns.
  *
  * Gated by VARLENS_RUN_POSTGRES_E2E=1. Requires `make pg-up`.
  */
@@ -143,11 +143,14 @@ describe.skipIf(!RUN)('PostgresCohortSummaryRepository.rebuild — Sprint A C2',
     expect(Number(first.het_count)).toBe(1)
     expect(Number(first.hom_count)).toBe(1)
     expect(first.variant_key).toBe('1:100:A:T')
-    // cohort_frequency is populated by the C2a recompute, not rebuild().
-    expect(first.cohort_frequency).toBeNull()
+    // Since C2a, rebuild() recomputes cohort_frequency as its final step:
+    // 2 carriers / 2 GRCh38 cases = 1.0.
+    expect(Number(first.cohort_frequency)).toBeCloseTo(1.0)
 
     const second = rows.rows.find((r) => r.chr === '2')!
     expect(Number(second.carrier_count)).toBe(1)
+    // 1 carrier / 2 GRCh38 cases = 0.5.
+    expect(Number(second.cohort_frequency)).toBeCloseTo(0.5)
   }, 60_000)
 
   it('mirrors SQLite deduplication — duplicate per-case rows count once (Pass-2 #4)', async () => {
@@ -667,6 +670,163 @@ describe.skipIf(!RUN)('refreshColumnMetas + removeColumnMetas — C2', () => {
     expect(Number(bCount.rows[0].count)).toBe(21)
   }, 60_000)
 })
+
+describe.skipIf(!RUN)(
+  'PostgresCohortSummaryRepository.recomputeCohortFrequency — Sprint A C2a',
+  () => {
+    let schema: string
+    let pool: Pool
+    let probe: Client
+    const now = Date.now()
+
+    beforeEach(async () => {
+      schema = `varlens_test_cvs_freq_${Date.now()}_${randomBytes(4).toString('hex')}`
+      const provisioner = new Client({ connectionString: PG_URL })
+      await provisioner.connect()
+      await provisioner.query(`CREATE SCHEMA IF NOT EXISTS "${schema}"`)
+      await provisioner.end()
+
+      pool = new Pool({ connectionString: PG_URL, max: 2 })
+      probe = new Client({ connectionString: PG_URL })
+      await probe.connect()
+
+      await new PostgresMigrationRunner(pool, schema, POSTGRES_MIGRATIONS).migrate()
+    }, 60_000)
+
+    afterEach(async () => {
+      if (probe) await probe.end()
+      if (pool) await pool.end()
+      const cleaner = new Client({ connectionString: PG_URL })
+      await cleaner.connect()
+      await cleaner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
+      await cleaner.end()
+    }, 60_000)
+
+    async function seedCase(name: string, genomeBuild = 'GRCh38'): Promise<number> {
+      const res = await probe.query<{ id: number }>(
+        `INSERT INTO "${schema}".cases (name, file_path, file_size, created_at, genome_build)
+           VALUES ($1, $2, 0, $3, $4) RETURNING id`,
+        [name, `/tmp/${name}.json`, now, genomeBuild]
+      )
+      return res.rows[0].id
+    }
+
+    async function seedVariant(v: SeedVariant): Promise<number> {
+      const res = await probe.query<{ id: number }>(
+        `INSERT INTO "${schema}".variants
+           (case_id, chr, pos, ref, alt, variant_type, gene_symbol, gt_num)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+        [
+          v.caseId,
+          v.chr,
+          v.pos,
+          v.ref,
+          v.alt,
+          v.variantType ?? 'snv',
+          v.geneSymbol ?? null,
+          v.gtNum ?? null
+        ]
+      )
+      return res.rows[0].id
+    }
+
+    async function withClient<T>(fn: (client: Client) => Promise<T>): Promise<T> {
+      const client = await pool.connect()
+      try {
+        return await fn(client as unknown as Client)
+      } finally {
+        ;(client as { release: () => void }).release()
+      }
+    }
+
+    async function freqByChr(chr: string, genomeBuild: string): Promise<number | null> {
+      const res = await probe.query<{ cohort_frequency: number | null }>(
+        `SELECT cohort_frequency FROM "${schema}".cohort_variant_summary
+           WHERE chr = $1 AND genome_build = $2`,
+        [chr, genomeBuild]
+      )
+      return res.rows.length === 0 ? null : res.rows[0].cohort_frequency
+    }
+
+    const repo = new PostgresCohortSummaryRepository()
+
+    it('recomputeCohortFrequency narrowed to one genome_build does not touch others', async () => {
+      // One case + carrier per build. 1 carrier / 1 case = frequency 1.0.
+      const case38 = await seedCase('freq-38', 'GRCh38')
+      const case37 = await seedCase('freq-37', 'GRCh37')
+      await seedVariant({ caseId: case38, chr: '1', pos: 100, ref: 'A', alt: 'T', gtNum: '0/1' })
+      await seedVariant({ caseId: case37, chr: '2', pos: 200, ref: 'C', alt: 'G', gtNum: '0/1' })
+
+      await withClient(async (client) => {
+        await repo.rebuild({ schema, client: client as never })
+        // Pin the GRCh37 row to a sentinel; a GRCh38-scoped recompute must leave
+        // it exactly as-is.
+        await probe.query(
+          `UPDATE "${schema}".cohort_variant_summary SET cohort_frequency = 0.123
+           WHERE genome_build = 'GRCh37'`
+        )
+        // Recompute only the GRCh38 build.
+        await repo.recomputeCohortFrequency({
+          schema,
+          client: client as never,
+          affectedBuilds: ['GRCh38']
+        })
+      })
+
+      // GRCh38 row recomputed: 1 carrier / 1 GRCh38 case = 1.0.
+      expect(await freqByChr('1', 'GRCh38')).toBeCloseTo(1.0)
+      // GRCh37 row untouched — the narrowed recompute must not reach it.
+      expect(await freqByChr('2', 'GRCh37')).toBeCloseTo(0.123)
+    }, 60_000)
+
+    it('rebuild() leaves cohort_frequency populated (not NULL)', async () => {
+      const caseA = await seedCase('freq-rebuild-a', 'GRCh38')
+      const caseB = await seedCase('freq-rebuild-b', 'GRCh38')
+      // One carrier across two cases → frequency 1/2 = 0.5.
+      await seedVariant({ caseId: caseA, chr: '1', pos: 100, ref: 'A', alt: 'T', gtNum: '0/1' })
+
+      await withClient((client) => repo.rebuild({ schema, client: client as never }))
+      void caseB
+
+      expect(await freqByChr('1', 'GRCh38')).toBeCloseTo(0.5)
+    }, 60_000)
+
+    it("incrementalAdd() updates cohort_frequency for the case's build only", async () => {
+      const case38 = await seedCase('iadd-38', 'GRCh38')
+      const case37 = await seedCase('iadd-37', 'GRCh37')
+      await seedVariant({ caseId: case38, chr: '1', pos: 100, ref: 'A', alt: 'T', gtNum: '0/1' })
+      await seedVariant({ caseId: case37, chr: '2', pos: 200, ref: 'C', alt: 'G', gtNum: '0/1' })
+
+      await withClient(async (client) => {
+        // Add the GRCh37 case scoped to its own build first → its frequency is 1.0.
+        await repo.incrementalAdd({
+          schema,
+          client: client as never,
+          caseId: case37,
+          genomeBuild: 'GRCh37'
+        })
+        // Pin the GRCh37 row to a sentinel so we can prove the next GRCh38-scoped
+        // add does not touch it.
+        await probe.query(
+          `UPDATE "${schema}".cohort_variant_summary SET cohort_frequency = 0.123
+           WHERE genome_build = 'GRCh37'`
+        )
+        // Now add the GRCh38 case scoped to GRCh38.
+        await repo.incrementalAdd({
+          schema,
+          client: client as never,
+          caseId: case38,
+          genomeBuild: 'GRCh38'
+        })
+      })
+
+      // GRCh38 row recomputed: 1 carrier / 1 GRCh38 case = 1.0.
+      expect(await freqByChr('1', 'GRCh38')).toBeCloseTo(1.0)
+      // GRCh37 row untouched by the GRCh38-scoped recompute — sentinel preserved.
+      expect(await freqByChr('2', 'GRCh37')).toBeCloseTo(0.123)
+    }, 60_000)
+  }
+)
 
 describe.skipIf(RUN)('PostgresCohortSummaryRepository.rebuild — Sprint A C2 (skipped)', () => {
   it('runs only when VARLENS_RUN_POSTGRES_E2E=1 and `make pg-up` is up', () => {

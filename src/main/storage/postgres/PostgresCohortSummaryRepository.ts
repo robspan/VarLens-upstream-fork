@@ -9,7 +9,8 @@
  *     per-case rows count once). has_star/has_comment/acmg_best are derived
  *     from variant_annotations + case_variant_annotations at insertion time
  *     (Pass-9 #8 — otherwise every rebuild would reset the flags to false).
- *     cohort_frequency is left NULL; the caller runs the C2a recompute next.
+ *     cohort_frequency is recomputed in-place as the final rebuild step
+ *     (C2a / Pass-3 HIGH #2) via recomputeCohortFrequency().
  *
  * Note on column names: the Postgres workflow schema names the comment columns
  * global_comment / per_case_comment and the ACMG column acmg_classification
@@ -243,14 +244,47 @@ export class PostgresCohortSummaryRepository {
           WHEN 1 THEN 'Benign'
           ELSE NULL
         END) AS acmg_best,
-        NULL AS cohort_frequency  -- populated by C2a recompute, called next
+        NULL AS cohort_frequency  -- overwritten by the recompute below (C2a)
       FROM agg a;
     `)
 
-    // C2a recompute is invoked by the caller immediately after rebuild() —
-    // the cohort_frequency NULL above is intentional. See the rebuild()
-    // call site in C3 (PostgresCaseLifecycleRepository and
-    // postgres-import-worker.ts).
+    // C2a: recompute cohort_frequency for all builds as the final rebuild step,
+    // inside the same transaction. Mirrors SQLite's RECOMPUTE_ALL_FREQUENCIES_SQL
+    // (CohortSummaryService.rebuild). The NULL written above is overwritten here.
+    await this.recomputeCohortFrequency({ schema, client })
+  }
+
+  /**
+   * C2a (Pass-3 HIGH #2): recompute cohort_frequency = carrier_count / total
+   * cases-for-build. Mirrors SQLite's RECOMPUTE_ALL_FREQUENCIES_SQL, run in the
+   * same transaction after rebuild / incrementalAdd / incrementalRemove. When
+   * `affectedBuilds` is provided the recompute is scoped to those genome_builds
+   * (the incremental paths pass the case's build); when omitted the full table
+   * is recomputed (the rebuild path).
+   */
+  async recomputeCohortFrequency({
+    schema,
+    client,
+    affectedBuilds
+  }: ScopedClient & { affectedBuilds?: string[] }): Promise<void> {
+    const tbl = (t: string): string => `"${schema}"."${t}"`
+    if (affectedBuilds && affectedBuilds.length > 0) {
+      await client.query(
+        `UPDATE ${tbl('cohort_variant_summary')} cvs
+         SET cohort_frequency = cvs.carrier_count::float / NULLIF(c.total, 0)
+         FROM (SELECT genome_build, COUNT(*) AS total FROM ${tbl('cases')} GROUP BY genome_build) c
+         WHERE cvs.genome_build = c.genome_build
+           AND cvs.genome_build = ANY($1::text[])`,
+        [affectedBuilds]
+      )
+    } else {
+      await client.query(
+        `UPDATE ${tbl('cohort_variant_summary')} cvs
+         SET cohort_frequency = cvs.carrier_count::float / NULLIF(c.total, 0)
+         FROM (SELECT genome_build, COUNT(*) AS total FROM ${tbl('cases')} GROUP BY genome_build) c
+         WHERE cvs.genome_build = c.genome_build`
+      )
+    }
   }
 
   /**
@@ -263,8 +297,9 @@ export class PostgresCohortSummaryRepository {
   async incrementalAdd({
     schema,
     client,
-    caseId
-  }: ScopedClient & { caseId: number }): Promise<void> {
+    caseId,
+    genomeBuild
+  }: ScopedClient & { caseId: number; genomeBuild?: string }): Promise<void> {
     const tbl = (t: string): string => `"${schema}"."${t}"`
 
     await client.query(
@@ -333,7 +368,7 @@ export class PostgresCohortSummaryRepository {
           WHEN 1 THEN 'Benign'
           ELSE NULL
         END) AS acmg_best,
-        NULL AS cohort_frequency  -- recomputed by C2a, called by the caller next
+        NULL AS cohort_frequency  -- overwritten by the recompute below (C2a)
       FROM per_case pc
       ON CONFLICT (chr, pos, ref, alt, variant_type, genome_build) DO UPDATE SET
         carrier_count = cohort_variant_summary.carrier_count + EXCLUDED.carrier_count,
@@ -345,6 +380,15 @@ export class PostgresCohortSummaryRepository {
     `,
       [caseId]
     )
+
+    // C2a: recompute cohort_frequency in the same transaction, scoped to the
+    // case's genome_build when supplied by the caller (mirrors SQLite's
+    // RECOMPUTE_ALL_FREQUENCIES_SQL after INCREMENTAL_ADD_SQL).
+    await this.recomputeCohortFrequency({
+      schema,
+      client,
+      affectedBuilds: genomeBuild !== undefined ? [genomeBuild] : undefined
+    })
   }
 
   /**
@@ -357,8 +401,9 @@ export class PostgresCohortSummaryRepository {
   async incrementalRemove({
     schema,
     client,
-    caseId
-  }: ScopedClient & { caseId: number }): Promise<void> {
+    caseId,
+    genomeBuild
+  }: ScopedClient & { caseId: number; genomeBuild?: string }): Promise<void> {
     const tbl = (t: string): string => `"${schema}"."${t}"`
 
     await client.query(
@@ -378,6 +423,16 @@ export class PostgresCohortSummaryRepository {
     )
 
     await client.query(`DELETE FROM ${tbl('cohort_variant_summary')} WHERE carrier_count <= 0`)
+
+    // C2a: recompute cohort_frequency in the same transaction, scoped to the
+    // case's genome_build when supplied (mirrors SQLite's
+    // RECOMPUTE_ALL_FREQUENCIES_SQL after INCREMENTAL_REMOVE_SQL +
+    // CLEANUP_ZERO_CARRIERS_SQL).
+    await this.recomputeCohortFrequency({
+      schema,
+      client,
+      affectedBuilds: genomeBuild !== undefined ? [genomeBuild] : undefined
+    })
   }
   /**
    * Recompute the per-case filter metadata cache. Mirrors SQLite's

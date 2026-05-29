@@ -54,7 +54,15 @@
     </div>
 
     <!-- Filter Bar -->
+    <!--
+      A3 cohort parity (Pass-9 #3): deferred mount. CohortFilterBar is gated
+      on `firstActivated` so it does not render until cohort column metadata
+      has arrived. The CohortDataTable below is unguarded so its own
+      `update:options` immediate fetch still drives the first page load.
+      `firstActivated` flips true once metadata loads and never resets.
+    -->
     <CohortFilterBar
+      v-if="firstActivated"
       ref="cohortFilterBarRef"
       :total-count="totalCount"
       :cohort-summary="summary"
@@ -128,7 +136,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, onActivated, onDeactivated } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, onActivated, onDeactivated } from 'vue'
 // Composables
 import { useOffsetPagination } from '../composables/useOffsetPagination'
 import { useCohortData } from '../composables/useCohortData'
@@ -244,6 +252,40 @@ let activeFlowBudget: PerfBudgetKey | undefined = undefined
 
 // Ref to CohortFilterBar for accessing DSL column filters
 const cohortFilterBarRef = ref<InstanceType<typeof CohortFilterBar> | null>(null)
+
+/**
+ * True once `fetchColumnMeta` has resolved with at least one column.
+ * `[]` is the not-yet-loaded sentinel; any populated array means the
+ * cohort-metadata IPC round-trip finished. This is the cohort equivalent
+ * of CaseView's `typeCountsLoaded`.
+ *
+ * Trade-off (Pass-9 #4): this reuses the established CaseView
+ * "populated-array = loaded" convention. If `fetchColumnMeta` fails or the
+ * backend is capability-blocked, `columnMeta` stays `[]` and the filter bar
+ * never mounts even though the unguarded CohortDataTable still loads. We
+ * deliberately keep parity with CaseView rather than introduce a divergent
+ * "fetch settled" sentinel here; tightening this is a cross-view change.
+ */
+const columnMetaLoaded = computed(() => columnMeta.value.length > 0)
+
+/**
+ * A3 cohort parity (Pass-9 #3): deferred CohortFilterBar mount. Flips true
+ * the first time cohort column metadata has loaded. Once true it never
+ * resets, mirroring the CaseView `firstActivated` pattern so the filter bar
+ * does not remount (and re-run its option load) across genome-build /
+ * variant-type changes. Required by feedback_cohort_parity.md.
+ */
+const firstActivated = ref(false)
+
+watch(
+  columnMetaLoaded,
+  (loaded) => {
+    if (loaded && !firstActivated.value) {
+      firstActivated.value = true
+    }
+  },
+  { immediate: true }
+)
 
 // Per-column text filters from CohortDataTable
 const cohortColumnFilters = ref<ColumnFiltersParam | undefined>(undefined)

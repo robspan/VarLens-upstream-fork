@@ -1,6 +1,23 @@
+import type { ColumnFiltersParam } from '../types/column-filters'
 import type { VariantFilter } from '../types/api'
 import type { FilterIpcParams, FilterState } from '../types/filters'
-import { cloneForIpc } from '../utils/cloneForIpc'
+
+/**
+ * Sprint A A2: this serializer runs in renderer-reachable code and receives
+ * `FilterState` whose `columnFilters` may still be a Vue reactive() proxy
+ * (callers spread `filters.value` shallowly — see
+ * `useFilters.getIpcParams()` and `AssociationConfigPanel.handleRun()`).
+ *
+ * Do NOT use the shared `cloneForIpc` here: it is now backed by
+ * `structuredClone`, which throws DataCloneError on a Vue proxy. We also must
+ * not import the renderer-only `stripVueProxies` into `src/shared` (layering
+ * boundary). `ColumnFiltersParam` is plain JSON data by contract (strings,
+ * numbers, string arrays, booleans), so a JSON round-trip both strips any
+ * proxy and produces an IPC-safe deep clone.
+ */
+function cloneColumnFilters(columnFilters: ColumnFiltersParam): ColumnFiltersParam {
+  return JSON.parse(JSON.stringify(columnFilters)) as ColumnFiltersParam
+}
 
 export function buildFilterIpcParams(filters: FilterState): FilterIpcParams {
   const params: FilterIpcParams = {}
@@ -74,7 +91,7 @@ export function buildFilterIpcParams(filters: FilterState): FilterIpcParams {
   }
 
   if (Object.keys(filters.columnFilters).length > 0) {
-    params.column_filters = cloneForIpc(filters.columnFilters)
+    params.column_filters = cloneColumnFilters(filters.columnFilters)
   }
 
   return params

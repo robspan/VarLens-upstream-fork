@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
+import { reactive } from 'vue'
 import { buildIpcParams } from '../../../../src/renderer/src/utils/filters/filterSerialization'
 import type { FilterState } from '../../../../src/shared/types/filters'
+import type { ColumnFiltersParam } from '../../../../src/shared/types/column-filters'
 
 function makeDefaultFilters(overrides: Partial<FilterState> = {}): FilterState {
   return {
@@ -133,6 +135,35 @@ describe('buildIpcParams', () => {
       expect(result.max_internal_af).toBe(0.01)
       expect(result.inheritance_modes).toEqual(['homozygous'])
       expect(result.gnomad_af_max).toBe(0.001)
+    })
+  })
+
+  // --- column filters / Vue reactive proxy regression (Sprint A A2) ---
+
+  describe('column filters', () => {
+    it('clones plain column filters into IPC-safe params', () => {
+      const columnFilters: ColumnFiltersParam = {
+        cadd: { operator: '>', value: 20, includeEmpty: true }
+      }
+      const result = buildIpcParams(makeDefaultFilters({ columnFilters }))
+      expect(result.column_filters).toEqual(columnFilters)
+      expect(result.column_filters).not.toBe(columnFilters)
+    })
+
+    it('serializes a Vue reactive() columnFilters proxy without DataCloneError', () => {
+      // Regression: getIpcParams()/handleRun() spread filters.value shallowly,
+      // so columnFilters reaches the shared serializer as a reactive proxy.
+      // structuredClone would throw DataCloneError on it; the serializer must
+      // tolerate the proxy and emit plain, IPC-safe data.
+      const columnFilters = reactive<ColumnFiltersParam>({
+        'cnv.copy_number': { operator: 'in', value: ['0', '1'], includeEmpty: false }
+      })
+      const result = buildIpcParams(makeDefaultFilters({ columnFilters }))
+      expect(result.column_filters).toEqual({
+        'cnv.copy_number': { operator: 'in', value: ['0', '1'], includeEmpty: false }
+      })
+      // Output must be plain JS (deep-cloned), not the live reactive proxy.
+      expect(result.column_filters).not.toBe(columnFilters)
     })
   })
 })

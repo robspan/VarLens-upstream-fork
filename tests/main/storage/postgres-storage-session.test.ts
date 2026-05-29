@@ -330,7 +330,8 @@ describe('PostgresStorageSession', () => {
     ).resolves.toEqual({ snv: 2 })
 
     expect(pool.query).toHaveBeenCalledTimes(1)
-    expect(pool.query.mock.calls[0][0]).toContain('"phase7_variants"."variants"')
+    const typeCountsSpec = pool.query.mock.calls[0][0] as { text: string }
+    expect(typeCountsSpec.text).toContain('"phase7_variants"."variants"')
   })
 
   it('routes cohort summary through the session-owned postgres read executor', async () => {

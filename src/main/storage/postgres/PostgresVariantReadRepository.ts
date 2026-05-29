@@ -10,6 +10,7 @@ import type {
 import type { FilterOptions } from '../../../shared/types/api'
 import type { ColumnFilterMeta } from '../../../shared/types/column-filters'
 import { quoteIdentifier } from './identifiers'
+import { runNamed, runNamedDynamic } from './named-query'
 import { POSTGRES_VARIANT_COLUMN_DEFINITIONS } from './postgres-variant-columns'
 import type { PostgresVariantColumnDefinition } from './postgres-variant-columns'
 import { addPostgresClinicalVariantFilters } from './postgres-variant-clinical-filter-sql'
@@ -318,23 +319,27 @@ function buildPostgresVariantOrderBy(sortBy?: SortItem[]): string {
 
 export class PostgresVariantReadRepository {
   private readonly schemaName: string
+  private readonly schema: string
 
   constructor(
     private readonly pool: Pick<Pool, 'query'>,
     schema: string
   ) {
+    this.schema = schema
     this.schemaName = quoteIdentifier(schema)
   }
 
   async getVariantTypeCounts(caseId: number): Promise<Record<string, number>> {
-    const result = await this.pool.query(
-      `SELECT variant_type, COUNT(*)::int AS count
+    const result = await runNamed<{ variant_type: string; count: unknown }>(this.pool as Pool, {
+      name: 'variants:type_counts:v1',
+      text: `SELECT variant_type, COUNT(*)::int AS count
        FROM ${this.schemaName}."variants"
        WHERE case_id = $1
        GROUP BY variant_type
        ORDER BY variant_type`,
-      [caseId]
-    )
+      values: [caseId],
+      schema: this.schema
+    })
     const counts: Record<string, number> = {}
     for (const row of result.rows as Array<{ variant_type: string; count: unknown }>) {
       counts[row.variant_type] = toNumber(row.count)
@@ -349,29 +354,35 @@ export class PostgresVariantReadRepository {
     if (caseIds.length === 0) return []
     const result =
       caseIds.length === 1
-        ? await this.pool.query(
-            `SELECT DISTINCT variant_type FROM ${this.schemaName}."variants" WHERE case_id = $1 AND variant_type IS NOT NULL ORDER BY variant_type`,
-            [caseIds[0]]
-          )
-        : await this.pool.query(
-            `SELECT DISTINCT variant_type FROM ${this.schemaName}."variants" WHERE case_id = ANY($1::bigint[]) AND variant_type IS NOT NULL ORDER BY variant_type`,
-            [caseIds]
-          )
+        ? await runNamedDynamic<{ variant_type: string }>(this.pool as Pool, {
+            baseName: 'variants:types_present',
+            text: `SELECT DISTINCT variant_type FROM ${this.schemaName}."variants" WHERE case_id = $1 AND variant_type IS NOT NULL ORDER BY variant_type`,
+            values: [caseIds[0]],
+            schema: this.schema
+          })
+        : await runNamedDynamic<{ variant_type: string }>(this.pool as Pool, {
+            baseName: 'variants:types_present',
+            text: `SELECT DISTINCT variant_type FROM ${this.schemaName}."variants" WHERE case_id = ANY($1::bigint[]) AND variant_type IS NOT NULL ORDER BY variant_type`,
+            values: [caseIds],
+            schema: this.schema
+          })
     return (result.rows as Array<{ variant_type: string }>).map((row) => row.variant_type)
   }
 
   async getGeneSymbols(caseId: number, query: string, limit: number): Promise<string[]> {
-    const result = await this.pool.query(
-      `SELECT DISTINCT gene_symbol
+    const result = await runNamed<{ gene_symbol: string }>(this.pool as Pool, {
+      name: 'variants:gene_symbols:v1',
+      text: `SELECT DISTINCT gene_symbol
        FROM ${this.schemaName}."variants"
        WHERE case_id = $1
          AND gene_symbol IS NOT NULL
          AND gene_symbol ILIKE $2
        ORDER BY gene_symbol
        LIMIT $3`,
-      [caseId, `${query}%`, limit]
-    )
-    return (result.rows as Array<{ gene_symbol: string }>).map((row) => row.gene_symbol)
+      values: [caseId, `${query}%`, limit],
+      schema: this.schema
+    })
+    return result.rows.map((row) => row.gene_symbol)
   }
 
   async searchVariants(caseId: number, query: string, limit: number): Promise<Variant[]> {
@@ -403,23 +414,27 @@ export class PostgresVariantReadRepository {
 
     let totalCount = 0
     if (skipCount !== true) {
-      const countResult = await this.pool.query(
-        `SELECT COUNT(*)::int AS count
+      const countResult = await runNamedDynamic<{ count: unknown }>(this.pool as Pool, {
+        baseName: 'variants:query_count',
+        text: `SELECT COUNT(*)::int AS count
          ${fromAndWhereSql}`,
-        params
-      )
+        values: params,
+        schema: this.schema
+      })
       totalCount = toNumber((countResult.rows[0] as { count?: unknown } | undefined)?.count)
     }
 
     const dataParams = [...params, limit, offset]
-    const dataResult = await this.pool.query(
-      `SELECT ${projections.join(', ')}
+    const dataResult = await runNamedDynamic<Record<string, unknown>>(this.pool as Pool, {
+      baseName: 'variants:query_page',
+      text: `SELECT ${projections.join(', ')}
        ${fromAndWhereSql}
        ${orderBySql}
        LIMIT $${dataParams.length - 1}
        OFFSET $${dataParams.length}`,
-      dataParams
-    )
+      values: dataParams,
+      schema: this.schema
+    })
 
     let unfilteredCount: number | undefined
     if (includeUnfilteredCount === true) {
@@ -488,14 +503,19 @@ export class PostgresVariantReadRepository {
     caseIds: number[],
     definition: PostgresVariantColumnDefinition
   ): Promise<ColumnFilterMeta> {
-    const result = await this.pool.query(
-      `SELECT COUNT(DISTINCT ${definition.sql})::int AS distinct_count,
+    const result = await runNamedDynamic<{ distinct_count: unknown; min: unknown; max: unknown }>(
+      this.pool as Pool,
+      {
+        baseName: 'variants:column_meta',
+        text: `SELECT COUNT(DISTINCT ${definition.sql})::int AS distinct_count,
               MIN(${definition.sql}) AS min,
               MAX(${definition.sql}) AS max
        FROM ${this.schemaName}."variants" v
        ${this.buildColumnMetaJoins(definition.key)}
        WHERE v.case_id = ANY($1::bigint[])`,
-      [caseIds]
+        values: [caseIds],
+        schema: this.schema
+      }
     )
     const row = result.rows[0] as
       | { distinct_count?: unknown; min?: unknown; max?: unknown }
@@ -517,13 +537,15 @@ export class PostgresVariantReadRepository {
     definition: PostgresVariantColumnDefinition
   ): Promise<ColumnFilterMeta> {
     const joins = this.buildColumnMetaJoins(definition.key)
-    const countResult = await this.pool.query(
-      `SELECT COUNT(DISTINCT ${definition.sql})::int AS distinct_count
+    const countResult = await runNamedDynamic<{ distinct_count: unknown }>(this.pool as Pool, {
+      baseName: 'variants:column_meta',
+      text: `SELECT COUNT(DISTINCT ${definition.sql})::int AS distinct_count
        FROM ${this.schemaName}."variants" v
        ${joins}
        WHERE v.case_id = ANY($1::bigint[])`,
-      [caseIds]
-    )
+      values: [caseIds],
+      schema: this.schema
+    })
     const distinctCount = toNumber(
       (countResult.rows[0] as { distinct_count?: unknown } | undefined)?.distinct_count
     )
@@ -534,15 +556,17 @@ export class PostgresVariantReadRepository {
     }
 
     if (distinctCount > 0 && distinctCount <= 50) {
-      const valuesResult = await this.pool.query(
-        `SELECT DISTINCT ${definition.sql} AS value
+      const valuesResult = await runNamedDynamic<{ value: unknown }>(this.pool as Pool, {
+        baseName: 'variants:column_meta',
+        text: `SELECT DISTINCT ${definition.sql} AS value
          FROM ${this.schemaName}."variants" v
          ${joins}
          WHERE v.case_id = ANY($1::bigint[])
            AND ${definition.sql} IS NOT NULL
          ORDER BY ${definition.sql}`,
-        [caseIds]
-      )
+        values: [caseIds],
+        schema: this.schema
+      })
       meta.distinctValues = (valuesResult.rows as Array<{ value: unknown }>).map((row) =>
         String(row.value)
       )

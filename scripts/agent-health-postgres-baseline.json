@@ -1,0 +1,86 @@
+{
+  "generatedAt": "2026-05-29T02:05:36.988Z",
+  "count": 16,
+  "violations": [
+    {
+      "file": "PostgresAnalysisGroupsRepository.ts",
+      "line": 142,
+      "snippet": "await this.pool.query(`DELETE FROM ${this.groupsTable()} WHERE id = $1`, [id])"
+    },
+    {
+      "file": "PostgresCaseLifecycleRepository.ts",
+      "line": 22,
+      "snippet": "await client.query(`DELETE FROM ${this.schemaName}.\"cases\" WHERE id = $1`, [caseId])"
+    },
+    {
+      "file": "PostgresCaseLifecycleRepository.ts",
+      "line": 38,
+      "snippet": "await client.query(`TRUNCATE ${this.schemaName}.\"variant_frequency\"`)"
+    },
+    {
+      "file": "PostgresCaseLifecycleRepository.ts",
+      "line": 39,
+      "snippet": "await client.query(`"
+    },
+    {
+      "file": "PostgresCaseMetadataRepository.ts",
+      "line": 152,
+      "snippet": "await this.pool.query(`DELETE FROM ${this.table('cohort_groups')} WHERE id = $1`, [cohortId])"
+    },
+    {
+      "file": "PostgresCaseMetadataRepository.ts",
+      "line": 199,
+      "snippet": "await client.query(`DELETE FROM ${this.table('case_cohort_links')} WHERE case_id = $1`, ["
+    },
+    {
+      "file": "PostgresFilterPresetsRepository.ts",
+      "line": 188,
+      "snippet": "await this.pool.query(`DELETE FROM ${this.tableName()} WHERE id = $1`, [id])"
+    },
+    {
+      "file": "PostgresJsonImportRepository.ts",
+      "line": 262,
+      "snippet": "await client.query(`UPDATE ${this.schemaName}.\"cases\" SET variant_count = $1 WHERE id = $2`, ["
+    },
+    {
+      "file": "PostgresPanelsRepository.ts",
+      "line": 121,
+      "snippet": "await this.pool.query(`DELETE FROM ${this.table('panels')} WHERE id = $1`, [id])"
+    },
+    {
+      "file": "PostgresPanelsRepository.ts",
+      "line": 126,
+      "snippet": "await client.query(`DELETE FROM ${this.table('panel_genes')} WHERE panel_id = $1`, [panelId])"
+    },
+    {
+      "file": "PostgresPanelsRepository.ts",
+      "line": 130,
+      "snippet": "await client.query(`UPDATE ${this.table('panels')} SET updated_at = $1 WHERE id = $2`, ["
+    },
+    {
+      "file": "PostgresPanelsRepository.ts",
+      "line": 290,
+      "snippet": "await this.pool.query(`DELETE FROM ${this.table('gene_lists')} WHERE id = $1`, [id])"
+    },
+    {
+      "file": "PostgresPanelsRepository.ts",
+      "line": 305,
+      "snippet": "await client.query(`DELETE FROM ${this.table('gene_list_items')} WHERE gene_list_id = $1`, ["
+    },
+    {
+      "file": "PostgresPanelsRepository.ts",
+      "line": 319,
+      "snippet": "await client.query(`UPDATE ${this.table('gene_lists')} SET updated_at = $1 WHERE id = $2`, ["
+    },
+    {
+      "file": "PostgresPanelsRepository.ts",
+      "line": 354,
+      "snippet": "await this.pool.query(`DELETE FROM ${this.table('region_files')} WHERE id = $1`, [id])"
+    },
+    {
+      "file": "PostgresTagsRepository.ts",
+      "line": 112,
+      "snippet": "const result = await this.pool.query(`DELETE FROM ${this.table('tags')} WHERE id = $1`, [id])"
+    }
+  ]
+}

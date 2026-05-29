@@ -1210,5 +1210,10 @@ export const mockApi: WindowAPI = {
     }),
     resetSnapshot: async () => {},
     isEnabled: () => false
+  },
+
+  debug: {
+    queryCountersGet: async () => ({ named: {}, unnamed: 0, enabled: false }),
+    queryCountersReset: async () => ({ enabled: false })
   }
 }

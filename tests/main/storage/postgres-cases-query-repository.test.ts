@@ -68,6 +68,27 @@ describe('PostgresCasesQueryRepository', () => {
     )
   })
 
+  it('runs the no-filter count through the named (prepared) path', async () => {
+    const pool = {
+      query: vi
+        .fn()
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ total_count: 0 }] })
+    }
+    const repository = new PostgresCasesQueryRepository(pool as never, 'public')
+
+    await repository.queryCases({ limit: 25, offset: 0 })
+
+    expect(pool.query).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        name: expect.stringContaining('cases:count_all:v1'),
+        text: expect.stringContaining('COUNT(*)::int AS total_count'),
+        values: []
+      })
+    )
+  })
+
   it('filters postgres cases by cohort ids', async () => {
     const pool = {
       query: vi

@@ -450,6 +450,97 @@ describe('check-agent-health', () => {
     ])
   })
 
+  it('fails when a runNamed name lacks a :vN suffix', () => {
+    const root = createTempRepo()
+    writeLines(root, 'src/main/small.ts', 5)
+    writeJson(root, 'scripts/agent-health-baseline.json', { version: 1, files: [] })
+    writeFileSync(
+      join(root, 'scripts/agent-health-postgres-baseline.json'),
+      `${JSON.stringify({ generatedAt: '', count: 999, violations: [] }, null, 2)}\n`,
+      'utf8'
+    )
+    const repoFile = join(root, 'src/main/storage/postgres/PostgresBadRepository.ts')
+    mkdirSync(dirname(repoFile), { recursive: true })
+    writeFileSync(
+      repoFile,
+      [
+        "import { runNamed } from './named-query'",
+        'export async function go(pool) {',
+        '  return runNamed(pool, {',
+        "    name: 'overview:total_cases',",
+        "    text: 'SELECT 1',",
+        '    values: [],',
+        '    schema: null',
+        '  })',
+        '}',
+        ''
+      ].join('\n'),
+      'utf8'
+    )
+
+    const result = runAgentCheck(root)
+
+    expectNoSpawnError(result)
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('overview:total_cases')
+    expect(result.stderr).toMatch(/:v\\d\+|:vN|version suffix/i)
+  })
+
+  it('passes when every runNamed name carries a :vN suffix and baseName is exempt', () => {
+    const root = createTempRepo()
+    writeLines(root, 'src/main/small.ts', 5)
+    writeJson(root, 'scripts/agent-health-baseline.json', {
+      version: 1,
+      files: [
+        {
+          path: 'src/main/storage/postgres/PostgresGoodRepository.ts',
+          lines: 100,
+          threshold: 10,
+          category: 'source',
+          reason: 'fixture repo for runNamed grep test'
+        }
+      ]
+    })
+    writeFileSync(
+      join(root, 'scripts/agent-health-postgres-baseline.json'),
+      `${JSON.stringify({ generatedAt: '', count: 999, violations: [] }, null, 2)}\n`,
+      'utf8'
+    )
+    const repoFile = join(root, 'src/main/storage/postgres/PostgresGoodRepository.ts')
+    mkdirSync(dirname(repoFile), { recursive: true })
+    writeFileSync(
+      repoFile,
+      [
+        "import { runNamed, runNamedDynamic } from './named-query'",
+        'export async function go(pool) {',
+        '  await runNamed(pool, {',
+        "    name: 'overview:total_cases:v1',",
+        "    text: 'SELECT 1',",
+        '    values: [],',
+        '    schema: null',
+        '  })',
+        '  return runNamedDynamic(pool, {',
+        "    baseName: 'variants:query_page',",
+        "    text: 'SELECT 1',",
+        '    values: [],',
+        '    schema: null',
+        '  })',
+        '}',
+        '',
+        '// A type-annotation literal outside any runNamed call must not trip the guard.',
+        "function table(name: 'tags' | 'variant_tags') { return name }",
+        ''
+      ].join('\n'),
+      'utf8'
+    )
+
+    const result = runAgentCheck(root)
+
+    expectNoSpawnError(result)
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('Agent health check passed')
+  })
+
   it('prints valid current inventory JSON for the real repository', () => {
     const result = spawnSync(process.execPath, [SCRIPT_PATH, '--print-current-json'], {
       cwd: process.cwd(),

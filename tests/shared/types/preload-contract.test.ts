@@ -16,13 +16,15 @@ import { resolve } from 'path'
 import { ErrorCode } from '../../../src/shared/types/errors'
 import type { WindowAPI, Case, BatchAnnotationKey } from '../../../src/shared/types/api'
 import type { IpcResult } from '../../../src/shared/types/errors'
+import { DEBUG_CHANNELS } from '../../../src/shared/ipc/domains/debug'
 
 const ROOT = resolve(__dirname, '..', '..', '..')
 
 const DOMAIN_CONTRACT_PATHS: Record<string, string> = {
   CasesDomainContract: 'src/shared/ipc/domains/cases.ts',
   DatabaseDomainContract: 'src/shared/ipc/domains/database.ts',
-  FilterPresetsDomainContract: 'src/shared/ipc/domains/filter-presets.ts'
+  FilterPresetsDomainContract: 'src/shared/ipc/domains/filter-presets.ts',
+  DebugApi: 'src/shared/ipc/domains/debug.ts'
 }
 
 /**
@@ -547,5 +549,68 @@ describe('annotations.batchGet — A1 contract extension', () => {
     // Compile-time assertion: both shapes type-check. Runtime no-op.
     expect(coordsOnly.chr).toBe('chr1')
     expect(withId.variantId).toBe(42)
+  })
+})
+
+describe('debug domain — Sprint A PR-2 Gate 10c', () => {
+  it('exposes queryCountersGet + queryCountersReset channel names', () => {
+    expect(DEBUG_CHANNELS.queryCountersGet).toBe('debug:queryCounters:get')
+    expect(DEBUG_CHANNELS.queryCountersReset).toBe('debug:queryCounters:reset')
+  })
+
+  it('WindowAPI carries a debug top-level key wired to the DebugApi contract', () => {
+    const apiKeys = extractWindowApiKeys()
+    expect(apiKeys).toContain('debug')
+
+    const debugMethods = extractSubInterfaceKeys('DebugAPI')
+    expect(debugMethods).toEqual(['queryCountersGet', 'queryCountersReset'])
+  })
+
+  it('create-window-api assembles the debug domain', () => {
+    const source = readFileSync(
+      resolve(ROOT, 'src/preload/window-api/create-window-api.ts'),
+      'utf-8'
+    )
+    expect(source).toContain("import { createDebugApi } from '../domains/debug'")
+    expect(source).toContain('debug: createDebugApi()')
+  })
+
+  it('compile-time check: WindowAPI debug methods return IpcResult', () => {
+    expectTypeOf<Awaited<ReturnType<WindowAPI['debug']['queryCountersReset']>>>().toEqualTypeOf<
+      IpcResult<{ enabled: boolean }>
+    >()
+  })
+})
+
+describe('debug preload domain behavior', () => {
+  beforeEach(() => {
+    vi.resetModules()
+  })
+
+  afterEach(() => {
+    vi.resetModules()
+    vi.doUnmock('electron')
+  })
+
+  it('forwards both debug channels through ipcRenderer.invoke', async () => {
+    const invoke = vi
+      .fn()
+      .mockResolvedValueOnce({ named: {}, unnamed: 0, enabled: false })
+      .mockResolvedValueOnce({ enabled: false })
+
+    vi.doMock('electron', () => ({ ipcRenderer: { invoke } }))
+
+    const { createDebugApi } = await import('../../../src/preload/domains/debug')
+    const api = createDebugApi()
+
+    await expect(api.queryCountersGet()).resolves.toEqual({
+      named: {},
+      unnamed: 0,
+      enabled: false
+    })
+    await expect(api.queryCountersReset()).resolves.toEqual({ enabled: false })
+
+    expect(invoke).toHaveBeenNthCalledWith(1, 'debug:queryCounters:get')
+    expect(invoke).toHaveBeenNthCalledWith(2, 'debug:queryCounters:reset')
   })
 })

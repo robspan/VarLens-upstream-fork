@@ -5,9 +5,14 @@ import { PostgresVariantReadRepository } from '../../../src/main/storage/postgre
 function repoWithQueryCapture() {
   const calls: string[] = []
   const paramsByCall: unknown[][] = []
-  const query = vi.fn(async (sql: string, params: unknown[] = []) => {
+  // queryVariants now routes COUNT/data halves through runNamedDynamic, which calls
+  // pool.query with a { name, text, values } spec object instead of positional
+  // (text, values). Normalize both call shapes so capture stays shape-agnostic.
+  const query = vi.fn(async (arg: unknown, params: unknown[] = []) => {
+    const sql = typeof arg === 'string' ? arg : ((arg as { text?: string }).text ?? '')
+    const values = typeof arg === 'string' ? params : ((arg as { values?: unknown[] }).values ?? [])
     calls.push(sql)
-    paramsByCall.push(params)
+    paramsByCall.push(values)
     return { rows: sql.includes('SELECT COUNT(*)::int AS count') ? [{ count: 0 }] : [] }
   })
   return {

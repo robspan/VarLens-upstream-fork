@@ -413,6 +413,136 @@ function printReport(options, comparison) {
   return failed ? 1 : 0
 }
 
+const args = process.argv.slice(2)
+if (args.includes('--bootstrap-postgres-baseline')) {
+  await bootstrapPostgresBaseline()
+  process.exit(0)
+}
+
+async function collectPostgresViolations() {
+  const { readdirSync, readFileSync } = await import('node:fs')
+  const { join } = await import('node:path')
+  const repoDir = 'src/main/storage/postgres'
+  const violations = []
+  for (const f of readdirSync(repoDir)) {
+    if (!f.endsWith('Repository.ts')) continue
+    const text = readFileSync(join(repoDir, f), 'utf-8')
+    const lines = text.split('\n')
+    lines.forEach((line, idx) => {
+      // Match pool.query('...') OR pool.query(`...`) OR client.query('...')
+      // that is NOT inside a runNamed / runNamedDynamic call. Heuristic: the
+      // call begins with pool.query or client.query, followed immediately by
+      // a string literal opener.
+      const m = line.match(/\b(pool|client)\.query\(\s*['"`]/)
+      if (!m) return
+      // Exclude bare transaction-control statements (BEGIN/COMMIT/ROLLBACK/
+      // SAVEPOINT). These are correct, parameterless usage that will never be
+      // converted to runNamed, so counting them inflates the baseline and lets
+      // a real anti-pattern regression hide behind an unrelated txn-control
+      // refactor. Only the parameterized / dynamic-SQL literal pattern the gate
+      // is meant to drive down should be tracked.
+      if (/\b(pool|client)\.query\(\s*['"`](BEGIN|COMMIT|ROLLBACK|SAVEPOINT)\b/i.test(line)) {
+        return
+      }
+      violations.push({ file: f, line: idx + 1, snippet: line.trim().slice(0, 120) })
+    })
+  }
+  return violations.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line)
+}
+
+async function bootstrapPostgresBaseline() {
+  const { writeFileSync } = await import('node:fs')
+  const violations = await collectPostgresViolations()
+  const baseline = {
+    generatedAt: new Date().toISOString(),
+    count: violations.length,
+    violations
+  }
+  writeFileSync(
+    'scripts/agent-health-postgres-baseline.json',
+    JSON.stringify(baseline, null, 2) + '\n'
+  )
+  console.log(
+    `Bootstrap baseline: ${baseline.count} violations across ${new Set(violations.map((v) => v.file)).size} files`
+  )
+  console.log(`Wrote scripts/agent-health-postgres-baseline.json`)
+}
+
+async function checkRunNamedVersionSuffix(root) {
+  // B4 (Pass-2 verdict #2): every `runNamed(... { name: '...' })` logical name
+  // must carry a `:vN` suffix. The version suffix is the only protection
+  // against node-postgres's client-side "Prepared statements must be unique"
+  // error — a same-name/different-text collision on one connection cannot be
+  // recovered by the wrapper's 26000/42704 retry. `runNamedDynamic` keys via a
+  // text hash on `baseName`, so its calls are exempt from the suffix rule.
+  const { readdirSync, readFileSync, existsSync } = await import('node:fs')
+  const { join } = await import('node:path')
+  const repoDir = join(root, 'src/main/storage/postgres')
+  if (!existsSync(repoDir)) {
+    return []
+  }
+
+  const violations = []
+  // A `name:` property only matters when it sits inside a runNamed / runNamedDynamic
+  // call object. We track call context so unrelated `name:` literals (e.g. a
+  // `table(name: 'tags' | 'variant_tags')` type annotation) never trip the guard.
+  for (const file of readdirSync(repoDir)) {
+    if (!file.endsWith('.ts')) continue
+    const lines = readFileSync(join(repoDir, file), 'utf-8').split('\n')
+    let inRunNamedCall = false
+    lines.forEach((line, idx) => {
+      if (/\brunNamed(Dynamic)?\s*[<(]/.test(line)) {
+        inRunNamedCall = true
+      }
+      if (!inRunNamedCall) return
+      // Close the call context once the call object's closing `})` is reached.
+      if (/\}\s*\)/.test(line)) {
+        inRunNamedCall = false
+        // Still inspect this line: the `name:` may share the line, though in
+        // practice it is on its own line above the closer.
+      }
+      const m = line.match(/(?<![A-Za-z0-9_])name:\s*['"`]([^'"`@]+)['"`]/)
+      if (!m) return
+      const logicalName = m[1]
+      if (!/:v\d+$/.test(logicalName)) {
+        violations.push({
+          file,
+          line: idx + 1,
+          name: logicalName,
+          snippet: line.trim().slice(0, 120)
+        })
+      }
+    })
+  }
+  return violations.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line)
+}
+
+async function checkPostgresBaseline() {
+  const { readFileSync, existsSync } = await import('node:fs')
+  const baselinePath = 'scripts/agent-health-postgres-baseline.json'
+  if (!existsSync(baselinePath)) {
+    console.log(`(skip) ${baselinePath} not found — run --bootstrap-postgres-baseline to seed`)
+    return
+  }
+  const baseline = JSON.parse(readFileSync(baselinePath, 'utf-8'))
+
+  // Re-run the same grep as bootstrapPostgresBaseline to get the current set.
+  const current = await collectPostgresViolations()
+
+  if (current.length > baseline.count) {
+    console.error(
+      `::error::pool.query(<literal>) violations increased from ${baseline.count} to ${current.length}`
+    )
+    const baselineSet = new Set(baseline.violations.map((v) => `${v.file}:${v.line}`))
+    const newOnes = current.filter((v) => !baselineSet.has(`${v.file}:${v.line}`))
+    for (const v of newOnes) {
+      console.error(`  + ${v.file}:${v.line}  ${v.snippet}`)
+    }
+    process.exit(1)
+  }
+  console.log(`postgres baseline: ${current.length}/${baseline.count} violations remain`)
+}
+
 const options = parseArgs(process.argv.slice(2))
 validateRoot(options.root)
 const current = buildCurrentInventory(options)
@@ -424,4 +554,22 @@ if (options.printCurrentJson) {
 
 const baseline = readBaseline(options.baseline)
 const comparison = compareInventory(current, baseline, options.root)
-process.exit(printReport(options, comparison))
+const reportExit = printReport(options, comparison)
+
+// Postgres pool.query(<literal>) monotonic-decrease gate (Sprint A PR-2 B4).
+// checkPostgresBaseline() exits the process directly when violations increase.
+await checkPostgresBaseline()
+
+// runNamed :vN version-suffix grep guard (Sprint A PR-2 B4, Pass-2 verdict #2).
+const versionSuffixViolations = await checkRunNamedVersionSuffix(options.root)
+if (versionSuffixViolations.length > 0) {
+  console.error(
+    `::error::runNamed logical names must carry a ":vN" version suffix (${versionSuffixViolations.length} violation(s))`
+  )
+  for (const v of versionSuffixViolations) {
+    console.error(`  + ${v.file}:${v.line}  name "${v.name}" lacks a :vN suffix  ${v.snippet}`)
+  }
+  process.exit(1)
+}
+
+process.exit(reportExit)

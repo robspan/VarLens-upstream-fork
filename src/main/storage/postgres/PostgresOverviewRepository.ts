@@ -7,6 +7,7 @@ import type {
   OverviewPhenotype
 } from '../../../shared/types/database-overview'
 import { quoteIdentifier } from './identifiers'
+import { runNamed } from './named-query'
 
 type Queryable = Pick<Pool, 'query'>
 type Row = Record<string, unknown>
@@ -21,11 +22,13 @@ function firstNumber(result: QueryResult<Row>, key: string): number {
 
 export class PostgresOverviewRepository {
   private readonly schemaName: string
+  private readonly schema: string
 
   constructor(
     private readonly pool: Queryable,
     schema: string
   ) {
+    this.schema = schema
     this.schemaName = quoteIdentifier(schema)
   }
 
@@ -39,18 +42,34 @@ export class PostgresOverviewRepository {
       cohortGroupsResult,
       topPhenotypesResult
     ] = await Promise.all([
-      this.pool.query<Row>(`SELECT COUNT(*)::int AS total_cases FROM ${this.table('cases')}`),
-      this.pool.query<Row>(`SELECT COUNT(*)::int AS total_variants FROM ${this.table('variants')}`),
-      this.pool.query<Row>(
-        `SELECT COUNT(DISTINCT (chr, pos, ref, alt))::int AS unique_variants FROM ${this.table('variants')}`
-      ),
-      this.pool.query<Row>(
-        `
+      runNamed<Row>(this.pool as Pool, {
+        name: 'overview:total_cases:v1',
+        text: `SELECT COUNT(*)::int AS total_cases FROM ${this.table('cases')}`,
+        values: [],
+        schema: this.schema
+      }),
+      runNamed<Row>(this.pool as Pool, {
+        name: 'overview:total_variants:v1',
+        text: `SELECT COUNT(*)::int AS total_variants FROM ${this.table('variants')}`,
+        values: [],
+        schema: this.schema
+      }),
+      runNamed<Row>(this.pool as Pool, {
+        name: 'overview:unique_variants:v1',
+        text: `SELECT COUNT(DISTINCT (chr, pos, ref, alt))::int AS unique_variants FROM ${this.table('variants')}`,
+        values: [],
+        schema: this.schema
+      }),
+      runNamed<Row>(this.pool as Pool, {
+        name: 'overview:genes_with_variants:v1',
+        text: `
           SELECT COUNT(DISTINCT gene_symbol)::int AS genes_with_variants
           FROM ${this.table('variants')}
           WHERE gene_symbol IS NOT NULL
-        `
-      ),
+        `,
+        values: [],
+        schema: this.schema
+      }),
       this.pool.query<Row>(
         `
           SELECT c.id, c.name, c.variant_count, c.created_at, cm.affected_status

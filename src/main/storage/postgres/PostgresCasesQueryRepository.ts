@@ -3,6 +3,7 @@ import type { Pool } from 'pg'
 import type { CaseWithCohorts, PaginatedResult } from '../../../shared/types/database'
 import type { ValidatedCaseSearchParams } from '../../../shared/types/ipc-schemas'
 import { quoteIdentifier } from './identifiers'
+import { runNamed } from './named-query'
 
 export class PostgresCasesQueryRepository {
   constructor(
@@ -86,7 +87,17 @@ export class PostgresCasesQueryRepository {
     `
 
     const rowsResult = await this.pool.query(rowsSql, [...values, limit, offset])
-    const countResult = await this.pool.query(countSql, values)
+    // The count query is truly-static only when no filter narrows the WHERE clause;
+    // the filtered shape is dynamic and stays on the unnamed path (runNamedDynamic, B2 part 2).
+    const countResult =
+      whereClauses.length === 0
+        ? await runNamed(this.pool, {
+            name: 'cases:count_all:v1',
+            text: countSql,
+            values: [],
+            schema: this.schema
+          })
+        : await this.pool.query(countSql, values)
 
     return {
       data: rowsResult.rows.map((row) => ({

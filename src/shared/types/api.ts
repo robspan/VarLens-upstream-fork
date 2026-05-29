@@ -110,6 +110,7 @@ import type {
 import type { PerfSnapshot } from './perf'
 import type { CasesDomainContract } from '../ipc/domains/cases'
 import type { DatabaseDomainContract } from '../ipc/domains/database'
+import type { DebugApi } from '../ipc/domains/debug'
 export type { DatabaseInfo, DatabaseOpenResult, RecentDatabase } from '../ipc/domains/database'
 
 // Re-export for convenience
@@ -854,7 +855,10 @@ export interface WindowAPI {
   protein: ProteinAPI
   gnomad: GnomadAPI
   perf: PerfAPI
+  debug: DebugAPI
 }
+
+export type DebugAPI = DebugApi
 
 export interface PresetsAPI {
   list: () => Promise<IpcResult<FilterPreset[]>>

@@ -129,17 +129,17 @@
     },
     {
       "path": "src/renderer/src/mocks/mockApi.ts",
-      "lines": 1214,
+      "lines": 1219,
       "threshold": 600,
       "category": "source",
-      "reason": "existing large renderer mock surface; must not grow before responsibility split"
+      "reason": "existing large renderer mock surface; must not grow before responsibility split. Sprint A PR-2 (debug domain): a new top-level WindowAPI domain requires a matching renderer mock entry (`debug` block mirroring `perf`), which unavoidably grows this central mock surface and cannot be split out without diverging from the WindowAPI contract the mock must satisfy."
     },
     {
       "path": "src/shared/types/api.ts",
-      "lines": 906,
+      "lines": 910,
       "threshold": 600,
       "category": "source",
-      "reason": "existing shared contract surface; must not grow before contract split"
+      "reason": "existing shared contract surface; must not grow before contract split. Sprint A PR-2 (debug domain): adding a new top-level WindowAPI domain key (`debug: DebugAPI`) plus its import and the `DebugAPI` alias unavoidably touches this central interface; the alias resolves the Gate 10c preload-contract test back to the domain contract and cannot be split out without breaking that resolution."
     },
     {
       "path": "src/shared/types/database.ts",

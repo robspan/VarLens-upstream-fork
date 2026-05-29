@@ -89,8 +89,12 @@ describe('PostgresCaseListRepository', () => {
     const repository = new PostgresCaseListRepository(pool, 'phase3_cases')
 
     await expect(repository.listCases()).resolves.toStrictEqual(expectedCases)
-    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('FROM "phase3_cases"."cases"'))
-    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('ORDER BY created_at DESC'))
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('FROM "phase3_cases"."cases"') })
+    )
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('ORDER BY created_at DESC') })
+    )
   })
 
   it('quotes the schema identifier before building the cases query', async () => {
@@ -105,6 +109,8 @@ describe('PostgresCaseListRepository', () => {
 
     await repository.listCases()
 
-    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('FROM "phase3""cases"."cases"'))
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('FROM "phase3""cases"."cases"') })
+    )
   })
 })

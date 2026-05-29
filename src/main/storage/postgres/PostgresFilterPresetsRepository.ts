@@ -8,6 +8,7 @@ import type {
   FilterPresetUpdate
 } from '../../../shared/types/filter-presets'
 import { quoteIdentifier } from './identifiers'
+import { runNamed } from './named-query'
 
 interface PresetRow extends QueryResultRow {
   id: unknown
@@ -57,20 +58,27 @@ function rowToPreset(row: PresetRow): FilterPreset {
 
 export class PostgresFilterPresetsRepository {
   private readonly schemaName: string
+  private readonly schema: string
 
   constructor(
     private readonly pool: Queryable & Partial<TransactionPool>,
     schema: string
   ) {
+    this.schema = schema
     this.schemaName = quoteIdentifier(schema)
   }
 
   async listPresets(): Promise<FilterPreset[]> {
-    const result = await this.pool.query<PresetRow>(`
+    const result = await runNamed<PresetRow>(this.pool as Pool, {
+      name: 'filter_presets:list:v1',
+      text: `
       SELECT *
       FROM ${this.tableName()}
       ORDER BY sort_order, name
-    `)
+    `,
+      values: [],
+      schema: this.schema
+    })
 
     return result.rows.map(rowToPreset)
   }
@@ -84,14 +92,15 @@ export class PostgresFilterPresetsRepository {
     try {
       const now = Date.now()
       const kind: FilterPresetKind = params.kind ?? 'filter'
-      const result = await this.pool.query<PresetRow>(
-        `
+      const result = await runNamed<PresetRow>(this.pool as Pool, {
+        name: 'filter_presets:create:v1',
+        text: `
           INSERT INTO ${this.tableName()}
             (name, description, filter_json, kind, is_built_in, is_visible, sort_order, created_at, updated_at)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
           RETURNING *
         `,
-        [
+        values: [
           params.name,
           params.description ?? null,
           JSON.stringify(params.filterJson),
@@ -101,8 +110,9 @@ export class PostgresFilterPresetsRepository {
           params.sortOrder ?? 0,
           now,
           now
-        ]
-      )
+        ],
+        schema: this.schema
+      })
 
       return rowToPreset(firstRow(result))
     } catch (error) {

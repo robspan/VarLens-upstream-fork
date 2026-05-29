@@ -106,7 +106,6 @@
           @click="$emit('show-database-overview')"
         />
         <v-list-item
-          v-if="!isWebMode"
           :prepend-icon="mdiDatabaseImport"
           title="Import Data"
           subtitle="Ctrl+I"

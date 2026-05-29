@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-05-29T02:05:36.988Z",
-  "count": 16,
+  "generatedAt": "2026-05-29T02:44:39.323Z",
+  "count": 18,
   "violations": [
     {
       "file": "PostgresAnalysisGroupsRepository.ts",
@@ -31,6 +31,16 @@
       "file": "PostgresCaseMetadataRepository.ts",
       "line": 199,
       "snippet": "await client.query(`DELETE FROM ${this.table('case_cohort_links')} WHERE case_id = $1`, ["
+    },
+    {
+      "file": "PostgresCohortSummaryRepository.ts",
+      "line": 46,
+      "snippet": "await client.query(`TRUNCATE ${tbl('cohort_variant_summary')}`)"
+    },
+    {
+      "file": "PostgresCohortSummaryRepository.ts",
+      "line": 51,
+      "snippet": "await client.query(`"
     },
     {
       "file": "PostgresFilterPresetsRepository.ts",

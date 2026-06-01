@@ -1,9 +1,11 @@
 const { defineConfig } = require('cypress')
 
 const defaultBaseUrl = 'http://127.0.0.1:8788'
-const recordVideo = ['1', 'true', 'yes'].includes(
-  (process.env.VARLENS_CYPRESS_VIDEO ?? '').toLowerCase()
-)
+const videoSetting = process.env.VARLENS_CYPRESS_VIDEO
+const recordVideo =
+  videoSetting === undefined
+    ? process.env.CI !== 'true'
+    : ['1', 'true', 'yes'].includes(videoSetting.toLowerCase())
 
 module.exports = defineConfig({
   e2e: {

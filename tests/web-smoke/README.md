@@ -18,6 +18,10 @@ VARLENS_ADMIN_PASSWORD='...' \
 npm run test:web-smoke
 ```
 
+Local runs record MP4 videos by default under
+`tests/web-smoke/artifacts/videos`. Set `VARLENS_CYPRESS_VIDEO=0` to skip
+recording.
+
 Run it against a deployed environment:
 
 ```bash

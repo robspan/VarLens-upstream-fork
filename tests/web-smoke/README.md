@@ -4,6 +4,10 @@ This suite is the app-owned browser smoke contract for the web release path.
 It runs against a real VarLens web URL and verifies login, public entry points,
 upload APIs, and rendered case/variant data.
 
+Specs are intentionally small and workflow-oriented. Low-level UI mechanics,
+fixture generation, import flows, case rendering, and Data Info checks live in
+`tests/web-smoke/support` so spec files read as user-facing smoke contracts.
+
 The Cypress dependency is intentionally isolated in this directory. Normal
 desktop/non-web `npm ci` at the repository root does not install or download
 web-smoke dependencies.
@@ -19,8 +23,8 @@ npm run test:web-smoke
 ```
 
 Local runs record MP4 videos by default under
-`tests/web-smoke/artifacts/videos`. Set `VARLENS_CYPRESS_VIDEO=0` to skip
-recording.
+`tests/web-smoke/artifacts/videos`, one per workflow spec. Set
+`VARLENS_CYPRESS_VIDEO=0` to skip recording.
 
 Run it against a deployed environment:
 

@@ -2,6 +2,7 @@ const { defineConfig } = require('cypress')
 
 const defaultBaseUrl = 'http://127.0.0.1:8788'
 const videoSetting = process.env.VARLENS_CYPRESS_VIDEO
+const resolvedLoginPasswords = new Map()
 const recordVideo =
   videoSetting === undefined
     ? process.env.CI !== 'true'
@@ -9,6 +10,17 @@ const recordVideo =
 
 module.exports = defineConfig({
   e2e: {
+    setupNodeEvents(on) {
+      on('task', {
+        varlensGetResolvedLoginPassword(key) {
+          return resolvedLoginPasswords.get(key) ?? null
+        },
+        varlensSetResolvedLoginPassword({ key, password }) {
+          resolvedLoginPasswords.set(key, password)
+          return null
+        }
+      })
+    },
     baseUrl: process.env.VARLENS_BASE_URL ?? defaultBaseUrl,
     specPattern: 'tests/web-smoke/**/*.cy.ts',
     supportFile: 'tests/web-smoke/support/e2e.ts',

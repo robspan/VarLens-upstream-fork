@@ -7,6 +7,7 @@
       :aria-label="sidebarOpen ? 'Close sidebar' : 'Open sidebar'"
       :aria-expanded="sidebarOpen"
       class="sidebar-toggle-btn"
+      data-testid="app-sidebar-toggle"
       @click="handleSidebarToggle"
     />
     <v-app-bar-title

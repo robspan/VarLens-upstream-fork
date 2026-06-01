@@ -4,15 +4,15 @@ import { tmpdir } from 'node:os'
 
 import { describe, expect, test } from 'vitest'
 
+import { jobRunner } from '../../src/main/services/jobs/runner'
 import { buildDispatcher } from '../../src/web/server/dispatcher'
 import { stageExistingFileUpload } from '../../src/web/server/routes/upload-staging'
 import { makeDeps } from './helpers/dispatcher-adapters'
 
-const ZIP_WITH_ONE_VCF_BASE64 =
-  'UEsDBBQAAAAIAEhVvVwJgEHLUQAAAFMAAAAQAAAAd2ViLXppcC1jYXNlLnZjZlNWTsvMSU3LL8pN' +
-  'LLENc3YrM9Ez4lJ29gjy9+UM8A/m9HThDHJ143T0CeEMDHX04XTz9AlxDeL09HPz5zLkNDQw4NTj' +
-  'dOR0B7MCHIODOfW4AFBLAQIUAxQAAAAIAEhVvVwJgEHLUQAAAFMAAAAQAAAAAAAAAAAAAACAAQA' +
-  'AAAB3ZWItemlwLWNhc2UudmNmUEsFBgAAAAABAAEAPgAAAH8AAAAAAA=='
+const ZIP_WITH_ONE_JSON_BASE64 =
+  'UEsDBBQAAAgIAJRRwVwz5c4EEQAAAA8AAAARAAAAd2ViLXppcC1jYXNlLmpzb26rVkpOLE5Vsl' +
+  'IqT01SquUCAFBLAQIUAxQAAAgIAJRRwVwz5c4EEQAAAA8AAAARAAAAAAAAAAAAAACkgQAAAAB3' +
+  'ZWItemlwLWNhc2UuanNvblBLBQYAAAAAAQABAD8AAABAAAAAAAA='
 
 describe('web dispatcher adapters: auth and import', () => {
   test('auth.isAccountsEnabled delegates to the web auth service', async () => {
@@ -39,10 +39,11 @@ describe('web dispatcher adapters: auth and import', () => {
     try {
       const { deps, importSingleFile, reply } = makeDeps()
       const { overrides } = buildDispatcher(deps)
+      const request = { session: {} }
 
       const result = await overrides['import:start'].handle(
         ['/tmp/input.vcf', 'Case A'],
-        {} as never,
+        request as never,
         reply as never,
         deps
       )
@@ -92,7 +93,7 @@ describe('web dispatcher adapters: auth and import', () => {
     process.env.VARLENS_RECOVERY_KEY_DIR = tempDir
     try {
       const zipPath = join(tempDir, 'batch.zip')
-      await writeFile(zipPath, Buffer.from(ZIP_WITH_ONE_VCF_BASE64, 'base64'))
+      await writeFile(zipPath, Buffer.from(ZIP_WITH_ONE_JSON_BASE64, 'base64'))
       const upload = await stageExistingFileUpload({
         userId: 7,
         originalName: 'batch.zip',
@@ -123,16 +124,116 @@ describe('web dispatcher adapters: auth and import', () => {
     }
   })
 
+  test('batch-import.start resolves web upload refs and runs through JobRunner-backed import logic', async () => {
+    const prevNodeEnv = process.env.NODE_ENV
+    const prevRecoveryDir = process.env.VARLENS_RECOVERY_KEY_DIR
+    const tempDir = await mkdtemp(join(tmpdir(), 'varlens-web-batch-'))
+    process.env.NODE_ENV = 'production'
+    process.env.VARLENS_RECOVERY_KEY_DIR = tempDir
+    try {
+      const sourcePath = join(tempDir, 'Case B.json')
+      await writeFile(sourcePath, '{}')
+      const upload = await stageExistingFileUpload({
+        userId: 7,
+        originalName: 'Case B.json',
+        sourcePath
+      })
+      const knownBatchJobs = new Set(jobRunner.list({ kind: 'import_batch' }).map((job) => job.id))
+      const { deps, importSingleFile, reply } = makeDeps()
+      importSingleFile.mockImplementationOnce(async (params) => {
+        params.onProgress?.({ phase: 'parsing', count: 1, elapsed: 3, skipped: 0 })
+        return {
+          caseId: 12,
+          variantCount: 4,
+          skipped: 0,
+          errors: [],
+          elapsed: 15
+        }
+      })
+      const { overrides } = buildDispatcher(deps)
+      const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
+
+      const result = (await overrides['batch-import:start'].handle(
+        [[upload.ref], 'skip'],
+        request as never,
+        reply as never,
+        deps
+      )) as {
+        succeeded: number
+        failed: number
+        skipped: number
+        details: Array<{ filePath: string; fileName: string; caseName: string; status: string }>
+      }
+
+      expect(reply.code).not.toHaveBeenCalled()
+      expect(importSingleFile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filePath: upload.storedPath,
+          caseName: 'Case B'
+        })
+      )
+      expect(result).toMatchObject({
+        succeeded: 1,
+        failed: 0,
+        skipped: 0,
+        details: [
+          {
+            filePath: upload.ref,
+            fileName: 'Case B.json',
+            caseName: 'Case B',
+            status: 'success',
+            variantCount: 4
+          }
+        ]
+      })
+      expect(deps.events.publish).toHaveBeenCalledWith(7, 'batch-import:progress', {
+        currentIndex: 1,
+        totalFiles: 1,
+        currentFileName: 'Case B.json',
+        overallPercent: 100,
+        fileProgress: { phase: 'parsing', count: 1, elapsed: 3, skipped: 0 }
+      })
+      expect(deps.events.publish).toHaveBeenCalledWith(7, 'batch-import:complete', result)
+
+      const newBatchJobs = jobRunner
+        .list({ kind: 'import_batch' })
+        .filter((job) => !knownBatchJobs.has(job.id))
+      expect(newBatchJobs).toHaveLength(1)
+      const newBatchJob = newBatchJobs[0]
+      expect(newBatchJob).toBeDefined()
+      if (newBatchJob === undefined) throw new Error('expected batch job to be tracked')
+      expect(newBatchJob).toMatchObject({ kind: 'import_batch', status: 'completed' })
+      const params = newBatchJob.params as {
+        files: Array<{ inputPath: string; storedPath: string }>
+        duplicateStrategy: string
+      }
+      expect(params.duplicateStrategy).toBe('skip')
+      const paramFile = params.files[0]
+      expect(paramFile).toBeDefined()
+      expect(paramFile).toMatchObject({
+        inputPath: upload.ref,
+        storedPath: upload.storedPath
+      })
+    } finally {
+      if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = prevNodeEnv
+      if (prevRecoveryDir === undefined) delete process.env.VARLENS_RECOVERY_KEY_DIR
+      else process.env.VARLENS_RECOVERY_KEY_DIR = prevRecoveryDir
+      await rm(tempDir, { recursive: true, force: true })
+    }
+  })
+
   test('import.start routes an enabled absolute server path through shared import logic', async () => {
     const prevNodeEnv = process.env.NODE_ENV
     process.env.NODE_ENV = 'test'
     try {
       const { deps, importSingleFile, reply } = makeDeps()
       const { overrides } = buildDispatcher(deps)
+      const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
 
       const result = await overrides['import:start'].handle(
         ['/tmp/input.vcf', 'Case A', { genomeBuild: 'hg38' }],
-        {} as never,
+        request as never,
         reply as never,
         deps
       )

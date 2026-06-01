@@ -110,11 +110,11 @@ async function uploadImportFiles(files: readonly File[]): Promise<UploadedFileRe
   return uploaded
 }
 
-async function pickAndUploadFiles(params: {
+async function pickFiles(params: {
   multiple: boolean
   accept: string
   directory?: boolean
-}): Promise<string[]> {
+}): Promise<File[]> {
   const input = document.createElement('input')
   input.type = 'file'
   input.accept = params.accept
@@ -125,20 +125,33 @@ async function pickAndUploadFiles(params: {
   input.style.display = 'none'
   document.body.append(input)
   try {
-    const files = await new Promise<File[]>((resolve) => {
-      input.addEventListener(
-        'change',
-        () => {
-          resolve(Array.from(input.files ?? []))
-        },
-        { once: true }
-      )
+    return await new Promise<File[]>((resolve) => {
+      let settled = false
+      const settle = (files: File[]): void => {
+        if (settled) return
+        settled = true
+        window.removeEventListener('focus', handleFocus)
+        resolve(files)
+      }
+      const handleFocus = (): void => {
+        window.setTimeout(() => settle(Array.from(input.files ?? [])), 250)
+      }
+      input.addEventListener('change', () => settle(Array.from(input.files ?? [])), { once: true })
+      window.addEventListener('focus', handleFocus, { once: true })
       input.click()
     })
-    return (await uploadImportFiles(files)).map((file) => file.ref)
   } finally {
     input.remove()
   }
+}
+
+async function pickAndUploadFiles(params: {
+  multiple: boolean
+  accept: string
+  directory?: boolean
+}): Promise<string[]> {
+  const files = await pickFiles(params)
+  return (await uploadImportFiles(files)).map((file) => file.ref)
 }
 
 const NOOP_UNSUBSCRIBE = (): void => {}
@@ -239,7 +252,7 @@ function buildImportApi(): unknown {
         }
         if (prop === 'selectBedFile') {
           return async () => {
-            const refs = await pickAndUploadFiles({ multiple: false, accept: '.bed' })
+            const refs = await pickAndUploadFiles({ multiple: false, accept: '.bed,.bed.gz,.gz' })
             return refs[0] ?? null
           }
         }
@@ -281,7 +294,16 @@ function buildBatchImportApi(): unknown {
         if (prop === 'selectZip') {
           return async () => {
             const refs = await pickAndUploadFiles({ multiple: false, accept: '.zip' })
-            return refs[0] === undefined ? null : { filePath: refs[0], isEncrypted: false }
+            const filePath = refs[0]
+            if (filePath === undefined) return null
+
+            const passwordProbe = await httpInvoke('batch-import', 'testZipPassword', [
+              filePath,
+              ''
+            ])
+            if (isIpcError(passwordProbe)) return passwordProbe
+            const isEncrypted = !(passwordProbe as { success: boolean }).success
+            return { filePath, isEncrypted }
           }
         }
         return typeof prop === 'string' ? rpc[prop] : undefined

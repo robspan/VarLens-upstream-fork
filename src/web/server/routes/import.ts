@@ -265,7 +265,7 @@ function resolveFilterUploadRefs(
   filters: unknown,
   userId: number | undefined
 ): Record<string, unknown> | undefined | null {
-  if (filters === undefined || filters === null) return filters as undefined
+  if (filters === undefined || filters === null) return undefined
   if (typeof filters !== 'object') return filters as Record<string, unknown>
   const raw = filters as Record<string, unknown>
   if (typeof raw.bedFile !== 'string' || !isWebUploadRef(raw.bedFile)) return raw

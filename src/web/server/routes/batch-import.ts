@@ -1,6 +1,7 @@
 import { basename, isAbsolute } from 'node:path'
 
 import { cancelImport, startImport } from '../../../main/ipc/handlers/import-logic'
+import { jobRunner } from '../../../main/services/jobs/runner'
 import type { StorageWriteTask } from '../../../main/storage/write-executor'
 import {
   cleanupZipTemp,
@@ -20,6 +21,12 @@ interface ResolvedBatchFile {
   inputPath: string
   storedPath: string
   fileName: string
+}
+
+interface WebBatchImportJobParams {
+  files: ResolvedBatchFile[]
+  duplicateStrategy: DuplicateChoice
+  stripText: string | undefined
 }
 
 export function buildBatchImportOverrides(): Record<string, OverrideHandler> {
@@ -95,19 +102,34 @@ export function buildBatchImportOverrides(): Record<string, OverrideHandler> {
           return serverPathImportDisabledResponse()
         }
 
-        return await startWebBatchImport(
-          resolved,
-          duplicateStrategy,
-          typeof stripText === 'string' ? stripText : undefined,
-          request.session.user?.id,
-          session,
-          events
+        const handle = jobRunner.enqueue<WebBatchImportJobParams, BatchResult>(
+          'import_batch',
+          {
+            files: resolved,
+            duplicateStrategy,
+            stripText: typeof stripText === 'string' ? stripText : undefined
+          },
+          async (ctx, params) => {
+            ctx.registerCancel(cancelImport)
+            return await startWebBatchImport(
+              params.files,
+              params.duplicateStrategy,
+              params.stripText,
+              request.session.user?.id,
+              session,
+              events,
+              ctx.signal
+            )
+          }
         )
+        return await handle.result
       }
     },
 
     'batch-import:cancel': {
-      handle() {
+      async handle() {
+        const runningBatchJobs = jobRunner.list({ kind: 'import_batch', status: 'running' })
+        await Promise.all(runningBatchJobs.map((job) => jobRunner.cancel(job.id)))
         cancelImport()
       }
     },
@@ -258,7 +280,8 @@ async function startWebBatchImport(
   stripText: string | undefined,
   userId: number | undefined,
   session: Parameters<OverrideHandler['handle']>[3]['session'],
-  events: Parameters<OverrideHandler['handle']>[3]['events']
+  events: Parameters<OverrideHandler['handle']>[3]['events'],
+  signal: AbortSignal
 ): Promise<BatchResult> {
   const existingCases = await session.listCases()
   const existingByName = new Map(existingCases.map((item) => [item.name, item]))
@@ -271,6 +294,11 @@ async function startWebBatchImport(
   }
 
   for (let index = 0; index < files.length; index++) {
+    if (signal.aborted) {
+      result.cancelled = true
+      break
+    }
+
     const file = files[index]
     const caseName = extractCaseName(file.fileName, stripText)
     const existing = existingByName.get(caseName)
@@ -316,6 +344,11 @@ async function startWebBatchImport(
         variantCount: importResult.variantCount
       })
     } catch (error) {
+      if (signal.aborted) {
+        result.cancelled = true
+        break
+      }
+
       result.failed++
       result.details.push({
         filePath: file.inputPath,

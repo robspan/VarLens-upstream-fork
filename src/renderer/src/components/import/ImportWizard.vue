@@ -48,31 +48,11 @@
 
       <!-- Step 1: Source Selection -->
       <v-card-text v-if="step === 1" class="pa-4">
-        <WebImportSourcePicker
-          v-if="isWebMode"
+        <ImportSourceSelector
           :sources="allSources"
-          :upload-pending="webUploadPending"
-          @files-selected="handleWebFilesSelected"
+          :pending="sourceSelectionPending"
+          @select="selectSource"
         />
-        <template v-else>
-          <div class="text-caption text-medium-emphasis mb-3">Choose import source</div>
-          <div class="d-flex flex-wrap ga-3">
-            <v-card
-              v-for="src in sources"
-              :key="src.mode"
-              variant="outlined"
-              class="import-source-card flex-grow-1"
-              min-width="130"
-              @click="selectSource(src.mode)"
-            >
-              <v-card-text class="d-flex flex-column align-center text-center pa-3">
-                <v-icon :icon="src.icon" size="24" color="primary" class="mb-1" />
-                <div class="text-body-2 font-weight-medium">{{ src.title }}</div>
-                <div class="text-caption text-medium-emphasis">{{ src.subtitle }}</div>
-              </v-card-text>
-            </v-card>
-          </div>
-        </template>
 
         <!-- ZIP password (inline, shown when needed) -->
         <v-expand-transition>
@@ -205,15 +185,13 @@ import type { VcfPreviewResult } from '../../../../shared/types/vcf'
 import { useApiService } from '../../composables/useApiService'
 import { useImportStatusStore } from '../../stores/importStatusStore'
 import { logService } from '../../services/LogService'
-import { isWebRuntime } from '../../utils/runtime-mode'
-import { uploadWebImportFiles } from '../../utils/web-import-upload'
 import { isIpcError, unwrapIpcResult } from '../../../../shared/types/errors'
 import BatchReviewPhase from '../batch-import/BatchReviewPhase.vue'
 import BatchProgressPhase from '../batch-import/BatchProgressPhase.vue'
 import BatchSummaryPhase from '../batch-import/BatchSummaryPhase.vue'
+import ImportSourceSelector from './ImportSourceSelector.vue'
+import type { ImportSourceMode, ImportSourceOption } from './ImportSourceSelector.vue'
 import VcfPreviewStep from './VcfPreviewStep.vue'
-import WebImportSourcePicker from './WebImportSourcePicker.vue'
-import type { WebImportMode } from './WebImportSourcePicker.vue'
 import {
   mdiChevronRight,
   mdiClose,
@@ -226,11 +204,10 @@ import {
   mdiZipBox
 } from '@mdi/js'
 
-type ImportMode = 'single' | 'files' | 'folder' | 'zip'
+type ImportMode = ImportSourceMode
 
 const { api } = useApiService()
 const importStore = useImportStatusStore()
-const isWebMode = isWebRuntime()
 
 const emit = defineEmits<{
   'import-complete': [result: { caseId: number; variantCount: number; caseName: string }]
@@ -254,7 +231,7 @@ const stepLabels = computed(() => {
   return ['Source', 'Review', 'Import', 'Summary']
 })
 
-const allSources = [
+const allSources: ImportSourceOption[] = [
   {
     mode: 'single' as ImportMode,
     icon: mdiFileDocument,
@@ -276,14 +253,12 @@ const allSources = [
   { mode: 'zip' as ImportMode, icon: mdiZipBox, title: 'ZIP Archive', subtitle: 'Extract & import' }
 ]
 
-const sources = computed(() => allSources)
-
 // File selection state
 const selectedMode = ref<ImportMode | null>(null)
 const selectedFilePaths = ref<string[]>([])
 const isZipImport = ref(false)
 const zipPath = ref('')
-const webUploadPending = ref(false)
+const sourceSelectionPending = ref(false)
 
 // ZIP password state
 const zipPasswordNeeded = ref(false)
@@ -358,7 +333,9 @@ watch(stripText, () => {
 })
 
 async function selectSource(mode: ImportMode): Promise<void> {
+  if (sourceSelectionPending.value) return
   selectedMode.value = mode
+  sourceSelectionPending.value = true
 
   try {
     if (mode === 'zip') {
@@ -411,53 +388,8 @@ async function selectSource(mode: ImportMode): Promise<void> {
       'ImportWizard'
     )
     importStore.importError(err instanceof Error ? err.message : 'File selection failed')
-  }
-}
-
-async function handleWebFilesSelected(payload: {
-  mode: WebImportMode
-  files: File[]
-}): Promise<void> {
-  const files = payload.files
-  if (!isWebMode || files.length === 0) return
-
-  const mode = payload.mode
-  selectedMode.value = mode
-
-  try {
-    webUploadPending.value = true
-    const selectedFiles = mode === 'single' || mode === 'zip' ? files.slice(0, 1) : files
-    const uploaded = await uploadWebImportFiles(selectedFiles)
-    const filePaths = uploaded.map((file) => file.ref)
-    if (filePaths.length === 0) return
-
-    if (mode === 'zip') {
-      zipPath.value = filePaths[0]
-      isZipImport.value = true
-      await extractAndAdvance(filePaths[0])
-      return
-    }
-
-    selectedFilePaths.value = filePaths
-    if (filePaths.length === 1) {
-      const fp = filePaths[0].toLowerCase()
-      if (fp.endsWith('.vcf') || fp.endsWith('.vcf.gz')) {
-        isVcfImport.value = true
-        vcfFilePath.value = filePaths[0]
-        step.value = 2
-        return
-      }
-    }
-
-    await checkDuplicatesAndAdvance(filePaths)
-  } catch (err) {
-    logService.error(
-      `Browser file upload failed: ${err instanceof Error ? err.message : String(err)}`,
-      'ImportWizard'
-    )
-    importStore.importError(err instanceof Error ? err.message : 'Browser file upload failed')
   } finally {
-    webUploadPending.value = false
+    sourceSelectionPending.value = false
   }
 }
 
@@ -737,7 +669,7 @@ function resetState(): void {
   vcfCaseNames.value = new Map()
   isZipImport.value = false
   zipPath.value = ''
-  webUploadPending.value = false
+  sourceSelectionPending.value = false
   zipPasswordNeeded.value = false
   zipPassword.value = ''
   zipError.value = ''
@@ -828,16 +760,3 @@ onUnmounted(() => {
 
 defineExpose({ show, reopen })
 </script>
-
-<style scoped>
-.import-source-card {
-  cursor: pointer;
-  transition: all 0.15s ease;
-  border-color: rgba(var(--v-border-color), var(--v-border-opacity));
-}
-
-.import-source-card:hover {
-  border-color: rgb(var(--v-theme-primary));
-  background: rgba(var(--v-theme-primary), 0.04);
-}
-</style>

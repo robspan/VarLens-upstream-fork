@@ -115,6 +115,7 @@ async function pickFiles(params: {
   accept: string
   directory?: boolean
 }): Promise<File[]> {
+  const cancelFallbackDelayMs = 2000
   const input = document.createElement('input')
   input.type = 'file'
   input.accept = params.accept
@@ -127,16 +128,25 @@ async function pickFiles(params: {
   try {
     return await new Promise<File[]>((resolve) => {
       let settled = false
+      let cancelTimer: ReturnType<typeof window.setTimeout> | undefined
       const settle = (files: File[]): void => {
         if (settled) return
         settled = true
+        if (cancelTimer !== undefined) {
+          window.clearTimeout(cancelTimer)
+        }
         window.removeEventListener('focus', handleFocus)
         resolve(files)
       }
       const handleFocus = (): void => {
-        window.setTimeout(() => settle(Array.from(input.files ?? [])), 250)
+        // Native pickers can restore focus before `change` has populated
+        // `input.files`; keep focus as a delayed cancel fallback only.
+        cancelTimer = window.setTimeout(() => {
+          settle(Array.from(input.files ?? []))
+        }, cancelFallbackDelayMs)
       }
       input.addEventListener('change', () => settle(Array.from(input.files ?? [])), { once: true })
+      input.addEventListener('cancel', () => settle([]), { once: true })
       window.addEventListener('focus', handleFocus, { once: true })
       input.click()
     })

@@ -71,6 +71,7 @@ type MockUploadFileInput = Omit<HTMLInputElement, 'files'> & {
   click: ReturnType<typeof vi.fn>
   remove: ReturnType<typeof vi.fn>
   setAttribute: ReturnType<typeof vi.fn>
+  runPendingTimers: () => void
 }
 
 function createFileList(files: File[]): FileList {
@@ -93,9 +94,14 @@ function mockJsonResponse(body: unknown): {
   }
 }
 
-function stubUploadPicker(files: File[], options: { cancel?: boolean } = {}): MockUploadFileInput {
+function stubUploadPicker(
+  files: File[],
+  options: { cancel?: boolean; focusBeforeChange?: boolean; deferTimers?: boolean } = {}
+): MockUploadFileInput {
   let changeListener: EventListener | undefined
+  let cancelListener: EventListener | undefined
   let focusListener: EventListener | undefined
+  const pendingTimers: Array<() => void> = []
   const input = {
     type: '',
     accept: '',
@@ -105,16 +111,23 @@ function stubUploadPicker(files: File[], options: { cancel?: boolean } = {}): Mo
     setAttribute: vi.fn(),
     addEventListener: vi.fn((type: string, listener: EventListener) => {
       if (type === 'change') changeListener = listener
+      if (type === 'cancel') cancelListener = listener
     }),
     click: vi.fn(() => {
       if (options.cancel === true) {
-        focusListener?.({} as Event)
+        cancelListener?.({} as Event)
         return
       }
+      if (options.focusBeforeChange === true) focusListener?.({} as Event)
       input.files = createFileList(files)
       changeListener?.({} as Event)
     }),
-    remove: vi.fn()
+    remove: vi.fn(),
+    runPendingTimers: () => {
+      while (pendingTimers.length > 0) {
+        pendingTimers.shift()?.()
+      }
+    }
   } as unknown as MockUploadFileInput
 
   vi.stubGlobal('document', {
@@ -132,9 +145,14 @@ function stubUploadPicker(files: File[], options: { cancel?: boolean } = {}): Mo
     }),
     removeEventListener: vi.fn(),
     setTimeout: vi.fn((callback: () => void) => {
+      if (options.deferTimers === true) {
+        pendingTimers.push(callback)
+        return pendingTimers.length
+      }
       callback()
       return 0
     }),
+    clearTimeout: vi.fn(),
     open: vi.fn()
   })
   return input
@@ -290,6 +308,21 @@ describe('web client api', () => {
 
     expect(input.remove).toHaveBeenCalledOnce()
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test('import.selectFile keeps early focus from cancelling before file change arrives', async () => {
+    const file = new File(['##fileformat=VCFv4.2'], 'manual.vcf')
+    const input = stubUploadPicker([file], { focusBeforeChange: true, deferTimers: true })
+    const fetchMock = mockUploadFetch()
+
+    const api = createApi() as unknown as TestApi
+    await expect(api.import.selectFile()).resolves.toBe('web-upload:upload-manual.vcf/manual.vcf')
+
+    expect(input.remove).toHaveBeenCalledOnce()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    input.runPendingTimers()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   test('import.selectBedFile uses the same picker/upload seam for BED files', async () => {

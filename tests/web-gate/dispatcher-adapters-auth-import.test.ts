@@ -223,6 +223,119 @@ describe('web dispatcher adapters: auth and import', () => {
     }
   })
 
+  test('batch-import.start skips duplicate case names that appear within the same web batch', async () => {
+    const prevNodeEnv = process.env.NODE_ENV
+    const prevRecoveryDir = process.env.VARLENS_RECOVERY_KEY_DIR
+    const tempDir = await mkdtemp(join(tmpdir(), 'varlens-web-batch-dupes-'))
+    process.env.NODE_ENV = 'production'
+    process.env.VARLENS_RECOVERY_KEY_DIR = tempDir
+    try {
+      const firstPath = join(tempDir, 'first.json')
+      const secondPath = join(tempDir, 'second.json')
+      await writeFile(firstPath, '{}')
+      await writeFile(secondPath, '{}')
+      const firstUpload = await stageExistingFileUpload({
+        userId: 7,
+        originalName: 'Case B.json',
+        sourcePath: firstPath
+      })
+      const secondUpload = await stageExistingFileUpload({
+        userId: 7,
+        originalName: 'Case B.json',
+        sourcePath: secondPath
+      })
+      const { deps, importSingleFile, reply } = makeDeps()
+      importSingleFile.mockResolvedValueOnce({
+        caseId: 12,
+        variantCount: 4,
+        skipped: 0,
+        errors: [],
+        elapsed: 15
+      })
+      const { overrides } = buildDispatcher(deps)
+      const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
+
+      const result = (await overrides['batch-import:start'].handle(
+        [[firstUpload.ref, secondUpload.ref], 'skip'],
+        request as never,
+        reply as never,
+        deps
+      )) as {
+        succeeded: number
+        failed: number
+        skipped: number
+        details: Array<{ filePath: string; fileName: string; caseName: string; status: string }>
+      }
+
+      expect(reply.code).not.toHaveBeenCalled()
+      expect(importSingleFile).toHaveBeenCalledTimes(1)
+      expect(result).toMatchObject({
+        succeeded: 1,
+        failed: 0,
+        skipped: 1,
+        details: [
+          {
+            filePath: firstUpload.ref,
+            fileName: 'Case B.json',
+            caseName: 'Case B',
+            status: 'success'
+          },
+          {
+            filePath: secondUpload.ref,
+            fileName: 'Case B.json',
+            caseName: 'Case B',
+            status: 'skipped'
+          }
+        ]
+      })
+    } finally {
+      if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = prevNodeEnv
+      if (prevRecoveryDir === undefined) delete process.env.VARLENS_RECOVERY_KEY_DIR
+      else process.env.VARLENS_RECOVERY_KEY_DIR = prevRecoveryDir
+      await rm(tempDir, { recursive: true, force: true })
+    }
+  })
+
+  test('batch-import.checkDuplicates reports missing web upload refs as upload-not-found', async () => {
+    const { deps, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+    const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
+
+    const result = await overrides['batch-import:checkDuplicates'].handle(
+      [['web-upload:missing/Case B.json']],
+      request as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).toHaveBeenCalledWith(404)
+    expect(result).toEqual({
+      error: 'upload-not-found',
+      message: 'Uploaded file is no longer available'
+    })
+  })
+
+  test('batch-import.start reports missing web upload refs as upload-not-found', async () => {
+    const { deps, importSingleFile, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+    const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
+
+    const result = await overrides['batch-import:start'].handle(
+      [['web-upload:missing/Case B.json'], 'skip'],
+      request as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).toHaveBeenCalledWith(404)
+    expect(result).toEqual({
+      error: 'upload-not-found',
+      message: 'Uploaded file is no longer available'
+    })
+    expect(importSingleFile).not.toHaveBeenCalled()
+  })
+
   test('import.start routes an enabled absolute server path through shared import logic', async () => {
     const prevNodeEnv = process.env.NODE_ENV
     process.env.NODE_ENV = 'test'

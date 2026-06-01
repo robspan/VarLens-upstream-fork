@@ -29,6 +29,14 @@ interface WebBatchImportJobParams {
   stripText: string | undefined
 }
 
+type BatchFileResolution =
+  | { ok: true; files: ResolvedBatchFile[] }
+  | {
+      ok: false
+      status: 400 | 403 | 404
+      body: { error: string; message: string }
+    }
+
 export function buildBatchImportOverrides(): Record<string, OverrideHandler> {
   return {
     'batch-import:selectFiles': {
@@ -57,15 +65,15 @@ export function buildBatchImportOverrides(): Record<string, OverrideHandler> {
           return { error: 'invalid-files', message: 'filePaths must be an array' }
         }
 
-        const resolved = resolveBatchFiles(filePaths, request.session.user?.id)
-        if (resolved === null) {
-          reply.code(403)
-          return serverPathImportDisabledResponse()
+        const resolution = resolveBatchFiles(filePaths, request.session.user?.id)
+        if (!resolution.ok) {
+          reply.code(resolution.status)
+          return resolution.body
         }
 
         const existingNames = new Set((await session.listCases()).map((item) => item.name))
         let duplicateCount = 0
-        const files = resolved.map((file) => {
+        const files = resolution.files.map((file) => {
           const caseName = extractCaseName(
             file.fileName,
             typeof stripText === 'string' ? stripText : undefined
@@ -96,16 +104,16 @@ export function buildBatchImportOverrides(): Record<string, OverrideHandler> {
           return { error: 'invalid-duplicate-strategy', message: 'duplicateStrategy is invalid' }
         }
 
-        const resolved = resolveBatchFiles(filePaths, request.session.user?.id)
-        if (resolved === null) {
-          reply.code(403)
-          return serverPathImportDisabledResponse()
+        const resolution = resolveBatchFiles(filePaths, request.session.user?.id)
+        if (!resolution.ok) {
+          reply.code(resolution.status)
+          return resolution.body
         }
 
         const handle = jobRunner.enqueue<WebBatchImportJobParams, BatchResult>(
           'import_batch',
           {
-            files: resolved,
+            files: resolution.files,
             duplicateStrategy,
             stripText: typeof stripText === 'string' ? stripText : undefined
           },
@@ -248,30 +256,47 @@ async function extractWebUploadZip(
   }
 }
 
-function resolveBatchFiles(
-  values: unknown[],
-  userId: number | undefined
-): ResolvedBatchFile[] | null {
+function resolveBatchFiles(values: unknown[], userId: number | undefined): BatchFileResolution {
   const resolved: ResolvedBatchFile[] = []
   for (const raw of values) {
     const parsed = ImportServerPathArgSchema.safeParse(raw)
-    if (!parsed.success) return null
+    if (!parsed.success) {
+      return {
+        ok: false,
+        status: 400,
+        body: { error: 'invalid-file-path', message: 'filePath must be a file path' }
+      }
+    }
 
     if (isWebUploadRef(parsed.data)) {
       const upload = resolveUploadedFile(parsed.data, userId)
-      if (upload === null) return null
+      if (upload === null) {
+        return {
+          ok: false,
+          status: 404,
+          body: { error: 'upload-not-found', message: 'Uploaded file is no longer available' }
+        }
+      }
       resolved.push(upload)
       continue
     }
 
-    if (serverPathImportDisabled() || !isAbsolute(parsed.data)) return null
+    if (serverPathImportDisabled() || !isAbsolute(parsed.data)) {
+      return {
+        ok: false,
+        status: serverPathImportDisabled() ? 403 : 400,
+        body: serverPathImportDisabled()
+          ? serverPathImportDisabledResponse()
+          : { error: 'invalid-file-path', message: 'filePath must be an absolute path' }
+      }
+    }
     resolved.push({
       inputPath: parsed.data,
       storedPath: parsed.data,
       fileName: basename(parsed.data) || 'unknown'
     })
   }
-  return resolved
+  return { ok: true, files: resolved }
 }
 
 async function startWebBatchImport(
@@ -284,7 +309,7 @@ async function startWebBatchImport(
   signal: AbortSignal
 ): Promise<BatchResult> {
   const existingCases = await session.listCases()
-  const existingByName = new Map(existingCases.map((item) => [item.name, item]))
+  const existingCaseIdsByName = new Map(existingCases.map((item) => [item.name, item.id]))
   const result: BatchResult = {
     succeeded: 0,
     failed: 0,
@@ -301,9 +326,9 @@ async function startWebBatchImport(
 
     const file = files[index]
     const caseName = extractCaseName(file.fileName, stripText)
-    const existing = existingByName.get(caseName)
+    const existingCaseId = existingCaseIdsByName.get(caseName)
 
-    if (existing !== undefined && duplicateStrategy === 'skip') {
+    if (existingCaseId !== undefined && duplicateStrategy === 'skip') {
       result.skipped++
       result.details.push({
         filePath: file.inputPath,
@@ -315,11 +340,11 @@ async function startWebBatchImport(
     }
 
     try {
-      if (existing !== undefined) {
+      if (existingCaseId !== undefined) {
         await session
           .getWriteExecutor()
-          .execute({ type: DELETE_CASE_TASK_TYPE, params: [existing.id] } as StorageWriteTask)
-        existingByName.delete(caseName)
+          .execute({ type: DELETE_CASE_TASK_TYPE, params: [existingCaseId] } as StorageWriteTask)
+        existingCaseIdsByName.delete(caseName)
       }
 
       const importResult = await startImport(file.storedPath, caseName, undefined, () => session, {
@@ -343,6 +368,7 @@ async function startWebBatchImport(
         status: 'success',
         variantCount: importResult.variantCount
       })
+      existingCaseIdsByName.set(caseName, importResult.caseId)
     } catch (error) {
       if (signal.aborted) {
         result.cancelled = true

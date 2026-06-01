@@ -1,0 +1,7 @@
+{
+  "name": "@varlens/web-smoke",
+  "private": true,
+  "devDependencies": {
+    "cypress": "13.17.0"
+  }
+}

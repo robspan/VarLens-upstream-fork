@@ -1,0 +1,29 @@
+const { defineConfig } = require('cypress')
+
+const defaultBaseUrl = 'http://127.0.0.1:8788'
+const recordVideo = ['1', 'true', 'yes'].includes(
+  (process.env.VARLENS_CYPRESS_VIDEO ?? '').toLowerCase()
+)
+
+module.exports = defineConfig({
+  e2e: {
+    baseUrl: process.env.VARLENS_BASE_URL ?? defaultBaseUrl,
+    specPattern: 'tests/web-smoke/**/*.cy.ts',
+    supportFile: 'tests/web-smoke/support/e2e.ts',
+    fixturesFolder: 'tests/web-smoke/fixtures',
+    screenshotsFolder: 'tests/web-smoke/artifacts/screenshots',
+    videosFolder: 'tests/web-smoke/artifacts/videos',
+    video: recordVideo,
+    videoCompression: 32,
+    trashAssetsBeforeRuns: true,
+    defaultCommandTimeout: 10000,
+    requestTimeout: 15000,
+    responseTimeout: 30000,
+    env: {
+      varlensUsername: process.env.VARLENS_ADMIN_USERNAME ?? 'admin',
+      varlensPassword: process.env.VARLENS_ADMIN_PASSWORD ?? '',
+      varlensRotatedPassword: process.env.VARLENS_ROTATED_ADMIN_PASSWORD ?? '',
+      expectedImageTag: process.env.VARLENS_EXPECTED_IMAGE_TAG ?? ''
+    }
+  }
+})

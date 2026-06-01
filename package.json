@@ -36,6 +36,8 @@
     "test:watch": "vitest --project main --project renderer",
     "test:coverage": "COVERAGE=1 vitest run --project main --project renderer --coverage",
     "test:web-gate": "vitest run --project web-gate",
+    "test:web-smoke": "node tests/web-smoke/run-web-smoke.cjs run",
+    "test:web-smoke:open": "node tests/web-smoke/run-web-smoke.cjs open",
     "test:ipc-parity-fixtures": "npx tsx scripts/ipc-parity/validate-fixtures.ts",
     "typecheck": "run-p -l -c typecheck:renderer typecheck:node",
     "typecheck:renderer": "vue-tsc --noEmit -p tsconfig.renderer.json",

@@ -1,4 +1,4 @@
-.PHONY: help rebuild dev dev-postgres web-dev build build-web build-web-server build-web-renderer preview lint lint-check agent-check test test-watch test-coverage web-ci web-gate web-gate-static web-gate-integration web-gate-postgres web-gate-parity web-parity-e2e web-test-report web-data-gather web-data-prepare web-data-verify web-ipc-fixtures typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-query-perf pg-seed-dev pg-hosted-smoke pg-reset
+.PHONY: help rebuild dev dev-postgres web-dev build build-web build-web-server build-web-renderer preview lint lint-check agent-check test test-watch test-coverage web-ci web-gate web-gate-static web-gate-integration web-gate-postgres web-gate-parity web-parity-e2e web-smoke web-test-report web-data-gather web-data-prepare web-data-verify web-ipc-fixtures typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-query-perf pg-seed-dev pg-hosted-smoke pg-reset
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -211,6 +211,13 @@ web-parity-e2e: web-data-verify ## Run manifest-backed desktop↔web parity E2E 
 
 web-test-report: ## Generate web test report artifacts (VARLENS_WEB=1 runs full parity; uses VARLENS_PG_URL or .env.postgres.local)
 	node scripts/reports/run-web-test-report.mjs
+
+tests/web-smoke/node_modules/.bin/cypress: tests/web-smoke/package.json tests/web-smoke/package-lock.json
+	CYPRESS_INSTALL_BINARY=0 npm --prefix tests/web-smoke ci
+	npm --prefix tests/web-smoke exec -- cypress install
+
+web-smoke: tests/web-smoke/node_modules/.bin/cypress ## Run browser smoke against VARLENS_BASE_URL (defaults to local :8788)
+	npm run test:web-smoke
 
 web-gate: web-gate-static ## Run the Phase 1 gate fast tests (parity is opt-in via web-gate-parity)
 	@echo "Static web gate done. Run 'make web-gate-parity' to validate the desktop↔web parity path (opt-in)."

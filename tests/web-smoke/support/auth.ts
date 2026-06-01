@@ -15,6 +15,13 @@ function passwordCacheKey(username: string): string {
   return `${Cypress.config('baseUrl') ?? ''}|${username}`
 }
 
+function configuredRotatedPassword(password: string): string {
+  const rotatedPassword = Cypress.env('varlensRotatedPassword') as string | undefined
+  return rotatedPassword !== undefined && rotatedPassword !== ''
+    ? rotatedPassword
+    : `${password}-rotated-2026`
+}
+
 function waitForLoginRateLimit(response: Cypress.Response<unknown>): Cypress.Chainable<void> {
   const retryAfterHeader = response.headers['retry-after']
   const retryAfterSeconds = Number(Array.isArray(retryAfterHeader) ? retryAfterHeader[0] : retryAfterHeader)
@@ -35,11 +42,7 @@ function cacheResolvedLoginPassword(key: string, password: string): Cypress.Chai
 Cypress.Commands.add('varlensResolveLoginPassword', () => {
   const username = Cypress.env('varlensUsername') as string
   const password = Cypress.env('varlensPassword') as string
-  const configuredRotatedPassword = Cypress.env('varlensRotatedPassword') as string | undefined
-  const rotatedPassword =
-    configuredRotatedPassword !== undefined && configuredRotatedPassword !== ''
-      ? configuredRotatedPassword
-      : `${password}-rotated-2026`
+  const rotatedPassword = configuredRotatedPassword(password)
 
   if (password === '') {
     throw new Error('VARLENS_ADMIN_PASSWORD is required for authenticated VarLens checks.')
@@ -130,7 +133,7 @@ Cypress.Commands.add('varlensLogin', () => {
 
         cy.get('body', { timeout: 15000 }).then(($body) => {
           if (/Change your password/i.test($body.text())) {
-            const rotatedPassword = Cypress.env('varlensPassword') as string
+            const rotatedPassword = configuredRotatedPassword(password)
             typeIntoVisibleInput(0, rotatedPassword, { log: false })
             typeIntoVisibleInput(1, rotatedPassword, { log: false })
             cy.contains('button', /^Change Password$/i, { timeout: 15000 }).click({ force: true })

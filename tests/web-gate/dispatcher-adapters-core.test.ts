@@ -4,6 +4,7 @@ import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod
 
 import { buildDispatcher, registerDispatcher } from '../../src/web/server/dispatcher'
 import { makeDeps } from './helpers/dispatcher-adapters'
+import { UniqueConstraintError } from '../../src/main/database/errors'
 
 describe('web dispatcher adapters: variants, transcripts, and errors', () => {
   test('variants.query adapts renderer/preload args to the storage task shape', async () => {
@@ -248,6 +249,34 @@ describe('web dispatcher adapters: variants, transcripts, and errors', () => {
       code: 'UNKNOWN',
       message: 'database unavailable',
       userMessage: 'An unexpected error occurred. Please try again.'
+    })
+    await app.close()
+  })
+
+  test('dispatcher preserves duplicate case errors as unique constraint errors', async () => {
+    const { deps } = makeDeps()
+    const app = fastify()
+    app.setValidatorCompiler(validatorCompiler)
+    app.setSerializerCompiler(serializerCompiler)
+    registerDispatcher(app, deps, {
+      'import:start': {
+        async handle() {
+          throw new UniqueConstraintError('case', 'SAMPLE')
+        }
+      }
+    })
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/import/start',
+      payload: { args: ['web-upload:1:sample.vcf', 'SAMPLE'] }
+    })
+
+    expect(response.statusCode).toBe(500)
+    expect(response.json()).toEqual({
+      code: 'UNIQUE_CONSTRAINT',
+      message: "case 'SAMPLE' already exists",
+      userMessage: "case 'SAMPLE' already exists"
     })
     await app.close()
   })

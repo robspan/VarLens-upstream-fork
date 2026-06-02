@@ -11,6 +11,7 @@ import {
 import { extractCaseName } from '../../../main/import/batch-utils'
 import { ImportServerPathArgSchema } from '../../../shared/api/schemas/import'
 import type { BatchResult, DuplicateChoice } from '../../../shared/types/api'
+import { formatErrorMessage } from '../../../shared/errors/format-error-message'
 import {
   WEB_EVENT_BATCH_IMPORT_COMPLETE,
   WEB_EVENT_BATCH_IMPORT_PROGRESS,
@@ -390,7 +391,7 @@ async function startWebBatchImport(
         fileName: file.fileName,
         caseName,
         status: 'failed',
-        error: error instanceof Error ? error.message : String(error)
+        error: formatBatchError(error)
       })
     }
   }
@@ -401,4 +402,8 @@ async function startWebBatchImport(
   }
 
   return result
+}
+
+function formatBatchError(error: unknown): string {
+  return formatErrorMessage(error, 'Import failed')
 }

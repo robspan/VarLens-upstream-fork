@@ -33,6 +33,7 @@ import {
   PostgresVcfImportRepository,
   type PostgresVcfImportRequest
 } from '../../../src/main/storage/postgres/PostgresVcfImportRepository'
+import { UniqueConstraintError } from '../../../src/main/database/errors'
 import {
   VARIANT_COPY_COLUMNS,
   VARIANT_TRANSCRIPT_COPY_COLUMNS,
@@ -141,7 +142,7 @@ describe('PostgresVcfImportRepository.writeVcfFile', () => {
         cnv: [],
         str: []
       })
-    ).rejects.toThrow(/case 'PreExisting' already exists/)
+    ).rejects.toBeInstanceOf(UniqueConstraintError)
   })
 
   it('looks up case by name at fileIndex >= 1 instead of inserting', async () => {
@@ -197,7 +198,7 @@ describe('PostgresVcfImportRepository.writeVcfFile', () => {
         cnv: [],
         str: []
       })
-    ).rejects.toThrow(/case 'Existing' already exists/)
+    ).rejects.toBeInstanceOf(UniqueConstraintError)
   })
 
   it('multi-file fileIndex >= 1 rejects when case does not exist', async () => {

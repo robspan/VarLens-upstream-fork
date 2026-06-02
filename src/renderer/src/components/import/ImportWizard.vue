@@ -193,7 +193,8 @@ import type { VcfPreviewResult } from '../../../../shared/types/vcf'
 import { useApiService } from '../../composables/useApiService'
 import { useImportStatusStore } from '../../stores/importStatusStore'
 import { logService } from '../../services/LogService'
-import { isIpcError, unwrapIpcResult } from '../../../../shared/types/errors'
+import { unwrapIpcResult } from '../../../../shared/types/errors'
+import { formatErrorMessage } from '../../../../shared/errors/format-error-message'
 import BatchReviewPhase from '../batch-import/BatchReviewPhase.vue'
 import BatchProgressPhase from '../batch-import/BatchProgressPhase.vue'
 import BatchSummaryPhase from '../batch-import/BatchSummaryPhase.vue'
@@ -372,10 +373,7 @@ function cancelUploadSelection(): void {
 }
 
 function formatIpcError(error: unknown, fallback: string): string {
-  if (isIpcError(error)) {
-    return error.userMessage ?? error.message
-  }
-  return error instanceof Error ? error.message : fallback
+  return formatErrorMessage(error, fallback)
 }
 
 function cleanupZipTempInBackground(context: string): void {
@@ -464,11 +462,9 @@ async function selectSource(mode: ImportMode): Promise<void> {
       resetUploadState()
       return
     }
-    logService.error(
-      `File selection failed: ${err instanceof Error ? err.message : String(err)}`,
-      'ImportWizard'
-    )
-    importStore.importError(err instanceof Error ? err.message : 'File selection failed')
+    const message = formatIpcError(err, 'File selection failed')
+    logService.error(`File selection failed: ${message}`, 'ImportWizard')
+    importStore.importError(message)
   } finally {
     sourceSelectionPending.value = false
     if (importStore.phase === 'uploading') {
@@ -593,7 +589,7 @@ async function startVcfImport(): Promise<void> {
           fileName: caseName,
           caseName,
           status: 'failed' as const,
-          error: err instanceof Error ? err.message : String(err)
+          error: formatIpcError(err, 'VCF import failed')
         })
       }
     }
@@ -609,10 +605,8 @@ async function startVcfImport(): Promise<void> {
       emit('batch-import-complete', { totalImported: results.succeeded })
     }
   } catch (err) {
-    logService.error(
-      `VCF import failed: ${err instanceof Error ? err.message : String(err)}`,
-      'ImportWizard'
-    )
+    const message = formatIpcError(err, 'VCF import failed')
+    logService.error(`VCF import failed: ${message}`, 'ImportWizard')
     summary.value = {
       succeeded: 0,
       failed: vcfSelectedSamples.value.length,
@@ -621,7 +615,7 @@ async function startVcfImport(): Promise<void> {
       details: []
     }
     step.value = 4
-    importStore.importError(err instanceof Error ? err.message : 'VCF import failed')
+    importStore.importError(message)
   }
 }
 
@@ -672,10 +666,8 @@ async function startImport(): Promise<void> {
       }
     }
   } catch (err) {
-    logService.error(
-      `Import failed: ${err instanceof Error ? err.message : String(err)}`,
-      'ImportWizard'
-    )
+    const message = formatIpcError(err, 'Import failed')
+    logService.error(`Import failed: ${message}`, 'ImportWizard')
     // Only overwrite summary if the onComplete callback hasn't already
     // handled it (race: safeEmit fires before resolve, so the event
     // listener may have already set the correct summary + step 4).
@@ -689,7 +681,7 @@ async function startImport(): Promise<void> {
       }
       step.value = 4
     }
-    importStore.importError(err instanceof Error ? err.message : 'Import failed')
+    importStore.importError(message)
   }
 }
 

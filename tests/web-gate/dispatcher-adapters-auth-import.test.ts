@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { describe, expect, test } from 'vitest'
 
 import { jobRunner } from '../../src/main/services/jobs/runner'
+import { ErrorCode } from '../../src/shared/types/errors'
 import { buildDispatcher } from '../../src/web/server/dispatcher'
 import { stageExistingFileUpload } from '../../src/web/server/routes/upload-staging'
 import { makeDeps } from './helpers/dispatcher-adapters'
@@ -220,6 +221,60 @@ describe('web dispatcher adapters: auth and import', () => {
         inputPath: upload.ref,
         storedPath: upload.storedPath
       })
+    } finally {
+      if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = prevNodeEnv
+      if (prevRecoveryDir === undefined) delete process.env.VARLENS_RECOVERY_KEY_DIR
+      else process.env.VARLENS_RECOVERY_KEY_DIR = prevRecoveryDir
+      await rm(tempDir, { recursive: true, force: true })
+    }
+  })
+
+  test('batch-import.start renders serializable import errors as user messages', async () => {
+    const prevNodeEnv = process.env.NODE_ENV
+    const prevRecoveryDir = process.env.VARLENS_RECOVERY_KEY_DIR
+    const tempDir = await mkdtemp(join(tmpdir(), 'varlens-web-batch-error-'))
+    process.env.NODE_ENV = 'production'
+    process.env.VARLENS_RECOVERY_KEY_DIR = tempDir
+    try {
+      const sourcePath = join(tempDir, 'SAMPLE.json')
+      await writeFile(sourcePath, '{}')
+      const upload = await stageExistingFileUpload({
+        userId: 7,
+        originalName: 'SAMPLE.json',
+        sourcePath
+      })
+      const { deps, importSingleFile, reply } = makeDeps()
+      importSingleFile.mockRejectedValueOnce({
+        code: ErrorCode.UNIQUE_CONSTRAINT,
+        message: "case 'SAMPLE' already exists",
+        userMessage: "case 'SAMPLE' already exists"
+      })
+      const { overrides } = buildDispatcher(deps)
+      const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
+
+      const result = (await overrides['batch-import:start'].handle(
+        [[upload.ref], 'overwrite'],
+        request as never,
+        reply as never,
+        deps
+      )) as {
+        succeeded: number
+        failed: number
+        details: Array<{ status: string; error?: string }>
+      }
+
+      expect(reply.code).not.toHaveBeenCalled()
+      expect(result.succeeded).toBe(0)
+      expect(result.failed).toBe(1)
+      expect(result.details).toMatchObject([
+        {
+          status: 'failed',
+          error: "case 'SAMPLE' already exists"
+        }
+      ])
+      expect(result.details[0]?.error).not.toBe('[object Object]')
+      expect(deps.events.publish).toHaveBeenCalledWith(7, 'batch-import:complete', result)
     } finally {
       if (prevNodeEnv === undefined) delete process.env.NODE_ENV
       else process.env.NODE_ENV = prevNodeEnv

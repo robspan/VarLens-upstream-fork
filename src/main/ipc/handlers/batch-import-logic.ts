@@ -15,6 +15,7 @@ import { API_CONFIG } from '../../../shared/config'
 import type { FileImportRequest } from '../../../shared/types/import-worker'
 import type { DatabaseService } from '../../database/DatabaseService'
 import type { DuplicateChoice } from '../../../shared/types/api'
+import { formatErrorMessage } from '../../../shared/errors/format-error-message'
 
 /** Callbacks for emitting events to the renderer during batch import. */
 export interface BatchImportCallbacks {
@@ -133,10 +134,14 @@ export async function startBatchImport(
         filePath: fp,
         fileName: basename(fp) || 'unknown',
         status: 'failed' as const,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: formatBatchImportError(error)
       }))
     }
   }
+}
+
+function formatBatchImportError(error: unknown): string {
+  return formatErrorMessage(error, 'Unknown error')
 }
 
 /**

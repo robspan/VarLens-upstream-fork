@@ -4,6 +4,7 @@ import {
   PostgresJsonImportRepository,
   rebuildVariantFrequencyForCase
 } from '../../../src/main/storage/postgres/PostgresJsonImportRepository'
+import { UniqueConstraintError } from '../../../src/main/database/errors'
 
 // ---------------------------------------------------------------------------
 // Helpers — client-shape harness (pool.connect never called by the repo)
@@ -172,11 +173,14 @@ describe('PostgresJsonImportRepository.writeJsonImport', () => {
     ])
     const repo = new PostgresJsonImportRepository(makeForbiddenPool() as never, 'public')
 
-    await expect(
-      repo.writeJsonImport(client as never, baseRequest, async () => {
+    const error = await repo
+      .writeJsonImport(client as never, baseRequest, async () => {
         /* not invoked */
       })
-    ).rejects.toThrow(/Duplicate case name/)
+      .catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(UniqueConstraintError)
+    expect(error).toMatchObject({ message: "case 'Imported JSON' already exists" })
   })
 
   it('propagates insert failure to the caller', async () => {

@@ -27,7 +27,8 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 
 import type { StorageReadTask } from '../../main/storage/read-executor'
 import type { StorageWriteTask } from '../../main/storage/write-executor'
-import { ErrorCode, type SerializableError } from '../../shared/types/errors'
+import { ErrorCode, isIpcError, type SerializableError } from '../../shared/types/errors'
+import { toSerializableError } from '../../main/ipc/serializable-error'
 import { isReadTaskType, isWriteTaskType, toTaskDomain } from './task-types'
 import { buildAnalysisGroupOverrides } from './routes/analysis-groups'
 import { buildAnnotationOverrides } from './routes/annotations'
@@ -70,23 +71,8 @@ const PRE_ROTATION_ALLOWED = new Set<string>(['auth:changePassword', 'auth:logou
 const DEV_API_LATENCY_ENV = 'VARLENS_WEB_API_LATENCY_MS'
 
 function toSerializableWebError(error: unknown): SerializableError {
-  if (
-    error !== null &&
-    typeof error === 'object' &&
-    'code' in error &&
-    'message' in error &&
-    'userMessage' in error
-  ) {
-    return error as SerializableError
-  }
-
-  if (error instanceof Error) {
-    return {
-      code: ErrorCode.UNKNOWN,
-      message: error.message,
-      userMessage: 'An unexpected error occurred. Please try again.'
-    }
-  }
+  if (isIpcError(error)) return error
+  if (error instanceof Error) return toSerializableError(error)
 
   const details =
     error !== null && typeof error === 'object' ? (error as Record<string, unknown>) : undefined

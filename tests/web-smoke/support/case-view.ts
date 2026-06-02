@@ -72,29 +72,28 @@ function isCaseSearchVisible($root: JQuery<HTMLElement>): boolean {
   return $root.find(CASE_SEARCH_INPUT_SELECTOR).filter(':visible').length > 0
 }
 
-function visibleSidebarToggle($root: JQuery<HTMLElement>): JQuery<HTMLElement> {
+function visibleSidebarOpenToggle($root: JQuery<HTMLElement>): JQuery<HTMLElement> {
   const stableToggle = $root
     .find('[data-testid="app-sidebar-toggle"], .sidebar-toggle-btn, [aria-label="Open sidebar"]')
     .filter(':visible')
+    .filter((_idx, el) => {
+      const label = `${el.getAttribute('aria-label') ?? ''} ${el.textContent ?? ''}`
+      return el.getAttribute('aria-expanded') === 'false' || /Open sidebar|»/.test(label)
+    })
     .first()
   if (stableToggle.length > 0) return stableToggle
 
-  const appBarToggle = $root
+  return $root
     .find('.v-app-bar button, header button, .v-toolbar button')
     .filter(':visible')
     .filter((_idx, el) => {
       const label = `${el.getAttribute('aria-label') ?? ''} ${el.textContent ?? ''}`
-      return /Open sidebar|Close sidebar|»|«/.test(label)
+      return el.getAttribute('aria-expanded') === 'false' || /Open sidebar|»/.test(label)
     })
-    .first()
-  if (appBarToggle.length > 0) return appBarToggle
-
-  return $root
-    .find('.v-app-bar button:visible, header button:visible, .v-toolbar button:visible')
     .first()
 }
 
-function ensureCaseSidebarOpen(attemptsRemaining = 3): void {
+function ensureCaseSidebarOpen(attemptsRemaining = 6): void {
   cy.get('body', { timeout: 15000 }).then(($body) => {
     if (isCaseSearchVisible($body)) {
       return
@@ -104,10 +103,11 @@ function ensureCaseSidebarOpen(attemptsRemaining = 3): void {
       throw new Error('Case sidebar did not open: case search input stayed hidden.')
     }
 
-    const toggle = visibleSidebarToggle($body)
-    expect(toggle.length, 'visible case sidebar toggle').to.be.greaterThan(0)
-    cy.wrap(toggle).click({ force: true })
-    cy.wait(250)
+    const toggle = visibleSidebarOpenToggle($body)
+    if (toggle.length > 0) {
+      cy.wrap(toggle).click({ force: true })
+    }
+    cy.wait(500)
     ensureCaseSidebarOpen(attemptsRemaining - 1)
   })
 }

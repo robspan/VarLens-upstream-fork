@@ -17,10 +17,12 @@ Run it against a local web server:
 ```bash
 npm --prefix tests/web-smoke ci
 npm --prefix tests/web-smoke exec -- cypress install
-VARLENS_BASE_URL=http://127.0.0.1:8788 \
+VARLENS_BASE_URL=http://127.0.0.1:8787 \
 VARLENS_ADMIN_PASSWORD='...' \
 npm run test:web-smoke
 ```
+
+`make web-smoke` uses `http://127.0.0.1:8787` by default, matching `make web-dev`.
 
 Local runs record MP4 videos by default under
 `tests/web-smoke/artifacts/videos`, one per workflow spec. Set

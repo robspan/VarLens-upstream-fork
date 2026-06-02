@@ -33,11 +33,13 @@ export function expectCoreCaseApisAvailable(): void {
     expect(response.body).to.be.an('array')
   })
 
-  cy.varlensApi('cases', 'query', [{ limit: 10, offset: 0, search_term: null }]).then((response) => {
-    expect(response.status).to.eq(200)
-    expect(response.body).to.have.property('data').that.is.an('array')
-    expect(response.body).to.have.property('total_count').that.is.a('number')
-  })
+  cy.varlensApi('cases', 'query', [{ limit: 10, offset: 0, search_term: null }]).then(
+    (response) => {
+      expect(response.status).to.eq(200)
+      expect(response.body).to.have.property('data').that.is.an('array')
+      expect(response.body).to.have.property('total_count').that.is.a('number')
+    }
+  )
 }
 
 declare global {

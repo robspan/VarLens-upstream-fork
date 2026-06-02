@@ -12,7 +12,10 @@ describe('VarLens multiple JSON browser import smoke', () => {
 
     importMultipleFileCases(
       [firstCase, secondCase],
-      [jsonImportFile(`${firstCase}.json`, 'MULTIA'), jsonImportFile(`${secondCase}.json`, 'MULTIB')]
+      [
+        jsonImportFile(`${firstCase}.json`, 'MULTIA'),
+        jsonImportFile(`${secondCase}.json`, 'MULTIB')
+      ]
     )
 
     expectImportedCaseRendered(firstCase, [['MULTIA', /12,?345/]])

@@ -7,7 +7,9 @@ function visibleResearchUseDialog($body: JQuery<HTMLElement>): JQuery<HTMLElemen
 }
 
 Cypress.Commands.add('varlensDismissResearchUseModal', () => {
-  cy.contains('body', /Research Use Only|Select a case|Cohort|Import|VarLens Web/i, { timeout: 15000 })
+  cy.contains('body', /Research Use Only|Select a case|Cohort|Import|VarLens Web/i, {
+    timeout: 15000
+  })
   cy.wait(750)
   cy.get('body', { timeout: 15000 }).then(($body) => {
     const researchDialog = visibleResearchUseDialog($body)
@@ -17,9 +19,13 @@ Cypress.Commands.add('varlensDismissResearchUseModal', () => {
     }
 
     cy.wrap(researchDialog).within(() => {
-      cy.contains('button, [role="button"]', /I Understand.*Continue|I Understand|Continue|Accept/i, {
-        timeout: 15000
-      })
+      cy.contains(
+        'button, [role="button"]',
+        /I Understand.*Continue|I Understand|Continue|Accept/i,
+        {
+          timeout: 15000
+        }
+      )
         .should('be.visible')
         .click({ force: true })
     })
@@ -32,14 +38,18 @@ Cypress.Commands.add('varlensDismissResearchUseModal', () => {
 
 export function openSettingsMenu(): void {
   cy.varlensDismissResearchUseModal()
-  cy.get('[data-testid="app-settings-menu"]', { timeout: 15000 }).should('be.visible').click({ force: true })
+  cy.get('[data-testid="app-settings-menu"]', { timeout: 15000 })
+    .should('be.visible')
+    .click({ force: true })
   cy.get('body', { timeout: 15000 }).then(($body) => {
     if (visibleResearchUseDialog($body).length === 0) {
       return
     }
 
     cy.varlensDismissResearchUseModal()
-    cy.get('[data-testid="app-settings-menu"]', { timeout: 15000 }).should('be.visible').click({ force: true })
+    cy.get('[data-testid="app-settings-menu"]', { timeout: 15000 })
+      .should('be.visible')
+      .click({ force: true })
   })
 }
 
@@ -53,10 +63,12 @@ export function expectAuthenticatedShellVisible(): void {
 
 export function expectCoreSettingsMenuItemsVisible(): void {
   openSettingsMenu()
-  cy.contains('.v-list-item, [role="menuitem"]', /Database Overview/i, { timeout: 15000 }).should('be.visible')
-  cy.contains('.v-list-item, [role="menuitem"]', /Application Preferences/i, { timeout: 15000 }).should(
+  cy.contains('.v-list-item, [role="menuitem"]', /Database Overview/i, { timeout: 15000 }).should(
     'be.visible'
   )
+  cy.contains('.v-list-item, [role="menuitem"]', /Application Preferences/i, {
+    timeout: 15000
+  }).should('be.visible')
 }
 
 declare global {

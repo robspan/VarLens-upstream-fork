@@ -144,7 +144,12 @@
 
           <!-- Section 4: Tags (case mode only) -->
           <template v-if="mode === 'case' && caseId !== null && 'id' in variant">
-            <TagsSection :case-id="caseId" :variant-id="(variant as Variant).id" class="mb-4" />
+            <TagsSection
+              :case-id="caseId"
+              :variant-id="(variant as Variant).id"
+              class="mb-4"
+              @changed="handleTagsChanged"
+            />
             <v-divider class="mb-4" />
           </template>
 
@@ -231,6 +236,7 @@ import type { CohortVariant } from '../../../shared/types/cohort'
 import type { AcmgClassification } from '../../../shared/config/domain.config'
 import { ACMG_COLORS, ACMG_ABBREV, ACMG_CLASSIFICATIONS } from '../composables/useAnnotations'
 import { mdiClipboardCheckOutline, mdiClose, mdiHistory } from '@mdi/js'
+import { isWebRuntime } from '../utils/runtime-mode'
 
 interface Props {
   open: boolean
@@ -251,6 +257,10 @@ const proteinModalOpen = ref(false)
 
 function openProteinView(): void {
   proteinModalOpen.value = true
+}
+
+function handleTagsChanged(): void {
+  if (isWebRuntime()) emit('variant-updated')
 }
 
 // Use panel resize composable

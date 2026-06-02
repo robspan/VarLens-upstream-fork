@@ -187,11 +187,17 @@ describe('web dispatcher adapters: auth and import', () => {
         ]
       })
       expect(deps.events.publish).toHaveBeenCalledWith(7, 'batch-import:progress', {
-        currentIndex: 1,
+        currentIndex: 0,
         totalFiles: 1,
         currentFileName: 'Case B.json',
         overallPercent: 100,
         fileProgress: { phase: 'parsing', count: 1, elapsed: 3, skipped: 0 }
+      })
+      expect(deps.events.publish).toHaveBeenCalledWith(7, 'cohort:summaryRebuilt', {
+        is_stale: true
+      })
+      expect(deps.events.publish).toHaveBeenCalledWith(7, 'cohort:summaryRebuilt', {
+        is_stale: false
       })
       expect(deps.events.publish).toHaveBeenCalledWith(7, 'batch-import:complete', result)
 

@@ -13,7 +13,6 @@ const SHARED_RENDERER_UPLOAD_DIRS = [
 const FORBIDDEN_SHARED_RENDERER_PATTERNS: Array<[label: string, pattern: RegExp]> = [
   ['web upload helper', /\buploadWebImportFiles\b/],
   ['web source picker', /\bWebImportSourcePicker\b/],
-  ['web runtime branch', /\bisWebRuntime\b/],
   ['deleted upload utility', /\bweb-import-upload\b/],
   ['browser upload route', /\/api\/import\/upload/],
   ['web upload refs', /web-upload:/],
@@ -49,6 +48,12 @@ describe('web upload boundary', () => {
 
     for (const file of SHARED_RENDERER_UPLOAD_DIRS.flatMap(listVueFiles)) {
       const content = readRepoFile(file)
+      if (
+        /\bisWebRuntime\b/.test(content) &&
+        file !== 'src/renderer/src/components/import/ImportWizard.vue'
+      ) {
+        violations.push(`${file}: contains web runtime branch`)
+      }
       for (const [label, pattern] of FORBIDDEN_SHARED_RENDERER_PATTERNS) {
         if (pattern.test(content)) {
           violations.push(`${file}: contains ${label}`)

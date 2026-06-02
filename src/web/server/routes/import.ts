@@ -17,6 +17,7 @@ import {
   normalizeImportVcfOptions
 } from '../../../shared/api/schemas/import'
 import type { MultiFileImportSpec } from '../../../shared/types/api'
+import { WEB_EVENT_COHORT_SUMMARY_REBUILT, WEB_EVENT_IMPORT_PROGRESS } from '../web-event-types'
 import { serverPathImportDisabled, serverPathImportDisabledResponse } from './server-path-import'
 import type { OverrideHandler } from './types'
 import {
@@ -128,20 +129,29 @@ export function buildImportOverrides(): Record<string, OverrideHandler> {
             : serverPathImportDisabledResponse()
         }
 
-        return await startImport(
-          resolved.path,
-          validatedCaseName.data,
-          normalizeImportVcfOptions(vcfOptions),
-          () => session,
-          {
-            onProgress: (progress) => {
-              const userId = request.session.user?.id
-              if (userId !== undefined) {
-                events.publish(userId, 'import:progress', progress)
+        const userId = request.session?.user?.id
+        if (userId !== undefined) {
+          events.publish(userId, WEB_EVENT_COHORT_SUMMARY_REBUILT, { is_stale: true })
+        }
+        try {
+          return await startImport(
+            resolved.path,
+            validatedCaseName.data,
+            normalizeImportVcfOptions(vcfOptions),
+            () => session,
+            {
+              onProgress: (progress) => {
+                if (userId !== undefined) {
+                  events.publish(userId, WEB_EVENT_IMPORT_PROGRESS, progress)
+                }
               }
             }
+          )
+        } finally {
+          if (userId !== undefined) {
+            events.publish(userId, WEB_EVENT_COHORT_SUMMARY_REBUILT, { is_stale: false })
           }
-        )
+        }
       }
     },
 
@@ -213,28 +223,37 @@ export function buildImportOverrides(): Record<string, OverrideHandler> {
           }
         }
 
-        const result = await startMultiFileImport(
-          validatedCaseName.data,
-          normalizedFiles,
-          normalizeImportVcfOptions(vcfOptions),
-          () => session,
-          () => {
-            throw new Error('SQLite database is not available in web mode')
-          },
-          {
-            onProgress: (progress) => {
-              const userId = request.session.user?.id
-              if (userId !== undefined) {
-                events.publish(userId, 'import:progress', progress)
+        const userId = request.session?.user?.id
+        if (userId !== undefined) {
+          events.publish(userId, WEB_EVENT_COHORT_SUMMARY_REBUILT, { is_stale: true })
+        }
+        try {
+          const result = await startMultiFileImport(
+            validatedCaseName.data,
+            normalizedFiles,
+            normalizeImportVcfOptions(vcfOptions),
+            () => session,
+            () => {
+              throw new Error('SQLite database is not available in web mode')
+            },
+            {
+              onProgress: (progress) => {
+                if (userId !== undefined) {
+                  events.publish(userId, WEB_EVENT_IMPORT_PROGRESS, progress)
+                }
               }
-            }
-          },
-          undefined,
-          normalizedFilters
-        )
-        return {
-          ...result,
-          files: result.files.map((file) => replaceWebUploadPathWithRef(file, pathToRef))
+            },
+            undefined,
+            normalizedFilters
+          )
+          return {
+            ...result,
+            files: result.files.map((file) => replaceWebUploadPathWithRef(file, pathToRef))
+          }
+        } finally {
+          if (userId !== undefined) {
+            events.publish(userId, WEB_EVENT_COHORT_SUMMARY_REBUILT, { is_stale: false })
+          }
         }
       }
     },

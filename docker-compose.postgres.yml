@@ -1,7 +1,6 @@
 services:
   postgres:
     image: postgres:18
-    container_name: varlens-postgres-dev
     restart: unless-stopped
     ports:
       - '127.0.0.1:${VARLENS_PG_PORT}:5432'

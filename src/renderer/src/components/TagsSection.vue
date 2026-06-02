@@ -76,6 +76,10 @@ interface Props {
 
 const props = defineProps<Props>()
 
+const emit = defineEmits<{
+  changed: []
+}>()
+
 const {
   loadTags,
   getTags,
@@ -109,6 +113,7 @@ const toggleTag = async (tagId: number) => {
     } else {
       await assignVariantTag(props.caseId, props.variantId, tagId)
     }
+    emit('changed')
   } catch (error) {
     logService.error(
       'Failed to toggle tag: ' + (error instanceof Error ? error.message : String(error)),
@@ -124,6 +129,7 @@ const removeTag = async (tagId: number) => {
   loading.value = true
   try {
     await removeVariantTag(props.caseId, props.variantId, tagId)
+    emit('changed')
   } catch (error) {
     logService.error(
       'Failed to remove tag: ' + (error instanceof Error ? error.message : String(error)),

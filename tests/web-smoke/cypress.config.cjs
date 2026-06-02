@@ -1,6 +1,6 @@
 const { defineConfig } = require('cypress')
 
-const defaultBaseUrl = 'http://127.0.0.1:8788'
+const defaultBaseUrl = 'http://127.0.0.1:8787'
 const videoSetting = process.env.VARLENS_CYPRESS_VIDEO
 const resolvedLoginPasswords = new Map()
 const recordVideo =

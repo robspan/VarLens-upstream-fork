@@ -51,7 +51,14 @@
         <ImportSourceSelector
           :sources="allSources"
           :pending="sourceSelectionPending"
+          :upload-file-name="uploadFileName"
+          :upload-file-index="uploadFileIndex"
+          :upload-total-files="uploadTotalFiles"
+          :upload-percent="uploadPercent"
+          :upload-loaded-bytes="importStore.uploadLoadedBytes"
+          :upload-total-bytes="importStore.uploadTotalBytes"
           @select="selectSource"
+          @cancel="cancelUploadSelection"
         />
 
         <!-- ZIP password (inline, shown when needed) -->
@@ -179,7 +186,8 @@ import type {
   DuplicateChoice,
   DuplicateCheckItem,
   BatchResult,
-  BatchProgress
+  BatchProgress,
+  ProgressUpdate
 } from '../../../../shared/types/api'
 import type { VcfPreviewResult } from '../../../../shared/types/vcf'
 import { useApiService } from '../../composables/useApiService'
@@ -192,6 +200,7 @@ import BatchSummaryPhase from '../batch-import/BatchSummaryPhase.vue'
 import ImportSourceSelector from './ImportSourceSelector.vue'
 import type { ImportSourceMode, ImportSourceOption } from './ImportSourceSelector.vue'
 import VcfPreviewStep from './VcfPreviewStep.vue'
+import { isWebRuntime } from '../../utils/runtime-mode'
 import {
   mdiChevronRight,
   mdiClose,
@@ -208,6 +217,20 @@ type ImportMode = ImportSourceMode
 
 const { api } = useApiService()
 const importStore = useImportStatusStore()
+
+const WEB_UPLOAD_EVENT = 'varlens:web-upload'
+const WEB_UPLOAD_CANCEL_EVENT = 'varlens:web-upload-cancel'
+
+interface WebUploadEventDetail {
+  status: 'started' | 'progress' | 'complete' | 'error' | 'aborted'
+  fileName: string
+  fileIndex: number
+  totalFiles: number
+  loadedBytes: number
+  totalBytes: number | null
+  percent: number | null
+  message?: string
+}
 
 const emit = defineEmits<{
   'import-complete': [result: { caseId: number; variantCount: number; caseName: string }]
@@ -259,6 +282,10 @@ const selectedFilePaths = ref<string[]>([])
 const isZipImport = ref(false)
 const zipPath = ref('')
 const sourceSelectionPending = ref(false)
+const uploadFileName = ref('')
+const uploadFileIndex = ref(1)
+const uploadTotalFiles = ref(0)
+const uploadPercent = ref<number | null>(null)
 
 // ZIP password state
 const zipPasswordNeeded = ref(false)
@@ -292,8 +319,57 @@ const summary = ref<BatchResult>({
 })
 
 let cleanupProgress: (() => void) | null = null
+let cleanupImportProgress: (() => void) | null = null
 let cleanupComplete: (() => void) | null = null
 let recheckTimeout: ReturnType<typeof setTimeout> | null = null
+
+function resetUploadState(): void {
+  uploadFileName.value = ''
+  uploadFileIndex.value = 1
+  uploadTotalFiles.value = 0
+  uploadPercent.value = null
+}
+
+function handleWebUploadEvent(event: Event): void {
+  if (!isWebRuntime()) return
+  const detail = (event as CustomEvent<WebUploadEventDetail>).detail
+  uploadFileName.value = detail.fileName
+  uploadFileIndex.value = detail.fileIndex + 1
+  uploadTotalFiles.value = detail.totalFiles
+  uploadPercent.value = detail.percent
+
+  if (detail.status === 'started') {
+    importStore.startUpload(detail.totalFiles)
+  }
+  if (detail.status === 'started' || detail.status === 'progress' || detail.status === 'complete') {
+    importStore.updateUploadProgress({
+      fileIndex: detail.fileIndex,
+      totalFiles: detail.totalFiles,
+      fileName: detail.fileName,
+      loadedBytes: detail.loadedBytes,
+      totalBytes: detail.totalBytes,
+      percent: detail.percent
+    })
+  }
+  if (detail.status === 'aborted') {
+    importStore.importComplete({
+      succeeded: 0,
+      failed: 0,
+      skipped: 0,
+      cancelled: true,
+      details: []
+    })
+  }
+  if (detail.status === 'error') {
+    importStore.importError(detail.message ?? 'Upload failed')
+  }
+}
+
+function cancelUploadSelection(): void {
+  if (isWebRuntime()) {
+    window.dispatchEvent(new CustomEvent(WEB_UPLOAD_CANCEL_EVENT))
+  }
+}
 
 function formatIpcError(error: unknown, fallback: string): string {
   if (isIpcError(error)) {
@@ -336,6 +412,7 @@ async function selectSource(mode: ImportMode): Promise<void> {
   if (sourceSelectionPending.value) return
   selectedMode.value = mode
   sourceSelectionPending.value = true
+  resetUploadState()
 
   try {
     if (mode === 'zip') {
@@ -383,6 +460,10 @@ async function selectSource(mode: ImportMode): Promise<void> {
 
     await checkDuplicatesAndAdvance(filePaths)
   } catch (err) {
+    if (err instanceof Error && err.message === 'Upload cancelled') {
+      resetUploadState()
+      return
+    }
     logService.error(
       `File selection failed: ${err instanceof Error ? err.message : String(err)}`,
       'ImportWizard'
@@ -390,6 +471,9 @@ async function selectSource(mode: ImportMode): Promise<void> {
     importStore.importError(err instanceof Error ? err.message : 'File selection failed')
   } finally {
     sourceSelectionPending.value = false
+    if (importStore.phase === 'uploading') {
+      importStore.reset()
+    }
   }
 }
 
@@ -482,7 +566,7 @@ async function startVcfImport(): Promise<void> {
       const sample = vcfSelectedSamples.value[i]
       const caseName = vcfCaseNames.value.get(sample) ?? sample
 
-      currentIndex.value = i + 1
+      currentIndex.value = i
       currentFileName.value = caseName
       overallPercent.value = Math.round(((i + 1) / vcfSelectedSamples.value.length) * 100)
 
@@ -610,17 +694,26 @@ async function startImport(): Promise<void> {
 }
 
 function cancelImport(): void {
-  void api!.batchImport
-    .cancel()
-    .then((result) => {
-      unwrapIpcResult(result)
-    })
-    .catch((error) => {
+  if (isWebRuntime() && isVcfImport.value) {
+    void api!.import.cancel().catch((error) => {
       logService.warn(
-        `Batch import cancel failed: ${formatIpcError(error, 'cancel failed')}`,
+        `VCF import cancel failed: ${formatIpcError(error, 'cancel failed')}`,
         'ImportWizard'
       )
     })
+  } else {
+    void api!.batchImport
+      .cancel()
+      .then((result) => {
+        unwrapIpcResult(result)
+      })
+      .catch((error) => {
+        logService.warn(
+          `Batch import cancel failed: ${formatIpcError(error, 'cancel failed')}`,
+          'ImportWizard'
+        )
+      })
+  }
   // Transition to summary step showing cancellation, and reset import store.
   // The onComplete callback may also fire with cancelled=true, but we handle
   // it here immediately so the user sees feedback right away.
@@ -670,6 +763,7 @@ function resetState(): void {
   isZipImport.value = false
   zipPath.value = ''
   sourceSelectionPending.value = false
+  resetUploadState()
   zipPasswordNeeded.value = false
   zipPassword.value = ''
   zipError.value = ''
@@ -709,7 +803,31 @@ const reopen = (): void => {
 }
 
 onMounted(() => {
+  if (isWebRuntime()) {
+    window.addEventListener(WEB_UPLOAD_EVENT, handleWebUploadEvent)
+  }
   if (api) {
+    if (isWebRuntime()) {
+      cleanupImportProgress = api.import.onProgress((progress: ProgressUpdate) => {
+        if (!isVcfImport.value || !importStore.isActive) return
+        variantCount.value = progress.count
+        const sampleCount = Math.max(vcfSelectedSamples.value.length, 1)
+        overallPercent.value = Math.max(
+          overallPercent.value,
+          Math.round(((currentIndex.value + 1) / sampleCount) * 100)
+        )
+        importStore.updateProgress({
+          fileIndex: currentIndex.value,
+          totalFiles: totalFiles.value,
+          fileName: currentFileName.value,
+          overallPercent: overallPercent.value,
+          phase: progress.phase,
+          skipped: progress.skipped ?? 0,
+          variantCount: progress.count
+        })
+      })
+    }
+
     cleanupProgress = api.batchImport.onProgress((progress: BatchProgress) => {
       currentIndex.value = progress.currentIndex
       totalFiles.value = progress.totalFiles
@@ -753,7 +871,11 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  if (isWebRuntime()) {
+    window.removeEventListener(WEB_UPLOAD_EVENT, handleWebUploadEvent)
+  }
   cleanupProgress?.()
+  cleanupImportProgress?.()
   cleanupComplete?.()
   if (recheckTimeout !== null) clearTimeout(recheckTimeout)
 })

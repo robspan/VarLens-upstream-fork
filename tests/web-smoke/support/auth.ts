@@ -1,12 +1,21 @@
-function isSuccessfulLoginBody(body: unknown): body is { success: true; mustChangePassword?: boolean } {
+function isSuccessfulLoginBody(
+  body: unknown
+): body is { success: true; mustChangePassword?: boolean } {
   return body !== null && typeof body === 'object' && 'success' in body && body.success === true
 }
 
-function typeIntoVisibleInput(index: number, value: string, options: Partial<Cypress.TypeOptions> = {}): void {
-  cy.get('input:visible', { timeout: 15000 }).eq(index).clear({ force: true }).type(value, {
-    force: true,
-    ...options
-  })
+function typeIntoVisibleInput(
+  index: number,
+  value: string,
+  options: Partial<Cypress.TypeOptions> = {}
+): void {
+  cy.get('input:visible', { timeout: 15000 })
+    .eq(index)
+    .clear({ force: true })
+    .type(value, {
+      force: true,
+      ...options
+    })
 }
 
 let resolvedLoginPassword: string | undefined
@@ -24,7 +33,9 @@ function configuredRotatedPassword(password: string): string {
 
 function waitForLoginRateLimit(response: Cypress.Response<unknown>): Cypress.Chainable<void> {
   const retryAfterHeader = response.headers['retry-after']
-  const retryAfterSeconds = Number(Array.isArray(retryAfterHeader) ? retryAfterHeader[0] : retryAfterHeader)
+  const retryAfterSeconds = Number(
+    Array.isArray(retryAfterHeader) ? retryAfterHeader[0] : retryAfterHeader
+  )
   const boundedWaitMs = Number.isFinite(retryAfterSeconds)
     ? Math.min(Math.max(retryAfterSeconds, 1), 65) * 1000
     : 60_000
@@ -54,13 +65,16 @@ Cypress.Commands.add('varlensResolveLoginPassword', () => {
 
   const cacheKey = passwordCacheKey(username)
 
-  const assertLoggedIn = (response: Cypress.Response<unknown>, candidatePassword: string): string => {
+  const assertLoggedIn = (
+    response: Cypress.Response<unknown>,
+    candidatePassword: string
+  ): string => {
     expect(response.status, 'login HTTP status').to.eq(200)
     expect(response.body, 'login result').to.have.property('success', true)
-    expect(response.body, 'bootstrap password must be rotated before E2E can continue').to.not.have.property(
-      'mustChangePassword',
-      true
-    )
+    expect(
+      response.body,
+      'bootstrap password must be rotated before E2E can continue'
+    ).to.not.have.property('mustChangePassword', true)
     return candidatePassword
   }
 
@@ -71,20 +85,27 @@ Cypress.Commands.add('varlensResolveLoginPassword', () => {
   ): Cypress.Chainable<string> => {
     return cy.varlensApi('auth', 'login', [username, candidatePassword]).then((response) => {
       if (response.status === 429 && retryRateLimit) {
-        return waitForLoginRateLimit(response).then(() => tryPassword(candidatePassword, fallback, false))
+        return waitForLoginRateLimit(response).then(() =>
+          tryPassword(candidatePassword, fallback, false)
+        )
       }
 
       if (response.status === 200 && isSuccessfulLoginBody(response.body)) {
         if (response.body.mustChangePassword === true) {
           if (rotatedPassword === candidatePassword) {
-            throw new Error('VARLENS_ROTATED_ADMIN_PASSWORD must differ from VARLENS_ADMIN_PASSWORD.')
+            throw new Error(
+              'VARLENS_ROTATED_ADMIN_PASSWORD must differ from VARLENS_ADMIN_PASSWORD.'
+            )
           }
 
           return cy
             .varlensApi('auth', 'changePassword', [candidatePassword, rotatedPassword])
             .then((changeResponse) => {
               expect(changeResponse.status, 'password rotation HTTP status').to.eq(200)
-              expect(changeResponse.body, 'password rotation result').to.have.property('success', true)
+              expect(changeResponse.body, 'password rotation result').to.have.property(
+                'success',
+                true
+              )
               return cacheResolvedLoginPassword(cacheKey, rotatedPassword)
             })
         }
@@ -100,18 +121,20 @@ Cypress.Commands.add('varlensResolveLoginPassword', () => {
     }) as Cypress.Chainable<string>
   }
 
-  return cy.task('varlensGetResolvedLoginPassword', cacheKey, { log: false }).then((cachedPassword) => {
-    if (typeof cachedPassword === 'string' && cachedPassword !== '') {
-      resolvedLoginPassword = cachedPassword
-      return cachedPassword
-    }
+  return cy
+    .task('varlensGetResolvedLoginPassword', cacheKey, { log: false })
+    .then((cachedPassword) => {
+      if (typeof cachedPassword === 'string' && cachedPassword !== '') {
+        resolvedLoginPassword = cachedPassword
+        return cachedPassword
+      }
 
-    if (rotatedPassword !== password) {
-      return tryPassword(password, () => tryPassword(rotatedPassword))
-    }
+      if (rotatedPassword !== password) {
+        return tryPassword(password, () => tryPassword(rotatedPassword))
+      }
 
-    return tryPassword(password)
-  }) as Cypress.Chainable<string>
+      return tryPassword(password)
+    }) as Cypress.Chainable<string>
 })
 
 Cypress.Commands.add('varlensLogin', () => {
@@ -153,7 +176,10 @@ Cypress.Commands.add('varlensLogin', () => {
     )
 
     cy.visit('/')
-    return cy.location('pathname', { timeout: 15000 }).should('not.contain', '/login').then(() => undefined)
+    return cy
+      .location('pathname', { timeout: 15000 })
+      .should('not.contain', '/login')
+      .then(() => undefined)
   }) as unknown as Cypress.Chainable<void>
 })
 

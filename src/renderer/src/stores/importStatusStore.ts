@@ -1,7 +1,14 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 
-export type ImportPhase = 'idle' | 'importing' | 'finalizing' | 'complete' | 'error' | 'cancelled'
+export type ImportPhase =
+  | 'idle'
+  | 'uploading'
+  | 'importing'
+  | 'finalizing'
+  | 'complete'
+  | 'error'
+  | 'cancelled'
 
 export interface ImportFileDetail {
   filePath: string
@@ -25,8 +32,12 @@ export const useImportStatusStore = defineStore('importStatus', () => {
   const dialogOpen = ref(false)
   const details = ref<ImportFileDetail[]>([])
   const errorMessage = ref('')
+  const uploadLoadedBytes = ref(0)
+  const uploadTotalBytes = ref<number | null>(null)
 
-  const isActive = computed(() => phase.value === 'importing' || phase.value === 'finalizing')
+  const isActive = computed(
+    () => phase.value === 'uploading' || phase.value === 'importing' || phase.value === 'finalizing'
+  )
 
   const fileProgress = computed(() =>
     totalFiles.value > 0 ? `${currentFileIndex.value + 1}/${totalFiles.value}` : ''
@@ -42,6 +53,42 @@ export const useImportStatusStore = defineStore('importStatus', () => {
     startTime.value = Date.now()
     details.value = []
     errorMessage.value = ''
+    uploadLoadedBytes.value = 0
+    uploadTotalBytes.value = null
+  }
+
+  function startUpload(files: number): void {
+    phase.value = 'uploading'
+    totalFiles.value = files
+    currentFileIndex.value = 0
+    currentFileName.value = ''
+    overallPercent.value = 0
+    currentPhase.value = 'uploading'
+    variantCount.value = 0
+    skipped.value = 0
+    startTime.value = Date.now()
+    details.value = []
+    errorMessage.value = ''
+    uploadLoadedBytes.value = 0
+    uploadTotalBytes.value = null
+  }
+
+  function updateUploadProgress(data: {
+    fileIndex: number
+    totalFiles: number
+    fileName: string
+    loadedBytes: number
+    totalBytes: number | null
+    percent: number | null
+  }): void {
+    phase.value = 'uploading'
+    currentFileIndex.value = data.fileIndex
+    totalFiles.value = data.totalFiles
+    currentFileName.value = data.fileName
+    uploadLoadedBytes.value = data.loadedBytes
+    uploadTotalBytes.value = data.totalBytes
+    overallPercent.value = data.percent ?? 0
+    currentPhase.value = 'uploading'
   }
 
   function updateProgress(data: {
@@ -100,6 +147,8 @@ export const useImportStatusStore = defineStore('importStatus', () => {
     dialogOpen.value = false
     details.value = []
     errorMessage.value = ''
+    uploadLoadedBytes.value = 0
+    uploadTotalBytes.value = null
   }
 
   return {
@@ -115,8 +164,12 @@ export const useImportStatusStore = defineStore('importStatus', () => {
     dialogOpen,
     details,
     errorMessage,
+    uploadLoadedBytes,
+    uploadTotalBytes,
     isActive,
     fileProgress,
+    startUpload,
+    updateUploadProgress,
     startImport,
     updateProgress,
     fileComplete,

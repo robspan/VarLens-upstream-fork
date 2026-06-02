@@ -32,6 +32,7 @@ export function importSingleVcfCase(caseName: string, file: ImportSelectFile): v
 
   expectImportSummaryVisible()
   queryImportedCase(caseName)
+  closeImportSummary()
 }
 
 export function importSingleFileCase(caseName: string, file: ImportSelectFile): void {
@@ -85,15 +86,24 @@ function importBatchCases(params: BatchImportParams): void {
   waitForImportUploads(params.uploadCount)
   if (params.waitForZipExtract === true) {
     cy.wait('@zipPasswordApi', { timeout: 30000 }).then((interception) => {
-      expect(interception.response?.statusCode ?? 0, 'ZIP password probe API status').to.be.within(200, 299)
+      expect(interception.response?.statusCode ?? 0, 'ZIP password probe API status').to.be.within(
+        200,
+        299
+      )
     })
     cy.wait('@extractZipApi', { timeout: 30000 }).then((interception) => {
-      expect(interception.response?.statusCode ?? 0, 'ZIP extract API status').to.be.within(200, 299)
+      expect(interception.response?.statusCode ?? 0, 'ZIP extract API status').to.be.within(
+        200,
+        299
+      )
     })
   }
 
   cy.wait('@duplicatesApi', { timeout: 30000 }).then((interception) => {
-    expect(interception.response?.statusCode ?? 0, 'duplicate-check API status').to.be.within(200, 299)
+    expect(interception.response?.statusCode ?? 0, 'duplicate-check API status').to.be.within(
+      200,
+      299
+    )
   })
 
   expectPendingCasesVisible(params.expectedCases)
@@ -110,6 +120,7 @@ function importBatchCases(params: BatchImportParams): void {
   for (const caseName of params.expectedCases) {
     queryImportedCase(caseName)
   }
+  closeImportSummary()
 }
 
 function openImportSurface(): void {
@@ -131,7 +142,9 @@ function openImportSurface(): void {
 }
 
 function openImportMenuItem(): void {
-  cy.get('[data-testid="app-settings-menu"]', { timeout: 15000 }).should('be.visible').click({ force: true })
+  cy.get('[data-testid="app-settings-menu"]', { timeout: 15000 })
+    .should('be.visible')
+    .click({ force: true })
   cy.contains('.v-list-item, [role="menuitem"]', /Import Data/i, { timeout: 15000 })
     .should('be.visible')
     .click({ force: true })
@@ -158,7 +171,10 @@ export function selectPendingBrowserFile(files: ImportSelectFile | ImportSelectF
 function waitForImportUploads(count: number): void {
   for (let index = 0; index < count; index++) {
     cy.wait('@uploadApi', { timeout: 30000 }).then((interception) => {
-      expect(interception.response?.statusCode ?? 0, `upload API status ${index + 1}`).to.be.within(200, 299)
+      expect(interception.response?.statusCode ?? 0, `upload API status ${index + 1}`).to.be.within(
+        200,
+        299
+      )
     })
   }
 }
@@ -181,7 +197,9 @@ function fillVcfCaseName(caseName: string): void {
 
 function expectPendingCasesVisible(caseNames: string[]): void {
   cy.contains('.v-dialog, [role="dialog"]', /Import Data/i, { timeout: 15000 }).within(() => {
-    cy.contains(new RegExp(caseNames.map(escapeRegExp).join('|')), { timeout: 15000 }).should('be.visible')
+    cy.contains(new RegExp(caseNames.map(escapeRegExp).join('|')), { timeout: 15000 }).should(
+      'be.visible'
+    )
   })
 }
 
@@ -195,6 +213,15 @@ function startImportFromDialog(): void {
 
 function expectImportSummaryVisible(): void {
   cy.contains(/done|complete|imported|summary/i, { timeout: 60000 }).should('be.visible')
+}
+
+function closeImportSummary(): void {
+  cy.contains('.v-dialog, [role="dialog"]', /Import Data/i, { timeout: 15000 }).within(() => {
+    cy.contains('button, [role="button"]', /Done|Close/i, { timeout: 15000 }).click({
+      force: true
+    })
+  })
+  cy.contains('.v-dialog, [role="dialog"]', /Import Data/i).should('not.exist')
 }
 
 function escapeRegExp(value: string): string {

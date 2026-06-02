@@ -1,4 +1,7 @@
-import { expectAuthenticatedShellVisible, expectCoreSettingsMenuItemsVisible } from '../support/app-shell'
+import {
+  expectAuthenticatedShellVisible,
+  expectCoreSettingsMenuItemsVisible
+} from '../support/app-shell'
 import { beforeEachAuthenticatedSmoke } from '../support/auth'
 
 describe('VarLens authenticated shell smoke', () => {

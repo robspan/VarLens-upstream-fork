@@ -29,7 +29,14 @@ if (!existsSync(cypressBin)) {
 const modeArgs =
   command === 'open'
     ? ['open', '--config-file', 'tests/web-smoke/cypress.config.cjs', '--e2e']
-    : ['run', '--config-file', 'tests/web-smoke/cypress.config.cjs', '--e2e', '--browser', 'electron']
+    : [
+        'run',
+        '--config-file',
+        'tests/web-smoke/cypress.config.cjs',
+        '--e2e',
+        '--browser',
+        'electron'
+      ]
 
 const result = spawnSync(cypressBin, [...modeArgs, ...passThroughArgs], {
   cwd: rootDir,

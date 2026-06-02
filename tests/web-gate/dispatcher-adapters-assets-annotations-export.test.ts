@@ -87,6 +87,25 @@ describe('web dispatcher adapters: annotations, assets, and exports', () => {
     expect(execute).not.toHaveBeenCalled()
   })
 
+  test('annotations.upsertPerCase publishes annotation refresh events for the active web user', async () => {
+    const { deps, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    await overrides['annotations:upsertPerCase'].handle(
+      [3, 9, { starred: true, user_name: 'reviewer' }],
+      { session: { user: { id: 7 } } } as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(deps.events.publish).toHaveBeenCalledWith(7, 'variants:annotationChanged', {
+      caseId: 3,
+      variantId: 9,
+      kind: 'star'
+    })
+  })
+
   test('case-metadata.createCohort maps renderer args to the storage task shape', async () => {
     const { deps, writeExecute, reply } = makeDeps()
     const { overrides } = buildDispatcher(deps)

@@ -11,6 +11,11 @@ import {
 import { extractCaseName } from '../../../main/import/batch-utils'
 import { ImportServerPathArgSchema } from '../../../shared/api/schemas/import'
 import type { BatchResult, DuplicateChoice } from '../../../shared/types/api'
+import {
+  WEB_EVENT_BATCH_IMPORT_COMPLETE,
+  WEB_EVENT_BATCH_IMPORT_PROGRESS,
+  WEB_EVENT_COHORT_SUMMARY_REBUILT
+} from '../web-event-types'
 import { serverPathImportDisabled, serverPathImportDisabledResponse } from './server-path-import'
 import type { OverrideHandler } from './types'
 import { isWebUploadRef, resolveWebUploadRef, stageExistingFileUpload } from './upload-staging'
@@ -308,6 +313,10 @@ async function startWebBatchImport(
   events: Parameters<OverrideHandler['handle']>[3]['events'],
   signal: AbortSignal
 ): Promise<BatchResult> {
+  if (userId !== undefined) {
+    events.publish(userId, WEB_EVENT_COHORT_SUMMARY_REBUILT, { is_stale: true })
+  }
+
   const existingCases = await session.listCases()
   const existingCaseIdsByName = new Map(existingCases.map((item) => [item.name, item.id]))
   const result: BatchResult = {
@@ -350,8 +359,8 @@ async function startWebBatchImport(
       const importResult = await startImport(file.storedPath, caseName, undefined, () => session, {
         onProgress: (progress) => {
           if (userId === undefined) return
-          events.publish(userId, 'batch-import:progress', {
-            currentIndex: index + 1,
+          events.publish(userId, WEB_EVENT_BATCH_IMPORT_PROGRESS, {
+            currentIndex: index,
             totalFiles: files.length,
             currentFileName: file.fileName,
             overallPercent: Math.round(((index + 1) / files.length) * 100),
@@ -387,7 +396,8 @@ async function startWebBatchImport(
   }
 
   if (userId !== undefined) {
-    events.publish(userId, 'batch-import:complete', result)
+    events.publish(userId, WEB_EVENT_COHORT_SUMMARY_REBUILT, { is_stale: false })
+    events.publish(userId, WEB_EVENT_BATCH_IMPORT_COMPLETE, result)
   }
 
   return result

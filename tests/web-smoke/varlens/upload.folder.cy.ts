@@ -12,7 +12,10 @@ describe('VarLens folder JSON browser import smoke', () => {
 
     importFolderCases(
       [firstCase, secondCase],
-      [jsonImportFile(`${firstCase}.json`, 'FOLDERA'), jsonImportFile(`${secondCase}.json`, 'FOLDERB')]
+      [
+        jsonImportFile(`${firstCase}.json`, 'FOLDERA'),
+        jsonImportFile(`${secondCase}.json`, 'FOLDERB')
+      ]
     )
 
     expectImportedCaseRendered(firstCase, [['FOLDERA', /12,?345/]])

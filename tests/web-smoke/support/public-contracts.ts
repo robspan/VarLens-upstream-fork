@@ -29,9 +29,11 @@ export function expectLoginPageDoesNotExposeAppShell(): void {
 }
 
 export function expectCaseDataRequiresAuthentication(): void {
-  cy.varlensApi('cases', 'query', [{ limit: 10, offset: 0, search_term: null }]).then((response) => {
-    expect(response.status, 'anonymous case query').to.be.oneOf([401, 403])
-  })
+  cy.varlensApi('cases', 'query', [{ limit: 10, offset: 0, search_term: null }]).then(
+    (response) => {
+      expect(response.status, 'anonymous case query').to.be.oneOf([401, 403])
+    }
+  )
 }
 
 export function expectHealthEndpointReady(): void {

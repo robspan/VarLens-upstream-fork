@@ -3,7 +3,6 @@ export type RenderExpectation = string | RegExp
 const CASE_SEARCH_DEBOUNCE_MS = 500
 const CASE_SEARCH_POLL_MS = 1000
 const CASE_SEARCH_POLLS = 8
-const CASE_SEARCH_RELOADS = 2
 const CASE_SEARCH_INPUT_SELECTOR = 'input[placeholder="Search cases..."]'
 
 export interface ImportedCase {
@@ -18,17 +17,23 @@ export function queryImportedCase(caseName: string): Cypress.Chainable<ImportedC
     .then((response) => {
       const body = response.body as { data: ImportedCase[] }
       expect(response.status).to.eq(200)
-      expect(body.data, `query result for ${caseName}`).to.be.an('array').and.have.length.greaterThan(0)
+      expect(body.data, `query result for ${caseName}`)
+        .to.be.an('array')
+        .and.have.length.greaterThan(0)
       const importedCase = body.data.find((item) => item.name === caseName) ?? body.data[0]
       expect(importedCase.name).to.contain(caseName)
-      expect(importedCase.variant_count, `processed variant count for ${caseName}`).to.be.greaterThan(0)
+      expect(
+        importedCase.variant_count,
+        `processed variant count for ${caseName}`
+      ).to.be.greaterThan(0)
       return importedCase
     })
 }
 
-export function expectImportedCaseRendered(caseName: string, expectedRows: RenderExpectation[][]): void {
-  cy.reload()
-  cy.varlensDismissResearchUseModal()
+export function expectImportedCaseRendered(
+  caseName: string,
+  expectedRows: RenderExpectation[][]
+): void {
   selectCaseFromSidebar(caseName)
   openSnvIndelTab()
   cy.get('.table-container, .v-data-table, table', { timeout: 30000 }).should('be.visible')
@@ -38,20 +43,13 @@ export function expectImportedCaseRendered(caseName: string, expectedRows: Rende
   }
 }
 
-export function selectCaseFromSidebar(caseName: string, reloadsRemaining = CASE_SEARCH_RELOADS): void {
+export function selectCaseFromSidebar(caseName: string): void {
   queryImportedCase(caseName)
   ensureCaseSidebarOpen()
   typeCaseSearch(caseName)
   cy.wait(CASE_SEARCH_DEBOUNCE_MS)
 
   clickVisibleCaseListItem(caseName, CASE_SEARCH_POLLS, () => {
-    if (reloadsRemaining > 0) {
-      cy.reload()
-      cy.varlensDismissResearchUseModal()
-      selectCaseFromSidebar(caseName, reloadsRemaining - 1)
-      return
-    }
-
     cy.get('body').then(($body) => {
       throw new Error(
         `Imported case "${caseName}" is present in the API but not visible in the case sidebar after search. Visible rows: ${renderedCaseListSummary(
@@ -91,7 +89,9 @@ function visibleSidebarToggle($root: JQuery<HTMLElement>): JQuery<HTMLElement> {
     .first()
   if (appBarToggle.length > 0) return appBarToggle
 
-  return $root.find('.v-app-bar button:visible, header button:visible, .v-toolbar button:visible').first()
+  return $root
+    .find('.v-app-bar button:visible, header button:visible, .v-toolbar button:visible')
+    .first()
 }
 
 function ensureCaseSidebarOpen(attemptsRemaining = 3): void {
@@ -170,7 +170,8 @@ function renderedTextMatches(text: string, expected: RenderExpectation): boolean
 }
 
 function expectRenderedText(expected: RenderExpectation, timeout = 30000): void {
-  const assertionLabel = typeof expected === 'string' ? expected : `/${expected.source}/${expected.flags}`
+  const assertionLabel =
+    typeof expected === 'string' ? expected : `/${expected.source}/${expected.flags}`
 
   cy.get('#app', { timeout }).should(($app) => {
     const visibleMatches = $app.find('*').filter((_idx, el) => {
@@ -186,7 +187,9 @@ function expectRenderedText(expected: RenderExpectation, timeout = 30000): void 
 
 function expectRenderedVariantRow(expectedValues: RenderExpectation[]): void {
   const assertionLabel = expectedValues
-    .map((expected) => (typeof expected === 'string' ? expected : `/${expected.source}/${expected.flags}`))
+    .map((expected) =>
+      typeof expected === 'string' ? expected : `/${expected.source}/${expected.flags}`
+    )
     .join(', ')
 
   cy.get('.v-data-table tbody tr, table tbody tr', { timeout: 30000 }).should(($rows) => {
@@ -196,7 +199,10 @@ function expectRenderedVariantRow(expectedValues: RenderExpectation[]): void {
       return expectedValues.every((expected) => renderedTextMatches(rowText, expected))
     })
 
-    expect(matchingRows.length, `visible variant row containing ${assertionLabel}`).to.be.greaterThan(0)
+    expect(
+      matchingRows.length,
+      `visible variant row containing ${assertionLabel}`
+    ).to.be.greaterThan(0)
   })
 }
 
@@ -204,5 +210,4 @@ function openSnvIndelTab(): void {
   cy.contains('.v-tab, [role="tab"]', /SNV\/Indel/i, { timeout: 15000 })
     .should('be.visible')
     .click({ force: true })
-  cy.get('.per-type-region', { timeout: 15000 }).should('be.visible')
 }

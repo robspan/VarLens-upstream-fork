@@ -1,12 +1,13 @@
 # Build, Trivy-scan, and publish the VarLens web image to GHCR.
 #
 # Triggers:
-#   - manual workflow_dispatch
-#   - published GitHub release
+#   - manual workflow_dispatch for an explicit web Dev/Test test run
+#   - published GitHub release for a versioned web release
 #
 # Versioned deploy orchestration lives outside this application repo.
-# This workflow only builds, tests, scans, and optionally publishes the
-# web application image.
+# This workflow builds, tests, scans, and publishes the web application image.
+# In robspan/VarLens-upstream-fork it dispatches the platform Dev/Test web
+# deploy after a successful manual web run or published web release.
 #
 # Trivy posture:
 #   - Gating step: CRITICAL only — fails the workflow if any non-ignored
@@ -220,12 +221,14 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   dispatch-platform-release:
-    name: Dispatch platform dev/test deploy
+    name: Dispatch platform dev/test web deploy
     needs: build-and-push
     if: |
-      github.event_name == 'release'
-      && github.event.action == 'published'
-      && github.repository == 'robspan/VarLens-upstream-fork'
+      github.repository == 'robspan/VarLens-upstream-fork'
+      && (
+        github.event_name == 'workflow_dispatch'
+        || (github.event_name == 'release' && github.event.action == 'published')
+      )
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch app-platform-iac accept workflow

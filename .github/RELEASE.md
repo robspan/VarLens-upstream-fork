@@ -6,6 +6,10 @@ This document describes how to create releases for Varlens using the automated C
 
 The project uses GitHub Actions to automatically build and release the application for Windows, macOS, and Linux.
 
+Web releases are separate from desktop releases. Desktop releases use version
+tags like `v0.68.1`. Web releases use tags with a `web-` prefix, for example
+`web-v0.68.1`, so publishing a desktop release does not deploy the web image.
+
 ### Workflows
 
 #### 1. Build Workflow (`.github/workflows/build.yml`)
@@ -39,6 +43,23 @@ The project uses GitHub Actions to automatically build and release the applicati
 - Uploads all artifacts to the GitHub Release
 
 **Purpose:** Automates the release process when you tag a new version.
+
+#### 3. Web Publish Workflow (`.github/workflows/publish-web.yml`)
+
+**Triggers:**
+
+- Manual `workflow_dispatch` for an explicit web Dev/Test test run
+- Published GitHub releases whose tag starts with `web-`
+
+**Actions:**
+
+- Runs the opt-in web CI gate
+- Builds and scans the web container image
+- Publishes the image to GHCR when package access is enabled
+- Dispatches the platform Dev/Test deployment workflow for web releases
+
+**Purpose:** Keeps hosted web deployments separate from desktop application
+releases.
 
 ## Creating a Release
 

@@ -2,12 +2,13 @@
 #
 # Triggers:
 #   - manual workflow_dispatch for an explicit web Dev/Test test run
-#   - published GitHub release for a versioned web release
+#   - published GitHub release whose tag starts with `web-`
 #
 # Versioned deploy orchestration lives outside this application repo.
 # This workflow builds, tests, scans, and publishes the web application image.
 # In robspan/VarLens-upstream-fork it dispatches the platform Dev/Test web
-# deploy after a successful manual web run or published web release.
+# deploy after a successful manual web run or published `web-*` release. Plain
+# desktop releases such as `v0.68.0` are intentionally ignored by this workflow.
 #
 # Trivy posture:
 #   - Gating step: CRITICAL only — fails the workflow if any non-ignored
@@ -43,6 +44,9 @@ env:
 
 jobs:
   web-ci:
+    if: |
+      github.event_name == 'workflow_dispatch'
+      || startsWith(github.event.release.tag_name, 'web-')
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -85,8 +89,14 @@ jobs:
   build-and-push:
     needs: web-ci
     if: |
-      github.repository == 'berntpopp/VarLens'
-      || vars.VARLENS_WEB_PUBLISH_GHCR == '1'
+      (
+        github.event_name == 'workflow_dispatch'
+        || startsWith(github.event.release.tag_name, 'web-')
+      )
+      && (
+        github.repository == 'berntpopp/VarLens'
+        || vars.VARLENS_WEB_PUBLISH_GHCR == '1'
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -227,7 +237,11 @@ jobs:
       github.repository == 'robspan/VarLens-upstream-fork'
       && (
         github.event_name == 'workflow_dispatch'
-        || (github.event_name == 'release' && github.event.action == 'published')
+        || (
+          github.event_name == 'release'
+          && github.event.action == 'published'
+          && startsWith(github.event.release.tag_name, 'web-')
+        )
       )
     runs-on: ubuntu-latest
     steps:
@@ -294,7 +308,11 @@ jobs:
   publish-skipped:
     needs: web-ci
     if: |
-      github.repository != 'berntpopp/VarLens'
+      (
+        github.event_name == 'workflow_dispatch'
+        || startsWith(github.event.release.tag_name, 'web-')
+      )
+      && github.repository != 'berntpopp/VarLens'
       && vars.VARLENS_WEB_PUBLISH_GHCR != '1'
     runs-on: ubuntu-latest
     steps:
@@ -310,4 +328,23 @@ jobs:
             echo "is owned by another repository. To publish from this repository,"
             echo "grant it write access to the GHCR package and set repository"
             echo "variable \`VARLENS_WEB_PUBLISH_GHCR=1\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  desktop-release-skipped:
+    if: |
+      github.event_name == 'release'
+      && github.event.action == 'published'
+      && !startsWith(github.event.release.tag_name, 'web-')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain desktop release skip
+        run: |
+          {
+            echo "## Web publish skipped"
+            echo ""
+            echo "Release tag \`${{ github.event.release.tag_name }}\` is not a web release tag."
+            echo ""
+            echo "Use a \`web-\` prefix, for example \`web-v0.68.1\`, when this"
+            echo "release should build and deploy the web image. Desktop releases"
+            echo "such as \`v0.68.1\` are handled by the desktop release workflow."
           } >> "$GITHUB_STEP_SUMMARY"

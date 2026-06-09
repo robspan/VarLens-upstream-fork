@@ -37,6 +37,8 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/varlens-web
+  PLATFORM_REPOSITORY: robspan/app-platform-iac
+  PLATFORM_ACCEPT_WORKFLOW: accept-varlens-web-release.yml
 
 jobs:
   web-ci:
@@ -92,19 +94,39 @@ jobs:
     outputs:
       digest: ${{ steps.push.outputs.digest }}
       tags: ${{ steps.meta.outputs.tags }}
+      image_repository: ${{ steps.source.outputs.image_repository }}
+      image_tag: ${{ steps.source.outputs.image_tag }}
+      source_ref: ${{ steps.source.outputs.source_ref }}
+      source_sha: ${{ steps.source.outputs.source_sha }}
     env:
       SCAN_TAG: ghcr.io/${{ github.repository_owner }}/varlens-web:ci-scan-${{ github.sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # actions/checkout@v6.0.2
 
+      - name: Resolve source and image metadata
+        id: source
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
+          source_ref="${GITHUB_REF_NAME}"
+          image_tag="${GITHUB_REF_NAME}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            image_tag="edge"
+          fi
+          if ! [[ "$image_tag" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+            echo "::error::Release tag '${image_tag}' is not Docker-tag compatible."
+            exit 1
+          fi
+          {
+            echo "source_sha=${source_sha}"
+            echo "source_ref=${source_ref}"
+            echo "image_repository=${REGISTRY}/${IMAGE_NAME}"
+            echo "image_tag=${image_tag}"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d70bba72b1f3fd22344832f00baa16ece964efeb # docker/setup-buildx-action@v3.3.0
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@68827325e0b33c7199eb31dd4e31fbe9023e06e3 # docker/setup-qemu-action@v3.0.0
-        with:
-          platforms: arm64
 
       - name: Login to GHCR
         uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # docker/login-action@v3.3.0
@@ -120,7 +142,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=edge,enable=${{ github.event_name == 'workflow_dispatch' }}
-            type=ref,event=tag
+            type=raw,value=${{ steps.source.outputs.image_tag }},enable=${{ github.event_name == 'release' }}
             type=sha,format=short
 
       - name: Build image for security gate
@@ -169,7 +191,7 @@ jobs:
         uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75 # docker/build-push-action@v6.6.1
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           provenance: false
           sbom: false
@@ -185,14 +207,85 @@ jobs:
             echo ""
             echo "**Digest:** \`${{ steps.push.outputs.digest }}\`"
             echo ""
+            echo "**Repository:** \`${{ steps.source.outputs.image_repository }}\`"
+            echo ""
             echo "**Tags:**"
             echo "${{ steps.meta.outputs.tags }}" | sed 's/^/- `/' | sed 's/$/`/'
             echo ""
-            echo "Pin in the deploy repo \`k8s/overlays/prod/kustomization.yaml\`:"
+            echo "Pin in the deploy repo:"
             echo ""
             echo "\`\`\`yaml"
-            echo "image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.push.outputs.digest }}"
+            echo "image: ${{ steps.source.outputs.image_repository }}@${{ steps.push.outputs.digest }}"
             echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  dispatch-platform-release:
+    name: Dispatch platform dev/test deploy
+    needs: build-and-push
+    if: |
+      github.event_name == 'release'
+      && github.event.action == 'published'
+      && github.repository == 'robspan/VarLens-upstream-fork'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch app-platform-iac accept workflow
+        env:
+          GH_TOKEN: ${{ secrets.APP_PLATFORM_DISPATCH_TOKEN }}
+          PLATFORM_REPOSITORY: ${{ env.PLATFORM_REPOSITORY }}
+          PLATFORM_ACCEPT_WORKFLOW: ${{ env.PLATFORM_ACCEPT_WORKFLOW }}
+          SOURCE_REPO: https://github.com/${{ github.repository }}
+          SOURCE_REF: ${{ needs.build-and-push.outputs.source_ref }}
+          SOURCE_SHA: ${{ needs.build-and-push.outputs.source_sha }}
+          IMAGE_REPOSITORY: ${{ needs.build-and-push.outputs.image_repository }}
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+          IMAGE_DIGEST: ${{ needs.build-and-push.outputs.digest }}
+          APP_WORKFLOW_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::APP_PLATFORM_DISPATCH_TOKEN is required to dispatch the platform deploy workflow."
+            exit 1
+          fi
+
+          payload="$(
+            jq -n \
+              --arg ref "main" \
+              --arg app "varlens" \
+              --arg source_repo "$SOURCE_REPO" \
+              --arg source_ref "$SOURCE_REF" \
+              --arg source_sha "$SOURCE_SHA" \
+              --arg image_repository "$IMAGE_REPOSITORY" \
+              --arg image_tag "$IMAGE_TAG" \
+              --arg image_digest "$IMAGE_DIGEST" \
+              --arg app_workflow_run "$APP_WORKFLOW_RUN" \
+              '{
+                ref: $ref,
+                inputs: {
+                  app: $app,
+                  source_repo: $source_repo,
+                  source_ref: $source_ref,
+                  source_sha: $source_sha,
+                  image_repository: $image_repository,
+                  image_tag: $image_tag,
+                  image_digest: $image_digest,
+                  app_workflow_run: $app_workflow_run
+                }
+              }'
+          )"
+
+          curl --fail-with-body -sS -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${PLATFORM_REPOSITORY}/actions/workflows/${PLATFORM_ACCEPT_WORKFLOW}/dispatches" \
+            -d "$payload"
+
+          {
+            echo "## Platform deploy dispatched"
+            echo ""
+            echo "- Workflow: \`${PLATFORM_REPOSITORY}/${PLATFORM_ACCEPT_WORKFLOW}\`"
+            echo "- Image: \`${IMAGE_REPOSITORY}@${IMAGE_DIGEST}\`"
+            echo "- Source: \`${SOURCE_REF} (${SOURCE_SHA})\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   publish-skipped:

@@ -47,7 +47,9 @@ function stripLineComments(sql: string): string {
 }
 
 function isSchemaQualifiedTarget(target: string): boolean {
-  return /^"__schema__"\s*\./u.test(target.trim())
+  // Two deliberate qualifications exist: the per-project placeholder and
+  // the shared cross-project audit schema (migration 0013).
+  return /^(?:"__schema__"|"?varlens_audit"?)\s*\./u.test(target.trim())
 }
 
 function lineNumberAt(text: string, index: number): number {

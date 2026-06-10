@@ -4,7 +4,7 @@ import { POSTGRES_MIGRATIONS } from '../../../src/main/storage/postgres/migratio
 
 describe('Postgres migration definitions', () => {
   it('loads the PostgreSQL migrations with SQL and sha256 checksums', () => {
-    expect(POSTGRES_MIGRATIONS).toHaveLength(12)
+    expect(POSTGRES_MIGRATIONS).toHaveLength(13)
     expect(POSTGRES_MIGRATIONS.map((migration) => migration.version)).toEqual([
       '0001',
       '0002',
@@ -17,7 +17,8 @@ describe('Postgres migration definitions', () => {
       '0009',
       '0010',
       '0011',
-      '0012'
+      '0012',
+      '0013'
     ])
     expect(POSTGRES_MIGRATIONS.map((migration) => migration.name)).toEqual([
       'create_cases',
@@ -31,7 +32,8 @@ describe('Postgres migration definitions', () => {
       'idx_variants_coords',
       'cohort_summary',
       'projects_registry',
-      'extend_audit_contract'
+      'extend_audit_contract',
+      'central_audit_schema'
     ])
 
     for (const migration of POSTGRES_MIGRATIONS) {
@@ -64,5 +66,21 @@ describe('Postgres migration definitions', () => {
     expect(auditContractMigration?.sql).toContain('auth_login_success')
     expect(auditContractMigration?.sql).toContain('api_read')
     expect(auditContractMigration?.sql).toContain('api_call')
+
+    const centralAuditMigration = POSTGRES_MIGRATIONS.find(
+      (migration) => migration.version === '0013'
+    )
+    expect(centralAuditMigration?.name).toBe('central_audit_schema')
+    expect(centralAuditMigration?.sql).toContain('CREATE SCHEMA IF NOT EXISTS varlens_audit')
+    expect(centralAuditMigration?.sql).toContain(
+      'CREATE TABLE IF NOT EXISTS varlens_audit."audit_log"'
+    )
+    expect(centralAuditMigration?.sql).toContain('project_schema TEXT NOT NULL')
+    expect(centralAuditMigration?.sql).toContain(
+      'BEFORE UPDATE OR DELETE ON varlens_audit."audit_log"'
+    )
+    expect(centralAuditMigration?.sql).toContain('BEFORE TRUNCATE ON varlens_audit."audit_log"')
+    expect(centralAuditMigration?.sql).toContain(`to_regclass('"__schema__"."audit_log"')`)
+    expect(centralAuditMigration?.sql).toContain('DROP TABLE "__schema__"."audit_log"')
   })
 })

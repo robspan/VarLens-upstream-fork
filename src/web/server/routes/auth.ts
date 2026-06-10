@@ -1,5 +1,3 @@
-import type { FastifyReply, FastifyRequest } from 'fastify'
-
 import {
   ChangePasswordArgsSchema,
   CreateUserArgsSchema,
@@ -9,19 +7,8 @@ import {
 } from '../../../shared/api/schemas/auth'
 import { PasswordPolicyError } from '../../auth/PostgresWebAuthService'
 import { recordAuthAudit } from '../audit'
+import { requireAdmin } from './guards'
 import type { OverrideHandler } from './types'
-
-function requireAdmin(
-  request: FastifyRequest,
-  reply: FastifyReply
-): { username: string } | undefined {
-  const user = request.session?.user
-  if (user?.role !== 'admin') {
-    reply.code(403)
-    return undefined
-  }
-  return { username: user.username }
-}
 
 export function buildAuthOverrides(): Record<string, OverrideHandler> {
   return {

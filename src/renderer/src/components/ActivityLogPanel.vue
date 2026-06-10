@@ -2,7 +2,11 @@
   <div class="activity-log-panel">
     <div class="text-title-small mb-2">Activity Log</div>
 
-    <div v-if="loading" class="d-flex justify-center py-4">
+    <div v-if="restricted" class="text-body-2 text-grey py-2">
+      Activity log entries are restricted to administrators.
+    </div>
+
+    <div v-else-if="loading" class="d-flex justify-center py-4">
       <v-progress-circular indeterminate size="24" />
     </div>
 
@@ -33,9 +37,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { AuditLogEntry, AuditActionType } from '../../../shared/types/database-entities'
 import { useApiService } from '../composables/useApiService'
+import { useAuthStore } from '../stores/authStore'
 import { logService } from '../services/LogService'
 import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 
@@ -44,12 +49,18 @@ const props = defineProps<{
 }>()
 
 const { api } = useApiService()
+const authStore = useAuthStore()
+
+// Audit reads are admin-only when accounts are enforced (web mode);
+// the server 403s them, so don't fetch and don't log an error loop.
+// Desktop (accounts disabled) is unaffected.
+const restricted = computed(() => authStore.accountsEnabled && !authStore.isAdmin)
 
 const entries = ref<AuditLogEntry[]>([])
 const loading = ref(false)
 
 async function loadEntries(): Promise<void> {
-  if (props.entityKey === null || props.entityKey === '') {
+  if (restricted.value || props.entityKey === null || props.entityKey === '') {
     entries.value = []
     return
   }
@@ -138,5 +149,5 @@ function getChangeDescription(entry: AuditLogEntry): string | null {
   return null
 }
 
-watch(() => props.entityKey, loadEntries, { immediate: true })
+watch([() => props.entityKey, restricted], loadEntries, { immediate: true })
 </script>

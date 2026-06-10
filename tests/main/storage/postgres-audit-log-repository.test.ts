@@ -7,12 +7,13 @@ function normalizeSql(sql: string): string {
 }
 
 describe('PostgresAuditLogRepository', () => {
-  it('queries by entity key ordered chronologically and maps created_at to timestamp', async () => {
+  it('queries the central varlens_audit table by entity key scoped to the project schema', async () => {
     const pool = {
       query: vi.fn().mockResolvedValue({
         rows: [
           {
             id: '1',
+            project_schema: 'public',
             action_type: 'star',
             entity_type: 'variant_annotation',
             entity_key: 'v:1',
@@ -40,12 +41,14 @@ describe('PostgresAuditLogRepository', () => {
         timestamp: 1234
       }
     ])
-    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('ORDER BY created_at ASC'), [
-      'v:1'
-    ])
+    const sql = normalizeSql(pool.query.mock.calls[0][0] as string)
+    expect(sql).toContain('FROM varlens_audit."audit_log"')
+    expect(sql).toContain('project_schema = $1 AND entity_key = $2')
+    expect(sql).toContain('ORDER BY created_at ASC')
+    expect(pool.query).toHaveBeenCalledWith(expect.any(String), ['public', 'v:1'])
   })
 
-  it('queries with parameterized filters and returns a total count', async () => {
+  it('queries with parameterized filters scoped to the project schema and returns a total count', async () => {
     const pool = {
       query: vi
         .fn()
@@ -69,10 +72,13 @@ describe('PostgresAuditLogRepository', () => {
     const params = pool.query.mock.calls[1][1] as unknown[]
 
     expect(result).toEqual({ data: [], total_count: 2 })
-    expect(countSql).toContain('FROM "tenant""schema"."audit_log"')
+    expect(countSql).toContain('FROM varlens_audit."audit_log"')
+    expect(countSql).toContain('project_schema = $1')
     expect(dataSql).toContain('ORDER BY created_at DESC')
     expect(dataSql).not.toContain('OR TRUE')
+    expect(dataSql).not.toContain('tenant')
     expect(params).toEqual([
+      'tenant"schema',
       'star',
       'case_variant_annotation',
       `case:1' OR TRUE --`,
@@ -83,9 +89,9 @@ describe('PostgresAuditLogRepository', () => {
     ])
   })
 
-  it('appends contract-encoded old and new values', async () => {
+  it('appends contract-encoded old and new values stamped with the project schema', async () => {
     const pool = { query: vi.fn().mockResolvedValue({ rows: [] }) }
-    const repo = new PostgresAuditLogRepository(pool as never, 'public')
+    const repo = new PostgresAuditLogRepository(pool as never, 'project_two')
 
     await repo.append({
       action_type: 'star',
@@ -97,7 +103,11 @@ describe('PostgresAuditLogRepository', () => {
       metadata: { source: 'test' }
     })
 
+    const sql = normalizeSql(pool.query.mock.calls[0][0] as string)
     const params = pool.query.mock.calls[0][1] as unknown[]
+    expect(sql).toContain('INSERT INTO varlens_audit."audit_log"')
+    expect(sql).toContain('project_schema')
+    expect(params[0]).toBe('project_two')
     expect(params).toContain(JSON.stringify({ starred: 0 }))
     expect(params).toContain(JSON.stringify({ starred: 1 }))
     expect(params).toContain('analyst')
@@ -143,6 +153,7 @@ describe('PostgresAuditLogRepository', () => {
 
     const params = pool.query.mock.calls[0][1] as unknown[]
     expect(params).toEqual([
+      'public',
       'star',
       'variant_annotation',
       '1:100:A:G',
@@ -168,6 +179,7 @@ describe('PostgresAuditLogRepository', () => {
 
     const params = pool.query.mock.calls[0][1] as unknown[]
     expect(params).toEqual([
+      'public',
       'comment_add',
       'case_variant_annotation',
       'case:1:variant:2',

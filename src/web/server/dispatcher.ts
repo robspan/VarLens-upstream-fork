@@ -32,6 +32,7 @@ import { toSerializableError } from '../../main/ipc/serializable-error'
 import { isReadTaskType, isWriteTaskType, toTaskDomain } from './task-types'
 import { buildAnalysisGroupOverrides } from './routes/analysis-groups'
 import { buildAnnotationOverrides } from './routes/annotations'
+import { buildAuditLogOverrides } from './routes/audit-log'
 import { buildAuthOverrides } from './routes/auth'
 import { buildBatchImportOverrides } from './routes/batch-import'
 import { buildCaseMetadataOverrides } from './routes/case-metadata'
@@ -145,6 +146,7 @@ function buildOverrides(): Record<string, OverrideHandler> {
     ...buildAuthOverrides(),
     ...buildAnalysisGroupOverrides(),
     ...buildAnnotationOverrides(),
+    ...buildAuditLogOverrides(),
     ...buildBatchImportOverrides(),
     ...buildCaseMetadataOverrides(),
     ...buildCasesOverrides(),

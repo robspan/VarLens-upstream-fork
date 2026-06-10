@@ -431,8 +431,10 @@ describe('PostgresStorageSession', () => {
       })
     ).resolves.toBeUndefined()
 
-    expect(pool.query.mock.calls[0][0]).toContain('"phase9_audit"."audit_log"')
-    expect(pool.query.mock.calls[1][0]).toContain('"phase9_audit"."audit_log"')
+    expect(pool.query.mock.calls[0][0]).toContain('varlens_audit."audit_log"')
+    expect(pool.query.mock.calls[0][1]).toContain('phase9_audit')
+    expect(pool.query.mock.calls[1][0]).toContain('varlens_audit."audit_log"')
+    expect(pool.query.mock.calls[1][1]).toContain('phase9_audit')
   })
 })
 

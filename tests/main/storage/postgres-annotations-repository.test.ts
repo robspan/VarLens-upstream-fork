@@ -187,8 +187,9 @@ describe('PostgresAnnotationsRepository', () => {
     expect(query).toHaveBeenNthCalledWith(1, 'BEGIN')
     expect(query).toHaveBeenNthCalledWith(
       4,
-      expect.stringContaining('INSERT INTO "public"."audit_log"'),
+      expect.stringContaining('INSERT INTO varlens_audit."audit_log"'),
       [
+        'public',
         'acmg_classify',
         'variant_annotation',
         '1:12345:A:G',
@@ -474,8 +475,9 @@ describe('PostgresAnnotationsRepository', () => {
 
     expect(query).toHaveBeenNthCalledWith(
       4,
-      expect.stringContaining('INSERT INTO "public"."audit_log"'),
+      expect.stringContaining('INSERT INTO varlens_audit."audit_log"'),
       [
+        'public',
         'acmg_classify',
         'case_variant_annotation',
         'case:2:variant:3',

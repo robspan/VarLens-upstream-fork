@@ -20,6 +20,41 @@ Keep each team or project in its own database or schema unless your governance m
 
 Store credentials in the operating system credential store where available. Do not put passwords, connection strings with embedded secrets, private keys, or certificate material in shared tickets, screenshots, exported diagnostics, or project notes.
 
+## Audit Trail
+
+VarLens keeps its audit trail (clinical change history, logins, API access) in a shared `varlens_audit` schema, separate from the per-project workspace schemas. Audit rows therefore survive the deletion of a project schema, and the table rejects `UPDATE`, `DELETE`, and `TRUNCATE` through database triggers. In the VarLens web UI, audit-log entries are visible to administrator accounts only.
+
+Protection comes in two tiers, and the difference matters for compliance claims:
+
+| Tier | Applied by | Protects against |
+|------|-----------|------------------|
+| 1 — append-only triggers | Automatically, by VarLens schema migrations | Application bugs, SQL injection through the application role, accidental mutation |
+| 2 — ownership separation | The operator, once per database (see below) | Misuse of the application credential itself: with Tier 2, that role cannot drop the triggers or alter the table |
+
+A fresh deployment is at Tier 1. **Statements about the audit trail being tamper-proof (Revisionssicherheit) require Tier 2.** To apply it, run once per database with a superuser connection, after the application has started at least once (so migrations have run):
+
+```bash
+VARLENS_PG_ADMIN_URL=postgres://postgres:...@db.example.org/varlens \
+  scripts/postgres/provision-audit-owner.sh varlens   # app role name
+```
+
+This transfers ownership of the audit schema to a dedicated `varlens_audit_owner` role and reduces the application role to `INSERT` + `SELECT`.
+
+### Retention
+
+Audit rows include staff activity data, so storage-limitation rules apply to them independently of the clinical data. Retention is enforced with a separate script that must run with the admin credential — the application role cannot delete audit rows by design:
+
+```bash
+VARLENS_PG_ADMIN_URL=postgres://postgres:...@db.example.org/varlens \
+VARLENS_AUDIT_CLINICAL_RETENTION_DAYS=3650 \
+VARLENS_AUDIT_ACCESS_RETENTION_DAYS=730 \
+  scripts/postgres/audit-retention.sh
+```
+
+The defaults (10 years for clinical change events, 2 years for access/login events) are starting points, not legal advice: **retention periods are your organization's data-protection policy and must be confirmed by your data-protection officer** before the script is put on a schedule. Scheduling (cron, systemd timer, or your platform's job runner) is the operator's choice.
+
+Include the `varlens_audit` schema in backups; it is not covered by per-workspace schema dumps.
+
 ## SSL and Certificates
 
 Hosted deployments should use SSL with certificate verification. In VarLens profile terms, prefer `require-verify` for any networked PostgreSQL service. Use `disable` only for trusted local development environments or isolated test containers.

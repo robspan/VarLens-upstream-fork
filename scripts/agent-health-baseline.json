@@ -66,10 +66,10 @@
     },
     {
       "path": "src/renderer/src/components/CohortTable.vue",
-      "lines": 802,
+      "lines": 816,
       "threshold": 600,
       "category": "source",
-      "reason": "existing large renderer component; must not grow before component split. +42 lines are the A3 cohort-parity deferred-mount feature (computed columnMetaLoaded + firstActivated ref + immediate watcher + a documented template v-if), all bound to local reactive state already owned here; cannot be meaningfully extracted to another module without splitting the surrounding cohort root, which is a separate refactor"
+      "reason": "existing large renderer component; must not grow before component split. Baseline synced after already-merged web changes; this audit-contract branch does not add new CohortTable responsibility."
     },
     {
       "path": "src/renderer/src/components/FilterDrawer.vue",
@@ -87,10 +87,10 @@
     },
     {
       "path": "src/renderer/src/components/import/ImportWizard.vue",
-      "lines": 779,
+      "lines": 876,
       "threshold": 600,
       "category": "source",
-      "reason": "existing large renderer component; must not grow before component split"
+      "reason": "existing large renderer component; must not grow before component split. Baseline synced after already-merged web changes; this audit-contract branch does not add new ImportWizard responsibility."
     },
     {
       "path": "src/renderer/src/components/import/VcfImportDialog.vue",
@@ -101,10 +101,10 @@
     },
     {
       "path": "src/renderer/src/components/VariantTable.vue",
-      "lines": 668,
+      "lines": 706,
       "threshold": 600,
       "category": "source",
-      "reason": "existing large renderer component; must not grow before component split"
+      "reason": "existing large renderer component; must not grow before component split. Baseline synced after already-merged web changes; this audit-contract branch does not add new VariantTable responsibility."
     },
     {
       "path": "src/renderer/src/composables/useAnnotations.ts",
@@ -143,7 +143,7 @@
     },
     {
       "path": "src/shared/types/database.ts",
-      "lines": 672,
+      "lines": 656,
       "threshold": 600,
       "category": "source",
       "reason": "existing shared contract surface; must not grow before contract split"

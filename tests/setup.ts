@@ -3,13 +3,65 @@
 
 import { vi, afterEach } from 'vitest'
 
+let fallbackLocalStorage: Storage | null = null
+
+function createMemoryStorage(): Storage {
+  const store = new Map<string, string>()
+  return {
+    get length() {
+      return store.size
+    },
+    clear: vi.fn(() => {
+      store.clear()
+    }),
+    getItem: vi.fn((key: string) => store.get(key) ?? null),
+    key: vi.fn((index: number) => Array.from(store.keys())[index] ?? null),
+    removeItem: vi.fn((key: string) => {
+      store.delete(key)
+    }),
+    setItem: vi.fn((key: string, value: string) => {
+      store.set(key, String(value))
+    })
+  }
+}
+
+function resolveWindowLocalStorage(): Storage | undefined {
+  try {
+    return window.localStorage
+  } catch {
+    return undefined
+  }
+}
+
 // Clear all mocks after each test to prevent memory leaks (Vitest 4.0.18+)
 afterEach(() => {
+  fallbackLocalStorage?.clear()
   vi.clearAllMocks()
 })
 
 // Mock visualViewport (required by VOverlay/VDialog)
 if (typeof window !== 'undefined') {
+  const localStorageMock = resolveWindowLocalStorage() ?? createMemoryStorage()
+  if (resolveWindowLocalStorage() === undefined) {
+    fallbackLocalStorage = localStorageMock
+  }
+
+  if (resolveWindowLocalStorage() === undefined) {
+    Object.defineProperty(window, 'localStorage', {
+      value: localStorageMock,
+      writable: true,
+      configurable: true
+    })
+  }
+
+  if (typeof globalThis.localStorage === 'undefined') {
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: localStorageMock,
+      writable: true,
+      configurable: true
+    })
+  }
+
   Object.defineProperty(window, 'visualViewport', {
     value: {
       width: 1024,

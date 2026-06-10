@@ -104,6 +104,30 @@ describe('PostgresAuditLogRepository', () => {
     expect(params).toContain(JSON.stringify({ source: 'test' }))
   })
 
+  it('appends sanitized api read events', async () => {
+    const pool = { query: vi.fn().mockResolvedValue({ rows: [] }) }
+    const repo = new PostgresAuditLogRepository(pool as never, 'public')
+
+    await repo.append({
+      action_type: 'api_read',
+      entity_type: 'api_call',
+      entity_key: 'cases:query',
+      new_value: {
+        success: true,
+        method: 'cases:query',
+        payload: { patient_name: 'hidden' }
+      },
+      user_name: 'analyst',
+      metadata: { source: 'web-dispatcher' }
+    })
+
+    const params = pool.query.mock.calls[0][1] as unknown[]
+    expect(params).toContain('api_read')
+    expect(params).toContain('api_call')
+    expect(params).toContain(JSON.stringify({ success: true, method: 'cases:query' }))
+    expect(JSON.stringify(params)).not.toContain('patient_name')
+  })
+
   it('sanitizes pre-serialized audit values and SQL nulls', async () => {
     const pool = { query: vi.fn().mockResolvedValue({ rows: [] }) }
     const repo = new PostgresAuditLogRepository(pool as never, 'public')

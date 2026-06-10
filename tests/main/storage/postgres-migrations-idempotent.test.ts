@@ -194,6 +194,7 @@ describe.skipIf(!RUN)('Postgres migrations: real-instance idempotency', () => {
         (action_type, entity_type, entity_key, new_value, user_name, metadata_json)
        VALUES
         ('auth_login_success', 'user_account', 'admin', '{"success":true}'::jsonb, 'admin', '{"source":"web-auth"}'::jsonb),
+        ('api_read', 'api_call', 'cases:query', '{"success":true,"method":"cases:query"}'::jsonb, 'admin', '{"source":"web-dispatcher"}'::jsonb),
         ('api_write', 'api_call', 'tags:create', '{"success":true,"method":"tags:create"}'::jsonb, 'admin', '{"source":"web-dispatcher"}'::jsonb)`
     )
 

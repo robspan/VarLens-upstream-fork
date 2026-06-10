@@ -460,6 +460,113 @@ describe('web dispatcher adapters: variants, transcripts, and errors', () => {
     await app.close()
   })
 
+  test('dispatcher audits reads by default and skips explicit technical read exceptions', async () => {
+    const { deps, execute, writeExecute } = makeDeps()
+    const app = fastify()
+    app.setValidatorCompiler(validatorCompiler)
+    app.setSerializerCompiler(serializerCompiler)
+    app.addHook('preHandler', async (request) => {
+      request.session = {
+        user: { id: 1, username: 'admin', role: 'admin', passwordChangedAt: null }
+      } as never
+    })
+    registerDispatcher(app, deps, buildDispatcher(deps).overrides)
+
+    const auditedRead = await app.inject({
+      method: 'POST',
+      url: '/api/tags/list',
+      payload: { args: [] }
+    })
+    const auditedOverrideRead = await app.inject({
+      method: 'POST',
+      url: '/api/cases/list',
+      payload: { args: [] }
+    })
+    const technicalRead = await app.inject({
+      method: 'POST',
+      url: '/api/database/getOverview',
+      payload: { args: [] }
+    })
+    const authSessionRead = await app.inject({
+      method: 'POST',
+      url: '/api/auth/currentUser',
+      payload: { args: [] }
+    })
+
+    expect(auditedRead.statusCode).toBe(200)
+    expect(auditedOverrideRead.statusCode).toBe(200)
+    expect(technicalRead.statusCode).toBe(200)
+    expect(authSessionRead.statusCode).toBe(200)
+    expect(execute).toHaveBeenCalledWith({ type: 'tags:list', params: [] })
+    expect(execute).toHaveBeenCalledWith({ type: 'database:overview', params: [] })
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'audit:append',
+      params: [
+        {
+          action_type: 'api_read',
+          entity_type: 'api_call',
+          entity_key: 'tags:list',
+          old_value: null,
+          new_value: { success: true, method: 'tags:list' },
+          user_name: 'admin',
+          metadata: { source: 'web-dispatcher' }
+        }
+      ]
+    })
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'audit:append',
+      params: [
+        {
+          action_type: 'api_read',
+          entity_type: 'api_call',
+          entity_key: 'cases:list',
+          old_value: null,
+          new_value: { success: true, method: 'cases:list' },
+          user_name: 'admin',
+          metadata: { source: 'web-dispatcher' }
+        }
+      ]
+    })
+    const auditMethods = writeExecute.mock.calls
+      .map(([task]) => task)
+      .filter((task) => task.type === 'audit:append')
+      .map((task) => task.params[0].entity_key)
+    expect(auditMethods).toEqual(['tags:list', 'cases:list'])
+    await app.close()
+  })
+
+  test('dispatcher fails closed when read audit persistence fails', async () => {
+    const { deps, execute, writeExecute } = makeDeps()
+    writeExecute.mockImplementation(async (task) => {
+      if (task.type === 'audit:append') throw new Error('audit unavailable')
+      return { task }
+    })
+    const app = fastify()
+    app.setValidatorCompiler(validatorCompiler)
+    app.setSerializerCompiler(serializerCompiler)
+    app.addHook('preHandler', async (request) => {
+      request.session = {
+        user: { id: 1, username: 'admin', role: 'admin', passwordChangedAt: null }
+      } as never
+    })
+    registerDispatcher(app, deps, buildDispatcher(deps).overrides)
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tags/list',
+      payload: { args: [] }
+    })
+
+    expect(response.statusCode).toBe(500)
+    expect(response.json()).toMatchObject({
+      message: 'audit unavailable',
+      userMessage: 'An unexpected error occurred. Please try again.'
+    })
+    expect(execute).toHaveBeenCalledWith({ type: 'tags:list', params: [] })
+    expect(writeExecute).toHaveBeenCalledWith(expect.objectContaining({ type: 'audit:append' }))
+    await app.close()
+  })
+
   test('dispatcher does not audit failed writes and fails closed when audit persistence fails', async () => {
     const failedWrite = makeDeps()
     failedWrite.writeExecute.mockImplementation(async (task) => {

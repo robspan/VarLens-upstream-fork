@@ -50,7 +50,12 @@ import { buildTranscriptOverrides } from './routes/transcripts'
 import { buildVepOverrides } from './routes/vep'
 import { buildVariantOverrides } from './routes/variants'
 import type { DispatcherDeps, InvokeBody, OverrideHandler } from './routes/types'
-import { recordApiWriteAudit, shouldAuditOverrideWrite } from './audit'
+import {
+  recordApiReadAudit,
+  recordApiWriteAudit,
+  shouldAuditApiRead,
+  shouldAuditOverrideWrite
+} from './audit'
 import {
   DispatcherErrorResponseSchema,
   DispatcherInvokeBodySchema,
@@ -254,13 +259,27 @@ export function registerDispatcher(
             recordApiWriteAudit(deps, { key, username: request.session?.user?.username })
           )
           if (reply.statusCode >= 400) return auditResult
+        } else if (reply.statusCode < 400 && shouldAuditApiRead(key)) {
+          const auditResult = await invokeAsIpcResult(reply, () =>
+            recordApiReadAudit(deps, { key, username: request.session?.user?.username })
+          )
+          if (reply.statusCode >= 400) return auditResult
         }
         return result
       }
 
       if (isReadTaskType(key)) {
         const task = { type: key, params: args } as StorageReadTask
-        return await invokeAsIpcResult(reply, () => deps.session.getReadExecutor().execute(task))
+        const result = await invokeAsIpcResult(reply, () =>
+          deps.session.getReadExecutor().execute(task)
+        )
+        if (reply.statusCode < 400 && shouldAuditApiRead(key)) {
+          const auditResult = await invokeAsIpcResult(reply, () =>
+            recordApiReadAudit(deps, { key, username: request.session?.user?.username })
+          )
+          if (reply.statusCode >= 400) return auditResult
+        }
+        return result
       }
 
       if (isWriteTaskType(key)) {

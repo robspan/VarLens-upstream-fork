@@ -13,6 +13,23 @@ const AUDITED_OVERRIDE_WRITE_METHODS = new Set<string>([
   'batch-import:cleanupZipTemp'
 ])
 
+const READ_AUDIT_EXCLUDED_METHODS = new Set<string>([
+  'auth:login',
+  'auth:logout',
+  'auth:currentUser',
+  'auth:isAccountsEnabled',
+  'auth:changePassword',
+  'auth:createUser',
+  'auth:deactivateUser',
+  'auth:resetPassword',
+  'database:capabilities',
+  'database:health',
+  'database:info',
+  'database:getOverview',
+  'database:recentList',
+  'database:overview'
+])
+
 interface WebAuditEvent {
   action_type: AuditActionType
   entity_type: AuditEntityType
@@ -41,6 +58,10 @@ async function appendWebAudit(deps: DispatcherDeps, event: WebAuditEvent): Promi
 
 export function shouldAuditOverrideWrite(key: string): boolean {
   return AUDITED_OVERRIDE_WRITE_METHODS.has(key)
+}
+
+export function shouldAuditApiRead(key: string): boolean {
+  return !READ_AUDIT_EXCLUDED_METHODS.has(key)
 }
 
 export async function recordAuthAudit(
@@ -87,6 +108,20 @@ export async function recordApiWriteAudit(
 ): Promise<void> {
   await appendWebAudit(deps, {
     action_type: 'api_write',
+    entity_type: 'api_call',
+    entity_key: params.key,
+    user_name: params.username ?? null,
+    new_value: { success: true, method: params.key },
+    metadata: { source: 'web-dispatcher' }
+  })
+}
+
+export async function recordApiReadAudit(
+  deps: DispatcherDeps,
+  params: { key: string; username?: string | null }
+): Promise<void> {
+  await appendWebAudit(deps, {
+    action_type: 'api_read',
     entity_type: 'api_call',
     entity_key: params.key,
     user_name: params.username ?? null,

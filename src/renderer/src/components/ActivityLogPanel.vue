@@ -113,6 +113,7 @@ function formatAction(action: AuditActionType): string {
     auth_password_change: 'Password changed',
     auth_password_reset: 'Password reset',
     auth_user_deactivate: 'User deactivated',
+    api_read: 'API read',
     api_write: 'API write'
   }
   return labels[action] ?? action

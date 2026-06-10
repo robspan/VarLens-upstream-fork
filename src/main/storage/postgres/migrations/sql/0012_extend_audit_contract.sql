@@ -18,6 +18,7 @@ ALTER TABLE "__schema__"."audit_log"
     'auth_password_change',
     'auth_password_reset',
     'auth_user_deactivate',
+    'api_read',
     'api_write'
   ));
 

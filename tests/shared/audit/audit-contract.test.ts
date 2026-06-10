@@ -50,11 +50,12 @@ describe('audit contract', () => {
       serializeAuditContractValue({
         success: true,
         role: 'admin',
-        method: 'auth:login',
+        method: 'cases:query',
+        audited: true,
         password: 'secret',
         payload: { patient: 'hidden' }
       })
-    ).toBe(JSON.stringify({ success: true, role: 'admin', method: 'auth:login' }))
+    ).toBe(JSON.stringify({ success: true, role: 'admin', method: 'cases:query', audited: true }))
   })
 
   it('keeps only low-cardinality metadata', () => {

@@ -62,6 +62,7 @@ describe('Postgres migration definitions', () => {
     )
     expect(auditContractMigration?.name).toBe('extend_audit_contract')
     expect(auditContractMigration?.sql).toContain('auth_login_success')
+    expect(auditContractMigration?.sql).toContain('api_read')
     expect(auditContractMigration?.sql).toContain('api_call')
   })
 })

@@ -18,6 +18,7 @@ export type AuditActionType =
   | 'auth_password_change'
   | 'auth_password_reset'
   | 'auth_user_deactivate'
+  | 'api_read'
   | 'api_write'
 
 export type AuditEntityType =
@@ -78,6 +79,8 @@ function sanitizeAuditField(key: string, value: unknown): unknown {
     case 'method':
     case 'reason':
       return typeof value === 'string' && value.length <= 120 ? value : undefined
+    case 'audited':
+      return value === false ? false : true
     default:
       return undefined
   }

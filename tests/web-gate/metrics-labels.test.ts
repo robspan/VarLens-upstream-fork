@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'vitest'
 
-import { AppMetrics, resolveMetricsRoute, startMetricsServer } from '../../src/web/server/metrics'
+import {
+  AppMetrics,
+  resolveMetricsIpc,
+  resolveMetricsRoute,
+  startMetricsServer
+} from '../../src/web/server/metrics'
 
 describe('web metrics route labels', () => {
   test('uses documented OpenAPI paths as stable API route labels', () => {
@@ -13,6 +18,16 @@ describe('web metrics route labels', () => {
     expect(resolveMetricsRoute('POST', '/api/not-a-domain/not-a-method')).toBe('unknown')
     expect(resolveMetricsRoute('GET', '/api/cases/list')).toBe('unknown')
     expect(resolveMetricsRoute('POST', '/api/cases/list/extra')).toBe('unknown')
+  })
+
+  test('uses documented dispatcher paths as stable IPC labels', () => {
+    expect(resolveMetricsIpc('POST', '/api/auth/login')).toBe('auth:login')
+    expect(resolveMetricsIpc('POST', '/api/case-metadata/createCohort')).toBe(
+      'case-metadata:createCohort'
+    )
+    expect(resolveMetricsIpc('POST', '/api/not-a-domain/not-a-method')).toBe('unknown')
+    expect(resolveMetricsIpc('GET', '/api/cases/list')).toBeUndefined()
+    expect(resolveMetricsIpc('POST', '/api/cases/list/extra')).toBeUndefined()
   })
 
   test('renders Prometheus text with app and environment labels', () => {
@@ -31,14 +46,38 @@ describe('web metrics route labels', () => {
     expect(text).toContain('process_resident_memory_bytes')
   })
 
+  test('renders IPC metrics with stable method labels', () => {
+    const metrics = new AppMetrics({ app: 'varlens', environment: 'dev' })
+    metrics.beginIpc('cases:list')
+    metrics.endIpc('cases:list', 'success', 0.021)
+
+    const text = metrics.metricsText()
+    expect(text).toContain(
+      'varlens_ipc_requests_total{app="varlens",environment="dev",ipc="cases:list",status="success"} 1'
+    )
+    expect(text).toContain(
+      'varlens_ipc_duration_seconds_bucket{app="varlens",environment="dev",ipc="cases:list",le="0.025",status="success"} 1'
+    )
+    expect(text).toContain(
+      'varlens_ipc_in_flight{app="varlens",environment="dev",ipc="cases:list"} 0'
+    )
+    expect(text).toMatch(
+      /varlens_ipc_last_success_timestamp_seconds\{app="varlens",environment="dev",ipc="cases:list"\} \d+/
+    )
+  })
+
   test('escapes line breaks in label values', () => {
     const metrics = new AppMetrics({ app: 'varlens', environment: 'prod\ncanary' })
     metrics.beginRequest('POST', '/api/auth/login')
     metrics.endRequest('POST', '/api/auth/login', 200, 0.021)
+    metrics.beginIpc('cases\nlist')
+    metrics.endIpc('cases\nlist', 'error', 0.021)
 
     const text = metrics.metricsText()
     expect(text).toContain('environment="prod\\ncanary"')
+    expect(text).toContain('ipc="cases\\nlist"')
     expect(text).not.toContain('environment="prod\ncanary"')
+    expect(text).not.toContain('ipc="cases\nlist"')
   })
 
   test('rejects invalid metrics scrape paths before binding', async () => {

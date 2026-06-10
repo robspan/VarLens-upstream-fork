@@ -220,6 +220,7 @@ export function registerDispatcher(
 
       const taskDomain = toTaskDomain(domain)
       const key = `${taskDomain}:${method}`
+      const override = overrides[key]
 
       // Pre-rotation gate. A session that still carries
       // must_change_password gets exactly two methods reachable —
@@ -243,7 +244,6 @@ export function registerDispatcher(
         } satisfies SerializableError
       }
 
-      const override = overrides[key]
       if (override !== undefined) {
         return await invokeAsIpcResult(reply, () => override.handle(args, request, reply, deps))
       }

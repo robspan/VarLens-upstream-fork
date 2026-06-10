@@ -381,4 +381,152 @@ describe('web dispatcher adapters: variants, transcripts, and errors', () => {
     expect(text).toContain('varlens_ipc_in_flight{app="varlens",environment="dev",ipc="unknown"} 0')
     await app.close()
   })
+
+  test('dispatcher audits successful web writes but does not expose audit append as API route', async () => {
+    const { deps, writeExecute } = makeDeps()
+    const app = fastify()
+    app.setValidatorCompiler(validatorCompiler)
+    app.setSerializerCompiler(serializerCompiler)
+    app.addHook('preHandler', async (request) => {
+      request.session = {
+        user: { id: 1, username: 'admin', role: 'admin', passwordChangedAt: null }
+      } as never
+    })
+    registerDispatcher(app, deps, buildDispatcher(deps).overrides)
+
+    const write = await app.inject({
+      method: 'POST',
+      url: '/api/tags/create',
+      payload: { args: ['Reviewed', '#336699'] }
+    })
+    const overrideWrite = await app.inject({
+      method: 'POST',
+      url: '/api/transcripts/switch',
+      payload: { args: [9, 'NM_000059.4'] }
+    })
+    const forgedAudit = await app.inject({
+      method: 'POST',
+      url: '/api/audit/append',
+      payload: {
+        args: [
+          {
+            action_type: 'api_write',
+            entity_type: 'api_call',
+            entity_key: 'forged'
+          }
+        ]
+      }
+    })
+
+    expect(write.statusCode).toBe(200)
+    expect(overrideWrite.statusCode).toBe(200)
+    expect(forgedAudit.statusCode).toBe(404)
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'tags:create',
+      params: ['Reviewed', '#336699']
+    })
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'transcripts:switch',
+      params: [9, 'NM_000059.4']
+    })
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'audit:append',
+      params: [
+        {
+          action_type: 'api_write',
+          entity_type: 'api_call',
+          entity_key: 'tags:create',
+          old_value: null,
+          new_value: { success: true, method: 'tags:create' },
+          user_name: 'admin',
+          metadata: { source: 'web-dispatcher' }
+        }
+      ]
+    })
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'audit:append',
+      params: [
+        {
+          action_type: 'api_write',
+          entity_type: 'api_call',
+          entity_key: 'transcripts:switch',
+          old_value: null,
+          new_value: { success: true, method: 'transcripts:switch' },
+          user_name: 'admin',
+          metadata: { source: 'web-dispatcher' }
+        }
+      ]
+    })
+    await app.close()
+  })
+
+  test('dispatcher does not audit failed writes and fails closed when audit persistence fails', async () => {
+    const failedWrite = makeDeps()
+    failedWrite.writeExecute.mockImplementation(async (task) => {
+      if (task.type === 'tags:create') throw new Error('write unavailable')
+      return { task }
+    })
+    const failedWriteApp = fastify()
+    failedWriteApp.setValidatorCompiler(validatorCompiler)
+    failedWriteApp.setSerializerCompiler(serializerCompiler)
+    failedWriteApp.addHook('preHandler', async (request) => {
+      request.session = {
+        user: { id: 1, username: 'admin', role: 'admin', passwordChangedAt: null }
+      } as never
+    })
+    registerDispatcher(
+      failedWriteApp,
+      failedWrite.deps,
+      buildDispatcher(failedWrite.deps).overrides
+    )
+
+    const failedWriteResponse = await failedWriteApp.inject({
+      method: 'POST',
+      url: '/api/tags/create',
+      payload: { args: ['Reviewed', '#336699'] }
+    })
+    expect(failedWriteResponse.statusCode).toBe(500)
+    expect(failedWrite.writeExecute.mock.calls.some(([task]) => task.type === 'audit:append')).toBe(
+      false
+    )
+    await failedWriteApp.close()
+
+    const failedAudit = makeDeps()
+    failedAudit.writeExecute.mockImplementation(async (task) => {
+      if (task.type === 'audit:append') throw new Error('audit unavailable')
+      return { task }
+    })
+    const failedAuditApp = fastify()
+    failedAuditApp.setValidatorCompiler(validatorCompiler)
+    failedAuditApp.setSerializerCompiler(serializerCompiler)
+    failedAuditApp.addHook('preHandler', async (request) => {
+      request.session = {
+        user: { id: 1, username: 'admin', role: 'admin', passwordChangedAt: null }
+      } as never
+    })
+    registerDispatcher(
+      failedAuditApp,
+      failedAudit.deps,
+      buildDispatcher(failedAudit.deps).overrides
+    )
+
+    const failedAuditResponse = await failedAuditApp.inject({
+      method: 'POST',
+      url: '/api/tags/create',
+      payload: { args: ['Reviewed', '#336699'] }
+    })
+    expect(failedAuditResponse.statusCode).toBe(500)
+    expect(failedAuditResponse.json()).toMatchObject({
+      message: 'audit unavailable',
+      userMessage: 'An unexpected error occurred. Please try again.'
+    })
+    expect(failedAudit.writeExecute).toHaveBeenCalledWith({
+      type: 'tags:create',
+      params: ['Reviewed', '#336699']
+    })
+    expect(failedAudit.writeExecute).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'audit:append' })
+    )
+    await failedAuditApp.close()
+  })
 })

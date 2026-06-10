@@ -106,7 +106,14 @@ function formatAction(action: AuditActionType): string {
     comment_edit: 'Comment edited',
     comment_delete: 'Comment deleted',
     tag_assign: 'Tag assigned',
-    tag_remove: 'Tag removed'
+    tag_remove: 'Tag removed',
+    auth_login_success: 'Login succeeded',
+    auth_login_failure: 'Login failed',
+    auth_logout: 'Logout',
+    auth_password_change: 'Password changed',
+    auth_password_reset: 'Password reset',
+    auth_user_deactivate: 'User deactivated',
+    api_write: 'API write'
   }
   return labels[action] ?? action
 }

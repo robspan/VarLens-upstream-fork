@@ -6,6 +6,9 @@
  */
 
 import type { AcmgClassification } from '../config/domain.config'
+import type { AuditActionType, AuditEntityType } from '../audit/audit-contract'
+
+export type { AuditActionType, AuditEntityType } from '../audit/audit-contract'
 
 export interface Tag {
   id: number
@@ -39,19 +42,6 @@ export interface CaseVariantAnnotation {
   created_at: number
   updated_at: number
 }
-
-export type AuditActionType =
-  | 'acmg_classify'
-  | 'acmg_evidence_update'
-  | 'star'
-  | 'unstar'
-  | 'comment_add'
-  | 'comment_edit'
-  | 'comment_delete'
-  | 'tag_assign'
-  | 'tag_remove'
-
-export type AuditEntityType = 'variant_annotation' | 'case_variant_annotation'
 
 export interface AuditLogEntry {
   id: number

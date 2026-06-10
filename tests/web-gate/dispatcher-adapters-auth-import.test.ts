@@ -2,10 +2,11 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import { jobRunner } from '../../src/main/services/jobs/runner'
 import { ErrorCode } from '../../src/shared/types/errors'
+import { PasswordPolicyError } from '../../src/web/auth/PostgresWebAuthService'
 import { buildDispatcher } from '../../src/web/server/dispatcher'
 import { stageExistingFileUpload } from '../../src/web/server/routes/upload-staging'
 import { makeDeps } from './helpers/dispatcher-adapters'
@@ -30,6 +31,242 @@ describe('web dispatcher adapters: auth and import', () => {
     expect(reply.code).not.toHaveBeenCalled()
     expect(result).toBe(false)
     expect(deps.authService.isAccountsEnabled).toHaveBeenCalledTimes(1)
+  })
+
+  test('auth.login records success and failure audit events without credentials', async () => {
+    const { deps, reply, writeExecute } = makeDeps()
+    deps.authService.authenticate = async (username: string, password: string) =>
+      password === 'correct'
+        ? {
+            success: true,
+            user: {
+              id: 1,
+              username,
+              role: 'admin',
+              password_changed_at: '2026-06-10T12:00:00.000Z'
+            },
+            mustChangePassword: false
+          }
+        : { success: false, user: null }
+    const { overrides } = buildDispatcher(deps)
+    const request = { session: {} }
+
+    await overrides['auth:login'].handle(
+      ['admin', 'correct'],
+      request as never,
+      reply as never,
+      deps
+    )
+    await overrides['auth:login'].handle(
+      ['admin', 'wrong'],
+      { session: {} } as never,
+      reply as never,
+      deps
+    )
+
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'audit:append',
+      params: [
+        expect.objectContaining({
+          action_type: 'auth_login_success',
+          entity_type: 'user_account',
+          entity_key: 'admin',
+          user_name: 'admin',
+          new_value: { success: true, role: 'admin', must_change_password: false }
+        })
+      ]
+    })
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'audit:append',
+      params: [
+        expect.objectContaining({
+          action_type: 'auth_login_failure',
+          entity_type: 'user_account',
+          entity_key: 'login-attempt',
+          user_name: null,
+          new_value: { success: false, reason: 'invalid-credentials' }
+        })
+      ]
+    })
+    expect(JSON.stringify(writeExecute.mock.calls)).not.toContain('correct')
+    expect(JSON.stringify(writeExecute.mock.calls)).not.toContain('wrong')
+  })
+
+  test('auth.login records locked failures without leaking submitted usernames', async () => {
+    const { deps, reply, writeExecute } = makeDeps()
+    deps.authService.authenticate = vi.fn(async () => ({
+      success: false,
+      user: null,
+      locked: true
+    }))
+    const { overrides } = buildDispatcher(deps)
+
+    await overrides['auth:login'].handle(
+      ['admin@example.test', 'wrong'],
+      { session: {} } as never,
+      reply as never,
+      deps
+    )
+
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'audit:append',
+      params: [
+        expect.objectContaining({
+          action_type: 'auth_login_failure',
+          entity_type: 'user_account',
+          entity_key: 'login-attempt',
+          user_name: null,
+          new_value: { success: false, reason: 'locked' }
+        })
+      ]
+    })
+    expect(JSON.stringify(writeExecute.mock.calls)).not.toContain('admin@example.test')
+    expect(JSON.stringify(writeExecute.mock.calls)).not.toContain('wrong')
+  })
+
+  test('auth.logout records the authenticated session user', async () => {
+    const { deps, reply, writeExecute } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+    const request = {
+      session: {
+        user: { id: 1, username: 'admin', role: 'admin', passwordChangedAt: null },
+        delete: vi.fn()
+      }
+    }
+
+    const result = await overrides['auth:logout'].handle([], request as never, reply as never, deps)
+
+    expect(result).toEqual({ ok: true })
+    expect(request.session.delete).toHaveBeenCalledTimes(1)
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'audit:append',
+      params: [
+        expect.objectContaining({
+          action_type: 'auth_logout',
+          entity_type: 'user_account',
+          entity_key: 'admin',
+          user_name: 'admin',
+          new_value: { success: true }
+        })
+      ]
+    })
+  })
+
+  test('auth.changePassword records success, old-password failure, and policy failure without secrets', async () => {
+    const { deps, reply, writeExecute } = makeDeps()
+    deps.authService.changePassword = vi
+      .fn()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockRejectedValueOnce(new PasswordPolicyError('too-short', 'too short'))
+    deps.authService.getUser = vi.fn(async (username: string) => ({
+      id: 1,
+      username,
+      role: 'admin',
+      password_changed_at: '2026-06-10T12:00:00.000Z'
+    }))
+    const { overrides } = buildDispatcher(deps)
+    const request = {
+      session: {
+        user: { id: 1, username: 'admin', role: 'admin', passwordChangedAt: null },
+        mustChangePassword: true
+      }
+    }
+
+    await overrides['auth:changePassword'].handle(
+      ['old', 'new-password-1'],
+      request as never,
+      reply as never,
+      deps
+    )
+    await overrides['auth:changePassword'].handle(
+      ['bad-old', 'new-password-2'],
+      request as never,
+      reply as never,
+      deps
+    )
+    await overrides['auth:changePassword'].handle(
+      ['old', 'short'],
+      request as never,
+      reply as never,
+      deps
+    )
+
+    const audits = writeExecute.mock.calls
+      .map(([task]) => task)
+      .filter((task) => task.type === 'audit:append')
+      .map((task) => task.params[0])
+    expect(audits).toEqual([
+      expect.objectContaining({
+        action_type: 'auth_password_change',
+        entity_key: 'admin',
+        user_name: 'admin',
+        new_value: { success: true }
+      }),
+      expect.objectContaining({
+        action_type: 'auth_password_change',
+        entity_key: 'admin',
+        user_name: 'admin',
+        new_value: { success: false, reason: 'old-password-invalid' }
+      }),
+      expect.objectContaining({
+        action_type: 'auth_password_change',
+        entity_key: 'admin',
+        user_name: 'admin',
+        new_value: { success: false, reason: 'too-short' }
+      })
+    ])
+    expect(JSON.stringify(writeExecute.mock.calls)).not.toContain('new-password')
+    expect(JSON.stringify(writeExecute.mock.calls)).not.toContain('bad-old')
+  })
+
+  test('auth.resetPassword and auth.deactivateUser record admin actions without new passwords', async () => {
+    const { deps, reply, writeExecute } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+    const request = {
+      session: {
+        user: { id: 1, username: 'admin', role: 'admin', passwordChangedAt: null }
+      }
+    }
+
+    await overrides['auth:resetPassword'].handle(
+      ['analyst', 'temporary-secret'],
+      request as never,
+      reply as never,
+      deps
+    )
+    await overrides['auth:deactivateUser'].handle(
+      ['analyst'],
+      request as never,
+      reply as never,
+      deps
+    )
+
+    expect(deps.authService.resetPassword).toHaveBeenCalledWith('analyst', 'temporary-secret')
+    expect(deps.authService.deactivateUser).toHaveBeenCalledWith('analyst')
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'audit:append',
+      params: [
+        expect.objectContaining({
+          action_type: 'auth_password_reset',
+          entity_key: 'analyst',
+          user_name: 'admin',
+          new_value: { success: true }
+        })
+      ]
+    })
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'audit:append',
+      params: [
+        expect.objectContaining({
+          action_type: 'auth_user_deactivate',
+          entity_key: 'analyst',
+          user_name: 'admin',
+          new_value: { success: true }
+        })
+      ]
+    })
+    expect(JSON.stringify(writeExecute.mock.calls)).not.toContain('temporary-secret')
   })
 
   test('import.start is disabled outside test mode unless operator enables server-path import', async () => {

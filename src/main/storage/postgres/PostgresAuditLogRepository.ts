@@ -7,6 +7,10 @@ import type {
 } from '../../../shared/types/database'
 import type { AuditAppendParams, AuditQueryParams, AuditQueryResult } from '../audit-log-types'
 import { quoteIdentifier } from './identifiers'
+import {
+  serializeAuditContractMetadata,
+  serializeAuditContractValue
+} from '../../../shared/audit/audit-contract'
 
 type AuditRow = Record<string, unknown>
 
@@ -18,11 +22,6 @@ function toNumber(value: unknown): number {
 
 function toNullableString(value: unknown): string | null {
   return value === null || value === undefined ? null : String(value)
-}
-
-function serializeAuditValue(value: unknown): string | null {
-  if (value === null || value === undefined) return null
-  return typeof value === 'string' ? value : JSON.stringify(value)
 }
 
 function toAuditLogEntry(row: AuditRow): AuditLogEntry {
@@ -95,10 +94,10 @@ export class PostgresAuditLogRepository {
         params.action_type,
         params.entity_type,
         params.entity_key,
-        serializeAuditValue(params.old_value),
-        serializeAuditValue(params.new_value),
+        serializeAuditContractValue(params.old_value),
+        serializeAuditContractValue(params.new_value),
         params.user_name ?? null,
-        serializeAuditValue(params.metadata)
+        serializeAuditContractMetadata(params.metadata)
       ]
     )
   }

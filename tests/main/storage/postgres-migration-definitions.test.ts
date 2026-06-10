@@ -4,7 +4,7 @@ import { POSTGRES_MIGRATIONS } from '../../../src/main/storage/postgres/migratio
 
 describe('Postgres migration definitions', () => {
   it('loads the PostgreSQL migrations with SQL and sha256 checksums', () => {
-    expect(POSTGRES_MIGRATIONS).toHaveLength(11)
+    expect(POSTGRES_MIGRATIONS).toHaveLength(12)
     expect(POSTGRES_MIGRATIONS.map((migration) => migration.version)).toEqual([
       '0001',
       '0002',
@@ -16,7 +16,8 @@ describe('Postgres migration definitions', () => {
       '0008',
       '0009',
       '0010',
-      '0011'
+      '0011',
+      '0012'
     ])
     expect(POSTGRES_MIGRATIONS.map((migration) => migration.name)).toEqual([
       'create_cases',
@@ -29,7 +30,8 @@ describe('Postgres migration definitions', () => {
       'create_users_and_settings',
       'idx_variants_coords',
       'cohort_summary',
-      'projects_registry'
+      'projects_registry',
+      'extend_audit_contract'
     ])
 
     for (const migration of POSTGRES_MIGRATIONS) {
@@ -54,5 +56,12 @@ describe('Postgres migration definitions', () => {
     expect(coordsMigration?.sql).toContain(
       'CREATE INDEX IF NOT EXISTS variants_coords\n  ON "__schema__"."variants" (chr, pos, ref, alt)'
     )
+
+    const auditContractMigration = POSTGRES_MIGRATIONS.find(
+      (migration) => migration.version === '0012'
+    )
+    expect(auditContractMigration?.name).toBe('extend_audit_contract')
+    expect(auditContractMigration?.sql).toContain('auth_login_success')
+    expect(auditContractMigration?.sql).toContain('api_call')
   })
 })

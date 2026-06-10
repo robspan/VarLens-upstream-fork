@@ -58,6 +58,11 @@ const MIGRATION_FILES: readonly MigrationFile[] = [
     version: '0011',
     name: 'projects_registry',
     fileName: '0011_projects_registry.sql'
+  },
+  {
+    version: '0012',
+    name: 'extend_audit_contract',
+    fileName: '0012_extend_audit_contract.sql'
   }
 ]
 

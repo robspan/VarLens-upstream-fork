@@ -83,7 +83,7 @@ describe('PostgresAuditLogRepository', () => {
     ])
   })
 
-  it('appends json-encoded old and new values', async () => {
+  it('appends contract-encoded old and new values', async () => {
     const pool = { query: vi.fn().mockResolvedValue({ rows: [] }) }
     const repo = new PostgresAuditLogRepository(pool as never, 'public')
 
@@ -104,7 +104,7 @@ describe('PostgresAuditLogRepository', () => {
     expect(params).toContain(JSON.stringify({ source: 'test' }))
   })
 
-  it('preserves pre-serialized audit values and SQL nulls', async () => {
+  it('sanitizes pre-serialized audit values and SQL nulls', async () => {
     const pool = { query: vi.fn().mockResolvedValue({ rows: [] }) }
     const repo = new PostgresAuditLogRepository(pool as never, 'public')
     const serializedNewValue = JSON.stringify({ starred: 1 })
@@ -126,6 +126,31 @@ describe('PostgresAuditLogRepository', () => {
       serializedNewValue,
       null,
       null
+    ])
+  })
+
+  it('redacts unsafe audit values and metadata before writing', async () => {
+    const pool = { query: vi.fn().mockResolvedValue({ rows: [] }) }
+    const repo = new PostgresAuditLogRepository(pool as never, 'public')
+
+    await repo.append({
+      action_type: 'comment_add',
+      entity_type: 'case_variant_annotation',
+      entity_key: 'case:1:variant:2',
+      old_value: null,
+      new_value: { comment: 'patient detail', payload: { patient_id: 'p-123' } },
+      metadata: { patient_id: 'p-123' }
+    })
+
+    const params = pool.query.mock.calls[0][1] as unknown[]
+    expect(params).toEqual([
+      'comment_add',
+      'case_variant_annotation',
+      'case:1:variant:2',
+      null,
+      JSON.stringify({ redacted: true }),
+      null,
+      JSON.stringify({ redacted: true, kind: 'metadata' })
     ])
   })
 })

@@ -188,6 +188,29 @@ describe.skipIf(!RUN)('Postgres migrations: real-instance idempotency', () => {
       uniques.rows.length,
       'users must have at least one UNIQUE constraint (username + PK)'
     ).toBeGreaterThanOrEqual(2)
+
+    await probeClient.query(
+      `INSERT INTO "${schema}".audit_log
+        (action_type, entity_type, entity_key, new_value, user_name, metadata_json)
+       VALUES
+        ('auth_login_success', 'user_account', 'admin', '{"success":true}'::jsonb, 'admin', '{"source":"web-auth"}'::jsonb),
+        ('api_write', 'api_call', 'tags:create', '{"success":true,"method":"tags:create"}'::jsonb, 'admin', '{"source":"web-dispatcher"}'::jsonb)`
+    )
+
+    await expect(
+      probeClient.query(
+        `INSERT INTO "${schema}".audit_log
+          (action_type, entity_type, entity_key, new_value)
+         VALUES ('not_a_contract_action', 'api_call', 'x', '{}'::jsonb)`
+      )
+    ).rejects.toThrow()
+    await expect(
+      probeClient.query(
+        `INSERT INTO "${schema}".audit_log
+          (action_type, entity_type, entity_key, new_value)
+         VALUES ('api_write', 'not_a_contract_entity', 'x', '{}'::jsonb)`
+      )
+    ).rejects.toThrow()
   }, 60_000)
 
   it('is idempotent — a second run produces the same schema state', async () => {

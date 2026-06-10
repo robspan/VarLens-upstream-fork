@@ -118,7 +118,6 @@ export const WRITE_TASK_TYPES = [
   'analysis-groups:delete',
   'analysis-groups:addMember',
   'analysis-groups:removeMember',
-  'audit:append',
   'transcripts:switch',
   'transcripts:insertAndSwitch'
 ] as const satisfies readonly StorageWriteTask['type'][]

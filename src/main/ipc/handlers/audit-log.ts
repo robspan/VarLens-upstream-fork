@@ -29,10 +29,19 @@ const AuditQueryParamsSchema = z.object({
       'comment_edit',
       'comment_delete',
       'tag_assign',
-      'tag_remove'
+      'tag_remove',
+      'auth_login_success',
+      'auth_login_failure',
+      'auth_logout',
+      'auth_password_change',
+      'auth_password_reset',
+      'auth_user_deactivate',
+      'api_write'
     ])
     .optional(),
-  entity_type: z.enum(['variant_annotation', 'case_variant_annotation']).optional(),
+  entity_type: z
+    .enum(['variant_annotation', 'case_variant_annotation', 'user_account', 'api_call'])
+    .optional(),
   entity_key: z.string().min(1).optional(),
   from_timestamp: z.number().int().nonnegative().optional(),
   to_timestamp: z.number().int().nonnegative().optional(),

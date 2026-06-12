@@ -100,6 +100,8 @@ plan/
 
 # Local test caches, including WGS perf fixtures and generated PostgreSQL profile fixtures.
 tests/.cache/
+tests/web-smoke/artifacts/
+.env.web.local
 
 # VitePress — build artifacts only; `docs/.vitepress/config.mts` is tracked
 docs/.vitepress/dist/
@@ -125,6 +127,9 @@ docs/.vitepress/cache/
 !tests/test-data/
 !tests/test-data/vcf/
 !tests/test-data/vcf/**
+!tests/web-smoke/
+!tests/web-smoke/fixtures/
+!tests/web-smoke/fixtures/**
 *.fq
 *.fastq.gz
 *.fq.gz

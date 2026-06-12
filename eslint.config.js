@@ -22,6 +22,7 @@ export default [
       '**/*.d.ts',
       'docs/**',
       'tests/e2e/**',
+      'tests/web-smoke/**',
       'e2e-*.mjs',
       '.planning/**',
       // Third-party bundles shipped directly to the renderer's public

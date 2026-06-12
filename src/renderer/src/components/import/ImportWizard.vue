@@ -48,23 +48,18 @@
 
       <!-- Step 1: Source Selection -->
       <v-card-text v-if="step === 1" class="pa-4">
-        <div class="text-caption text-medium-emphasis mb-3">Choose import source</div>
-        <div class="d-flex flex-wrap ga-3">
-          <v-card
-            v-for="src in sources"
-            :key="src.mode"
-            variant="outlined"
-            class="import-source-card flex-grow-1"
-            min-width="130"
-            @click="selectSource(src.mode)"
-          >
-            <v-card-text class="d-flex flex-column align-center text-center pa-3">
-              <v-icon :icon="src.icon" size="24" color="primary" class="mb-1" />
-              <div class="text-body-2 font-weight-medium">{{ src.title }}</div>
-              <div class="text-caption text-medium-emphasis">{{ src.subtitle }}</div>
-            </v-card-text>
-          </v-card>
-        </div>
+        <ImportSourceSelector
+          :sources="allSources"
+          :pending="sourceSelectionPending"
+          :upload-file-name="uploadFileName"
+          :upload-file-index="uploadFileIndex"
+          :upload-total-files="uploadTotalFiles"
+          :upload-percent="uploadPercent"
+          :upload-loaded-bytes="importStore.uploadLoadedBytes"
+          :upload-total-bytes="importStore.uploadTotalBytes"
+          @select="selectSource"
+          @cancel="cancelUploadSelection"
+        />
 
         <!-- ZIP password (inline, shown when needed) -->
         <v-expand-transition>
@@ -191,17 +186,22 @@ import type {
   DuplicateChoice,
   DuplicateCheckItem,
   BatchResult,
-  BatchProgress
+  BatchProgress,
+  ProgressUpdate
 } from '../../../../shared/types/api'
 import type { VcfPreviewResult } from '../../../../shared/types/vcf'
 import { useApiService } from '../../composables/useApiService'
 import { useImportStatusStore } from '../../stores/importStatusStore'
 import { logService } from '../../services/LogService'
-import { isIpcError, unwrapIpcResult } from '../../../../shared/types/errors'
+import { unwrapIpcResult } from '../../../../shared/types/errors'
+import { formatErrorMessage } from '../../../../shared/errors/format-error-message'
 import BatchReviewPhase from '../batch-import/BatchReviewPhase.vue'
 import BatchProgressPhase from '../batch-import/BatchProgressPhase.vue'
 import BatchSummaryPhase from '../batch-import/BatchSummaryPhase.vue'
+import ImportSourceSelector from './ImportSourceSelector.vue'
+import type { ImportSourceMode, ImportSourceOption } from './ImportSourceSelector.vue'
 import VcfPreviewStep from './VcfPreviewStep.vue'
+import { isWebRuntime } from '../../utils/runtime-mode'
 import {
   mdiChevronRight,
   mdiClose,
@@ -214,10 +214,24 @@ import {
   mdiZipBox
 } from '@mdi/js'
 
-type ImportMode = 'single' | 'files' | 'folder' | 'zip'
+type ImportMode = ImportSourceMode
 
 const { api } = useApiService()
 const importStore = useImportStatusStore()
+
+const WEB_UPLOAD_EVENT = 'varlens:web-upload'
+const WEB_UPLOAD_CANCEL_EVENT = 'varlens:web-upload-cancel'
+
+interface WebUploadEventDetail {
+  status: 'started' | 'progress' | 'complete' | 'error' | 'aborted'
+  fileName: string
+  fileIndex: number
+  totalFiles: number
+  loadedBytes: number
+  totalBytes: number | null
+  percent: number | null
+  message?: string
+}
 
 const emit = defineEmits<{
   'import-complete': [result: { caseId: number; variantCount: number; caseName: string }]
@@ -241,7 +255,7 @@ const stepLabels = computed(() => {
   return ['Source', 'Review', 'Import', 'Summary']
 })
 
-const sources = [
+const allSources: ImportSourceOption[] = [
   {
     mode: 'single' as ImportMode,
     icon: mdiFileDocument,
@@ -268,6 +282,11 @@ const selectedMode = ref<ImportMode | null>(null)
 const selectedFilePaths = ref<string[]>([])
 const isZipImport = ref(false)
 const zipPath = ref('')
+const sourceSelectionPending = ref(false)
+const uploadFileName = ref('')
+const uploadFileIndex = ref(1)
+const uploadTotalFiles = ref(0)
+const uploadPercent = ref<number | null>(null)
 
 // ZIP password state
 const zipPasswordNeeded = ref(false)
@@ -301,14 +320,60 @@ const summary = ref<BatchResult>({
 })
 
 let cleanupProgress: (() => void) | null = null
+let cleanupImportProgress: (() => void) | null = null
 let cleanupComplete: (() => void) | null = null
 let recheckTimeout: ReturnType<typeof setTimeout> | null = null
 
-function formatIpcError(error: unknown, fallback: string): string {
-  if (isIpcError(error)) {
-    return error.userMessage ?? error.message
+function resetUploadState(): void {
+  uploadFileName.value = ''
+  uploadFileIndex.value = 1
+  uploadTotalFiles.value = 0
+  uploadPercent.value = null
+}
+
+function handleWebUploadEvent(event: Event): void {
+  if (!isWebRuntime()) return
+  const detail = (event as CustomEvent<WebUploadEventDetail>).detail
+  uploadFileName.value = detail.fileName
+  uploadFileIndex.value = detail.fileIndex + 1
+  uploadTotalFiles.value = detail.totalFiles
+  uploadPercent.value = detail.percent
+
+  if (detail.status === 'started') {
+    importStore.startUpload(detail.totalFiles)
   }
-  return error instanceof Error ? error.message : fallback
+  if (detail.status === 'started' || detail.status === 'progress' || detail.status === 'complete') {
+    importStore.updateUploadProgress({
+      fileIndex: detail.fileIndex,
+      totalFiles: detail.totalFiles,
+      fileName: detail.fileName,
+      loadedBytes: detail.loadedBytes,
+      totalBytes: detail.totalBytes,
+      percent: detail.percent
+    })
+  }
+  if (detail.status === 'aborted') {
+    importStore.importComplete({
+      succeeded: 0,
+      failed: 0,
+      skipped: 0,
+      cancelled: true,
+      details: []
+    })
+  }
+  if (detail.status === 'error') {
+    importStore.importError(detail.message ?? 'Upload failed')
+  }
+}
+
+function cancelUploadSelection(): void {
+  if (isWebRuntime()) {
+    window.dispatchEvent(new CustomEvent(WEB_UPLOAD_CANCEL_EVENT))
+  }
+}
+
+function formatIpcError(error: unknown, fallback: string): string {
+  return formatErrorMessage(error, fallback)
 }
 
 function cleanupZipTempInBackground(context: string): void {
@@ -342,7 +407,10 @@ watch(stripText, () => {
 })
 
 async function selectSource(mode: ImportMode): Promise<void> {
+  if (sourceSelectionPending.value) return
   selectedMode.value = mode
+  sourceSelectionPending.value = true
+  resetUploadState()
 
   try {
     if (mode === 'zip') {
@@ -390,11 +458,18 @@ async function selectSource(mode: ImportMode): Promise<void> {
 
     await checkDuplicatesAndAdvance(filePaths)
   } catch (err) {
-    logService.error(
-      `File selection failed: ${err instanceof Error ? err.message : String(err)}`,
-      'ImportWizard'
-    )
-    importStore.importError(err instanceof Error ? err.message : 'File selection failed')
+    if (err instanceof Error && err.message === 'Upload cancelled') {
+      resetUploadState()
+      return
+    }
+    const message = formatIpcError(err, 'File selection failed')
+    logService.error(`File selection failed: ${message}`, 'ImportWizard')
+    importStore.importError(message)
+  } finally {
+    sourceSelectionPending.value = false
+    if (importStore.phase === 'uploading') {
+      importStore.reset()
+    }
   }
 }
 
@@ -487,7 +562,7 @@ async function startVcfImport(): Promise<void> {
       const sample = vcfSelectedSamples.value[i]
       const caseName = vcfCaseNames.value.get(sample) ?? sample
 
-      currentIndex.value = i + 1
+      currentIndex.value = i
       currentFileName.value = caseName
       overallPercent.value = Math.round(((i + 1) / vcfSelectedSamples.value.length) * 100)
 
@@ -514,7 +589,7 @@ async function startVcfImport(): Promise<void> {
           fileName: caseName,
           caseName,
           status: 'failed' as const,
-          error: err instanceof Error ? err.message : String(err)
+          error: formatIpcError(err, 'VCF import failed')
         })
       }
     }
@@ -530,10 +605,8 @@ async function startVcfImport(): Promise<void> {
       emit('batch-import-complete', { totalImported: results.succeeded })
     }
   } catch (err) {
-    logService.error(
-      `VCF import failed: ${err instanceof Error ? err.message : String(err)}`,
-      'ImportWizard'
-    )
+    const message = formatIpcError(err, 'VCF import failed')
+    logService.error(`VCF import failed: ${message}`, 'ImportWizard')
     summary.value = {
       succeeded: 0,
       failed: vcfSelectedSamples.value.length,
@@ -542,7 +615,7 @@ async function startVcfImport(): Promise<void> {
       details: []
     }
     step.value = 4
-    importStore.importError(err instanceof Error ? err.message : 'VCF import failed')
+    importStore.importError(message)
   }
 }
 
@@ -593,10 +666,8 @@ async function startImport(): Promise<void> {
       }
     }
   } catch (err) {
-    logService.error(
-      `Import failed: ${err instanceof Error ? err.message : String(err)}`,
-      'ImportWizard'
-    )
+    const message = formatIpcError(err, 'Import failed')
+    logService.error(`Import failed: ${message}`, 'ImportWizard')
     // Only overwrite summary if the onComplete callback hasn't already
     // handled it (race: safeEmit fires before resolve, so the event
     // listener may have already set the correct summary + step 4).
@@ -610,22 +681,31 @@ async function startImport(): Promise<void> {
       }
       step.value = 4
     }
-    importStore.importError(err instanceof Error ? err.message : 'Import failed')
+    importStore.importError(message)
   }
 }
 
 function cancelImport(): void {
-  void api!.batchImport
-    .cancel()
-    .then((result) => {
-      unwrapIpcResult(result)
-    })
-    .catch((error) => {
+  if (isWebRuntime() && isVcfImport.value) {
+    void api!.import.cancel().catch((error) => {
       logService.warn(
-        `Batch import cancel failed: ${formatIpcError(error, 'cancel failed')}`,
+        `VCF import cancel failed: ${formatIpcError(error, 'cancel failed')}`,
         'ImportWizard'
       )
     })
+  } else {
+    void api!.batchImport
+      .cancel()
+      .then((result) => {
+        unwrapIpcResult(result)
+      })
+      .catch((error) => {
+        logService.warn(
+          `Batch import cancel failed: ${formatIpcError(error, 'cancel failed')}`,
+          'ImportWizard'
+        )
+      })
+  }
   // Transition to summary step showing cancellation, and reset import store.
   // The onComplete callback may also fire with cancelled=true, but we handle
   // it here immediately so the user sees feedback right away.
@@ -674,6 +754,8 @@ function resetState(): void {
   vcfCaseNames.value = new Map()
   isZipImport.value = false
   zipPath.value = ''
+  sourceSelectionPending.value = false
+  resetUploadState()
   zipPasswordNeeded.value = false
   zipPassword.value = ''
   zipError.value = ''
@@ -713,7 +795,31 @@ const reopen = (): void => {
 }
 
 onMounted(() => {
+  if (isWebRuntime()) {
+    window.addEventListener(WEB_UPLOAD_EVENT, handleWebUploadEvent)
+  }
   if (api) {
+    if (isWebRuntime()) {
+      cleanupImportProgress = api.import.onProgress((progress: ProgressUpdate) => {
+        if (!isVcfImport.value || !importStore.isActive) return
+        variantCount.value = progress.count
+        const sampleCount = Math.max(vcfSelectedSamples.value.length, 1)
+        overallPercent.value = Math.max(
+          overallPercent.value,
+          Math.round(((currentIndex.value + 1) / sampleCount) * 100)
+        )
+        importStore.updateProgress({
+          fileIndex: currentIndex.value,
+          totalFiles: totalFiles.value,
+          fileName: currentFileName.value,
+          overallPercent: overallPercent.value,
+          phase: progress.phase,
+          skipped: progress.skipped ?? 0,
+          variantCount: progress.count
+        })
+      })
+    }
+
     cleanupProgress = api.batchImport.onProgress((progress: BatchProgress) => {
       currentIndex.value = progress.currentIndex
       totalFiles.value = progress.totalFiles
@@ -757,23 +863,14 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  if (isWebRuntime()) {
+    window.removeEventListener(WEB_UPLOAD_EVENT, handleWebUploadEvent)
+  }
   cleanupProgress?.()
+  cleanupImportProgress?.()
   cleanupComplete?.()
   if (recheckTimeout !== null) clearTimeout(recheckTimeout)
 })
 
 defineExpose({ show, reopen })
 </script>
-
-<style scoped>
-.import-source-card {
-  cursor: pointer;
-  transition: all 0.15s ease;
-  border-color: rgba(var(--v-border-color), var(--v-border-opacity));
-}
-
-.import-source-card:hover {
-  border-color: rgb(var(--v-theme-primary));
-  background: rgba(var(--v-theme-primary), 0.04);
-}
-</style>

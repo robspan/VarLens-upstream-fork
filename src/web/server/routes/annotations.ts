@@ -4,7 +4,20 @@ import {
   PerCaseAnnotationUpdatesSchema,
   VariantCoordsSchema
 } from '../../../shared/api/schemas/annotations'
+import type { AnnotationChangeEvent } from '../../../shared/types/api'
+import { WEB_EVENT_VARIANTS_ANNOTATION_CHANGED } from '../web-event-types'
 import type { OverrideHandler } from './types'
+
+function detectAnnotationChangeKind(updates: {
+  starred?: unknown
+  acmg_classification?: unknown
+  acmg_evidence?: unknown
+}): AnnotationChangeEvent['kind'] {
+  if (updates.starred !== undefined) return 'star'
+  if (updates.acmg_classification !== undefined) return 'acmg'
+  if (updates.acmg_evidence !== undefined) return 'evidence'
+  return 'comment'
+}
 
 export function buildAnnotationOverrides(): Record<string, OverrideHandler> {
   return {
@@ -42,7 +55,7 @@ export function buildAnnotationOverrides(): Record<string, OverrideHandler> {
     },
 
     'annotations:upsertPerCase': {
-      async handle(args, _request, reply, { session }) {
+      async handle(args, request, reply, { session, events }) {
         const [caseId, variantId, updates] = args
         const validatedIds = CaseVariantIdSchema.safeParse({ caseId, variantId })
         const validatedUpdates = PerCaseAnnotationUpdatesSchema.safeParse(updates)
@@ -51,10 +64,19 @@ export function buildAnnotationOverrides(): Record<string, OverrideHandler> {
           return { error: 'invalid-per-case-annotation-upsert' }
         }
         const annotationUpdates = validatedUpdates.data
-        return await session.getWriteExecutor().execute({
+        const result = await session.getWriteExecutor().execute({
           type: 'annotations:upsertPerCaseWithAudit',
           params: [validatedIds.data.caseId, validatedIds.data.variantId, annotationUpdates]
         })
+        const userId = request.session?.user?.id
+        if (userId !== undefined) {
+          events.publish(userId, WEB_EVENT_VARIANTS_ANNOTATION_CHANGED, {
+            caseId: validatedIds.data.caseId,
+            variantId: validatedIds.data.variantId,
+            kind: detectAnnotationChangeKind(annotationUpdates)
+          } satisfies AnnotationChangeEvent)
+        }
+        return result
       }
     },
 

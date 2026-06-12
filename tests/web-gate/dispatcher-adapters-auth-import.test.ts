@@ -1,7 +1,19 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+
 import { describe, expect, test } from 'vitest'
 
+import { jobRunner } from '../../src/main/services/jobs/runner'
+import { ErrorCode } from '../../src/shared/types/errors'
 import { buildDispatcher } from '../../src/web/server/dispatcher'
+import { stageExistingFileUpload } from '../../src/web/server/routes/upload-staging'
 import { makeDeps } from './helpers/dispatcher-adapters'
+
+const ZIP_WITH_ONE_JSON_BASE64 =
+  'UEsDBBQAAAgIAJRRwVwz5c4EEQAAAA8AAAARAAAAd2ViLXppcC1jYXNlLmpzb26rVkpOLE5Vsl' +
+  'IqT01SquUCAFBLAQIUAxQAAAgIAJRRwVwz5c4EEQAAAA8AAAARAAAAAAAAAAAAAACkgQAAAAB3' +
+  'ZWItemlwLWNhc2UuanNvblBLBQYAAAAAAQABAD8AAABAAAAAAAA='
 
 describe('web dispatcher adapters: auth and import', () => {
   test('auth.isAccountsEnabled delegates to the web auth service', async () => {
@@ -28,10 +40,11 @@ describe('web dispatcher adapters: auth and import', () => {
     try {
       const { deps, importSingleFile, reply } = makeDeps()
       const { overrides } = buildDispatcher(deps)
+      const request = { session: {} }
 
       const result = await overrides['import:start'].handle(
         ['/tmp/input.vcf', 'Case A'],
-        {} as never,
+        request as never,
         reply as never,
         deps
       )
@@ -73,16 +86,328 @@ describe('web dispatcher adapters: auth and import', () => {
     }
   })
 
+  test('batch import zip extraction accepts web upload refs and returns web upload refs', async () => {
+    const prevNodeEnv = process.env.NODE_ENV
+    const prevRecoveryDir = process.env.VARLENS_RECOVERY_KEY_DIR
+    const tempDir = await mkdtemp(join(tmpdir(), 'varlens-web-zip-'))
+    process.env.NODE_ENV = 'production'
+    process.env.VARLENS_RECOVERY_KEY_DIR = tempDir
+    try {
+      const zipPath = join(tempDir, 'batch.zip')
+      await writeFile(zipPath, Buffer.from(ZIP_WITH_ONE_JSON_BASE64, 'base64'))
+      const upload = await stageExistingFileUpload({
+        userId: 7,
+        originalName: 'batch.zip',
+        sourcePath: zipPath
+      })
+
+      const { deps, reply } = makeDeps()
+      const { overrides } = buildDispatcher(deps)
+      const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
+
+      const result = (await overrides['batch-import:extractZip'].handle(
+        [upload.ref],
+        request as never,
+        reply as never,
+        deps
+      )) as { files: string[]; errors: string[] }
+
+      expect(reply.code).not.toHaveBeenCalledWith(403)
+      expect(result.errors).toEqual([])
+      expect(result.files).toHaveLength(1)
+      expect(result.files[0]).toMatch(/^web-upload:/)
+    } finally {
+      if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = prevNodeEnv
+      if (prevRecoveryDir === undefined) delete process.env.VARLENS_RECOVERY_KEY_DIR
+      else process.env.VARLENS_RECOVERY_KEY_DIR = prevRecoveryDir
+      await rm(tempDir, { recursive: true, force: true })
+    }
+  })
+
+  test('batch-import.start resolves web upload refs and runs through JobRunner-backed import logic', async () => {
+    const prevNodeEnv = process.env.NODE_ENV
+    const prevRecoveryDir = process.env.VARLENS_RECOVERY_KEY_DIR
+    const tempDir = await mkdtemp(join(tmpdir(), 'varlens-web-batch-'))
+    process.env.NODE_ENV = 'production'
+    process.env.VARLENS_RECOVERY_KEY_DIR = tempDir
+    try {
+      const sourcePath = join(tempDir, 'Case B.json')
+      await writeFile(sourcePath, '{}')
+      const upload = await stageExistingFileUpload({
+        userId: 7,
+        originalName: 'Case B.json',
+        sourcePath
+      })
+      const knownBatchJobs = new Set(jobRunner.list({ kind: 'import_batch' }).map((job) => job.id))
+      const { deps, importSingleFile, reply } = makeDeps()
+      importSingleFile.mockImplementationOnce(async (params) => {
+        params.onProgress?.({ phase: 'parsing', count: 1, elapsed: 3, skipped: 0 })
+        return {
+          caseId: 12,
+          variantCount: 4,
+          skipped: 0,
+          errors: [],
+          elapsed: 15
+        }
+      })
+      const { overrides } = buildDispatcher(deps)
+      const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
+
+      const result = (await overrides['batch-import:start'].handle(
+        [[upload.ref], 'skip'],
+        request as never,
+        reply as never,
+        deps
+      )) as {
+        succeeded: number
+        failed: number
+        skipped: number
+        details: Array<{ filePath: string; fileName: string; caseName: string; status: string }>
+      }
+
+      expect(reply.code).not.toHaveBeenCalled()
+      expect(importSingleFile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filePath: upload.storedPath,
+          caseName: 'Case B'
+        })
+      )
+      expect(result).toMatchObject({
+        succeeded: 1,
+        failed: 0,
+        skipped: 0,
+        details: [
+          {
+            filePath: upload.ref,
+            fileName: 'Case B.json',
+            caseName: 'Case B',
+            status: 'success',
+            variantCount: 4
+          }
+        ]
+      })
+      expect(deps.events.publish).toHaveBeenCalledWith(7, 'batch-import:progress', {
+        currentIndex: 0,
+        totalFiles: 1,
+        currentFileName: 'Case B.json',
+        overallPercent: 100,
+        fileProgress: { phase: 'parsing', count: 1, elapsed: 3, skipped: 0 }
+      })
+      expect(deps.events.publish).toHaveBeenCalledWith(7, 'cohort:summaryRebuilt', {
+        is_stale: true
+      })
+      expect(deps.events.publish).toHaveBeenCalledWith(7, 'cohort:summaryRebuilt', {
+        is_stale: false
+      })
+      expect(deps.events.publish).toHaveBeenCalledWith(7, 'batch-import:complete', result)
+
+      const newBatchJobs = jobRunner
+        .list({ kind: 'import_batch' })
+        .filter((job) => !knownBatchJobs.has(job.id))
+      expect(newBatchJobs).toHaveLength(1)
+      const newBatchJob = newBatchJobs[0]
+      expect(newBatchJob).toBeDefined()
+      if (newBatchJob === undefined) throw new Error('expected batch job to be tracked')
+      expect(newBatchJob).toMatchObject({ kind: 'import_batch', status: 'completed' })
+      const params = newBatchJob.params as {
+        files: Array<{ inputPath: string; storedPath: string }>
+        duplicateStrategy: string
+      }
+      expect(params.duplicateStrategy).toBe('skip')
+      const paramFile = params.files[0]
+      expect(paramFile).toBeDefined()
+      expect(paramFile).toMatchObject({
+        inputPath: upload.ref,
+        storedPath: upload.storedPath
+      })
+    } finally {
+      if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = prevNodeEnv
+      if (prevRecoveryDir === undefined) delete process.env.VARLENS_RECOVERY_KEY_DIR
+      else process.env.VARLENS_RECOVERY_KEY_DIR = prevRecoveryDir
+      await rm(tempDir, { recursive: true, force: true })
+    }
+  })
+
+  test('batch-import.start renders serializable import errors as user messages', async () => {
+    const prevNodeEnv = process.env.NODE_ENV
+    const prevRecoveryDir = process.env.VARLENS_RECOVERY_KEY_DIR
+    const tempDir = await mkdtemp(join(tmpdir(), 'varlens-web-batch-error-'))
+    process.env.NODE_ENV = 'production'
+    process.env.VARLENS_RECOVERY_KEY_DIR = tempDir
+    try {
+      const sourcePath = join(tempDir, 'SAMPLE.json')
+      await writeFile(sourcePath, '{}')
+      const upload = await stageExistingFileUpload({
+        userId: 7,
+        originalName: 'SAMPLE.json',
+        sourcePath
+      })
+      const { deps, importSingleFile, reply } = makeDeps()
+      importSingleFile.mockRejectedValueOnce({
+        code: ErrorCode.UNIQUE_CONSTRAINT,
+        message: "case 'SAMPLE' already exists",
+        userMessage: "case 'SAMPLE' already exists"
+      })
+      const { overrides } = buildDispatcher(deps)
+      const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
+
+      const result = (await overrides['batch-import:start'].handle(
+        [[upload.ref], 'overwrite'],
+        request as never,
+        reply as never,
+        deps
+      )) as {
+        succeeded: number
+        failed: number
+        details: Array<{ status: string; error?: string }>
+      }
+
+      expect(reply.code).not.toHaveBeenCalled()
+      expect(result.succeeded).toBe(0)
+      expect(result.failed).toBe(1)
+      expect(result.details).toMatchObject([
+        {
+          status: 'failed',
+          error: "case 'SAMPLE' already exists"
+        }
+      ])
+      expect(result.details[0]?.error).not.toBe('[object Object]')
+      expect(deps.events.publish).toHaveBeenCalledWith(7, 'batch-import:complete', result)
+    } finally {
+      if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = prevNodeEnv
+      if (prevRecoveryDir === undefined) delete process.env.VARLENS_RECOVERY_KEY_DIR
+      else process.env.VARLENS_RECOVERY_KEY_DIR = prevRecoveryDir
+      await rm(tempDir, { recursive: true, force: true })
+    }
+  })
+
+  test('batch-import.start skips duplicate case names that appear within the same web batch', async () => {
+    const prevNodeEnv = process.env.NODE_ENV
+    const prevRecoveryDir = process.env.VARLENS_RECOVERY_KEY_DIR
+    const tempDir = await mkdtemp(join(tmpdir(), 'varlens-web-batch-dupes-'))
+    process.env.NODE_ENV = 'production'
+    process.env.VARLENS_RECOVERY_KEY_DIR = tempDir
+    try {
+      const firstPath = join(tempDir, 'first.json')
+      const secondPath = join(tempDir, 'second.json')
+      await writeFile(firstPath, '{}')
+      await writeFile(secondPath, '{}')
+      const firstUpload = await stageExistingFileUpload({
+        userId: 7,
+        originalName: 'Case B.json',
+        sourcePath: firstPath
+      })
+      const secondUpload = await stageExistingFileUpload({
+        userId: 7,
+        originalName: 'Case B.json',
+        sourcePath: secondPath
+      })
+      const { deps, importSingleFile, reply } = makeDeps()
+      importSingleFile.mockResolvedValueOnce({
+        caseId: 12,
+        variantCount: 4,
+        skipped: 0,
+        errors: [],
+        elapsed: 15
+      })
+      const { overrides } = buildDispatcher(deps)
+      const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
+
+      const result = (await overrides['batch-import:start'].handle(
+        [[firstUpload.ref, secondUpload.ref], 'skip'],
+        request as never,
+        reply as never,
+        deps
+      )) as {
+        succeeded: number
+        failed: number
+        skipped: number
+        details: Array<{ filePath: string; fileName: string; caseName: string; status: string }>
+      }
+
+      expect(reply.code).not.toHaveBeenCalled()
+      expect(importSingleFile).toHaveBeenCalledTimes(1)
+      expect(result).toMatchObject({
+        succeeded: 1,
+        failed: 0,
+        skipped: 1,
+        details: [
+          {
+            filePath: firstUpload.ref,
+            fileName: 'Case B.json',
+            caseName: 'Case B',
+            status: 'success'
+          },
+          {
+            filePath: secondUpload.ref,
+            fileName: 'Case B.json',
+            caseName: 'Case B',
+            status: 'skipped'
+          }
+        ]
+      })
+    } finally {
+      if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = prevNodeEnv
+      if (prevRecoveryDir === undefined) delete process.env.VARLENS_RECOVERY_KEY_DIR
+      else process.env.VARLENS_RECOVERY_KEY_DIR = prevRecoveryDir
+      await rm(tempDir, { recursive: true, force: true })
+    }
+  })
+
+  test('batch-import.checkDuplicates reports missing web upload refs as upload-not-found', async () => {
+    const { deps, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+    const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
+
+    const result = await overrides['batch-import:checkDuplicates'].handle(
+      [['web-upload:missing/Case B.json']],
+      request as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).toHaveBeenCalledWith(404)
+    expect(result).toEqual({
+      error: 'upload-not-found',
+      message: 'Uploaded file is no longer available'
+    })
+  })
+
+  test('batch-import.start reports missing web upload refs as upload-not-found', async () => {
+    const { deps, importSingleFile, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+    const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
+
+    const result = await overrides['batch-import:start'].handle(
+      [['web-upload:missing/Case B.json'], 'skip'],
+      request as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).toHaveBeenCalledWith(404)
+    expect(result).toEqual({
+      error: 'upload-not-found',
+      message: 'Uploaded file is no longer available'
+    })
+    expect(importSingleFile).not.toHaveBeenCalled()
+  })
+
   test('import.start routes an enabled absolute server path through shared import logic', async () => {
     const prevNodeEnv = process.env.NODE_ENV
     process.env.NODE_ENV = 'test'
     try {
       const { deps, importSingleFile, reply } = makeDeps()
       const { overrides } = buildDispatcher(deps)
+      const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
 
       const result = await overrides['import:start'].handle(
         ['/tmp/input.vcf', 'Case A', { genomeBuild: 'hg38' }],
-        {} as never,
+        request as never,
         reply as never,
         deps
       )

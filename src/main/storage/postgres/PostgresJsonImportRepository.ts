@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from 'pg'
 
+import { UniqueConstraintError } from '../../database/errors'
 import { quoteIdentifier } from './identifiers'
 import {
   VARIANT_BASE_COLUMNS,
@@ -219,7 +220,7 @@ export class PostgresJsonImportRepository {
       [request.caseName]
     )
     if (dupResult.rows.length > 0) {
-      throw new Error(`Duplicate case name: ${request.caseName}`)
+      throw new UniqueConstraintError('case', request.caseName)
     }
 
     const createdAt = Date.now()

@@ -9,7 +9,6 @@ import { buildCaseMetricOpenApiPaths } from './openapi-paths/case-metrics'
 import { buildCaseOpenApiPaths } from './openapi-paths/cases'
 import { buildCohortOpenApiPaths } from './openapi-paths/cohort'
 import { buildDatabaseOpenApiPaths } from './openapi-paths/database'
-import { buildExecutorAutorouteOpenApiPaths } from './openapi-paths/executor'
 import { buildExportOpenApiPaths } from './openapi-paths/export'
 import { buildGeneListOpenApiPaths } from './openapi-paths/gene-lists'
 import { buildImportOpenApiPaths } from './openapi-paths/import'
@@ -24,7 +23,6 @@ export function appendDocumentedDispatcherPaths(document: OpenApiDocument): Open
     ...document,
     paths: {
       ...document.paths,
-      ...buildExecutorAutorouteOpenApiPaths(),
       ...buildAuthOpenApiPaths(),
       ...buildAnnotationOpenApiPaths(),
       ...buildAnalysisGroupOpenApiPaths(),

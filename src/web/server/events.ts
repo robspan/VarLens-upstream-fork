@@ -37,7 +37,7 @@ export class WebEventHub {
 }
 
 export function registerEventStream(app: FastifyInstance, events: WebEventHub): void {
-  app.get('/api/events', async (request, reply) => {
+  app.get('/api/events', { schema: { hide: true } }, async (request, reply) => {
     const user = request.session.user
     if (user === undefined) {
       reply.code(401)

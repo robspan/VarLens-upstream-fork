@@ -87,6 +87,25 @@ describe('web dispatcher adapters: annotations, assets, and exports', () => {
     expect(execute).not.toHaveBeenCalled()
   })
 
+  test('annotations.upsertPerCase publishes annotation refresh events for the active web user', async () => {
+    const { deps, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    await overrides['annotations:upsertPerCase'].handle(
+      [3, 9, { starred: true, user_name: 'reviewer' }],
+      { session: { user: { id: 7 } } } as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(deps.events.publish).toHaveBeenCalledWith(7, 'variants:annotationChanged', {
+      caseId: 3,
+      variantId: 9,
+      kind: 'star'
+    })
+  })
+
   test('case-metadata.createCohort maps renderer args to the storage task shape', async () => {
     const { deps, writeExecute, reply } = makeDeps()
     const { overrides } = buildDispatcher(deps)
@@ -175,10 +194,11 @@ describe('web dispatcher adapters: annotations, assets, and exports', () => {
     try {
       const filePath = join(dir, 'regions.bed')
       await writeFile(filePath, 'chr1\t0\t10\tRegionA\n# ignored\nchr2\t5\t9\n')
+      const request = { session: {} }
 
       await overrides['region-files:importBed'].handle(
         [4, filePath],
-        {} as never,
+        request as never,
         reply as never,
         deps
       )
@@ -209,10 +229,11 @@ describe('web dispatcher adapters: annotations, assets, and exports', () => {
     try {
       const { deps, writeExecute, reply } = makeDeps()
       const { overrides } = buildDispatcher(deps)
+      const request = { session: {} }
 
       const result = await overrides['region-files:importBed'].handle(
         [4, '/tmp/regions.bed'],
-        {} as never,
+        request as never,
         reply as never,
         deps
       )

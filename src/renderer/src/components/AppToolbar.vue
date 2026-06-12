@@ -7,6 +7,7 @@
       :aria-label="sidebarOpen ? 'Close sidebar' : 'Open sidebar'"
       :aria-expanded="sidebarOpen"
       class="sidebar-toggle-btn"
+      data-testid="app-sidebar-toggle"
       @click="handleSidebarToggle"
     />
     <v-app-bar-title
@@ -106,7 +107,6 @@
           @click="$emit('show-database-overview')"
         />
         <v-list-item
-          v-if="!isWebMode"
           :prepend-icon="mdiDatabaseImport"
           title="Import Data"
           subtitle="Ctrl+I"

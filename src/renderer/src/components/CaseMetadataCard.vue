@@ -101,6 +101,10 @@ const props = defineProps<{
   caseId: number
 }>()
 
+const emit = defineEmits<{
+  changed: []
+}>()
+
 const {
   loadMetadata,
   loadCohortGroups,
@@ -169,18 +173,22 @@ async function handleDobChange(val: string | null) {
 async function handleCohortsChange(cohorts: CohortGroup[]) {
   const cohortIds = cohorts.map((c) => c.id)
   await setCaseCohorts(props.caseId, cohortIds)
+  emit('changed')
 }
 
 async function handleCreateCohort(name: string) {
   await createAndAssignCohort(props.caseId, name)
+  emit('changed')
 }
 
 async function handleAddHpoTerm(term: { hpoId: string; hpoLabel: string }) {
   await assignHpoTerm(props.caseId, term.hpoId, term.hpoLabel)
+  emit('changed')
 }
 
 async function handleRemoveHpoTerm(hpoId: string) {
   await removeHpoTerm(props.caseId, hpoId)
+  emit('changed')
 }
 
 onMounted(async () => {

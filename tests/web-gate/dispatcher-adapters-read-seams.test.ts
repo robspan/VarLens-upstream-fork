@@ -69,6 +69,27 @@ describe('web dispatcher adapters: read seams', () => {
     expect(deps.session.listCases).toHaveBeenCalledTimes(1)
   })
 
+  test('cases.delete publishes cohort refresh events after the storage write', async () => {
+    const { deps, writeExecute, reply } = makeDeps()
+    const { overrides } = buildDispatcher(deps)
+
+    await overrides['cases:delete'].handle(
+      [7],
+      { session: { user: { id: 12 } } } as never,
+      reply as never,
+      deps
+    )
+
+    expect(reply.code).not.toHaveBeenCalled()
+    expect(writeExecute).toHaveBeenCalledWith({ type: 'cases:delete', params: [7] })
+    expect(deps.events.publish).toHaveBeenCalledWith(12, 'cohort:summaryRebuilt', {
+      is_stale: true
+    })
+    expect(deps.events.publish).toHaveBeenCalledWith(12, 'cohort:summaryRebuilt', {
+      is_stale: false
+    })
+  })
+
   test('cohort.getVariants maps preload method name to cohort:query', async () => {
     const { deps, execute, reply } = makeDeps()
     const { overrides } = buildDispatcher(deps)

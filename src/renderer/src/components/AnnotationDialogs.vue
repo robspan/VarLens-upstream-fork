@@ -81,6 +81,10 @@ const props = withDefaults(defineProps<Props>(), {
   annotationScope: 'case'
 })
 
+const emit = defineEmits<{
+  changed: []
+}>()
+
 const effectiveScope = computed(() => props.annotationScope)
 
 const { snackbar } = useVariantLinks()
@@ -95,10 +99,10 @@ const {
   acmgVariantLabel,
   openCommentDialog,
   openAcmgEvidenceDialog,
-  handleStarToggle,
-  handleQuickAcmgSelect,
-  handleAcmgEvidenceChange,
-  handleCommentSave,
+  handleStarToggle: persistStarToggle,
+  handleQuickAcmgSelect: persistQuickAcmgSelect,
+  handleAcmgEvidenceChange: persistAcmgEvidenceChange,
+  handleCommentSave: persistCommentSave,
   getGlobalTimestamps,
   getPerCaseTimestamps
 } = useAnnotationDialogs(
@@ -127,6 +131,31 @@ const { getGlobalComment, getPerCaseComment } = props.annotationActions
 
 // Suppress unused ref warning
 void acmgEvidenceDialogRef
+
+async function handleStarToggle(item: Parameters<typeof persistStarToggle>[0]): Promise<void> {
+  await persistStarToggle(item)
+  emit('changed')
+}
+
+async function handleQuickAcmgSelect(
+  item: Parameters<typeof persistQuickAcmgSelect>[0],
+  classification: Parameters<typeof persistQuickAcmgSelect>[1]
+): Promise<void> {
+  await persistQuickAcmgSelect(item, classification)
+  emit('changed')
+}
+
+async function handleAcmgEvidenceChange(
+  payload: Parameters<typeof persistAcmgEvidenceChange>[0]
+): Promise<void> {
+  await persistAcmgEvidenceChange(payload)
+  emit('changed')
+}
+
+async function handleCommentSave(payload: Parameters<typeof persistCommentSave>[0]): Promise<void> {
+  await persistCommentSave(payload)
+  if (payload.globalChanged || payload.perCaseChanged) emit('changed')
+}
 
 defineExpose({
   openCommentDialog,

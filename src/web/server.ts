@@ -35,6 +35,7 @@ import { registerEventStream, WebEventHub } from './server/events'
 import { registerLoginRoute, resolveAppPathPrefix } from './server/login-route'
 import { registerPageGate } from './server/page-gate'
 import { registerWebRateLimit } from './server/rate-limit'
+import { registerImportUploadRoutes } from './server/routes/upload-staging'
 import { registerOpenApi } from './server/routes/openapi'
 import { registerStatic } from './server/static'
 import {
@@ -127,10 +128,11 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     events
   }
   const { overrides } = buildDispatcher(dispatcherDeps)
+  registerImportUploadRoutes(app)
   registerDispatcher(app, dispatcherDeps, overrides)
   registerEventStream(app, events)
 
-  app.get('/healthz', async (_request, reply) => {
+  app.get('/healthz', { schema: { hide: true } }, async (_request, reply) => {
     const open = await isPostgresHealthy(pool)
     metrics.setDatabaseHealthy(open)
     if (!open) {

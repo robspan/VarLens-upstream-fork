@@ -252,13 +252,24 @@
       :case-id="caseId"
       :annotation-scope="annotationScope"
       :annotation-actions="annotationActions"
+      @changed="handleAnnotationChanged"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, toRef, watch, onMounted, onActivated, onDeactivated, nextTick } from 'vue'
-import type { Variant, VariantFilter } from '../../../shared/types/api'
+import {
+  ref,
+  computed,
+  toRef,
+  watch,
+  onMounted,
+  onUnmounted,
+  onActivated,
+  onDeactivated,
+  nextTick
+} from 'vue'
+import type { AnnotationChangeEvent, Variant, VariantFilter } from '../../../shared/types/api'
 import type { AnnotationScope } from '../../../shared/types/annotations'
 import type { ColumnFilterMeta } from '../../../shared/types/column-filters'
 import type { ActiveFilter } from '../../../shared/types/filters'
@@ -280,6 +291,8 @@ import AnnotationDialogs from './AnnotationDialogs.vue'
 import { useVariantColumns } from './variant-table/columns'
 import { useVariantData } from './variant-table/useVariantData'
 import { mdiFilterOff, mdiFilterOffOutline } from '@mdi/js'
+import { useApiService } from '../composables/useApiService'
+import { isWebRuntime } from '../utils/runtime-mode'
 import {
   PositionCell,
   AlleleCell,
@@ -329,6 +342,8 @@ const emit = defineEmits<{
 
 const viewActive = ref(true)
 const tableWorkActive = computed(() => props.interactive && viewActive.value)
+const { api } = useApiService()
+let cleanupAnnotationChanged: (() => void) | null = null
 
 // Annotations
 const {
@@ -438,6 +453,18 @@ const linkConfig = computed<
 // Precomputed row view models: annotation + link state per variant key
 const { rowViewModels } = useVariantRowViewModel(variants, annotationCache, linkConfig)
 const { renderRows } = useVariantRenderRows(variants, rowViewModels)
+
+const hasAnnotationBackedFilters = computed(
+  () =>
+    props.filters.starred_only === true ||
+    props.filters.has_comment === true ||
+    (props.filters.acmg_classifications?.length ?? 0) > 0
+)
+
+function handleAnnotationChanged(): void {
+  if (!isWebRuntime() || !hasAnnotationBackedFilters.value) return
+  void loadVariants()
+}
 
 // Column active filter chips for the toolbar
 const columnActiveFilters = computed<ActiveFilter[]>(() => {
@@ -616,6 +643,13 @@ watch(selectedIndex, async (newIndex) => {
 
 // Setup scroll sync after mount
 onMounted(async () => {
+  if (isWebRuntime() && api?.variants.onAnnotationChanged !== undefined) {
+    cleanupAnnotationChanged = api.variants.onAnnotationChanged((event: AnnotationChangeEvent) => {
+      if (event.caseId !== props.caseId || !hasAnnotationBackedFilters.value) return
+      handleAnnotationChanged()
+    })
+  }
+
   await nextTick()
   const tableEl = dataTableRef.value?.$el as HTMLElement | undefined
   if (tableEl) {
@@ -624,6 +658,10 @@ onMounted(async () => {
       initScrollSync(tableWrapperEl)
     }
   }
+})
+
+onUnmounted(() => {
+  cleanupAnnotationChanged?.()
 })
 
 // Expose for parent components

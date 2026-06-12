@@ -25,8 +25,56 @@ import { ALLOWED_DOMAINS } from '../../shared/config/allowed-domains'
 
 declare const __APP_VERSION__: string
 
+export const WEB_UPLOAD_EVENT = 'varlens:web-upload'
+export const WEB_UPLOAD_CANCEL_EVENT = 'varlens:web-upload-cancel'
+
+export type WebUploadStatus = 'started' | 'progress' | 'complete' | 'error' | 'aborted'
+
+export interface WebUploadEventDetail {
+  status: WebUploadStatus
+  fileName: string
+  fileIndex: number
+  totalFiles: number
+  loadedBytes: number
+  totalBytes: number | null
+  percent: number | null
+  message?: string
+}
+
 interface InvokeBody {
   args: unknown[]
+}
+
+interface UploadedFileRef {
+  ref: string
+  fileName: string
+  size: number
+}
+
+let activeUpload: XMLHttpRequest | null = null
+let uploadCancelListenerRegistered = false
+let uploadCancelListenerTarget: Window | null = null
+let sharedEventSource: EventSource | null = null
+let sharedEventSourceSubscriberCount = 0
+
+function dispatchUploadEvent(detail: WebUploadEventDetail): void {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return
+  window.dispatchEvent(new CustomEvent<WebUploadEventDetail>(WEB_UPLOAD_EVENT, { detail }))
+}
+
+function uploadPercent(loadedBytes: number, totalBytes: number | null): number | null {
+  if (totalBytes === null || totalBytes <= 0) return null
+  return Math.max(0, Math.min(100, Math.round((loadedBytes / totalBytes) * 100)))
+}
+
+function ensureUploadCancelListener(): void {
+  if (typeof window === 'undefined') return
+  if (uploadCancelListenerRegistered && uploadCancelListenerTarget === window) return
+  window.addEventListener(WEB_UPLOAD_CANCEL_EVENT, () => {
+    activeUpload?.abort()
+  })
+  uploadCancelListenerRegistered = true
+  uploadCancelListenerTarget = window
 }
 
 // Vite's `base` config materialises here at build time. The browser
@@ -79,19 +127,227 @@ async function httpInvoke(domain: string, method: string, args: unknown[]): Prom
   }
 }
 
+async function uploadImportFile(file: File): Promise<UploadedFileRef> {
+  return await uploadImportFileWithProgress(file, 0, 1)
+}
+
+async function uploadImportFileWithProgress(
+  file: File,
+  fileIndex: number,
+  totalFiles: number
+): Promise<UploadedFileRef> {
+  return await new Promise<UploadedFileRef>((resolve, reject) => {
+    const totalBytes = Number.isFinite(file.size) ? file.size : null
+    const xhr = new XMLHttpRequest()
+    activeUpload = xhr
+    ensureUploadCancelListener()
+
+    dispatchUploadEvent({
+      status: 'started',
+      fileName: file.name,
+      fileIndex,
+      totalFiles,
+      loadedBytes: 0,
+      totalBytes,
+      percent: uploadPercent(0, totalBytes)
+    })
+
+    if (xhr.upload !== undefined) {
+      xhr.upload.onprogress = (event) => {
+        const knownTotal = event.lengthComputable ? event.total : totalBytes
+        dispatchUploadEvent({
+          status: 'progress',
+          fileName: file.name,
+          fileIndex,
+          totalFiles,
+          loadedBytes: event.loaded,
+          totalBytes: knownTotal,
+          percent: uploadPercent(event.loaded, knownTotal)
+        })
+      }
+    }
+
+    xhr.onload = () => {
+      activeUpload = null
+      const text = xhr.responseText
+      if (xhr.status < 200 || xhr.status >= 300) {
+        const message = `web upload: ${xhr.status} ${xhr.statusText}: ${text}`
+        dispatchUploadEvent({
+          status: 'error',
+          fileName: file.name,
+          fileIndex,
+          totalFiles,
+          loadedBytes: 0,
+          totalBytes,
+          percent: null,
+          message
+        })
+        reject(new Error(message))
+        return
+      }
+
+      dispatchUploadEvent({
+        status: 'complete',
+        fileName: file.name,
+        fileIndex,
+        totalFiles,
+        loadedBytes: totalBytes ?? file.size,
+        totalBytes,
+        percent: 100
+      })
+      try {
+        resolve(JSON.parse(text) as UploadedFileRef)
+      } catch (error) {
+        const message = `web upload: invalid JSON response: ${error instanceof Error ? error.message : String(error)}`
+        dispatchUploadEvent({
+          status: 'error',
+          fileName: file.name,
+          fileIndex,
+          totalFiles,
+          loadedBytes: totalBytes ?? file.size,
+          totalBytes,
+          percent: 100,
+          message
+        })
+        reject(new Error(message))
+      }
+    }
+
+    xhr.onerror = () => {
+      activeUpload = null
+      const message = `web upload: ${xhr.status} ${xhr.statusText}: network error`
+      dispatchUploadEvent({
+        status: 'error',
+        fileName: file.name,
+        fileIndex,
+        totalFiles,
+        loadedBytes: 0,
+        totalBytes,
+        percent: null,
+        message
+      })
+      reject(new Error(message))
+    }
+
+    xhr.onabort = () => {
+      activeUpload = null
+      dispatchUploadEvent({
+        status: 'aborted',
+        fileName: file.name,
+        fileIndex,
+        totalFiles,
+        loadedBytes: 0,
+        totalBytes,
+        percent: null,
+        message: 'Upload cancelled'
+      })
+      reject(new Error('Upload cancelled'))
+    }
+
+    xhr.open('POST', `${API_BASE}/import/upload`)
+    xhr.withCredentials = true
+    xhr.setRequestHeader('content-type', 'application/octet-stream')
+    xhr.setRequestHeader('x-varlens-file-name', file.name)
+    xhr.send(file)
+  })
+}
+
+async function uploadImportFiles(files: readonly File[]): Promise<UploadedFileRef[]> {
+  if (files.length === 1) {
+    return [await uploadImportFile(files[0])]
+  }
+  const uploaded: UploadedFileRef[] = []
+  for (let index = 0; index < files.length; index++) {
+    uploaded.push(await uploadImportFileWithProgress(files[index], index, files.length))
+  }
+  return uploaded
+}
+
+async function pickFiles(params: {
+  multiple: boolean
+  accept: string
+  directory?: boolean
+}): Promise<File[]> {
+  const cancelFallbackDelayMs = 2000
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = params.accept
+  input.multiple = params.multiple
+  if (params.directory === true) {
+    input.setAttribute('webkitdirectory', '')
+  }
+  input.style.display = 'none'
+  document.body.append(input)
+  try {
+    return await new Promise<File[]>((resolve) => {
+      let settled = false
+      let cancelTimer: ReturnType<typeof window.setTimeout> | undefined
+      const settle = (files: File[]): void => {
+        if (settled) return
+        settled = true
+        if (cancelTimer !== undefined) {
+          window.clearTimeout(cancelTimer)
+        }
+        window.removeEventListener('focus', handleFocus)
+        resolve(files)
+      }
+      const handleFocus = (): void => {
+        // Native pickers can restore focus before `change` has populated
+        // `input.files`; keep focus as a delayed cancel fallback only.
+        cancelTimer = window.setTimeout(() => {
+          settle(Array.from(input.files ?? []))
+        }, cancelFallbackDelayMs)
+      }
+      input.addEventListener('change', () => settle(Array.from(input.files ?? [])), { once: true })
+      input.addEventListener('cancel', () => settle([]), { once: true })
+      window.addEventListener('focus', handleFocus, { once: true })
+      input.click()
+    })
+  } finally {
+    input.remove()
+  }
+}
+
+async function pickAndUploadFiles(params: {
+  multiple: boolean
+  accept: string
+  directory?: boolean
+}): Promise<string[]> {
+  const files = await pickFiles(params)
+  return (await uploadImportFiles(files)).map((file) => file.ref)
+}
+
 const NOOP_UNSUBSCRIBE = (): void => {}
 
-function subscribeWebEvent<T>(type: string, callback: (payload: T) => void): () => void {
-  if (typeof EventSource === 'undefined') return NOOP_UNSUBSCRIBE
+function getSharedEventSource(): EventSource | null {
+  if (typeof EventSource === 'undefined') return null
+  if (sharedEventSource === null) {
+    sharedEventSource = new EventSource(`${API_BASE}/events`, { withCredentials: true })
+  }
+  return sharedEventSource
+}
 
-  const source = new EventSource(`${API_BASE}/events`, { withCredentials: true })
+function subscribeWebEvent<T>(type: string, callback: (payload: T) => void): () => void {
+  const source = getSharedEventSource()
+  if (source === null) return NOOP_UNSUBSCRIBE
+
   const listener = (event: MessageEvent<string>): void => {
     callback(JSON.parse(event.data) as T)
   }
   source.addEventListener(type, listener as EventListener)
+  sharedEventSourceSubscriberCount += 1
+
+  let unsubscribed = false
   return () => {
+    if (unsubscribed) return
+    unsubscribed = true
+
     source.removeEventListener(type, listener as EventListener)
-    source.close()
+    sharedEventSourceSubscriberCount = Math.max(0, sharedEventSourceSubscriberCount - 1)
+    if (sharedEventSourceSubscriberCount === 0 && sharedEventSource === source) {
+      source.close()
+      sharedEventSource = null
+    }
   }
 }
 
@@ -159,6 +415,110 @@ function buildImportApi(): unknown {
           return (callback: (progress: unknown) => void) =>
             subscribeWebEvent('import:progress', callback)
         }
+        if (prop === 'selectFile') {
+          return async () => {
+            const refs = await pickAndUploadFiles({
+              multiple: false,
+              accept: '.vcf,.vcf.gz,.json,.json.gz,.gz'
+            })
+            return refs[0] ?? null
+          }
+        }
+        if (prop === 'selectFiles') {
+          return () =>
+            pickAndUploadFiles({
+              multiple: true,
+              accept: '.vcf,.vcf.gz,.json,.json.gz,.gz'
+            })
+        }
+        if (prop === 'selectBedFile') {
+          return async () => {
+            const refs = await pickAndUploadFiles({ multiple: false, accept: '.bed,.bed.gz,.gz' })
+            return refs[0] ?? null
+          }
+        }
+        return typeof prop === 'string' ? rpc[prop] : undefined
+      }
+    }
+  )
+}
+
+function buildBatchImportApi(): unknown {
+  const rpc = buildDomainProxy('batch-import') as Record<string, unknown>
+  return new Proxy(
+    {},
+    {
+      get(_target, prop: string | symbol) {
+        if (prop === 'onProgress') {
+          return (callback: (progress: unknown) => void) =>
+            subscribeWebEvent('batch-import:progress', callback)
+        }
+        if (prop === 'onComplete') {
+          return (callback: (result: unknown) => void) =>
+            subscribeWebEvent('batch-import:complete', callback)
+        }
+        if (prop === 'selectFiles') {
+          return () =>
+            pickAndUploadFiles({
+              multiple: true,
+              accept: '.vcf,.vcf.gz,.json,.json.gz,.gz'
+            })
+        }
+        if (prop === 'selectFolder') {
+          return () =>
+            pickAndUploadFiles({
+              multiple: true,
+              directory: true,
+              accept: '.vcf,.vcf.gz,.json,.json.gz,.gz'
+            })
+        }
+        if (prop === 'selectZip') {
+          return async () => {
+            const refs = await pickAndUploadFiles({ multiple: false, accept: '.zip' })
+            const filePath = refs[0]
+            if (filePath === undefined) return null
+
+            const passwordProbe = await httpInvoke('batch-import', 'testZipPassword', [
+              filePath,
+              ''
+            ])
+            if (isIpcError(passwordProbe)) return passwordProbe
+            const isEncrypted = !(passwordProbe as { success: boolean }).success
+            return { filePath, isEncrypted }
+          }
+        }
+        return typeof prop === 'string' ? rpc[prop] : undefined
+      }
+    }
+  )
+}
+
+function buildVariantsApi(): unknown {
+  const rpc = buildDomainProxy('variants') as Record<string, unknown>
+  return new Proxy(
+    {},
+    {
+      get(_target, prop: string | symbol) {
+        if (prop === 'onAnnotationChanged') {
+          return (callback: (event: unknown) => void) =>
+            subscribeWebEvent('variants:annotationChanged', callback)
+        }
+        return typeof prop === 'string' ? rpc[prop] : undefined
+      }
+    }
+  )
+}
+
+function buildCohortApi(): unknown {
+  const rpc = buildDomainProxy('cohort') as Record<string, unknown>
+  return new Proxy(
+    {},
+    {
+      get(_target, prop: string | symbol) {
+        if (prop === 'onSummaryRebuilt') {
+          return (callback: (status: unknown) => void) =>
+            subscribeWebEvent('cohort:summaryRebuilt', callback)
+        }
         return typeof prop === 'string' ? rpc[prop] : undefined
       }
     }
@@ -166,11 +526,15 @@ function buildImportApi(): unknown {
 }
 
 const DOMAIN_OVERRIDES: Record<string, unknown> = {
+  batchImport: buildBatchImportApi(),
+  'batch-import': buildBatchImportApi(),
+  cohort: buildCohortApi(),
   import: buildImportApi(),
   perf: PERF_API,
   shell: SHELL_API,
   system: SYSTEM_API,
-  updater: UPDATER_API
+  updater: UPDATER_API,
+  variants: buildVariantsApi()
 }
 
 export function createApi(): WindowAPI {

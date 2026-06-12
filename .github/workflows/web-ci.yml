@@ -14,6 +14,7 @@ on:
       - 'src/renderer/src/**'
       - 'src/shared/**'
       - 'tests/web-gate/**'
+      - 'tests/web-smoke/**'
       - 'vite.web*.config.ts'
       - '.github/workflows/build.yml'
       - '.github/workflows/*web*.yml'

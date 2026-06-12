@@ -31,10 +31,11 @@ describe('web gene reference path resolution', () => {
 
     try {
       process.chdir(cwd)
+      const checkedRoot = process.cwd()
 
       expect(() => getWebGeneReferenceDb()).toThrow(
         new RegExp(
-          `Checked: ${cwd.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/resources/gene_reference\\.db$`
+          `Checked: ${checkedRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/resources/gene_reference\\.db$`
         )
       )
     } finally {

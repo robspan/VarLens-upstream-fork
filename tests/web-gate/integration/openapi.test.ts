@@ -60,14 +60,14 @@ const TAG_PATHS = [
 ] as const
 
 describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
-  test('requires an authenticated session and exposes dispatcher and auth method paths', async () => {
+  test('serves the public contract and exposes dispatcher and auth method paths', async () => {
     const driver = await startWebDriver()
     try {
       const unauthenticated = await driver.app.inject({
         method: 'GET',
         url: '/api/openapi.json'
       })
-      expect(unauthenticated.statusCode, unauthenticated.body).toBe(401)
+      expect(unauthenticated.statusCode, unauthenticated.body).toBe(200)
 
       const authenticated = await driver.app.inject({
         method: 'GET',
@@ -76,17 +76,23 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
       })
       expect(authenticated.statusCode, authenticated.body).toBe(200)
 
-      const spec = authenticated.json() as {
+      expect(authenticated.statusCode, authenticated.body).toBe(200)
+
+      const spec = unauthenticated.json() as {
         openapi?: string
         info?: { title?: string }
         paths?: Record<string, unknown>
       }
       expect(spec.openapi).toMatch(/^3\./)
       expect(spec.info?.title).toBe('VarLens Web API')
-      expect(spec.paths).toHaveProperty('/api/{domain}/{method}')
       expect(spec.paths).toHaveProperty('/api/auth/login')
       expect(spec.paths).toHaveProperty('/api/auth/createUser')
       expect(spec.paths).toHaveProperty('/api/auth/changePassword')
+      expect(spec.paths).not.toHaveProperty('/api/{domain}/{method}')
+      expect(spec.paths).not.toHaveProperty('/login')
+      expect(spec.paths).not.toHaveProperty('/login/')
+      expect(spec.paths).not.toHaveProperty('/api/events')
+      expect(spec.paths).not.toHaveProperty('/healthz')
       for (const path of ANNOTATION_PATHS) {
         expect(spec.paths).toHaveProperty(path)
       }
@@ -191,6 +197,9 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
       expect(paths['/api/variants/query']?.post?.responses?.['200']).toBeDefined()
       expect(paths['/api/variants/getFilterOptions']?.post?.requestBody).toBeDefined()
       expect(paths['/api/variants/getFilterOptions']?.post?.responses?.['200']).toBeDefined()
+
+      const specText = JSON.stringify(spec)
+      expect(specText).not.toContain('Generic RPC fallback')
     } finally {
       await driver.close()
     }

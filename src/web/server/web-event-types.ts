@@ -1,0 +1,5 @@
+export const WEB_EVENT_VARIANTS_ANNOTATION_CHANGED = 'variants:annotationChanged'
+export const WEB_EVENT_COHORT_SUMMARY_REBUILT = 'cohort:summaryRebuilt'
+export const WEB_EVENT_IMPORT_PROGRESS = 'import:progress'
+export const WEB_EVENT_BATCH_IMPORT_PROGRESS = 'batch-import:progress'
+export const WEB_EVENT_BATCH_IMPORT_COMPLETE = 'batch-import:complete'

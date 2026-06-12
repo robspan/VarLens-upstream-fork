@@ -13,7 +13,14 @@ describe('web CI target wiring', () => {
     expect(makefile).toMatch(/^web-gate-postgres: build-web/m)
     expect(makefile).toMatch(/^web-gate-parity: web-data-verify/m)
     expect(makefile).toContain('VARLENS_PG_URL is required for web-gate-postgres')
-    expect(makefile).toMatch(/^ci: lint-check format-check typecheck rebuild-node test/m)
+    // `ci` runs the static checks in parallel then test serially (see the parallelised
+    // `make ci` recipe on main); assert it still covers every stage rather than pinning
+    // the obsolete single-prerequisite-line form.
+    expect(makefile).toMatch(/^ci:.*Run all CI checks/m)
+    expect(makefile).toMatch(
+      /^\t\$\(MAKE\) -j4 -Otarget lint-check format-check typecheck rebuild-node$/m
+    )
+    expect(makefile).toMatch(/^\t\$\(MAKE\) test$/m)
     expect(makefile).toMatch(/^VARLENS_WEB \?= 0/m)
     expect(makefile).not.toMatch(/wildcard .*\.env/)
   })

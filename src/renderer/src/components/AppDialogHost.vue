@@ -26,6 +26,7 @@
     :case-name="selectedCaseName"
     :variant-count="selectedVariantCount"
     :created-at="selectedCreatedAt"
+    @metadata-changed="emit('metadata-changed')"
   />
 </template>
 
@@ -61,6 +62,7 @@ const {
 const emit = defineEmits<{
   'import-complete': [result: { caseId: number; variantCount: number; caseName: string }]
   'batch-import-complete': [result: { totalImported: number }]
+  'metadata-changed': []
 }>()
 
 // Dialog refs

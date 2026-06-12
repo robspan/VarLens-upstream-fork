@@ -1,4 +1,4 @@
-.PHONY: help rebuild dev dev-postgres web-dev build build-web build-web-server build-web-renderer preview lint lint-check agent-check test test-watch test-coverage web-ci web-gate web-gate-static web-gate-integration web-gate-postgres web-gate-parity web-parity-e2e web-test-report web-data-gather web-data-prepare web-data-verify web-ipc-fixtures typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-query-perf pg-seed-dev pg-hosted-smoke pg-reset
+.PHONY: help rebuild dev dev-postgres web-dev build build-web build-web-server build-web-renderer preview lint lint-check agent-check test test-watch test-coverage web-ci web-gate web-gate-static web-gate-integration web-gate-postgres web-gate-parity web-parity-e2e web-smoke web-test-report web-data-gather web-data-prepare web-data-verify web-ipc-fixtures typecheck dist dist-linux dist-mac dist-win package package-linux package-mac package-win clean clean-all install reinstall all ci ci-full ci-build ci-checks ci-startup-smoke ci-package-linux ci-packaged-smoke-linux ci-actions docs docs-dev docs-preview docs-screenshots pg-up pg-down pg-logs pg-psql pg-query-perf pg-seed-dev pg-hosted-smoke pg-reset
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -6,10 +6,13 @@
 CI_NODE_VERSION ?= $(shell tr -d '\n' < .nvmrc)
 XVFB_RUN ?= $(shell if command -v xvfb-run >/dev/null 2>&1; then printf 'xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" '; fi)
 WEB_DEV_PORT ?= 8787
-WEB_DEV_SCHEMA ?= web_dev
+WEB_DEV_SCHEMA_SLUG ?= $(shell basename "$$(pwd)" | tr '[:upper:].-' '[:lower:]__' | sed 's/[^a-z0-9_]/_/g; s/^[^a-z_]/web_/')
+WEB_DEV_SCHEMA ?= web_dev_$(WEB_DEV_SCHEMA_SLUG)
 WEB_DEV_RECOVERY_KEY_DIR ?= /tmp/varlens-web-dev
 WEB_DEV_API_LATENCY_MS ?= 75
 WEB_DEV_ADMIN_USERNAME ?= admin
+WEB_DEV_ENV_FILE ?= .env.web.local
+WEB_SMOKE_SPEC ?=
 
 define ensure_ci_node
 	@current_node="$$(node -v | sed 's/^v//')"; \
@@ -72,23 +75,27 @@ endif
 
 web-dev: ## Start local Postgres-backed web mode at http://localhost:$(WEB_DEV_PORT)/
 	@if [ ! -f .env.postgres.local ]; then echo "Missing .env.postgres.local. Copy .env.postgres.example first."; exit 1; fi
-	$(MAKE) pg-up
+	@set -a; . ./.env.postgres.local; if [ -f "$(WEB_DEV_ENV_FILE)" ]; then . "$(WEB_DEV_ENV_FILE)"; fi; set +a; \
+		node -e "const { Client } = require('pg'); const client = new Client({ connectionString: process.env.VARLENS_PG_URL }); client.connect().then(() => client.end()).then(() => process.exit(0)).catch(() => process.exit(1));" \
+		&& echo "Postgres reachable at $$(node -e 'const url = new URL(process.env.VARLENS_PG_URL); console.log(url.host)') - skipping pg-up." \
+		|| $(MAKE) pg-up
 	VARLENS_WEB_BASE=/ npm run build:web
 	@echo ""
 	@echo "Starting VarLens web mode:"
 	@echo "  URL:      http://localhost:$(WEB_DEV_PORT)/"
 	@echo "  Health:   http://localhost:$(WEB_DEV_PORT)/healthz"
 	@echo "  Postgres: .env.postgres.local"
+	@if [ -f "$(WEB_DEV_ENV_FILE)" ]; then echo "  Web env:  $(WEB_DEV_ENV_FILE)"; else echo "  Web env:  $(WEB_DEV_ENV_FILE) (not present; using defaults)"; fi
 	@echo "  Schema:   $(WEB_DEV_SCHEMA)"
-	@echo "  Secrets:  $${VARLENS_RECOVERY_KEY_DIR:-$(WEB_DEV_RECOVERY_KEY_DIR)}"
-	@echo "  API delay: $${VARLENS_WEB_API_LATENCY_MS:-$(WEB_DEV_API_LATENCY_MS)}ms"
+	@set -a; . ./.env.postgres.local; if [ -f "$(WEB_DEV_ENV_FILE)" ]; then . "$(WEB_DEV_ENV_FILE)"; fi; set +a; echo "  Secrets:  $${VARLENS_RECOVERY_KEY_DIR:-$(WEB_DEV_RECOVERY_KEY_DIR)}"
+	@set -a; . ./.env.postgres.local; if [ -f "$(WEB_DEV_ENV_FILE)" ]; then . "$(WEB_DEV_ENV_FILE)"; fi; set +a; echo "  API delay: $${VARLENS_WEB_API_LATENCY_MS:-$(WEB_DEV_API_LATENCY_MS)}ms"
 	@echo "  Dev admin bootstrap: set VARLENS_ADMIN_PASSWORD_HASH for first run"
 	@echo ""
-	@set -a; . ./.env.postgres.local; set +a; \
+	@set -a; . ./.env.postgres.local; if [ -f "$(WEB_DEV_ENV_FILE)" ]; then . "$(WEB_DEV_ENV_FILE)"; fi; set +a; \
 		NODE_ENV=development \
-		APP_PATH_PREFIX=/ \
+		APP_PATH_PREFIX="$${APP_PATH_PREFIX:-/}" \
 		VARLENS_WEB_HOST="$${VARLENS_WEB_HOST:-127.0.0.1}" \
-		VARLENS_WEB_PORT="$${VARLENS_WEB_PORT:-$(WEB_DEV_PORT)}" \
+		VARLENS_WEB_PORT="$(WEB_DEV_PORT)" \
 		VARLENS_WEB_API_LATENCY_MS="$${VARLENS_WEB_API_LATENCY_MS:-$(WEB_DEV_API_LATENCY_MS)}" \
 		VARLENS_PG_SCHEMA="$(WEB_DEV_SCHEMA)" \
 		VARLENS_RECOVERY_KEY_DIR="$${VARLENS_RECOVERY_KEY_DIR:-$(WEB_DEV_RECOVERY_KEY_DIR)}" \
@@ -211,6 +218,13 @@ web-parity-e2e: web-data-verify ## Run manifest-backed desktop↔web parity E2E 
 
 web-test-report: ## Generate web test report artifacts (VARLENS_WEB=1 runs full parity; uses VARLENS_PG_URL or .env.postgres.local)
 	node scripts/reports/run-web-test-report.mjs
+
+tests/web-smoke/node_modules/.bin/cypress: tests/web-smoke/package.json tests/web-smoke/package-lock.json
+	CYPRESS_INSTALL_BINARY=0 npm --prefix tests/web-smoke ci
+	npm --prefix tests/web-smoke exec -- cypress install
+
+web-smoke: tests/web-smoke/node_modules/.bin/cypress ## Run browser smoke against VARLENS_BASE_URL (defaults to local :8787)
+	VARLENS_BASE_URL="$${VARLENS_BASE_URL:-http://127.0.0.1:$(WEB_DEV_PORT)}" npm run test:web-smoke -- $$(if [ -n "$(WEB_SMOKE_SPEC)" ]; then printf -- "--spec %s" "$(WEB_SMOKE_SPEC)"; fi)
 
 web-gate: web-gate-static ## Run the Phase 1 gate fast tests (parity is opt-in via web-gate-parity)
 	@echo "Static web gate done. Run 'make web-gate-parity' to validate the desktop↔web parity path (opt-in)."

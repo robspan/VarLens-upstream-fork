@@ -115,6 +115,7 @@
       :case-id="null"
       annotation-scope="all"
       :annotation-actions="annotationActions"
+      @changed="handleAnnotationChanged"
     />
 
     <!-- Export Snackbar -->
@@ -163,6 +164,7 @@ import { mdiDatabaseSync, mdiRefresh } from '@mdi/js'
 import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 import type { AcmgClassification } from '../../../shared/config/domain.config'
 import { getCurrentUnsupportedReason } from '../utils/backend-capabilities'
+import { isWebRuntime } from '../utils/runtime-mode'
 
 // Emit for navigation and row click
 const emit = defineEmits<{
@@ -327,6 +329,13 @@ const buildCohortQueryParams = (): Omit<
   panel_padding_bp:
     filters.value.activePanelIds.length > 0 ? filters.value.panelPaddingBp : undefined
 })
+
+const hasAnnotationBackedFilters = computed(
+  () =>
+    filters.value.starredOnly === true ||
+    filters.value.hasCommentOnly === true ||
+    filters.value.acmgClassifications.length > 0
+)
 
 // Shared offset pagination (same composable as case view)
 const {
@@ -543,6 +552,11 @@ const handleClearColumnFilters = (): void => {
 const handleRetry = async () => {
   error.value = null
   await invalidateAndReload()
+}
+
+const handleAnnotationChanged = (): void => {
+  if (!isWebRuntime() || !hasAnnotationBackedFilters.value) return
+  void invalidateAndReload()
 }
 
 // Delegate annotation events to AnnotationDialogs

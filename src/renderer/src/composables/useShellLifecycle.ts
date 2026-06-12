@@ -4,6 +4,8 @@ import type { SelectedCaseInput } from './useAppState'
 import type { WindowAPI } from '../../../shared/types/api'
 import type { useImportStatusStore } from '../stores/importStatusStore'
 import type AppDialogHostType from '../components/AppDialogHost.vue'
+import { useVariantColumnMeta } from './useVariantColumnMeta'
+import { isWebRuntime } from '../utils/runtime-mode'
 
 interface CaseListActions {
   refreshCases: () => Promise<unknown> | unknown
@@ -36,6 +38,7 @@ export function useShellLifecycle({
   importStore
 }: UseShellLifecycleOptions) {
   let cleanupBatchImportComplete: (() => void) | null = null
+  const variantColumnMeta = useVariantColumnMeta()
 
   watch(currentDatabasePath, () => {
     resetForDatabaseSwitch()
@@ -49,6 +52,7 @@ export function useShellLifecycle({
   }
 
   const handleImportComplete = async (result: SelectedCaseInput): Promise<void> => {
+    if (isWebRuntime()) variantColumnMeta.invalidateAll()
     incrementDataGeneration()
     await caseListRef.value?.refreshCases()
     selectCase(result)
@@ -56,6 +60,7 @@ export function useShellLifecycle({
   }
 
   const handleBatchImportComplete = (): Promise<unknown> | unknown => {
+    if (isWebRuntime()) variantColumnMeta.invalidateAll()
     incrementDataGeneration()
     return caseListRef.value?.refreshCases()
   }

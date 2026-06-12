@@ -111,22 +111,30 @@ watch(
 
 async function selectBedFile(): Promise<void> {
   if (!api) return
+
+  importingRegion.value = true
   try {
-    const result = await api.import.selectFile()
+    const result = await api.import.selectBedFile()
     if (typeof result === 'string') {
-      selectedBedPath.value = result
-      if (regionFileName.value.trim() === '') {
-        const parts = result.split(/[/\\]/)
-        const basename = parts[parts.length - 1]
-        regionFileName.value = basename.replace(/\.bed$/i, '')
-      }
+      applySelectedBedFile(result)
     }
   } catch (e) {
     logService.warn(
       'Failed to select BED file: ' + (e instanceof Error ? e.message : String(e)),
       'region-import'
     )
+  } finally {
+    importingRegion.value = false
   }
+}
+
+function applySelectedBedFile(path: string): void {
+  selectedBedPath.value = path
+  if (regionFileName.value.trim() !== '') return
+
+  const parts = path.split(/[/\\]/)
+  const displayName = parts[parts.length - 1] ?? path
+  regionFileName.value = displayName.replace(/\.bed(?:\.gz)?$/i, '')
 }
 
 async function importRegionFile(): Promise<void> {

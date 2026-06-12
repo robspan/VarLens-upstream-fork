@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg'
 
+import { UniqueConstraintError } from '../../database/errors'
 import { quoteIdentifier } from './identifiers'
 import { runBulkCopy } from './postgres-bulk-write'
 import {
@@ -137,7 +138,7 @@ export class PostgresVcfImportRepository {
         [request.caseName]
       )
       if ((dupResult.rows as unknown[]).length > 0) {
-        throw new Error(`case '${request.caseName}' already exists — cannot create a duplicate`)
+        throw new UniqueConstraintError('case', request.caseName)
       }
 
       const createdAt = Date.now()

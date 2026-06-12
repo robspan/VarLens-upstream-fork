@@ -64,7 +64,12 @@
       @open-shortcuts-help="showKeyboardHelp = true"
     />
 
-    <AppDialogHost ref="dialogHostRef" @import-complete="handleImportComplete" />
+    <AppDialogHost
+      ref="dialogHostRef"
+      @import-complete="handleImportComplete"
+      @batch-import-complete="handleDialogBatchImportComplete"
+      @metadata-changed="handleMetadataChanged"
+    />
 
     <KeyboardShortcutsDialog v-model="showKeyboardHelp" />
 
@@ -93,6 +98,8 @@ import { useShellNavigation } from './composables/useShellNavigation'
 import { useShellLifecycle } from './composables/useShellLifecycle'
 import { useApiService } from './composables/useApiService'
 import { useImportStatusStore } from './stores/importStatusStore'
+import { isWebRuntime } from './utils/runtime-mode'
+import { useVariantColumnMeta } from './composables/useVariantColumnMeta'
 import {
   resetRendererLongTaskObserver,
   startRendererLongTaskObserver,
@@ -117,6 +124,7 @@ const ViewTransitionOverlay = defineAsyncComponent(
 const router = useRouter()
 const { api } = useApiService()
 const importStore = useImportStatusStore()
+const variantColumnMeta = useVariantColumnMeta()
 
 // Create and provide shared app state for child components
 const appState = createAppState()
@@ -241,6 +249,7 @@ const handleCasesLoaded = (count: number): void => {
 }
 const handleCaseDeleted = (caseId: number): void => {
   if (selectedCaseId.value === caseId) clearSelectedCase()
+  if (isWebRuntime()) variantColumnMeta.invalidateAll()
   incrementDataGeneration()
 }
 
@@ -258,18 +267,30 @@ watch(selectedCaseId, () => {
   resetCaseFilters()
 })
 
-const { handleDatabaseSwitched, handleImportComplete } = useShellLifecycle({
-  api,
-  currentDatabasePath: databasePath,
-  currentDatabaseName: databaseName,
-  incrementDataGeneration,
-  resetForDatabaseSwitch,
-  clearMetadataCache,
-  selectCase,
-  caseListRef,
-  dialogHostRef: dialogHostRef as Parameters<typeof useShellLifecycle>[0]['dialogHostRef'],
-  importStore
-})
+const { handleDatabaseSwitched, handleImportComplete, handleBatchImportComplete } =
+  useShellLifecycle({
+    api,
+    currentDatabasePath: databasePath,
+    currentDatabaseName: databaseName,
+    incrementDataGeneration,
+    resetForDatabaseSwitch,
+    clearMetadataCache,
+    selectCase,
+    caseListRef,
+    dialogHostRef: dialogHostRef as Parameters<typeof useShellLifecycle>[0]['dialogHostRef'],
+    importStore
+  })
+
+const handleDialogBatchImportComplete = async (): Promise<void> => {
+  if (!isWebRuntime()) return
+  await handleBatchImportComplete()
+}
+
+const handleMetadataChanged = async (): Promise<void> => {
+  if (!isWebRuntime()) return
+  incrementDataGeneration()
+  await caseListRef.value?.refreshCases()
+}
 
 const handleShowImportProgress = (): void => {
   dialogHostRef.value?.reopenImportDialog()

@@ -1,8 +1,8 @@
 <template>
-  <div v-if="loading" class="d-flex justify-center pa-4">
+  <div v-if="loading" class="d-flex justify-center pa-4" data-testid="case-data-info-tab">
     <v-progress-circular indeterminate size="24" />
   </div>
-  <div v-else>
+  <div v-else data-testid="case-data-info-tab">
     <!-- Import Information (read-only) -->
     <div class="text-subtitle-2 text-medium-emphasis mb-2">
       <v-icon size="small" class="mr-1" :icon="mdiFileImportOutline" />
@@ -227,8 +227,8 @@ async function loadDataInfo(): Promise<void> {
     platformSuggestions.value = [...all].sort()
 
     idTypeSuggestions.value = (idTypes as string[]) ?? []
-    geneLists.value = unwrapIpcResult(gLists) as GeneListItem[]
-    regionFiles.value = (rFiles as RegionFileItem[]) ?? []
+    geneLists.value = unwrapIpcResult(gLists as GeneListItem[]) ?? []
+    regionFiles.value = unwrapIpcResult(rFiles as RegionFileItem[]) ?? []
 
     if (info != null) {
       platform.value = info.platform

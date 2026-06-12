@@ -15,7 +15,7 @@ This file tracks the cleanup pass after the initial audit. The desktop-default c
 - Postgres-backed behavioral tests now prove stale sessions are rejected after user deactivation and password reset.
 - Web API POSTs reject mismatched browser `Origin` values before reaching public or authenticated RPC handlers.
 - A shared authenticated web test driver boots `buildApp()`, logs in, rotates the bootstrap password, calls RPC endpoints, and tears down an isolated Postgres schema.
-- Web single-file import exists as gated server-local path mode for tests/operators: `NODE_ENV=test` or `VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT=1`.
+- Web single-file import uses staged browser upload refs. Server-local path imports are rejected in web mode.
 - Import/filter parity now has a real web HTTP path when the web build, Electron build, and `VARLENS_PG_URL` are present.
 - Renderer database picker and import entry points are gated in web mode so desktop file/workspace actions do not leak into the browser UI.
 - Web capabilities now hide browser-incompatible export features, and direct export calls fail with explicit `unsupported-web-capability` responses instead of leaking storage row streams.

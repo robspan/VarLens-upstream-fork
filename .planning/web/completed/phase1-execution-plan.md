@@ -24,10 +24,12 @@ The three big unblockers all landed in this PR:
    `Credential = {kind:'password'} | {kind:'token'}` is in place for the
    OIDC retrofit.
 
-What remains: behavioral coverage. Each new user-facing flow in the web
-build adds its parity scenario (TDD via the existing harness). The
-`user-id-schema` web-gate tracks per-tenant prep table-by-table; not a
-hard Phase 1 blocker — it's the visible Stage-2 backlog.
+What remains: behavioral coverage for the single-user web pilot. Each new
+single-user flow in the web build adds its parity scenario (TDD via the
+existing harness). The `user-id-schema` web-gate tracks row-level isolation
+schema prep table-by-table; it is not a hard Phase 1 blocker and does not make
+the current pilot multi-user-ready. `auth:createUser` stays disabled until a
+later scoped phase implements row-level multi-user data isolation.
 
 ## Status table
 
@@ -36,7 +38,7 @@ hard Phase 1 blocker — it's the visible Stage-2 backlog.
 | 1 | Web container starts w/o Electron deps | — | `electron-leak` + `integration/healthz` | ✅ |
 | 2 | Migrations idempotent | — | `integration/migrations-idempotent` (SQLite) + `postgres-migrations-idempotent` (real PG, gated) | ✅ both backends |
 | 3 | `/healthz` 200 / 503 | — | `integration/healthz` (both paths) | ✅ |
-| 4 | Argon2 login + multi-user | — | `auth-isolation` (structural) + `parity/auth-scenarios` (4 deferred) | ✅ structural; parity flips with each user-flow PR |
+| 4 | Argon2 login + disabled multi-user scaffold | Row-level isolation phase for additional users | `auth-isolation` (structural) + `parity/auth-scenarios` (single-user flows deferred; multi-user isolation deferred to later scope) | ✅ structural; single-user pilot only; `auth:createUser` disabled |
 | 5 | Import / filter / analysis preserved | Web client integration | `parity/import-and-filter` (Electron green) | ✅ Electron pinned; web HTTP wired for cases/auth/variants |
 | 6 | Services use repository iface only | — | `db-seam` (interface seal) | ✅ sealed |
 | 7 | Electron variant builds w/o regression | — | `make ci-full` + `tests/refactor-checkpoint/` | ✅ |
@@ -44,13 +46,13 @@ hard Phase 1 blocker — it's the visible Stage-2 backlog.
 | 9 | SIGTERM clean shutdown | — | `integration/sigterm` | ✅ |
 | 10 | ADRs 1, 2, 3 filed | — | Doc gate | ✅ `.planning/web/adr/0001..0003` |
 | 11 | Assessment inventory current | Deploy/operator repo work | Doc gate | Tracked outside this app repo |
-| 12 | Bridge-clause structural | — | `db-seam` + `auth-isolation` + `user-id-schema` + `handler-seam` | 3/4 ✅; `user-id-schema` tracks per-tenant prep |
+| 12 | Bridge-clause structural | — | `db-seam` + `auth-isolation` + `user-id-schema` + `handler-seam` | 3/4 ✅; `user-id-schema` tracks row-level isolation prep |
 
 ## Per-criterion implementation notes (only where non-obvious)
 
 - **#1 / #3 / #8 / #9** — single PR cluster: one Fastify entrypoint that reuses every domain handler from `src/main/ipc/domains/`. The `handler-seam` test enforces "exact same function" — no duplication.
 - **#2** — done. Postgres real-instance test runs only with `VARLENS_RUN_POSTGRES_E2E=1` + `make pg-up`; default CI is unaffected.
-- **#4** — sequence: provider interface (no test, structural) → Argon2 moves into `src/main/auth/providers/` (existing tests are the gate) → `auth-isolation` flips green → flip `describe.skip` on the four auth scenarios as each is wired up.
+- **#4** — sequence: provider interface (no test, structural) → Argon2 moves into `src/main/auth/providers/` (existing tests are the gate) → `auth-isolation` flips green. Login, lockout, and session-expiry parity can flip with the relevant single-user HTTP surface. `auth:createUser` and multi-user isolation stay disabled/skipped until a later scoped row-level isolation phase.
 - **#5** — Electron half landed; web half is the activation test for the build target in #1. After web build lands, the parity scenario goes green or it's a real bug.
 - **#6** — every IPC handler must call methods on an injected `StorageSession` rather than `getDatabaseService()` / `getDbPool()`. Allowlist in `db-seam.test.ts` shrinks PR by PR. The two refactor-checkpoint snapshots will drift during this work — review the diff each PR.
 - **#7** — refactor-checkpoint covers transaction boundaries and pool routing; the 326 default-suite tests cover everything else.
@@ -58,7 +60,7 @@ hard Phase 1 blocker — it's the visible Stage-2 backlog.
 
 ## Out of scope for Phase 1
 
-- Multi-user beyond `user_id NOT NULL DEFAULT 1` in the schema (single-user mode is Phase 1; multi-user is Stage 2).
+- Multi-user beyond `user_id NOT NULL DEFAULT 1` schema prep. The current web pilot is single-user, `auth:createUser` remains disabled, and row-level multi-user data isolation is deferred to a later scoped phase.
 - OIDC. Phase 1 is Argon2 password only; the `Credential` discriminated union (`{kind:'password'} | {kind:'token'}`) is in place so OIDC lands in Stage 2 without touching call sites.
 - Postgres in production for the desktop app. Desktop stays SQLite; Postgres is the web track.
 - Cross-OS web build matrix in CI. Phase 1 builds web on Linux only; macOS/Windows packaging matrix is desktop's concern.
@@ -78,7 +80,7 @@ VARLENS_RUN_POSTGRES_E2E=1 make pg-up && \
 
 **Deferred to feature-PRs (each lands as user flow lands):**
 
-The four `auth-scenarios.parity.test.ts` placeholders (login, lockout, multi-user isolation, session expiry) stay `describe.skip` until each scenario's web HTTP surface lands. Each flips skip → live in the same PR that implements its session/cookie/expiry handling. This is Phase 1 *ongoing*, not Phase 1 *blocker* — the structural prework is done; behavioral coverage is added per feature.
+The `auth-scenarios.parity.test.ts` placeholders for login, lockout, and session expiry stay `describe.skip` until each single-user web HTTP surface lands. Each flips skip → live in the same PR that implements its session/cookie/expiry handling. The multi-user isolation placeholder stays skipped until a later scoped row-level isolation phase enables additional users and data scoping; `auth:createUser` remains disabled for the current web pilot. This is Phase 1 *ongoing*, not Phase 1 *blocker* — the structural prework is done; behavioral coverage is added per in-scope feature.
 
 **Out of repo scope:**
 

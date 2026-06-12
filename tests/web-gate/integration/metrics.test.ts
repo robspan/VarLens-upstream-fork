@@ -23,6 +23,9 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web metrics integration', () => {
 
       const text = metrics.metricsText()
       expect(text).toContain('route="/api/auth/isAccountsEnabled"')
+      expect(text).toContain(
+        'varlens_ipc_requests_total{app="varlens",environment="test",ipc="auth:isAccountsEnabled",status="success"} 1'
+      )
       expect(text).not.toContain('/api/auth/isAccountsEnabled?')
     } finally {
       await driver.close()

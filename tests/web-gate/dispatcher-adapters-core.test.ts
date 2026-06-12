@@ -5,6 +5,7 @@ import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod
 import { buildDispatcher, registerDispatcher } from '../../src/web/server/dispatcher'
 import { makeDeps } from './helpers/dispatcher-adapters'
 import { UniqueConstraintError } from '../../src/main/database/errors'
+import { AppMetrics, registerRequestMetrics } from '../../src/web/server/metrics'
 
 describe('web dispatcher adapters: variants, transcripts, and errors', () => {
   test('variants.query adapts renderer/preload args to the storage task shape', async () => {
@@ -278,6 +279,106 @@ describe('web dispatcher adapters: variants, transcripts, and errors', () => {
       message: "case 'SAMPLE' already exists",
       userMessage: "case 'SAMPLE' already exists"
     })
+    await app.close()
+  })
+
+  test('dispatcher records IPC metrics for overrides, autoroutes, errors, and unknown methods', async () => {
+    const { deps, execute, writeExecute } = makeDeps()
+    const metrics = new AppMetrics({ app: 'varlens', environment: 'dev' })
+    const app = fastify()
+    app.setValidatorCompiler(validatorCompiler)
+    app.setSerializerCompiler(serializerCompiler)
+    registerRequestMetrics(app, metrics)
+    app.addHook('onRequest', async (request, reply) => {
+      if (request.headers['x-block-before-dispatch'] === 'yes') {
+        return await reply.code(401).send({
+          code: 'UNKNOWN',
+          message: 'unauthorized',
+          userMessage: 'Unauthorized'
+        })
+      }
+      return undefined
+    })
+    registerDispatcher(app, deps, {
+      'cases:list': {
+        async handle() {
+          return []
+        }
+      },
+      'variants:query': {
+        async handle() {
+          throw new Error('database unavailable')
+        }
+      }
+    })
+
+    const success = await app.inject({
+      method: 'POST',
+      url: '/api/cases/list',
+      payload: { args: [] }
+    })
+    const read = await app.inject({
+      method: 'POST',
+      url: '/api/tags/list',
+      payload: { args: [] }
+    })
+    const write = await app.inject({
+      method: 'POST',
+      url: '/api/tags/create',
+      payload: { args: ['Reviewed', '#336699'] }
+    })
+    const error = await app.inject({
+      method: 'POST',
+      url: '/api/variants/query',
+      payload: { args: [1, {}] }
+    })
+    const preHandlerError = await app.inject({
+      method: 'POST',
+      url: '/api/auth/isAccountsEnabled',
+      headers: { 'x-block-before-dispatch': 'yes' },
+      payload: { args: [] }
+    })
+    const unknown = await app.inject({
+      method: 'POST',
+      url: '/api/not-a-domain/not-a-method',
+      payload: { args: [] }
+    })
+
+    expect(success.statusCode).toBe(200)
+    expect(read.statusCode).toBe(200)
+    expect(write.statusCode).toBe(200)
+    expect(error.statusCode).toBe(500)
+    expect(preHandlerError.statusCode).toBe(401)
+    expect(unknown.statusCode).toBe(404)
+    expect(execute).toHaveBeenCalledWith({ type: 'tags:list', params: [] })
+    expect(writeExecute).toHaveBeenCalledWith({
+      type: 'tags:create',
+      params: ['Reviewed', '#336699']
+    })
+
+    const text = metrics.metricsText()
+    expect(text).toContain(
+      'varlens_ipc_requests_total{app="varlens",environment="dev",ipc="cases:list",status="success"} 1'
+    )
+    expect(text).toContain(
+      'varlens_ipc_requests_total{app="varlens",environment="dev",ipc="tags:list",status="success"} 1'
+    )
+    expect(text).toContain(
+      'varlens_ipc_requests_total{app="varlens",environment="dev",ipc="tags:create",status="success"} 1'
+    )
+    expect(text).toContain(
+      'varlens_ipc_requests_total{app="varlens",environment="dev",ipc="variants:query",status="error"} 1'
+    )
+    expect(text).toContain(
+      'varlens_ipc_requests_total{app="varlens",environment="dev",ipc="auth:isAccountsEnabled",status="error"} 1'
+    )
+    expect(text).toContain(
+      'varlens_ipc_requests_total{app="varlens",environment="dev",ipc="unknown",status="error"} 1'
+    )
+    expect(text).toContain(
+      'varlens_ipc_in_flight{app="varlens",environment="dev",ipc="cases:list"} 0'
+    )
+    expect(text).toContain('varlens_ipc_in_flight{app="varlens",environment="dev",ipc="unknown"} 0')
     await app.close()
   })
 })

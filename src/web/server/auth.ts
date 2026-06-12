@@ -18,10 +18,12 @@
  * recovery key) so a single mounted volume covers both secrets.
  *
  * preHandler gate: any request whose path starts with `/api/` is
- * 401'd unless `request.session.user` is present, with two exceptions:
+ * 401'd unless `request.session.user` is present, with public exceptions:
  *
  *   - `/api/auth/login`
  *   - `/api/auth/isAccountsEnabled`
+ *   - `/api/openapi.json`
+ *   - `/api/docs` and `/api/docs/*`
  *
  * `/healthz` and static assets bypass the gate naturally because
  * they don't start with `/api/`.
@@ -84,12 +86,13 @@ function isProductionMode(): boolean {
 const PUBLIC_API_PATHS = new Set<string>([
   '/api/auth/login',
   '/api/auth/isAccountsEnabled',
-  '/api/openapi.json'
+  '/api/openapi.json',
+  '/api/docs'
 ])
 const PUBLIC_API_PREFIXES = ['/api/docs/']
 const UNSAFE_METHODS = new Set<string>(['POST', 'PUT', 'PATCH', 'DELETE'])
 
-function isPublicApiPath(path: string): boolean {
+export function isPublicApiPath(path: string): boolean {
   return PUBLIC_API_PATHS.has(path) || PUBLIC_API_PREFIXES.some((prefix) => path.startsWith(prefix))
 }
 
@@ -112,6 +115,23 @@ export function isAllowedApiOrigin(params: {
   } catch {
     return false
   }
+}
+
+export function isAllowedUnsafeApiRequest(params: {
+  secFetchSite: string | undefined
+  origin: string | undefined
+  host: string | undefined
+  protocol: string
+}): boolean {
+  const secFetchSite = params.secFetchSite?.trim().toLowerCase()
+  if (secFetchSite === 'same-origin' || secFetchSite === 'same-site') return true
+  if (secFetchSite !== undefined && secFetchSite !== '') return false
+
+  return isAllowedApiOrigin({
+    origin: params.origin,
+    host: params.host,
+    protocol: params.protocol
+  })
 }
 
 function resolveRecoveryKeyDir(): string {
@@ -200,7 +220,8 @@ export async function registerSessions(
 
     if (
       UNSAFE_METHODS.has(request.method) &&
-      !isAllowedApiOrigin({
+      !isAllowedUnsafeApiRequest({
+        secFetchSite: headerValue(request.headers['sec-fetch-site']),
         origin: headerValue(request.headers.origin),
         host: headerValue(request.headers.host),
         protocol: headerValue(request.headers['x-forwarded-proto']) ?? request.protocol

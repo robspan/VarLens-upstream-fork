@@ -32,15 +32,39 @@ describe('web dispatcher adapters: auth and import', () => {
     expect(deps.authService.isAccountsEnabled).toHaveBeenCalledTimes(1)
   })
 
-  test('import.start is disabled outside test mode unless operator enables server-path import', async () => {
+  test('import.start rejects raw server paths in production web mode', async () => {
     const prevNodeEnv = process.env.NODE_ENV
-    const prevAllow = process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT
     process.env.NODE_ENV = 'production'
-    delete process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT
     try {
       const { deps, importSingleFile, reply } = makeDeps()
       const { overrides } = buildDispatcher(deps)
       const request = { session: {} }
+
+      const result = await overrides['import:start'].handle(
+        ['/tmp/input.vcf', 'Case A'],
+        request as never,
+        reply as never,
+        deps
+      )
+
+      expect(reply.code).toHaveBeenCalledWith(403)
+      expect(result).toMatchObject({ error: 'server-path-import-disabled' })
+      expect(importSingleFile).not.toHaveBeenCalled()
+    } finally {
+      if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = prevNodeEnv
+    }
+  })
+
+  test('import.start rejects raw server paths even in test mode with the legacy allow flag', async () => {
+    const prevNodeEnv = process.env.NODE_ENV
+    const prevAllow = process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT
+    process.env.NODE_ENV = 'test'
+    process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT = '1'
+    try {
+      const { deps, importSingleFile, reply } = makeDeps()
+      const { overrides } = buildDispatcher(deps)
+      const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
 
       const result = await overrides['import:start'].handle(
         ['/tmp/input.vcf', 'Case A'],
@@ -60,11 +84,33 @@ describe('web dispatcher adapters: auth and import', () => {
     }
   })
 
-  test('batch import zip extraction is disabled outside test mode unless explicitly enabled', async () => {
+  test('batch import zip extraction rejects raw server paths in production web mode', async () => {
+    const prevNodeEnv = process.env.NODE_ENV
+    process.env.NODE_ENV = 'production'
+    try {
+      const { deps, reply } = makeDeps()
+      const { overrides } = buildDispatcher(deps)
+
+      const result = await overrides['batch-import:extractZip'].handle(
+        ['/tmp/input.zip'],
+        {} as never,
+        reply as never,
+        deps
+      )
+
+      expect(reply.code).toHaveBeenCalledWith(403)
+      expect(result).toMatchObject({ error: 'server-path-import-disabled' })
+    } finally {
+      if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = prevNodeEnv
+    }
+  })
+
+  test('batch import zip extraction rejects raw server paths even with the legacy allow flag', async () => {
     const prevNodeEnv = process.env.NODE_ENV
     const prevAllow = process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT
-    process.env.NODE_ENV = 'production'
-    delete process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT
+    process.env.NODE_ENV = 'test'
+    process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT = '1'
     try {
       const { deps, reply } = makeDeps()
       const { overrides } = buildDispatcher(deps)
@@ -397,16 +443,26 @@ describe('web dispatcher adapters: auth and import', () => {
     expect(importSingleFile).not.toHaveBeenCalled()
   })
 
-  test('import.start routes an enabled absolute server path through shared import logic', async () => {
+  test('import.start routes a staged browser upload through shared import logic', async () => {
     const prevNodeEnv = process.env.NODE_ENV
-    process.env.NODE_ENV = 'test'
+    const prevRecoveryDir = process.env.VARLENS_RECOVERY_KEY_DIR
+    const tempDir = await mkdtemp(join(tmpdir(), 'varlens-web-import-'))
+    process.env.NODE_ENV = 'production'
+    process.env.VARLENS_RECOVERY_KEY_DIR = tempDir
     try {
+      const sourcePath = join(tempDir, 'input.vcf')
+      await writeFile(sourcePath, '##fileformat=VCFv4.2\n')
+      const upload = await stageExistingFileUpload({
+        userId: 7,
+        originalName: 'input.vcf',
+        sourcePath
+      })
       const { deps, importSingleFile, reply } = makeDeps()
       const { overrides } = buildDispatcher(deps)
       const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
 
       const result = await overrides['import:start'].handle(
-        ['/tmp/input.vcf', 'Case A', { genomeBuild: 'hg38' }],
+        [upload.ref, 'Case A', { genomeBuild: 'hg38' }],
         request as never,
         reply as never,
         deps
@@ -416,7 +472,7 @@ describe('web dispatcher adapters: auth and import', () => {
       expect(result).toMatchObject({ caseId: 11, variantCount: 2 })
       expect(importSingleFile).toHaveBeenCalledWith(
         expect.objectContaining({
-          filePath: '/tmp/input.vcf',
+          filePath: upload.storedPath,
           caseName: 'Case A',
           vcfOptions: { genomeBuild: 'hg38', selectedSample: undefined }
         })
@@ -424,13 +480,26 @@ describe('web dispatcher adapters: auth and import', () => {
     } finally {
       if (prevNodeEnv === undefined) delete process.env.NODE_ENV
       else process.env.NODE_ENV = prevNodeEnv
+      if (prevRecoveryDir === undefined) delete process.env.VARLENS_RECOVERY_KEY_DIR
+      else process.env.VARLENS_RECOVERY_KEY_DIR = prevRecoveryDir
+      await rm(tempDir, { recursive: true, force: true })
     }
   })
 
   test('import.start publishes web progress events to the session user', async () => {
     const prevNodeEnv = process.env.NODE_ENV
-    process.env.NODE_ENV = 'test'
+    const prevRecoveryDir = process.env.VARLENS_RECOVERY_KEY_DIR
+    const tempDir = await mkdtemp(join(tmpdir(), 'varlens-web-import-progress-'))
+    process.env.NODE_ENV = 'production'
+    process.env.VARLENS_RECOVERY_KEY_DIR = tempDir
     try {
+      const sourcePath = join(tempDir, 'input.vcf')
+      await writeFile(sourcePath, '##fileformat=VCFv4.2\n')
+      const upload = await stageExistingFileUpload({
+        userId: 7,
+        originalName: 'input.vcf',
+        sourcePath
+      })
       const { deps, importSingleFile, reply } = makeDeps()
       importSingleFile.mockImplementationOnce(async (params) => {
         params.onProgress?.({ phase: 'parsing', count: 5 })
@@ -446,7 +515,7 @@ describe('web dispatcher adapters: auth and import', () => {
       const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
 
       await overrides['import:start'].handle(
-        ['/tmp/input.vcf', 'Case A'],
+        [upload.ref, 'Case A'],
         request as never,
         reply as never,
         deps
@@ -459,13 +528,26 @@ describe('web dispatcher adapters: auth and import', () => {
     } finally {
       if (prevNodeEnv === undefined) delete process.env.NODE_ENV
       else process.env.NODE_ENV = prevNodeEnv
+      if (prevRecoveryDir === undefined) delete process.env.VARLENS_RECOVERY_KEY_DIR
+      else process.env.VARLENS_RECOVERY_KEY_DIR = prevRecoveryDir
+      await rm(tempDir, { recursive: true, force: true })
     }
   })
 
   test('import.startMultiFile normalizes valid object filter payloads for import logic', async () => {
     const prevNodeEnv = process.env.NODE_ENV
-    process.env.NODE_ENV = 'test'
+    const prevRecoveryDir = process.env.VARLENS_RECOVERY_KEY_DIR
+    const tempDir = await mkdtemp(join(tmpdir(), 'varlens-web-multifile-'))
+    process.env.NODE_ENV = 'production'
+    process.env.VARLENS_RECOVERY_KEY_DIR = tempDir
     try {
+      const sourcePath = join(tempDir, 'input.vcf')
+      await writeFile(sourcePath, '##fileformat=VCFv4.2\n')
+      const upload = await stageExistingFileUpload({
+        userId: 7,
+        originalName: 'input.vcf',
+        sourcePath
+      })
       const { deps, importMultiFile, reply } = makeDeps()
       const { overrides } = buildDispatcher(deps)
       const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
@@ -475,7 +557,7 @@ describe('web dispatcher adapters: auth and import', () => {
           'Case A',
           [
             {
-              filePath: '/tmp/input.vcf',
+              filePath: upload.ref,
               variantType: 'snv',
               caller: 42,
               annotationFormat: null
@@ -495,7 +577,7 @@ describe('web dispatcher adapters: auth and import', () => {
           caseName: 'Case A',
           files: [
             {
-              filePath: '/tmp/input.vcf',
+              filePath: upload.storedPath,
               variantType: 'snv',
               caller: null,
               annotationFormat: null
@@ -513,13 +595,26 @@ describe('web dispatcher adapters: auth and import', () => {
     } finally {
       if (prevNodeEnv === undefined) delete process.env.NODE_ENV
       else process.env.NODE_ENV = prevNodeEnv
+      if (prevRecoveryDir === undefined) delete process.env.VARLENS_RECOVERY_KEY_DIR
+      else process.env.VARLENS_RECOVERY_KEY_DIR = prevRecoveryDir
+      await rm(tempDir, { recursive: true, force: true })
     }
   })
 
   test('import.startMultiFile rejects malformed filter payloads before import logic', async () => {
     const prevNodeEnv = process.env.NODE_ENV
-    process.env.NODE_ENV = 'test'
+    const prevRecoveryDir = process.env.VARLENS_RECOVERY_KEY_DIR
+    const tempDir = await mkdtemp(join(tmpdir(), 'varlens-web-multifile-invalid-'))
+    process.env.NODE_ENV = 'production'
+    process.env.VARLENS_RECOVERY_KEY_DIR = tempDir
     try {
+      const sourcePath = join(tempDir, 'input.vcf')
+      await writeFile(sourcePath, '##fileformat=VCFv4.2\n')
+      const upload = await stageExistingFileUpload({
+        userId: 7,
+        originalName: 'input.vcf',
+        sourcePath
+      })
       const { deps, importMultiFile, reply } = makeDeps()
       const { overrides } = buildDispatcher(deps)
       const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
@@ -529,7 +624,7 @@ describe('web dispatcher adapters: auth and import', () => {
           'Case A',
           [
             {
-              filePath: '/tmp/input.vcf',
+              filePath: upload.ref,
               variantType: 'snv',
               caller: 'caller',
               annotationFormat: null
@@ -552,13 +647,26 @@ describe('web dispatcher adapters: auth and import', () => {
     } finally {
       if (prevNodeEnv === undefined) delete process.env.NODE_ENV
       else process.env.NODE_ENV = prevNodeEnv
+      if (prevRecoveryDir === undefined) delete process.env.VARLENS_RECOVERY_KEY_DIR
+      else process.env.VARLENS_RECOVERY_KEY_DIR = prevRecoveryDir
+      await rm(tempDir, { recursive: true, force: true })
     }
   })
 
   test('import.startMultiFile treats null filter payloads as absent', async () => {
     const prevNodeEnv = process.env.NODE_ENV
-    process.env.NODE_ENV = 'test'
+    const prevRecoveryDir = process.env.VARLENS_RECOVERY_KEY_DIR
+    const tempDir = await mkdtemp(join(tmpdir(), 'varlens-web-multifile-null-'))
+    process.env.NODE_ENV = 'production'
+    process.env.VARLENS_RECOVERY_KEY_DIR = tempDir
     try {
+      const sourcePath = join(tempDir, 'input.vcf')
+      await writeFile(sourcePath, '##fileformat=VCFv4.2\n')
+      const upload = await stageExistingFileUpload({
+        userId: 7,
+        originalName: 'input.vcf',
+        sourcePath
+      })
       const { deps, importMultiFile, reply } = makeDeps()
       const { overrides } = buildDispatcher(deps)
       const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
@@ -568,7 +676,7 @@ describe('web dispatcher adapters: auth and import', () => {
           'Case A',
           [
             {
-              filePath: '/tmp/input.vcf',
+              filePath: upload.ref,
               variantType: 'snv',
               caller: 'caller',
               annotationFormat: null
@@ -591,6 +699,9 @@ describe('web dispatcher adapters: auth and import', () => {
     } finally {
       if (prevNodeEnv === undefined) delete process.env.NODE_ENV
       else process.env.NODE_ENV = prevNodeEnv
+      if (prevRecoveryDir === undefined) delete process.env.VARLENS_RECOVERY_KEY_DIR
+      else process.env.VARLENS_RECOVERY_KEY_DIR = prevRecoveryDir
+      await rm(tempDir, { recursive: true, force: true })
     }
   })
 

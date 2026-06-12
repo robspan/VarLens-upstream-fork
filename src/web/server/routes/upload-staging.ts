@@ -2,8 +2,9 @@ import { randomUUID } from 'node:crypto'
 import { createReadStream, createWriteStream, existsSync } from 'node:fs'
 import { mkdir, rm, stat } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join } from 'node:path'
-import { Readable, Transform } from 'node:stream'
-import { pipeline } from 'node:stream/promises'
+import { once } from 'node:events'
+import { Readable } from 'node:stream'
+import { finished } from 'node:stream/promises'
 
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 
@@ -11,6 +12,12 @@ const DEFAULT_RECOVERY_KEY_DIR = '/data'
 const DEFAULT_UPLOAD_TTL_MS = 24 * 60 * 60 * 1000
 const DEFAULT_MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
 const UPLOAD_REF_PREFIX = 'web-upload:'
+
+class UploadTooLargeError extends Error {
+  constructor(maxBytes: number) {
+    super(`Upload exceeds the configured ${maxBytes} byte limit`)
+  }
+}
 
 export interface StagedUpload {
   id: string
@@ -105,7 +112,18 @@ export function registerImportUploadRoutes(app: FastifyInstance): void {
       originalName,
       safeName,
       source
+    }).catch((error: unknown) => {
+      if (error instanceof UploadTooLargeError) {
+        reply.code(413)
+        return {
+          error: 'upload-too-large',
+          message: error.message
+        }
+      }
+      throw error
     })
+
+    if (!isStagedUpload(upload)) return upload
 
     return {
       id: upload.id,
@@ -143,23 +161,11 @@ async function stageUpload(params: {
   const uploadDir = join(resolveUploadRoot(), String(params.userId), id)
   const storedPath = join(uploadDir, params.safeName)
   const maxBytes = resolveMaxUploadBytes()
-  let written = 0
 
   await mkdir(uploadDir, { recursive: true, mode: 0o700 })
 
-  const limitBytes = new Transform({
-    transform(chunk: Buffer, _encoding, callback) {
-      written += chunk.length
-      if (written > maxBytes) {
-        callback(new Error(`upload exceeds ${maxBytes} bytes`))
-        return
-      }
-      callback(null, chunk)
-    }
-  })
-
   try {
-    await pipeline(params.source, limitBytes, createWriteStream(storedPath, { mode: 0o600 }))
+    await writeLimitedUpload(params.source, storedPath, maxBytes)
   } catch (error) {
     await rm(uploadDir, { recursive: true, force: true })
     throw error
@@ -179,6 +185,45 @@ async function stageUpload(params: {
   }
   stagedUploads.set(upload.id, upload)
   return upload
+}
+
+async function writeLimitedUpload(
+  source: Readable,
+  storedPath: string,
+  maxBytes: number
+): Promise<number> {
+  const target = createWriteStream(storedPath, { mode: 0o600 })
+  let written = 0
+
+  try {
+    for await (const chunk of source) {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+      written += buffer.length
+      if (written > maxBytes) {
+        throw new UploadTooLargeError(maxBytes)
+      }
+      if (!target.write(buffer)) {
+        await once(target, 'drain')
+      }
+    }
+
+    target.end()
+    await finished(target)
+    return written
+  } catch (error) {
+    target.destroy()
+    throw error
+  }
+}
+
+function isStagedUpload(value: unknown): value is StagedUpload {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    'id' in value &&
+    'ref' in value &&
+    'storedPath' in value
+  )
 }
 
 function parseWebUploadId(value: string): string | null {

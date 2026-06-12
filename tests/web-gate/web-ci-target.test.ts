@@ -13,16 +13,35 @@ describe('web CI target wiring', () => {
     expect(makefile).toMatch(/^web-gate-postgres: build-web/m)
     expect(makefile).toMatch(/^web-gate-parity: web-data-verify/m)
     expect(makefile).toContain('VARLENS_PG_URL is required for web-gate-postgres')
-    // `ci` runs the static checks in parallel then test serially (see the parallelised
-    // `make ci` recipe on main); assert it still covers every stage rather than pinning
-    // the obsolete single-prerequisite-line form.
+    // `ci` keeps memory-heavy checks serialized. The npm scripts already do their
+    // own caching, so Make-level fan-out only raises peak RSS on local machines.
     expect(makefile).toMatch(/^ci:.*Run all CI checks/m)
-    expect(makefile).toMatch(
-      /^\t\$\(MAKE\) -j4 -Otarget lint-check format-check typecheck rebuild-node$/m
-    )
+    expect(makefile).not.toMatch(/\$\(MAKE\)\s+-j\d+/)
+    expect(makefile).toMatch(/^\t\$\(MAKE\) lint-check$/m)
+    expect(makefile).toMatch(/^\t\$\(MAKE\) format-check$/m)
+    expect(makefile).toMatch(/^\t\$\(MAKE\) typecheck$/m)
+    expect(makefile).toMatch(/^\t\$\(MAKE\) rebuild-node$/m)
     expect(makefile).toMatch(/^\t\$\(MAKE\) test$/m)
     expect(makefile).toMatch(/^VARLENS_WEB \?= 0/m)
     expect(makefile).not.toMatch(/wildcard .*\.env/)
+  })
+
+  test('npm quality scripts avoid unbounded local resource fan-out', () => {
+    const packageJson = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>
+    }
+    const { scripts } = packageJson
+
+    expect(scripts.lint).toContain('--concurrency=off')
+    expect(scripts['lint:check']).toContain('--concurrency=off')
+    expect(scripts.lint).not.toContain('--concurrency=auto')
+    expect(scripts['lint:check']).not.toContain('--concurrency=auto')
+    expect(scripts.typecheck).not.toContain('run-p')
+    expect(scripts.typecheck).toContain('npm run typecheck:renderer && npm run typecheck:node')
+    expect(scripts.format).not.toMatch(/prettier --cache --write \.$/)
+    expect(scripts['format:check']).not.toMatch(/prettier --cache --check \.$/)
+    expect(scripts.format).toContain('"{src,tests,scripts,.github}/**/*.')
+    expect(scripts['format:check']).toContain('"{src,tests,scripts,.github}/**/*.')
   })
 
   test('web report treats VARLENS_WEB=1 as full parity mode', () => {

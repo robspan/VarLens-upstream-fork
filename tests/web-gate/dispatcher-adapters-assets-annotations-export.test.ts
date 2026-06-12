@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { buildDispatcher } from '../../src/web/server/dispatcher'
+import { stageExistingFileUpload } from '../../src/web/server/routes/upload-staging'
 import { makeDeps } from './helpers/dispatcher-adapters'
 
 describe('web dispatcher adapters: annotations, assets, and exports', () => {
@@ -186,18 +187,25 @@ describe('web dispatcher adapters: annotations, assets, and exports', () => {
 
   test('region-files.importBed reads BED rows before writing the import task', async () => {
     const prevNodeEnv = process.env.NODE_ENV
-    process.env.NODE_ENV = 'test'
+    const prevRecoveryDir = process.env.VARLENS_RECOVERY_KEY_DIR
+    process.env.NODE_ENV = 'production'
     const { deps, writeExecute, reply } = makeDeps()
     const { overrides } = buildDispatcher(deps)
     const dir = await mkdtemp(join(tmpdir(), 'varlens-bed-'))
+    process.env.VARLENS_RECOVERY_KEY_DIR = dir
 
     try {
       const filePath = join(dir, 'regions.bed')
       await writeFile(filePath, 'chr1\t0\t10\tRegionA\n# ignored\nchr2\t5\t9\n')
-      const request = { session: {} }
+      const upload = await stageExistingFileUpload({
+        userId: 7,
+        originalName: 'regions.bed',
+        sourcePath: filePath
+      })
+      const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
 
       await overrides['region-files:importBed'].handle(
-        [4, filePath],
+        [4, upload.ref],
         request as never,
         reply as never,
         deps
@@ -218,18 +226,20 @@ describe('web dispatcher adapters: annotations, assets, and exports', () => {
       await rm(dir, { recursive: true, force: true })
       if (prevNodeEnv === undefined) delete process.env.NODE_ENV
       else process.env.NODE_ENV = prevNodeEnv
+      if (prevRecoveryDir === undefined) delete process.env.VARLENS_RECOVERY_KEY_DIR
+      else process.env.VARLENS_RECOVERY_KEY_DIR = prevRecoveryDir
     }
   })
 
-  test('region-files.importBed is disabled outside test mode unless operator enables server-path import', async () => {
+  test('region-files.importBed rejects raw server paths even with the legacy allow flag', async () => {
     const prevNodeEnv = process.env.NODE_ENV
     const prevAllow = process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT
-    process.env.NODE_ENV = 'production'
-    delete process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT
+    process.env.NODE_ENV = 'test'
+    process.env.VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT = '1'
     try {
       const { deps, writeExecute, reply } = makeDeps()
       const { overrides } = buildDispatcher(deps)
-      const request = { session: {} }
+      const request = { session: { user: { id: 7, username: 'admin', role: 'admin' } } }
 
       const result = await overrides['region-files:importBed'].handle(
         [4, '/tmp/regions.bed'],

@@ -1,7 +1,11 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
+import Fastify from 'fastify'
 import { describe, expect, test } from 'vitest'
+
+import { registerImportUploadRoutes } from '../../src/web/server/routes/upload-staging'
 
 const ROOT = process.cwd()
 
@@ -82,5 +86,48 @@ describe('web upload boundary', () => {
     expect(batchImport).toContain("'import_batch'")
     expect(batchImport).toContain('startImport(file.storedPath')
     expect(batchImport).not.toMatch(/\bVcfStrategy\b|\bVcfMapper\b|\bimportJsonFile\b/)
+  })
+
+  test('upload staging returns 413 when the configured byte limit is exceeded', async () => {
+    const previousUploadDir = process.env.VARLENS_WEB_UPLOAD_DIR
+    const previousMaxBytes = process.env.VARLENS_WEB_MAX_UPLOAD_BYTES
+    const uploadDir = mkdtempSync(join(tmpdir(), 'varlens-upload-boundary-'))
+    process.env.VARLENS_WEB_UPLOAD_DIR = uploadDir
+    process.env.VARLENS_WEB_MAX_UPLOAD_BYTES = '4'
+
+    const app = Fastify()
+    app.addHook('preHandler', async (request) => {
+      const requestWithSession = request as unknown as { session: { user: { id: number } } }
+      requestWithSession.session = {
+        user: { id: 1 }
+      }
+    })
+    registerImportUploadRoutes(app)
+    await app.ready()
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/import/upload',
+        headers: {
+          'content-type': 'application/octet-stream',
+          'x-varlens-file-name': 'too-large.vcf'
+        },
+        payload: Buffer.from('12345')
+      })
+
+      expect(response.statusCode, response.body).toBe(413)
+      expect(response.json()).toMatchObject({
+        error: 'upload-too-large',
+        message: 'Upload exceeds the configured 4 byte limit'
+      })
+    } finally {
+      await app.close()
+      if (previousUploadDir === undefined) delete process.env.VARLENS_WEB_UPLOAD_DIR
+      else process.env.VARLENS_WEB_UPLOAD_DIR = previousUploadDir
+      if (previousMaxBytes === undefined) delete process.env.VARLENS_WEB_MAX_UPLOAD_BYTES
+      else process.env.VARLENS_WEB_MAX_UPLOAD_BYTES = previousMaxBytes
+      rmSync(uploadDir, { recursive: true, force: true })
+    }
   })
 })

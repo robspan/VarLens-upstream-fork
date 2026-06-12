@@ -6,6 +6,7 @@ import { toTaskDomain } from './task-types'
 
 const DEFAULT_BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
 const documentedApiPaths = buildDocumentedDispatcherPathSet()
+const NON_DISPATCHER_API_PATHS = new Set<string>(['/api/import/upload'])
 
 type LabelValue = string | number
 type Labels = Record<string, LabelValue>
@@ -117,6 +118,7 @@ export function resolveMetricsIpc(method: string, url: string): string | undefin
   const pathname = pathName(url)
   const match = /^\/api\/([^/]+)\/([^/]+)$/.exec(pathname)
   if (match === null) return undefined
+  if (NON_DISPATCHER_API_PATHS.has(pathname)) return undefined
   if (!documentedApiPaths.has(pathname)) return 'unknown'
 
   const [, domain, ipcMethod] = match

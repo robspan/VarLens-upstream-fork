@@ -1,8 +1,19 @@
 import { describe, expect, test } from 'vitest'
 
-import { isAllowedApiOrigin, isAllowedUnsafeApiRequest } from '../../src/web/server/auth'
+import {
+  isAllowedApiOrigin,
+  isAllowedUnsafeApiRequest,
+  isPublicApiPath
+} from '../../src/web/server/auth'
 
 describe('web auth origin gate', () => {
+  test('treats the Swagger UI entry route and nested assets as public API paths', () => {
+    expect(isPublicApiPath('/api/docs')).toBe(true)
+    expect(isPublicApiPath('/api/docs/')).toBe(true)
+    expect(isPublicApiPath('/api/docs/static/swagger-initializer.js')).toBe(true)
+    expect(isPublicApiPath('/api/docs-evil')).toBe(false)
+  })
+
   test('rejects missing Origin for unsafe API requests', () => {
     expect(
       isAllowedApiOrigin({

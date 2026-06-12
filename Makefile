@@ -250,7 +250,9 @@ web-data-verify: web-data-prepare ## Verify generated parity fixtures and source
 # CI / Full Checks
 #---------------------------------------------------------------------------
 
-ci: lint-check format-check typecheck rebuild-node test ## Run all CI checks (lint, format, typecheck, rebuild, test). Set VARLENS_WEB=1 to include web-gate.
+ci: ## Run all CI checks (lint, format, typecheck, rebuild, test). Set VARLENS_WEB=1 to include web-gate.
+	$(MAKE) -j4 -Otarget lint-check format-check typecheck rebuild-node
+	$(MAKE) test
 
 ci-checks: ## Run the GitHub Actions "Checks (Ubuntu)" job under Node $(CI_NODE_VERSION)
 	@echo "=== Checks (Ubuntu) using Node $(CI_NODE_VERSION) ==="

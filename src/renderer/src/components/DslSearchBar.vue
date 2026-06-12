@@ -14,8 +14,7 @@
       :class="{ 'dsl-mode': isDslMode, 'fts-mode': !isDslMode && localInput !== '' }"
       @update:model-value="onInput"
       @click:clear="onClear"
-      @keydown.enter="onEnter"
-      @keydown.escape="($event.target as HTMLElement)?.blur()"
+      @keydown="onKeydown"
       @focus="showMenu = true"
       @blur="onBlur"
     >
@@ -169,6 +168,16 @@ function onInput(value: string | null): void {
 function onEnter(): void {
   showMenu.value = false
   emit('apply')
+}
+
+// Single keydown handler: two @keydown.<modifier> bindings on one element
+// trip vue-tsc TS1117 against Vuetify 4.1+ types (vuejs/language-tools#6096).
+function onKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Enter') {
+    onEnter()
+  } else if (event.key === 'Escape') {
+    ;(event.target as HTMLElement | null)?.blur()
+  }
 }
 
 function onClear(): void {

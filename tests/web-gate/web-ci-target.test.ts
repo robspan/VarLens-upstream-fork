@@ -82,4 +82,12 @@ describe('web CI target wiring', () => {
     expect(publish).not.toMatch(/branches: \[main\]/)
     expect(publish).toMatch(/Trivy gate[\s\S]*?Push scanned image/)
   })
+
+  test('web publish workflow ignores desktop releases', () => {
+    const publish = readFileSync(resolve(ROOT, '.github/workflows/publish-web.yml'), 'utf8')
+
+    expect(publish).toContain("startsWith(github.event.release.tag_name, 'web-')")
+    expect(publish).toContain('desktop-release-skipped:')
+    expect(publish).toContain('desktop releases such as `v0.68.0`')
+  })
 })

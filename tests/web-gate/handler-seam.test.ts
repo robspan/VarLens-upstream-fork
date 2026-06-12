@@ -40,6 +40,28 @@ const ROUTE_OVERRIDE_LOGIC_EXCEPTIONS: Record<string, string> = {
   'vep.ts': 'web mode intentionally disables external reference fetches'
 }
 
+const EXPECTED_ROUTE_OVERRIDE_MODULES = new Set([
+  'analysis-groups.ts',
+  'annotations.ts',
+  'auth.ts',
+  'batch-import.ts',
+  'case-metadata.ts',
+  'cases.ts',
+  'cohort.ts',
+  'database.ts',
+  'export.ts',
+  'gene-lists.ts',
+  'gene-ref.ts',
+  'hpo.ts',
+  'import.ts',
+  'panels.ts',
+  'protein.ts',
+  'region-files.ts',
+  'transcripts.ts',
+  'variants.ts',
+  'vep.ts'
+])
+
 function listDomains(dir: string): string[] {
   const abs = resolve(process.cwd(), dir)
   if (!existsSync(abs)) return []
@@ -53,6 +75,21 @@ function listDomains(dir: string): string[] {
 
 function readRepoFile(path: string): string {
   return readFileSync(resolve(process.cwd(), path), 'utf8')
+}
+
+function getRouteOverrideBuildFunction(source: string): string | undefined {
+  return source.match(/export function (build[A-Za-z]+Overrides)\(/)?.[1]
+}
+
+function listRouteOverrideModules(): string[] {
+  const routeDir = resolve(process.cwd(), WEB_ROUTES_DIR)
+  return readdirSync(routeDir)
+    .filter((name) => name.endsWith('.ts'))
+    .filter((file) => {
+      const routePath = `${WEB_ROUTES_DIR}/${file}`
+      return getRouteOverrideBuildFunction(readRepoFile(routePath)) !== undefined
+    })
+    .sort()
 }
 
 describe('handler-seam gate', () => {
@@ -95,18 +132,24 @@ describe('handler-seam gate', () => {
     expect(missing, missing.join('\n')).toEqual([])
   })
 
+  test('web route override module set is explicitly audited', () => {
+    const discovered = listRouteOverrideModules()
+    const expected = [...EXPECTED_ROUTE_OVERRIDE_MODULES].sort()
+
+    expect(discovered, 'new route override modules require an explicit seam review').toEqual(
+      expected
+    )
+  })
+
   test('web route override modules are imported by the dispatcher', () => {
     const dispatcherSource = readRepoFile(DISPATCHER_PATH)
-    const routeDir = resolve(process.cwd(), WEB_ROUTES_DIR)
     const missing: string[] = []
 
-    for (const file of readdirSync(routeDir)
-      .filter((name) => name.endsWith('.ts'))
-      .sort()) {
+    for (const file of listRouteOverrideModules()) {
       const routePath = `${WEB_ROUTES_DIR}/${file}`
       const source = readRepoFile(routePath)
-      const buildFunction = source.match(/export function (build[A-Za-z]+Overrides)\(/)?.[1]
-      if (buildFunction === undefined) continue
+      const buildFunction = getRouteOverrideBuildFunction(source)
+      if (buildFunction === undefined) throw new Error(`${routePath} missing override builder`)
 
       const routeName = file.replace(/\.ts$/, '')
       if (!dispatcherSource.includes(`from './routes/${routeName}'`)) {
@@ -144,15 +187,11 @@ describe('handler-seam gate', () => {
   })
 
   test('web route override modules use shared logic or audited exceptions', () => {
-    const routeDir = resolve(process.cwd(), WEB_ROUTES_DIR)
     const offenders: string[] = []
 
-    for (const file of readdirSync(routeDir)
-      .filter((name) => name.endsWith('.ts'))
-      .sort()) {
+    for (const file of listRouteOverrideModules()) {
       const routePath = `${WEB_ROUTES_DIR}/${file}`
       const source = readRepoFile(routePath)
-      if (!/export function build[A-Za-z]+Overrides\(/.test(source)) continue
       if (/handlers\/[A-Za-z0-9-]+-logic/.test(source)) continue
       if (ROUTE_OVERRIDE_LOGIC_EXCEPTIONS[file] !== undefined) continue
       offenders.push(`${routePath} (missing shared *-logic import or audited exception)`)

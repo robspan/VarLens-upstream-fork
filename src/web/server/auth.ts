@@ -114,6 +114,23 @@ export function isAllowedApiOrigin(params: {
   }
 }
 
+export function isAllowedUnsafeApiRequest(params: {
+  secFetchSite: string | undefined
+  origin: string | undefined
+  host: string | undefined
+  protocol: string
+}): boolean {
+  const secFetchSite = params.secFetchSite?.trim().toLowerCase()
+  if (secFetchSite === 'same-origin' || secFetchSite === 'same-site') return true
+  if (secFetchSite !== undefined && secFetchSite !== '') return false
+
+  return isAllowedApiOrigin({
+    origin: params.origin,
+    host: params.host,
+    protocol: params.protocol
+  })
+}
+
 function resolveRecoveryKeyDir(): string {
   const raw = process.env.VARLENS_RECOVERY_KEY_DIR
   const dir = typeof raw === 'string' && raw.trim() !== '' ? raw.trim() : DEFAULT_RECOVERY_KEY_DIR
@@ -200,7 +217,8 @@ export async function registerSessions(
 
     if (
       UNSAFE_METHODS.has(request.method) &&
-      !isAllowedApiOrigin({
+      !isAllowedUnsafeApiRequest({
+        secFetchSite: headerValue(request.headers['sec-fetch-site']),
         origin: headerValue(request.headers.origin),
         host: headerValue(request.headers.host),
         protocol: headerValue(request.headers['x-forwarded-proto']) ?? request.protocol

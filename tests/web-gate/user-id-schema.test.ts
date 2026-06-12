@@ -2,21 +2,22 @@ import { afterAll, describe, expect, test } from 'vitest'
 import { listTables, openMigratedTmpDb, tableColumns } from './helpers/tmp-db'
 
 /**
- * Phase 1 gate — every domain table must carry a `user_id` column with
- * `NOT NULL DEFAULT 1`. The Phase 1 plan freezes this as the bridge to
- * Stage 2 multi-user:
- * adding the column at this stage is trivial; doing it
- * later is a schema break with data migration.
+ * Web pilot gate — the current web pilot is explicitly single-user.
+ * `auth:createUser` remains disabled, and row-level multi-user data
+ * isolation is out of scope until a later scoped phase.
  *
- * Today, ZERO tables have `user_id`. The Phase 1 work fills them in.
+ * `user_id INTEGER NOT NULL DEFAULT 1` is schema prep only. It keeps the
+ * later isolation migration bounded without making this web slice
+ * multi-user-ready.
  *
  * Strategy: maintain a snapshot set of "tables that should have user_id
  * but currently don't." Test passes if the actual set of tables-without-
  * user_id is exactly the snapshot — meaning no new domain table was added
  * without `user_id` (would grow the set), and no expected table was
  * forgotten (would be in the snapshot but the test would still pass when
- * removed manually). When the refactor adds `user_id` to a table, the
- * developer removes it from `EXPECTED_MISSING_USER_ID` in the same PR.
+ * removed manually). When a later scoped isolation PR adds `user_id` to a
+ * table, the developer removes it from `EXPECTED_MISSING_USER_ID` in the
+ * same PR.
  *
  * The `EXEMPT_TABLES` set captures tables that should NEVER need user_id:
  * junctions, reference data, KV-meta, virtual FTS5 tables.
@@ -78,9 +79,9 @@ const EXEMPT_TABLES = new Set([
   'projects'
 ])
 
-// Snapshot of tables that today lack `user_id` and need it added during
-// Phase 1. When a refactor PR adds `user_id` to one of these tables,
-// remove it from this set in the same PR.
+// Snapshot of domain tables that still lack `user_id` schema-prep columns.
+// This backlog does not enable multi-user web mode; it stays visible until a
+// later scoped row-level isolation phase adds columns and removes entries.
 const EXPECTED_MISSING_USER_ID = new Set([
   'cases',
   'variants',
@@ -161,11 +162,11 @@ describe('user-id-schema gate', () => {
     ).toEqual([])
   })
 
-  test.fails('phase 1: EXPECTED_MISSING_USER_ID is empty', () => {
-    // Self-revoking TODO. Today the snapshot has many entries; when the
-    // refactor PRs add `user_id` to all of them, the snapshot empties out
-    // and this test starts passing — at which point flip `test.fails()`
-    // → `test()` and delete EXPECTED_MISSING_USER_ID entirely.
+  test.fails('later row-level isolation phase: EXPECTED_MISSING_USER_ID is empty', () => {
+    // Self-revoking TODO. When the later scoped row-level isolation phase
+    // adds `user_id` to every domain table, the snapshot empties out and
+    // this test starts passing — at which point flip `test.fails()` →
+    // `test()` and delete EXPECTED_MISSING_USER_ID entirely.
     expect([...EXPECTED_MISSING_USER_ID]).toEqual([])
   })
 })

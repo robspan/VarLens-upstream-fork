@@ -8,7 +8,7 @@ Created: 2026-05-12
 The current web import path is deliberately limited to server-local paths for tests and operators:
 
 - enabled automatically only under `NODE_ENV=test`
-- otherwise gated by `VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT=1`
+- otherwise rejected with `server-path-import-disabled`
 
 That is sufficient for parity tests and sysadmin-operated resources, but it is not end-user browser import. Browser users cannot hand the server a local filesystem path.
 
@@ -26,6 +26,6 @@ The current web export path is also deliberately gated. PostgreSQL storage can s
 ## Acceptance Checks
 
 - Web tests prove upload/import/delete cleanup for success and failure.
-- A parity test imports through the browser upload contract, not `VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT`.
+- A parity test imports through the browser upload contract, not a server-local path.
 - Export tests prove variant and cohort downloads produce deterministic content for the same filters used in desktop export tests.
 - Default desktop `make test` remains unchanged; upload/download tests run only in web lanes.

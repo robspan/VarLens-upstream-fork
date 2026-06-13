@@ -77,7 +77,7 @@ const EXPECTED_ROUTE_OVERRIDE_MODULES = new Set([
 // Per-override-key seam analyzer (ts-morph)
 // ---------------------------------------------------------------------------
 
-type KeyVerdict = 'passthrough' | 'shared-logic' | 'inline'
+type KeyVerdict = 'passthrough' | 'shared-logic' | 'unsupported' | 'inline'
 
 /**
  * Returns the set of function names imported from any `handlers/<x>-logic`
@@ -104,11 +104,20 @@ function propCallsLogicFn(prop: import('ts-morph').Node, logicNames: Set<string>
   })
 }
 
+/** True when the override body calls `unsupportedWebCapability(...)` — a web-disabled method. */
+function propCallsUnsupported(prop: import('ts-morph').Node): boolean {
+  return prop.getDescendantsOfKind(SyntaxKind.CallExpression).some((call) => {
+    const expr = call.getExpression()
+    return expr.getKind() === SyntaxKind.Identifier && expr.getText() === 'unsupportedWebCapability'
+  })
+}
+
 /**
  * For every override key in the named `build<X>Overrides` function of the
  * given route file, returns a verdict:
  *   'passthrough'   — exactly one executor.execute() call whose `type` matches the key
  *   'shared-logic'  — at least one call to a function imported from a *-logic module
+ *   'unsupported'   — calls unsupportedWebCapability() (web-disabled method), no real work
  *   'inline'        — anything else (multi-call, type-mismatch, inline event logic, etc.)
  */
 function analyzeOverrideKeys(routePath: string): Record<string, KeyVerdict> {
@@ -148,6 +157,8 @@ function analyzeOverrideKeys(routePath: string): Record<string, KeyVerdict> {
       verdicts[key] = 'shared-logic'
     } else if (execCalls === 1 && callsTypeKey) {
       verdicts[key] = 'passthrough'
+    } else if (propCallsUnsupported(prop)) {
+      verdicts[key] = 'unsupported'
     } else {
       verdicts[key] = 'inline'
     }

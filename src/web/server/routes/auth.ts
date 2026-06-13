@@ -1,5 +1,3 @@
-import type { FastifyReply, FastifyRequest } from 'fastify'
-
 import {
   ChangePasswordArgsSchema,
   CreateUserArgsSchema,
@@ -8,25 +6,16 @@ import {
   UsernameArgsSchema
 } from '../../../shared/api/schemas/auth'
 import { PasswordPolicyError } from '../../auth/PostgresWebAuthService'
+import { recordAuthAudit } from '../audit'
+import { requireAdmin } from './guards'
 import type { OverrideHandler } from './types'
-
-function requireAdmin(
-  request: FastifyRequest,
-  reply: FastifyReply
-): { username: string } | undefined {
-  const user = request.session?.user
-  if (user?.role !== 'admin') {
-    reply.code(403)
-    return undefined
-  }
-  return { username: user.username }
-}
 
 export function buildAuthOverrides(): Record<string, OverrideHandler> {
   return {
     'auth:login': {
       public: true,
-      async handle(args, request, reply, { authService }) {
+      async handle(args, request, reply, deps) {
+        const { authService } = deps
         const parsed = LoginArgsSchema.safeParse(args)
         if (!parsed.success) {
           reply.code(400)
@@ -38,12 +27,35 @@ export function buildAuthOverrides(): Record<string, OverrideHandler> {
           const { id, username: name, role, password_changed_at: passwordChangedAt } = result.user
           request.session.user = { id, username: name, role, passwordChangedAt }
           request.session.mustChangePassword = result.mustChangePassword === true
+          await recordAuthAudit(deps, {
+            action_type: 'auth_login_success',
+            username: name,
+            role,
+            success: true,
+            mustChangePassword: result.mustChangePassword === true
+          })
+        } else {
+          await recordAuthAudit(deps, {
+            action_type: 'auth_login_failure',
+            username,
+            success: false,
+            reason: result.locked === true ? 'locked' : 'invalid-credentials'
+          })
         }
         return result
       }
     },
     'auth:logout': {
-      async handle(_args, request) {
+      async handle(_args, request, _reply, deps) {
+        const username = request.session.user?.username
+        if (username !== undefined) {
+          await recordAuthAudit(deps, {
+            action_type: 'auth_logout',
+            username,
+            actor: username,
+            success: true
+          })
+        }
         request.session.delete()
         return { ok: true }
       }
@@ -60,7 +72,8 @@ export function buildAuthOverrides(): Record<string, OverrideHandler> {
       }
     },
     'auth:changePassword': {
-      async handle(args, request, reply, { authService }) {
+      async handle(args, request, reply, deps) {
+        const { authService } = deps
         const session = request.session
         const sessionUser = session?.user
         if (sessionUser === undefined) {
@@ -82,6 +95,13 @@ export function buildAuthOverrides(): Record<string, OverrideHandler> {
             newPassword
           )
           if (!ok) {
+            await recordAuthAudit(deps, {
+              action_type: 'auth_password_change',
+              username: sessionUser.username,
+              actor: sessionUser.username,
+              success: false,
+              reason: 'old-password-invalid'
+            })
             reply.code(401)
             return { success: false, error: 'old-password-invalid' }
           }
@@ -95,9 +115,22 @@ export function buildAuthOverrides(): Record<string, OverrideHandler> {
             }
           }
           session.mustChangePassword = false
+          await recordAuthAudit(deps, {
+            action_type: 'auth_password_change',
+            username: sessionUser.username,
+            actor: sessionUser.username,
+            success: true
+          })
           return { success: true }
         } catch (err) {
           if (err instanceof PasswordPolicyError) {
+            await recordAuthAudit(deps, {
+              action_type: 'auth_password_change',
+              username: sessionUser.username,
+              actor: sessionUser.username,
+              success: false,
+              reason: err.code
+            })
             reply.code(422)
             return { success: false, error: err.code, message: err.message }
           }
@@ -130,7 +163,8 @@ export function buildAuthOverrides(): Record<string, OverrideHandler> {
       }
     },
     'auth:deactivateUser': {
-      async handle(args, request, reply, { authService }) {
+      async handle(args, request, reply, deps) {
+        const { authService } = deps
         const admin = requireAdmin(request, reply)
         if (admin === undefined) return { error: 'admin-required' }
 
@@ -146,11 +180,18 @@ export function buildAuthOverrides(): Record<string, OverrideHandler> {
         }
 
         await authService.deactivateUser(username)
+        await recordAuthAudit(deps, {
+          action_type: 'auth_user_deactivate',
+          username,
+          actor: admin.username,
+          success: true
+        })
         return undefined
       }
     },
     'auth:resetPassword': {
-      async handle(args, request, reply, { authService }) {
+      async handle(args, request, reply, deps) {
+        const { authService } = deps
         const admin = requireAdmin(request, reply)
         if (admin === undefined) return { error: 'admin-required' }
 
@@ -166,6 +207,12 @@ export function buildAuthOverrides(): Record<string, OverrideHandler> {
         }
 
         await authService.resetPassword(username, newPassword)
+        await recordAuthAudit(deps, {
+          action_type: 'auth_password_reset',
+          username,
+          actor: admin.username,
+          success: true
+        })
         return undefined
       }
     }

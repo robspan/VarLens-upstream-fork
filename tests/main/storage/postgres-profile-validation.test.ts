@@ -49,6 +49,29 @@ describe('PostgresConnectionProfileInputSchema', () => {
     expect(result.success).toBe(false)
   })
 
+  it.each([
+    ['single quote (string-literal breakout)', "audit'; DROP SCHEMA public; --"],
+    ['double quote (identifier breakout)', 'audit"log'],
+    ['backslash', 'audit\\log'],
+    ['tab control character', 'audit\tlog']
+  ])('rejects schema names containing a %s', (_label, schema) => {
+    const result = PostgresConnectionProfileInputSchema.safeParse({
+      ...validInput,
+      schema
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts legitimate quoted-identifier schema names (mixed case, hyphen)', () => {
+    const result = PostgresConnectionProfileInputSchema.safeParse({
+      ...validInput,
+      schema: 'Workspace-A'
+    })
+
+    expect(result.success).toBe(true)
+  })
+
   it('rejects invalid SSL modes', () => {
     const result = PostgresConnectionProfileInputSchema.safeParse({
       ...validInput,

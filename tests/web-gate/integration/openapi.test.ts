@@ -76,8 +76,6 @@ describe.skipIf(!isWebBuilt || !HAS_PG)('web OpenAPI endpoint', () => {
       })
       expect(authenticated.statusCode, authenticated.body).toBe(200)
 
-      expect(authenticated.statusCode, authenticated.body).toBe(200)
-
       const spec = unauthenticated.json() as {
         openapi?: string
         info?: { title?: string }

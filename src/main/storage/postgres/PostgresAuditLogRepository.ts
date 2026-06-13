@@ -6,7 +6,20 @@ import type {
   AuditEntityType
 } from '../../../shared/types/database'
 import type { AuditAppendParams, AuditQueryParams, AuditQueryResult } from '../audit-log-types'
-import { quoteIdentifier } from './identifiers'
+import {
+  serializeAuditContractMetadata,
+  serializeAuditContractValue
+} from '../../../shared/audit/audit-contract'
+
+/**
+ * The audit trail lives in the shared `varlens_audit` schema (migration
+ * 0013), not in the per-project schema: rows survive project deletion and
+ * the table is append-only (trigger-enforced; ownership-separated after
+ * scripts/postgres/provision-audit-owner.sh). The constructor's `schema`
+ * is the project discriminator stamped into `project_schema` on every
+ * write and filtered on every read.
+ */
+const AUDIT_TABLE = 'varlens_audit."audit_log"'
 
 type AuditRow = Record<string, unknown>
 
@@ -18,11 +31,6 @@ function toNumber(value: unknown): number {
 
 function toNullableString(value: unknown): string | null {
   return value === null || value === undefined ? null : String(value)
-}
-
-function serializeAuditValue(value: unknown): string | null {
-  if (value === null || value === undefined) return null
-  return typeof value === 'string' ? value : JSON.stringify(value)
 }
 
 function toAuditLogEntry(row: AuditRow): AuditLogEntry {
@@ -39,21 +47,17 @@ function toAuditLogEntry(row: AuditRow): AuditLogEntry {
 }
 
 export class PostgresAuditLogRepository {
-  private readonly schemaName: string
-
   constructor(
     private readonly pool: Pick<Pool, 'query'>,
-    schema: string
-  ) {
-    this.schemaName = quoteIdentifier(schema)
-  }
+    private readonly projectSchema: string
+  ) {}
 
   async getByEntityKey(entityKey: string): Promise<AuditLogEntry[]> {
     const result = await this.pool.query<AuditRow>(
-      `SELECT * FROM ${this.schemaName}."audit_log"
-       WHERE entity_key = $1
+      `SELECT * FROM ${AUDIT_TABLE}
+       WHERE project_schema = $1 AND entity_key = $2
        ORDER BY created_at ASC`,
-      [entityKey]
+      [this.projectSchema, entityKey]
     )
     return result.rows.map(toAuditLogEntry)
   }
@@ -63,7 +67,7 @@ export class PostgresAuditLogRepository {
 
     const countResult = await this.pool.query<{ total_count: unknown }>(
       `SELECT COUNT(*)::bigint AS total_count
-       FROM ${this.schemaName}."audit_log"
+       FROM ${AUDIT_TABLE}
        ${whereSql}`,
       values
     )
@@ -73,7 +77,7 @@ export class PostgresAuditLogRepository {
     const dataParams = [...values, limit, offset]
     const result = await this.pool.query<AuditRow>(
       `SELECT *
-       FROM ${this.schemaName}."audit_log"
+       FROM ${AUDIT_TABLE}
        ${whereSql}
        ORDER BY created_at DESC
        LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`,
@@ -88,17 +92,18 @@ export class PostgresAuditLogRepository {
 
   async append(params: AuditAppendParams): Promise<void> {
     await this.pool.query(
-      `INSERT INTO ${this.schemaName}."audit_log" (
-        action_type, entity_type, entity_key, old_value, new_value, user_name, metadata_json
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      `INSERT INTO ${AUDIT_TABLE} (
+        project_schema, action_type, entity_type, entity_key, old_value, new_value, user_name, metadata_json
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
+        this.projectSchema,
         params.action_type,
         params.entity_type,
         params.entity_key,
-        serializeAuditValue(params.old_value),
-        serializeAuditValue(params.new_value),
+        serializeAuditContractValue(params.old_value),
+        serializeAuditContractValue(params.new_value),
         params.user_name ?? null,
-        serializeAuditValue(params.metadata)
+        serializeAuditContractMetadata(params.metadata)
       ]
     )
   }
@@ -111,6 +116,7 @@ export class PostgresAuditLogRepository {
       return `$${values.length}`
     }
 
+    where.push(`project_schema = ${add(this.projectSchema)}`)
     if (params.action_type !== undefined) where.push(`action_type = ${add(params.action_type)}`)
     if (params.entity_type !== undefined) where.push(`entity_type = ${add(params.entity_type)}`)
     if (params.entity_key !== undefined) where.push(`entity_key = ${add(params.entity_key)}`)
@@ -122,7 +128,7 @@ export class PostgresAuditLogRepository {
     }
 
     return {
-      whereSql: where.length > 0 ? `WHERE ${where.join(' AND ')}` : '',
+      whereSql: `WHERE ${where.join(' AND ')}`,
       values
     }
   }

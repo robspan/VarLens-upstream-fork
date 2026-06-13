@@ -95,12 +95,35 @@ describe.skipIf(!RUN)('Postgres migrations: real-instance idempotency', () => {
     const cleaner = new Client({ connectionString: PG_URL })
     await cleaner.connect()
     await cleaner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
-    await cleaner.end()
+    // The central audit table outlives the project schema by design; clean
+    // this run's rows the way retention does — owner-only trigger disable.
+    try {
+      await cleaner.query(
+        'ALTER TABLE varlens_audit.audit_log DISABLE TRIGGER audit_log_block_mutation'
+      )
+      await cleaner.query('DELETE FROM varlens_audit.audit_log WHERE project_schema = $1', [schema])
+    } finally {
+      await cleaner.query(
+        'ALTER TABLE varlens_audit.audit_log ENABLE TRIGGER audit_log_block_mutation'
+      )
+      await cleaner.end()
+    }
   }, 60_000)
 
   it('runs all migrations end-to-end and produces a non-empty schema', async () => {
+    // Stage the run to prove 0013's legacy copy: apply everything below
+    // 0013, write a per-schema audit row the old way, then apply the rest.
+    const preCentral = POSTGRES_MIGRATIONS.filter((m) => m.version < '0013')
+    await new PostgresMigrationRunner(pool, schema, preCentral).migrate()
+    await probeClient.query(
+      `INSERT INTO "${schema}".audit_log
+        (action_type, entity_type, entity_key, new_value, user_name)
+       VALUES ('star', 'variant_annotation', '1:100:A:G', '{"starred":1}', 'legacy-user')`
+    )
+
     const result = await new PostgresMigrationRunner(pool, schema, POSTGRES_MIGRATIONS).migrate()
     expect(result.applied.length).toBeGreaterThan(0)
+    expect(result.applied).toContain('0013')
 
     const snapshot = await captureSchema(probeClient, schema)
     expect(snapshot.tables.length).toBeGreaterThan(0)
@@ -188,6 +211,56 @@ describe.skipIf(!RUN)('Postgres migrations: real-instance idempotency', () => {
       uniques.rows.length,
       'users must have at least one UNIQUE constraint (username + PK)'
     ).toBeGreaterThanOrEqual(2)
+
+    // 0013 moved the audit trail to the shared varlens_audit schema:
+    // the per-project table is gone, its rows are copied over stamped
+    // with the project schema, and the action/entity CHECK contract
+    // now lives on the central table.
+    const legacyTable = await probeClient.query<{ t: string | null }>(
+      `SELECT to_regclass($1) AS t`,
+      [`"${schema}"."audit_log"`]
+    )
+    expect(legacyTable.rows[0]?.t).toBeNull()
+
+    const copied = await probeClient.query<{
+      entity_key: string
+      user_name: string
+      new_value: string
+    }>(
+      `SELECT entity_key, user_name, new_value FROM varlens_audit.audit_log
+        WHERE project_schema = $1 AND action_type = 'star'`,
+      [schema]
+    )
+    expect(copied.rows).toEqual([
+      { entity_key: '1:100:A:G', user_name: 'legacy-user', new_value: '{"starred":1}' }
+    ])
+
+    await probeClient.query(
+      `INSERT INTO varlens_audit.audit_log
+        (project_schema, action_type, entity_type, entity_key, new_value, user_name, metadata_json)
+       VALUES
+        ($1, 'auth_login_success', 'user_account', 'admin', '{"success":true}', 'admin', '{"source":"web-auth"}'),
+        ($1, 'api_read', 'api_call', 'cases:query', '{"success":true,"method":"cases:query"}', 'admin', '{"source":"web-dispatcher"}'),
+        ($1, 'api_write', 'api_call', 'tags:create', '{"success":true,"method":"tags:create"}', 'admin', '{"source":"web-dispatcher"}')`,
+      [schema]
+    )
+
+    await expect(
+      probeClient.query(
+        `INSERT INTO varlens_audit.audit_log
+          (project_schema, action_type, entity_type, entity_key, new_value)
+         VALUES ($1, 'not_a_contract_action', 'api_call', 'x', '{}')`,
+        [schema]
+      )
+    ).rejects.toThrow()
+    await expect(
+      probeClient.query(
+        `INSERT INTO varlens_audit.audit_log
+          (project_schema, action_type, entity_type, entity_key, new_value)
+         VALUES ($1, 'api_write', 'not_a_contract_entity', 'x', '{}')`,
+        [schema]
+      )
+    ).rejects.toThrow()
   }, 60_000)
 
   it('is idempotent — a second run produces the same schema state', async () => {

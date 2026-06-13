@@ -8,6 +8,9 @@ import { finished } from 'node:stream/promises'
 
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 
+import { recordApiWriteAudit } from '../audit'
+import type { DispatcherDeps } from './types'
+
 const DEFAULT_RECOVERY_KEY_DIR = '/data'
 const DEFAULT_UPLOAD_TTL_MS = 24 * 60 * 60 * 1000
 const DEFAULT_MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
@@ -68,7 +71,7 @@ export function replaceWebUploadPathWithRef<T extends { filePath: string }>(
   return ref === undefined ? item : { ...item, filePath: ref }
 }
 
-export function registerImportUploadRoutes(app: FastifyInstance): void {
+export function registerImportUploadRoutes(app: FastifyInstance, deps: DispatcherDeps): void {
   app.addContentTypeParser('application/octet-stream', (_request, payload, done) => {
     done(null, payload)
   })
@@ -124,6 +127,11 @@ export function registerImportUploadRoutes(app: FastifyInstance): void {
     })
 
     if (!isStagedUpload(upload)) return upload
+
+    await recordApiWriteAudit(deps, {
+      key: 'import:upload',
+      username: request.session.user?.username
+    })
 
     return {
       id: upload.id,

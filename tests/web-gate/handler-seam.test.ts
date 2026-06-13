@@ -25,6 +25,7 @@ const SHARED_DOMAIN_HELPERS = new Set(['import-schemas'])
 const ROUTE_OVERRIDE_LOGIC_EXCEPTIONS: Record<string, string> = {
   'analysis-groups.ts': 'thin storage-executor adapters with web-only argument validation',
   'annotations.ts': 'thin storage-executor adapters with web-only argument validation',
+  'audit-log.ts': 'admin-gated audit-trail read adapters over the storage read executor',
   'auth.ts': 'web-only session cookie/auth boundary backed by PostgresWebAuthService',
   'case-metadata.ts': 'thin storage-executor adapters with web-only argument validation',
   'cases.ts': 'simple cases:list storage read adapter',
@@ -43,6 +44,7 @@ const ROUTE_OVERRIDE_LOGIC_EXCEPTIONS: Record<string, string> = {
 const EXPECTED_ROUTE_OVERRIDE_MODULES = new Set([
   'analysis-groups.ts',
   'annotations.ts',
+  'audit-log.ts',
   'auth.ts',
   'batch-import.ts',
   'case-metadata.ts',

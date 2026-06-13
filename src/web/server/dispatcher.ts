@@ -32,6 +32,7 @@ import { toSerializableError } from '../../main/ipc/serializable-error'
 import { isReadTaskType, isWriteTaskType, toTaskDomain } from './task-types'
 import { buildAnalysisGroupOverrides } from './routes/analysis-groups'
 import { buildAnnotationOverrides } from './routes/annotations'
+import { buildAuditLogOverrides } from './routes/audit-log'
 import { buildAuthOverrides } from './routes/auth'
 import { buildBatchImportOverrides } from './routes/batch-import'
 import { buildCaseMetadataOverrides } from './routes/case-metadata'
@@ -50,6 +51,12 @@ import { buildTranscriptOverrides } from './routes/transcripts'
 import { buildVepOverrides } from './routes/vep'
 import { buildVariantOverrides } from './routes/variants'
 import type { DispatcherDeps, InvokeBody, OverrideHandler } from './routes/types'
+import {
+  recordApiReadAudit,
+  recordApiWriteAudit,
+  shouldAuditApiRead,
+  shouldAuditOverrideWrite
+} from './audit'
 import {
   DispatcherErrorResponseSchema,
   DispatcherInvokeBodySchema,
@@ -139,6 +146,7 @@ function buildOverrides(): Record<string, OverrideHandler> {
     ...buildAuthOverrides(),
     ...buildAnalysisGroupOverrides(),
     ...buildAnnotationOverrides(),
+    ...buildAuditLogOverrides(),
     ...buildBatchImportOverrides(),
     ...buildCaseMetadataOverrides(),
     ...buildCasesOverrides(),
@@ -245,17 +253,49 @@ export function registerDispatcher(
       }
 
       if (override !== undefined) {
-        return await invokeAsIpcResult(reply, () => override.handle(args, request, reply, deps))
+        const result = await invokeAsIpcResult(reply, () =>
+          override.handle(args, request, reply, deps)
+        )
+        if (reply.statusCode < 400 && (isWriteTaskType(key) || shouldAuditOverrideWrite(key))) {
+          const auditResult = await invokeAsIpcResult(reply, () =>
+            recordApiWriteAudit(deps, { key, username: request.session?.user?.username })
+          )
+          if (reply.statusCode >= 400) return auditResult
+        } else if (reply.statusCode < 400 && shouldAuditApiRead(key)) {
+          const auditResult = await invokeAsIpcResult(reply, () =>
+            recordApiReadAudit(deps, { key, username: request.session?.user?.username })
+          )
+          if (reply.statusCode >= 400) return auditResult
+        }
+        return result
       }
 
       if (isReadTaskType(key)) {
         const task = { type: key, params: args } as StorageReadTask
-        return await invokeAsIpcResult(reply, () => deps.session.getReadExecutor().execute(task))
+        const result = await invokeAsIpcResult(reply, () =>
+          deps.session.getReadExecutor().execute(task)
+        )
+        if (reply.statusCode < 400 && shouldAuditApiRead(key)) {
+          const auditResult = await invokeAsIpcResult(reply, () =>
+            recordApiReadAudit(deps, { key, username: request.session?.user?.username })
+          )
+          if (reply.statusCode >= 400) return auditResult
+        }
+        return result
       }
 
       if (isWriteTaskType(key)) {
         const task = { type: key, params: args } as StorageWriteTask
-        return await invokeAsIpcResult(reply, () => deps.session.getWriteExecutor().execute(task))
+        const result = await invokeAsIpcResult(reply, () =>
+          deps.session.getWriteExecutor().execute(task)
+        )
+        if (reply.statusCode < 400) {
+          const auditResult = await invokeAsIpcResult(reply, () =>
+            recordApiWriteAudit(deps, { key, username: request.session?.user?.username })
+          )
+          if (reply.statusCode >= 400) return auditResult
+        }
+        return result
       }
 
       reply.code(404)

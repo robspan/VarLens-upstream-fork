@@ -50,11 +50,11 @@ describe('audit-log IPC routing', () => {
     readExecute.mockResolvedValue(expected)
 
     await expect(
-      handlers.get('audit:query')!(undefined, { action_type: 'star', limit: 25 })
+      handlers.get('audit:query')!(undefined, { action_type: 'api_read', limit: 25 })
     ).resolves.toBe(expected)
     expect(readExecute).toHaveBeenCalledWith({
       type: 'audit:query',
-      params: [expect.objectContaining({ action_type: 'star', limit: 25 })]
+      params: [expect.objectContaining({ action_type: 'api_read', limit: 25 })]
     })
   })
 })

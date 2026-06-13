@@ -1,4 +1,7 @@
 import type { ColumnFiltersParam } from './column-filters'
+import type { AuditActionType, AuditEntityType } from '../audit/audit-contract'
+
+export type { AuditActionType, AuditEntityType } from '../audit/audit-contract'
 
 /** Affected status for case metadata */
 export type AffectedStatus = 'affected' | 'unaffected' | 'unknown'
@@ -629,25 +632,6 @@ export interface AnalysisGroupMember {
 export interface AnalysisGroupWithMembers extends AnalysisGroup {
   members: AnalysisGroupMember[]
 }
-
-/**
- * Audit trail action types
- */
-export type AuditActionType =
-  | 'acmg_classify'
-  | 'acmg_evidence_update'
-  | 'star'
-  | 'unstar'
-  | 'comment_add'
-  | 'comment_edit'
-  | 'comment_delete'
-  | 'tag_assign'
-  | 'tag_remove'
-
-/**
- * Audit trail entity types
- */
-export type AuditEntityType = 'variant_annotation' | 'case_variant_annotation'
 
 /**
  * AuditLogEntry - Immutable audit trail record

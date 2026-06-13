@@ -12,7 +12,7 @@
       :tabindex="pending ? -1 : 0"
       :aria-disabled="pending"
       @click="select(src.mode)"
-      @keydown.enter="select(src.mode)"
+      @keydown="handleSourceKeydown($event, src.mode)"
     >
       <v-card-text class="d-flex flex-column align-center text-center pa-3">
         <v-icon :icon="src.icon" size="24" color="primary" class="mb-1" />
@@ -98,6 +98,12 @@ function formatBytes(bytes: number): string {
 
 function select(mode: ImportSourceMode): void {
   if (!props.pending) emit('select', mode)
+}
+
+function handleSourceKeydown(event: KeyboardEvent, mode: ImportSourceMode): void {
+  if (event.key !== 'Enter' && event.key !== ' ') return
+  event.preventDefault()
+  select(mode)
 }
 </script>
 

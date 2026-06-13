@@ -61,8 +61,8 @@ export const READ_TASK_TYPES = [
   'analysis-groups:list',
   'analysis-groups:get',
   'analysis-groups:getForCase',
-  'audit:getByEntity',
-  'audit:query',
+  // audit:getByEntity / audit:query are NOT autorouted: they are
+  // admin-gated overrides in routes/audit-log.ts.
   'transcripts:list'
 ] as const satisfies readonly StorageReadTask['type'][]
 
@@ -118,7 +118,6 @@ export const WRITE_TASK_TYPES = [
   'analysis-groups:delete',
   'analysis-groups:addMember',
   'analysis-groups:removeMember',
-  'audit:append',
   'transcripts:switch',
   'transcripts:insertAndSwitch'
 ] as const satisfies readonly StorageWriteTask['type'][]

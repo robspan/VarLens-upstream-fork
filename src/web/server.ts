@@ -128,7 +128,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     events
   }
   const { overrides } = buildDispatcher(dispatcherDeps)
-  registerImportUploadRoutes(app)
+  registerImportUploadRoutes(app, dispatcherDeps)
   registerDispatcher(app, dispatcherDeps, overrides)
   registerEventStream(app, events)
 

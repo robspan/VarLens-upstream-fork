@@ -144,3 +144,9 @@ e2e-screenshots/
 
 # Understand-Anything knowledge graph artifacts (regenerable via /understand)
 .understand-anything/
+
+# Brand favicon/app-icon raster assets — tracked despite the global *.png rule
+!src/renderer/public/apple-touch-icon.png
+!src/renderer/public/icon-192.png
+!src/renderer/public/icon-512.png
+!src/renderer/public/icon-maskable-512.png

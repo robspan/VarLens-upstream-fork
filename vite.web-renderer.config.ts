@@ -9,7 +9,7 @@
  * the `renderer:` key. This is its web sibling — same renderer source
  * tree, different transport, different entry HTML.
  */
-import { copyFileSync, mkdirSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import { defineConfig, type Plugin } from 'vite'
@@ -28,15 +28,28 @@ function normalizeBase(value: string | undefined): string {
 
 function copyWebPublicAssets(): Plugin {
   const outDir = resolve(__dirname, 'out/web/public')
+  // Brand/favicon assets live in src/renderer/public/ (the desktop renderer's
+  // Vite publicDir). The web build uses a different publicDir, so copy the
+  // favicon set explicitly. Missing files are skipped so the build never
+  // breaks if an optional icon hasn't been generated.
+  const brandAssets = [
+    'favicon.svg',
+    'favicon.ico',
+    'apple-touch-icon.png',
+    'icon-192.png',
+    'icon-512.png',
+    'icon-maskable-512.png',
+    'manifest.webmanifest'
+  ]
   return {
     name: 'web-renderer:copy-public-assets',
     apply: 'build',
     writeBundle() {
       mkdirSync(outDir, { recursive: true })
-      copyFileSync(
-        resolve(__dirname, 'src/renderer/public/favicon.svg'),
-        resolve(outDir, 'favicon.svg')
-      )
+      for (const file of brandAssets) {
+        const src = resolve(__dirname, 'src/renderer/public', file)
+        if (existsSync(src)) copyFileSync(src, resolve(outDir, file))
+      }
     }
   }
 }

@@ -3,13 +3,14 @@ import {
   upsertGlobalAnnotationViaSession,
   upsertPerCaseAnnotationWithEvent
 } from '../../../src/main/ipc/handlers/annotations-logic'
+import type { StorageSession } from '../../../src/main/storage/session'
 
-function fakeSession(): any {
+function fakeSession(): StorageSession {
   return {
     getWriteExecutor: () => ({
       execute: vi.fn().mockResolvedValue({ ok: true })
     })
-  }
+  } as unknown as StorageSession
 }
 
 describe('upsertPerCaseAnnotationWithEvent — event callback', () => {
@@ -79,7 +80,11 @@ describe('upsertGlobalAnnotationViaSession', () => {
     const session = { getWriteExecutor: () => ({ execute: executeMock }) }
     const coords = { chr: '1', pos: 100, ref: 'A', alt: 'T' }
     const updates = { global_comment: 'test' }
-    await upsertGlobalAnnotationViaSession(coords, updates, () => session as any)
+    await upsertGlobalAnnotationViaSession(
+      coords,
+      updates,
+      () => session as unknown as StorageSession
+    )
     expect(executeMock).toHaveBeenCalledTimes(1)
     expect(executeMock.mock.calls[0][0]).toMatchObject({
       type: 'annotations:upsertGlobalWithAudit'

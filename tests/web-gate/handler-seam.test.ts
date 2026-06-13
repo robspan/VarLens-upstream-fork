@@ -31,7 +31,6 @@ const ROUTE_OVERRIDE_LOGIC_EXCEPTIONS: Record<string, string> = {
     'web upload/job-runner pipeline with file-picker stubs replacing desktop dialogs',
   'case-metadata.ts': 'thin storage-executor adapters with web-only argument validation',
   'cases.ts': 'simple cases:list storage read adapter',
-  'cohort.ts': 'cohort route adapters plus explicit unsupported web methods',
   'database.ts': 'web-only database identity/capability adapters',
   'gene-lists.ts': 'thin storage-executor adapters with web-only argument validation',
   'gene-ref.ts': 'web mode intentionally disables external reference fetches',
@@ -48,7 +47,7 @@ const ROUTE_OVERRIDE_LOGIC_EXCEPTIONS: Record<string, string> = {
  * an entry when the domain's overrides all pass the per-key seam check.
  * do not add.
  */
-const PENDING_SHARED_LOGIC_EXTRACTION = new Set<string>(['cohort.ts', 'export.ts'])
+const PENDING_SHARED_LOGIC_EXTRACTION = new Set<string>(['export.ts'])
 
 const EXPECTED_ROUTE_OVERRIDE_MODULES = new Set([
   'analysis-groups.ts',

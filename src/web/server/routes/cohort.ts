@@ -2,6 +2,14 @@ import {
   CohortCarriersParamsSchema,
   CohortSearchParamsSchema
 } from '../../../shared/api/schemas/cohort'
+import {
+  getCohortVariantsViaSession,
+  getCohortColumnMetaViaSession,
+  getCohortSummaryViaSession,
+  getCohortCarriersViaSession,
+  getCohortGeneBurdenViaSession,
+  getCohortSummaryStatusViaSession
+} from '../../../main/ipc/handlers/cohort-logic'
 import { unsupportedWebCapability } from './common'
 import type { OverrideHandler } from './types'
 
@@ -16,34 +24,25 @@ export function buildCohortOverrides(): Record<string, OverrideHandler> {
           return { error: 'invalid-cohort-params', message: 'Invalid cohort search parameters' }
         }
 
-        return await session.getReadExecutor().execute({
-          type: 'cohort:query',
-          params: [validated.data]
-        })
+        return await getCohortVariantsViaSession(validated.data, () => session)
       }
     },
 
     'cohort:getColumnMeta': {
       async handle(_args, _request, _reply, { session }) {
-        return await session.getReadExecutor().execute({
-          type: 'cohort:columnMeta',
-          params: []
-        })
+        return await getCohortColumnMetaViaSession(() => session)
       }
     },
 
     'cohort:getSummary': {
       async handle(_args, _request, _reply, { session }) {
-        return await session.getReadExecutor().execute({
-          type: 'cohort:summary',
-          params: []
-        })
+        return await getCohortSummaryViaSession(() => session)
       }
     },
 
     'cohort:getSummaryStatus': {
-      handle() {
-        return { is_stale: false, last_rebuilt_at: 0 }
+      async handle(_args, _request, _reply, { session }) {
+        return await getCohortSummaryStatusViaSession(() => session)
       }
     },
 
@@ -74,19 +73,19 @@ export function buildCohortOverrides(): Record<string, OverrideHandler> {
           return { error: 'invalid-carrier-params', message: 'Invalid carrier query parameters' }
         }
 
-        return await session.getReadExecutor().execute({
-          type: 'cohort:carriers',
-          params: [validated.data.chr, validated.data.pos, validated.data.ref, validated.data.alt]
-        })
+        return await getCohortCarriersViaSession(
+          validated.data.chr,
+          validated.data.pos,
+          validated.data.ref,
+          validated.data.alt,
+          () => session
+        )
       }
     },
 
     'cohort:getGeneBurden': {
       async handle(_args, _request, _reply, { session }) {
-        return await session.getReadExecutor().execute({
-          type: 'cohort:geneBurden',
-          params: []
-        })
+        return await getCohortGeneBurdenViaSession(() => session)
       }
     }
   }

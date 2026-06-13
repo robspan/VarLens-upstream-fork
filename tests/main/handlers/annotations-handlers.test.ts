@@ -334,7 +334,20 @@ describe('annotations:upsertPerCase — variants:annotationChanged broadcast', (
       ipcMain: fakeIpcMain,
       getDb: () => db,
       getDbManager: (() => ({
-        getCurrentSession: () => ({ capabilities: { backend: 'sqlite' } })
+        getCurrentSession: () => ({
+          capabilities: { backend: 'sqlite' },
+          getWriteExecutor: () => ({
+            execute: vi.fn().mockResolvedValue({
+              id: 1,
+              case_id: caseId,
+              variant_id: variantId,
+              starred: 0,
+              per_case_comment: null,
+              acmg_classification: null,
+              acmg_evidence: null
+            })
+          })
+        })
       })) as unknown as () => import('../../../src/main/services/DatabaseManager').DatabaseManager
     })
   })
@@ -401,15 +414,10 @@ describe('annotations:upsertPerCase — variants:annotationChanged broadcast', (
   })
 
   it('does NOT broadcast when the upsert throws', async () => {
-    // Force a failure by mocking the logic-layer call to throw. We spy on
-    // the imported function reference — `annotations.ts` imports
-    // `upsertPerCaseAnnotation` from `./annotations-logic`.
-    const logic = await import('../../../src/main/ipc/handlers/annotations-logic')
-    const spy = vi.spyOn(logic, 'upsertPerCaseAnnotation').mockImplementation(() => {
-      throw new Error('boom')
-    })
-
-    // Re-register handlers so the wrapper binds the mocked function
+    // Force a failure by making the write executor reject. The handler now
+    // routes through `upsertPerCaseAnnotationWithEvent` →
+    // `getSession().getWriteExecutor().execute(...)`, so a rejected executor
+    // is the correct injection point for the error path.
     capturedHandlers.clear()
     const { registerAnnotationHandlers } =
       await import('../../../src/main/ipc/handlers/annotations')
@@ -417,7 +425,12 @@ describe('annotations:upsertPerCase — variants:annotationChanged broadcast', (
       ipcMain: fakeIpcMain,
       getDb: () => db,
       getDbManager: (() => ({
-        getCurrentSession: () => ({ capabilities: { backend: 'sqlite' } })
+        getCurrentSession: () => ({
+          capabilities: { backend: 'sqlite' },
+          getWriteExecutor: () => ({
+            execute: vi.fn().mockRejectedValue(new Error('boom'))
+          })
+        })
       })) as unknown as () => import('../../../src/main/services/DatabaseManager').DatabaseManager
     })
 
@@ -430,8 +443,6 @@ describe('annotations:upsertPerCase — variants:annotationChanged broadcast', (
 
     // Critically: no broadcast fired on the error path
     expect(sentMessages).toHaveLength(0)
-
-    spy.mockRestore()
   })
 
   it('does NOT broadcast on validation failure (invalid caseId)', async () => {

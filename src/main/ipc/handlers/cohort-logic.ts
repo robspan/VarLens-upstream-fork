@@ -121,6 +121,69 @@ export function spawnRebuildWorker(
 }
 
 /**
+ * Postgres-backed cohort variant query, executed via the storage read
+ * executor. Shared by the desktop postgres branch and the web transport so
+ * both run one implementation. Defaults `genome_build` to GRCh38 to match the
+ * desktop SQLite/pool path's backward-compatibility behavior.
+ */
+export async function getCohortVariantsViaSession(
+  params: ValidatedCohortSearchParams,
+  getSession: () => StorageSession
+): Promise<unknown> {
+  const cohortParams = { ...params } as typeof params & { genome_build?: string }
+  cohortParams.genome_build = cohortParams.genome_build ?? 'GRCh38'
+  const result = await getSession()
+    .getReadExecutor()
+    .execute({ type: 'cohort:query', params: [cohortParams] })
+  return convertBigInts(result)
+}
+
+/** Postgres-backed cohort column metadata via the storage read executor. */
+export async function getCohortColumnMetaViaSession(
+  getSession: () => StorageSession
+): Promise<unknown> {
+  return await getSession().getReadExecutor().execute({ type: 'cohort:columnMeta', params: [] })
+}
+
+/** Postgres-backed cohort summary via the storage read executor. */
+export async function getCohortSummaryViaSession(
+  getSession: () => StorageSession
+): Promise<unknown> {
+  const summary = await getSession()
+    .getReadExecutor()
+    .execute({ type: 'cohort:summary', params: [] })
+  return convertBigInts(summary)
+}
+
+/** Postgres-backed cohort carriers for a variant via the storage read executor. */
+export async function getCohortCarriersViaSession(
+  chr: string,
+  pos: number,
+  ref: string,
+  alt: string,
+  getSession: () => StorageSession
+): Promise<unknown> {
+  const carriers = await getSession()
+    .getReadExecutor()
+    .execute({ type: 'cohort:carriers', params: [chr, pos, ref, alt] })
+  return convertBigInts(carriers)
+}
+
+/** Postgres-backed cohort gene-burden via the storage read executor. */
+export async function getCohortGeneBurdenViaSession(
+  getSession: () => StorageSession
+): Promise<unknown> {
+  return await getSession().getReadExecutor().execute({ type: 'cohort:geneBurden', params: [] })
+}
+
+/** Postgres-backed cohort summary status via the storage read executor. */
+export async function getCohortSummaryStatusViaSession(
+  getSession: () => StorageSession
+): Promise<unknown> {
+  return await getSession().getReadExecutor().execute({ type: 'cohort:summaryStatus', params: [] })
+}
+
+/**
  * Query cohort variants with optional panel filtering.
  */
 export async function queryCohortVariants(
@@ -129,6 +192,11 @@ export async function queryCohortVariants(
   getDbPool?: () => DbPool | null,
   getSession?: GetSession
 ): Promise<unknown> {
+  const postgresSession = getPostgresSession(getSession)
+  if (postgresSession !== undefined) {
+    return getCohortVariantsViaSession(params, () => postgresSession)
+  }
+
   const cohortParams = { ...params } as typeof params & {
     panel_intervals?: Array<{ chr: string; start: number; end: number }>
     genome_build?: string
@@ -139,15 +207,6 @@ export async function queryCohortVariants(
   // The renderer populates this from the cohort view's genome build selector,
   // which is seeded from cases:availableBuilds.
   cohortParams.genome_build = cohortParams.genome_build ?? 'GRCh38'
-
-  const postgresSession = getPostgresSession(getSession)
-  if (postgresSession !== undefined) {
-    const result = await postgresSession.getReadExecutor().execute({
-      type: 'cohort:query',
-      params: [cohortParams]
-    })
-    return convertBigInts(result)
-  }
 
   const pool = getDbPool?.()
 
@@ -197,10 +256,7 @@ export async function getColumnMeta(
 ): Promise<unknown> {
   const postgresSession = getPostgresSession(getSession)
   if (postgresSession !== undefined) {
-    return await postgresSession.getReadExecutor().execute({
-      type: 'cohort:columnMeta',
-      params: []
-    })
+    return getCohortColumnMetaViaSession(() => postgresSession)
   }
 
   const pool = getDbPool?.()
@@ -222,11 +278,7 @@ export async function getCohortSummary(
 ): Promise<unknown> {
   const postgresSession = getPostgresSession(getSession)
   if (postgresSession !== undefined) {
-    const summary = await postgresSession.getReadExecutor().execute({
-      type: 'cohort:summary',
-      params: []
-    })
-    return convertBigInts(summary)
+    return getCohortSummaryViaSession(() => postgresSession)
   }
 
   const pool = getDbPool?.()
@@ -255,11 +307,7 @@ export async function getCarriers(
 ): Promise<unknown> {
   const postgresSession = getPostgresSession(getSession)
   if (postgresSession !== undefined) {
-    const carriers = await postgresSession.getReadExecutor().execute({
-      type: 'cohort:carriers',
-      params: [chr, pos, ref, alt]
-    })
-    return convertBigInts(carriers)
+    return getCohortCarriersViaSession(chr, pos, ref, alt, () => postgresSession)
   }
 
   const pool = getDbPool?.()
@@ -287,10 +335,7 @@ export async function getGeneBurden(
 ): Promise<unknown> {
   const postgresSession = getPostgresSession(getSession)
   if (postgresSession !== undefined) {
-    return await postgresSession.getReadExecutor().execute({
-      type: 'cohort:geneBurden',
-      params: []
-    })
+    return getCohortGeneBurdenViaSession(() => postgresSession)
   }
 
   const pool = getDbPool?.()
@@ -377,10 +422,7 @@ export async function getSummaryStatus(
 ): Promise<unknown> {
   const postgresSession = getPostgresSession(getSession)
   if (postgresSession !== undefined) {
-    return await postgresSession.getReadExecutor().execute({
-      type: 'cohort:summaryStatus',
-      params: []
-    })
+    return getCohortSummaryStatusViaSession(() => postgresSession)
   }
 
   const pool = getDbPool?.()

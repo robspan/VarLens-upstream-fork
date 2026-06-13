@@ -47,7 +47,7 @@ const ROUTE_OVERRIDE_LOGIC_EXCEPTIONS: Record<string, string> = {
  * an entry when the domain's overrides all pass the per-key seam check.
  * do not add.
  */
-const PENDING_SHARED_LOGIC_EXTRACTION = new Set<string>(['export.ts'])
+const PENDING_SHARED_LOGIC_EXTRACTION = new Set<string>([])
 
 const EXPECTED_ROUTE_OVERRIDE_MODULES = new Set([
   'analysis-groups.ts',

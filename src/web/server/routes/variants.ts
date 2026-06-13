@@ -1,5 +1,5 @@
 import type { SortItem, VariantFilter } from '../../../shared/types/database'
-import { searchVariants } from '../../../main/ipc/handlers/variants-logic'
+import { getFilterOptions, searchVariants } from '../../../main/ipc/handlers/variants-logic'
 import {
   CaseIdSchema,
   LimitSchema,
@@ -113,10 +113,7 @@ export function buildVariantOverrides(): Record<string, OverrideHandler> {
           return { error: 'invalid-case-id', message: 'Invalid case ID' }
         }
 
-        return await session.getReadExecutor().execute({
-          type: 'variants:filterOptions',
-          params: [validatedCaseId.data]
-        })
+        return await getFilterOptions(validatedCaseId.data, () => session)
       }
     }
   }

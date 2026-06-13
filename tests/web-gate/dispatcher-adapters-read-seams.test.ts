@@ -102,9 +102,19 @@ describe('web dispatcher adapters: read seams', () => {
     )
 
     expect(reply.code).not.toHaveBeenCalled()
+    // Shared cohort logic defaults genome_build to GRCh38 (desktop parity) before
+    // dispatching the cohort:query read.
     expect(execute).toHaveBeenCalledWith({
       type: 'cohort:query',
-      params: [{ limit: 25, offset: 10, search_term: 'BRCA1', sort_order: 'desc' }]
+      params: [
+        {
+          limit: 25,
+          offset: 10,
+          search_term: 'BRCA1',
+          sort_order: 'desc',
+          genome_build: 'GRCh38'
+        }
+      ]
     })
   })
 
@@ -301,8 +311,9 @@ describe('web dispatcher adapters: read seams', () => {
     }
   })
 
-  test('cohort.getSummaryStatus returns a stable non-rebuild status for web Postgres', async () => {
-    const { deps, reply } = makeDeps()
+  test('cohort.getSummaryStatus delegates to the storage read executor for web Postgres', async () => {
+    const { deps, execute, reply } = makeDeps()
+    execute.mockResolvedValueOnce({ is_stale: false, last_rebuilt_at: 0 })
     const { overrides } = buildDispatcher(deps)
 
     const result = await overrides['cohort:getSummaryStatus'].handle(
@@ -313,6 +324,7 @@ describe('web dispatcher adapters: read seams', () => {
     )
 
     expect(reply.code).not.toHaveBeenCalled()
+    expect(execute).toHaveBeenCalledWith({ type: 'cohort:summaryStatus', params: [] })
     expect(result).toEqual({ is_stale: false, last_rebuilt_at: 0 })
   })
 })

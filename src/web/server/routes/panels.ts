@@ -1,4 +1,5 @@
 import { PanelIdSchema, PanelUpdateSchema } from '../../../shared/types/ipc-schemas'
+import { getPanelWithGenes } from '../../../main/ipc/handlers/panels-logic'
 import type { OverrideHandler } from './types'
 
 export function buildPanelOverrides(): Record<string, OverrideHandler> {
@@ -11,13 +12,7 @@ export function buildPanelOverrides(): Record<string, OverrideHandler> {
           reply.code(400)
           return { error: 'invalid-panel-id' }
         }
-        const panel = await session
-          .getReadExecutor()
-          .execute({ type: 'panels:get', params: [validated.data] })
-        const genes = await session
-          .getReadExecutor()
-          .execute({ type: 'panels:getGenes', params: [validated.data] })
-        return panel === null ? null : { ...(panel as object), genes }
+        return await getPanelWithGenes(validated.data, () => session)
       }
     },
 

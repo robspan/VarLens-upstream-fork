@@ -11,6 +11,7 @@ import type { CreatePanelInput } from '../../database/PanelRepository'
 import type { GeneReferenceDb } from '../../database/GeneReferenceDb'
 import type { PanelAppClient } from '../../services/api/PanelAppClient'
 import type { StringDbClient } from '../../services/api/StringDbClient'
+import type { StorageSession } from '../../storage/session'
 
 /** Confidence levels considered "green" (high confidence) */
 const GREEN_LEVELS = new Set(['3', '4', 'green'])
@@ -38,6 +39,22 @@ export function getPanel(id: number, getDb: () => DatabaseService): unknown {
   if (!panel) return null
   const genes = db.panels.getGenes(id)
   return { ...panel, genes }
+}
+
+/**
+ * Session-based variant of getPanel: fetches panel + genes via the storage
+ * executor so it works on both the Postgres and SQLite backends without
+ * branching on session.capabilities.backend.
+ */
+export async function getPanelWithGenes(
+  id: number,
+  getSession: () => StorageSession
+): Promise<unknown> {
+  const session = getSession()
+  const panel = await session.getReadExecutor().execute({ type: 'panels:get', params: [id] })
+  if (panel === null) return null
+  const genes = await session.getReadExecutor().execute({ type: 'panels:getGenes', params: [id] })
+  return { ...(panel as object), genes }
 }
 
 export function createPanel(

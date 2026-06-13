@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
 import { resolve } from 'path'
+import { Project, SyntaxKind } from 'ts-morph'
 
 /**
  * Handler-seam gate.
@@ -24,22 +25,29 @@ const FLAT_HANDLERS = new Set(['shell', 'shortlist', 'system', 'updater'])
 const SHARED_DOMAIN_HELPERS = new Set(['import-schemas'])
 const ROUTE_OVERRIDE_LOGIC_EXCEPTIONS: Record<string, string> = {
   'analysis-groups.ts': 'thin storage-executor adapters with web-only argument validation',
-  'annotations.ts': 'thin storage-executor adapters with web-only argument validation',
   'audit-log.ts': 'admin-gated audit-trail read adapters over the storage read executor',
   'auth.ts': 'web-only session cookie/auth boundary backed by PostgresWebAuthService',
+  'batch-import.ts':
+    'web upload/job-runner pipeline with file-picker stubs replacing desktop dialogs',
   'case-metadata.ts': 'thin storage-executor adapters with web-only argument validation',
   'cases.ts': 'simple cases:list storage read adapter',
-  'cohort.ts': 'cohort route adapters plus explicit unsupported web methods',
   'database.ts': 'web-only database identity/capability adapters',
   'gene-lists.ts': 'thin storage-executor adapters with web-only argument validation',
   'gene-ref.ts': 'web mode intentionally disables external reference fetches',
   'hpo.ts': 'web mode intentionally disables external reference fetches',
-  'panels.ts': 'thin storage-executor adapters with web-only argument validation',
+  'import.ts': 'web upload pipeline with file-picker stubs and shared import-logic delegation',
   'protein.ts': 'web mode intentionally disables external reference fetches',
   'region-files.ts': 'web-only server-path guards and storage-executor adapters',
-  'transcripts.ts': 'thin storage-executor adapters with web-only argument validation',
   'vep.ts': 'web mode intentionally disables external reference fetches'
 }
+
+/**
+ * Domains whose web overrides have not yet been collapsed onto a shared
+ * session-based <domain>-logic function. MONOTONIC-DECREASE ONLY — remove
+ * an entry when the domain's overrides all pass the per-key seam check.
+ * do not add.
+ */
+const PENDING_SHARED_LOGIC_EXTRACTION = new Set<string>([])
 
 const EXPECTED_ROUTE_OVERRIDE_MODULES = new Set([
   'analysis-groups.ts',
@@ -63,6 +71,105 @@ const EXPECTED_ROUTE_OVERRIDE_MODULES = new Set([
   'variants.ts',
   'vep.ts'
 ])
+
+// ---------------------------------------------------------------------------
+// Per-override-key seam analyzer (ts-morph)
+// ---------------------------------------------------------------------------
+
+type KeyVerdict = 'passthrough' | 'shared-logic' | 'unsupported' | 'inline'
+
+/**
+ * Returns the set of function names imported from any `handlers/<x>-logic`
+ * module in the given source file.
+ */
+function collectLogicImportNames(sf: ReturnType<Project['addSourceFileAtPath']>): Set<string> {
+  const names = new Set<string>()
+  for (const decl of sf.getImportDeclarations()) {
+    if (!/handlers\/[A-Za-z0-9-]+-logic/.test(decl.getModuleSpecifierValue())) continue
+    for (const named of decl.getNamedImports()) names.add(named.getName())
+  }
+  return names
+}
+
+/**
+ * Returns true when the property AST subtree contains a direct call to one
+ * of the supplied logic function names.
+ */
+function propCallsLogicFn(prop: import('ts-morph').Node, logicNames: Set<string>): boolean {
+  if (logicNames.size === 0) return false
+  return prop.getDescendantsOfKind(SyntaxKind.CallExpression).some((call) => {
+    const expr = call.getExpression()
+    return expr.getKind() === SyntaxKind.Identifier && logicNames.has(expr.getText())
+  })
+}
+
+/** True when the override body calls `unsupportedWebCapability(...)` — a web-disabled method. */
+function propCallsUnsupported(prop: import('ts-morph').Node): boolean {
+  return prop.getDescendantsOfKind(SyntaxKind.CallExpression).some((call) => {
+    const expr = call.getExpression()
+    return expr.getKind() === SyntaxKind.Identifier && expr.getText() === 'unsupportedWebCapability'
+  })
+}
+
+/**
+ * For every override key in the named `build<X>Overrides` function of the
+ * given route file, returns a verdict:
+ *   'passthrough'   — exactly one executor.execute() call whose `type` matches the key
+ *   'shared-logic'  — at least one call to a function imported from a *-logic module
+ *   'unsupported'   — calls unsupportedWebCapability() (web-disabled method), no real work
+ *   'inline'        — anything else (multi-call, type-mismatch, inline event logic, etc.)
+ */
+function analyzeOverrideKeys(routePath: string): Record<string, KeyVerdict> {
+  const project = new Project({
+    tsConfigFilePath: resolve(process.cwd(), 'tsconfig.node.json'),
+    skipAddingFilesFromTsConfig: false
+  })
+  const sf = project.addSourceFileAtPath(resolve(process.cwd(), routePath))
+  const logicNames = collectLogicImportNames(sf)
+  const verdicts: Record<string, KeyVerdict> = {}
+
+  // Find the buildXxxOverrides function
+  const builder = sf
+    .getFunctions()
+    .find((fn) => /^build[A-Za-z]+Overrides$/.test(fn.getName() ?? ''))
+  if (!builder) return verdicts
+
+  // The first object literal expression in the function body is the returned
+  // map of override handlers.
+  const ret = builder.getDescendantsOfKind(SyntaxKind.ObjectLiteralExpression)[0]
+  if (!ret) return verdicts
+
+  for (const prop of ret.getProperties()) {
+    // The property key is either a StringLiteral (`'transcripts:list'`) or an
+    // Identifier — grab it from the first child token.
+    const keyNode = prop.getChildAtIndex(0)
+    const key = keyNode.getText().replace(/^['"`]|['"`]$/g, '')
+    const propText = prop.getText()
+
+    // Count executor `.execute(` calls
+    const execCalls = (propText.match(/get(?:Read|Write)Executor\(\)\s*\.execute\(/g) ?? []).length
+
+    // Check that the single execute call passes `type: '<key>'`
+    const callsTypeKey = propText.includes(`type: '${key}'`) || propText.includes(`type: "${key}"`)
+
+    if (propCallsLogicFn(prop, logicNames)) {
+      verdicts[key] = 'shared-logic'
+    } else if (execCalls === 1 && callsTypeKey) {
+      verdicts[key] = 'passthrough'
+    } else if (execCalls === 0 && propCallsUnsupported(prop)) {
+      // Genuinely web-disabled: 501s with no executor work. Requiring zero
+      // execute() calls keeps a key that does real (multi-call) orchestration
+      // from hiding behind a stray unsupportedWebCapability() call.
+      verdicts[key] = 'unsupported'
+    } else {
+      verdicts[key] = 'inline'
+    }
+  }
+
+  return verdicts
+}
+
+// ---------------------------------------------------------------------------
 
 function listDomains(dir: string): string[] {
   const abs = resolve(process.cwd(), dir)
@@ -188,18 +295,46 @@ describe('handler-seam gate', () => {
     expect(offenders, offenders.join('\n')).toEqual([])
   })
 
-  test('web route override modules use shared logic or audited exceptions', () => {
+  test('every override key of a migrated domain is pass-through or calls shared logic', () => {
     const offenders: string[] = []
 
     for (const file of listRouteOverrideModules()) {
-      const routePath = `${WEB_ROUTES_DIR}/${file}`
-      const source = readRepoFile(routePath)
-      if (/handlers\/[A-Za-z0-9-]+-logic/.test(source)) continue
+      if (PENDING_SHARED_LOGIC_EXTRACTION.has(file)) continue
       if (ROUTE_OVERRIDE_LOGIC_EXCEPTIONS[file] !== undefined) continue
-      offenders.push(`${routePath} (missing shared *-logic import or audited exception)`)
+
+      const verdicts = analyzeOverrideKeys(`${WEB_ROUTES_DIR}/${file}`)
+      for (const [key, verdict] of Object.entries(verdicts)) {
+        if (verdict === 'inline') {
+          offenders.push(`${file} → ${key} (inline orchestration; extract to <domain>-logic)`)
+        }
+      }
     }
 
     expect(offenders, offenders.join('\n')).toEqual([])
+  })
+
+  test('PENDING_SHARED_LOGIC_EXTRACTION only shrinks (max 6, all known)', () => {
+    const known = new Set([
+      'transcripts.ts',
+      'panels.ts',
+      'annotations.ts',
+      'variants.ts',
+      'cohort.ts',
+      'export.ts'
+    ])
+    expect(PENDING_SHARED_LOGIC_EXTRACTION.size).toBeLessThanOrEqual(6)
+    for (const entry of PENDING_SHARED_LOGIC_EXTRACTION) {
+      expect(known.has(entry), `unknown pending domain: ${entry}`).toBe(true)
+    }
+  })
+
+  test('PENDING_SHARED_LOGIC_EXTRACTION is empty — all six domains migrated', () => {
+    // Strict transport seam: every target domain (transcripts, panels,
+    // annotations, variants, cohort, export) now routes its web overrides
+    // through shared <domain>-logic (or an audited unsupported/pass-through
+    // verdict). No domain may re-introduce inline orchestration without the
+    // per-key gate above failing.
+    expect([...PENDING_SHARED_LOGIC_EXTRACTION]).toEqual([])
   })
 })
 

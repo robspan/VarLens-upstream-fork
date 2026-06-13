@@ -324,6 +324,15 @@ describe('handler-seam gate', () => {
       expect(known.has(entry), `unknown pending domain: ${entry}`).toBe(true)
     }
   })
+
+  test('PENDING_SHARED_LOGIC_EXTRACTION is empty — all six domains migrated', () => {
+    // Strict transport seam: every target domain (transcripts, panels,
+    // annotations, variants, cohort, export) now routes its web overrides
+    // through shared <domain>-logic (or an audited unsupported/pass-through
+    // verdict). No domain may re-introduce inline orchestration without the
+    // per-key gate above failing.
+    expect([...PENDING_SHARED_LOGIC_EXTRACTION]).toEqual([])
+  })
 })
 
 export { FLAT_HANDLERS }

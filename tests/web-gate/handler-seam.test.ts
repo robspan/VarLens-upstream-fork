@@ -41,7 +41,6 @@ const ROUTE_OVERRIDE_LOGIC_EXCEPTIONS: Record<string, string> = {
   'panels.ts': 'thin storage-executor adapters with web-only argument validation',
   'protein.ts': 'web mode intentionally disables external reference fetches',
   'region-files.ts': 'web-only server-path guards and storage-executor adapters',
-  'transcripts.ts': 'thin storage-executor adapters with web-only argument validation',
   'vep.ts': 'web mode intentionally disables external reference fetches'
 }
 
@@ -52,7 +51,6 @@ const ROUTE_OVERRIDE_LOGIC_EXCEPTIONS: Record<string, string> = {
  * do not add.
  */
 const PENDING_SHARED_LOGIC_EXTRACTION = new Set<string>([
-  'transcripts.ts',
   'panels.ts',
   'annotations.ts',
   'variants.ts',

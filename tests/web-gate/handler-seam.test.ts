@@ -156,7 +156,10 @@ function analyzeOverrideKeys(routePath: string): Record<string, KeyVerdict> {
       verdicts[key] = 'shared-logic'
     } else if (execCalls === 1 && callsTypeKey) {
       verdicts[key] = 'passthrough'
-    } else if (propCallsUnsupported(prop)) {
+    } else if (execCalls === 0 && propCallsUnsupported(prop)) {
+      // Genuinely web-disabled: 501s with no executor work. Requiring zero
+      // execute() calls keeps a key that does real (multi-call) orchestration
+      // from hiding behind a stray unsupportedWebCapability() call.
       verdicts[key] = 'unsupported'
     } else {
       verdicts[key] = 'inline'

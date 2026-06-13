@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: VarLens
-  text: Offline Genetic Variant Analysis
-  tagline: A desktop application for secure, offline analysis of genetic variants — built for research collaborators
+  text: Genetic Variant Analysis
+  tagline: Secure analysis of genetic variants on the desktop or self-hosted — built for research collaborators
   actions:
     - theme: brand
       text: Get Started
@@ -22,6 +22,6 @@ features:
     details: Classify variants using the ACMG/AMP evidence framework with Bayesian point-based scoring
   - title: Cohort Analysis
     details: Aggregate variants across cases for carrier frequency analysis and gene burden testing
-  - title: Offline & Secure
-    details: All data stays on your machine. No cloud uploads, no accounts, no tracking. SQLite database with optional encryption
+  - title: Private & Secure
+    details: Run fully offline on the desktop with all data on your machine, or self-host the web app on your own infrastructure. No third-party cloud, no tracking. SQLite or PostgreSQL, with optional encryption
 ---

@@ -25,7 +25,6 @@ const FLAT_HANDLERS = new Set(['shell', 'shortlist', 'system', 'updater'])
 const SHARED_DOMAIN_HELPERS = new Set(['import-schemas'])
 const ROUTE_OVERRIDE_LOGIC_EXCEPTIONS: Record<string, string> = {
   'analysis-groups.ts': 'thin storage-executor adapters with web-only argument validation',
-  'annotations.ts': 'thin storage-executor adapters with web-only argument validation',
   'audit-log.ts': 'admin-gated audit-trail read adapters over the storage read executor',
   'auth.ts': 'web-only session cookie/auth boundary backed by PostgresWebAuthService',
   'batch-import.ts':
@@ -49,12 +48,7 @@ const ROUTE_OVERRIDE_LOGIC_EXCEPTIONS: Record<string, string> = {
  * an entry when the domain's overrides all pass the per-key seam check.
  * do not add.
  */
-const PENDING_SHARED_LOGIC_EXTRACTION = new Set<string>([
-  'annotations.ts',
-  'variants.ts',
-  'cohort.ts',
-  'export.ts'
-])
+const PENDING_SHARED_LOGIC_EXTRACTION = new Set<string>(['variants.ts', 'cohort.ts', 'export.ts'])
 
 const EXPECTED_ROUTE_OVERRIDE_MODULES = new Set([
   'analysis-groups.ts',

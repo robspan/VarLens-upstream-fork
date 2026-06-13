@@ -25,7 +25,6 @@ import { dialog } from 'electron'
 import { writeFile } from 'fs/promises'
 import {
   listPanels,
-  getPanel,
   getPanelWithGenes,
   createPanel,
   updatePanel,

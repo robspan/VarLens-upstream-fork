@@ -44,6 +44,7 @@ const ROUTE_OVERRIDE_LOGIC_EXCEPTIONS: Record<string, string> = {
 const EXPECTED_ROUTE_OVERRIDE_MODULES = new Set([
   'analysis-groups.ts',
   'annotations.ts',
+  'audit-log.ts',
   'auth.ts',
   'batch-import.ts',
   'case-metadata.ts',

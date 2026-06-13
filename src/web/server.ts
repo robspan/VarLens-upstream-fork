@@ -60,6 +60,13 @@ export interface AdminBootstrapOptions {
   /** Plaintext password. Refused if passed by legacy callers. */
   password?: string
   displayName?: string
+  /**
+   * Whether the bootstrapped admin must rotate its password on first login.
+   * Defaults to `true` (secure default). Set `false` only for local dev via
+   * `VARLENS_ADMIN_MUST_CHANGE_PASSWORD=false` so a stable default dev
+   * credential survives without a forced rotation.
+   */
+  mustChangePassword?: boolean
 }
 
 /**
@@ -220,11 +227,14 @@ async function maybeBootstrapAdmin(
     )
   }
 
+  const mustChangePassword = admin.mustChangePassword ?? true
+
   try {
     await authService.createFirstUserFromHash(
       admin.username,
       admin.displayName ?? admin.username,
-      admin.passwordHash
+      admin.passwordHash,
+      mustChangePassword
     )
   } catch (createErr) {
     // Race-loser branch: a concurrent first-user call beat us to the
@@ -257,10 +267,12 @@ async function maybeBootstrapAdmin(
       event: 'admin-bootstrap',
       action: 'created',
       username: admin.username,
-      mustChangePassword: true,
+      mustChangePassword,
       via: 'hash'
     },
-    'admin created — must rotate on first login (via hash)'
+    mustChangePassword
+      ? 'admin created — must rotate on first login (via hash)'
+      : 'admin created WITHOUT forced rotation (VARLENS_ADMIN_MUST_CHANGE_PASSWORD=false; dev only) (via hash)'
   )
 }
 
@@ -322,11 +334,17 @@ function readAdminEnv(): AdminBootstrapOptions | undefined {
     return undefined
   }
 
+  // Secure default: forced rotation on first login. Only an explicit
+  // `false`/`0` (dev) opts out so a stable default dev credential survives.
+  const mustChangeRaw = process.env.VARLENS_ADMIN_MUST_CHANGE_PASSWORD
+  const mustChangePassword = !(mustChangeRaw === 'false' || mustChangeRaw === '0')
+
   return {
     username: username.trim(),
     passwordHash: (passwordHash as string).trim(),
     displayName:
-      typeof displayName === 'string' && displayName.trim() !== '' ? displayName.trim() : undefined
+      typeof displayName === 'string' && displayName.trim() !== '' ? displayName.trim() : undefined,
+    mustChangePassword
   }
 }
 

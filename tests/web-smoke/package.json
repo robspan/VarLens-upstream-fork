@@ -2,7 +2,7 @@
   "name": "@varlens/web-smoke",
   "private": true,
   "devDependencies": {
-    "cypress": "13.17.0",
+    "cypress": "15.17.0",
     "typescript": "^6.0.3"
   }
 }

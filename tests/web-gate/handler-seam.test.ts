@@ -41,6 +41,21 @@ const ROUTE_OVERRIDE_LOGIC_EXCEPTIONS: Record<string, string> = {
   'vep.ts': 'web mode intentionally disables external reference fetches'
 }
 
+/**
+ * Domains whose web overrides have not yet been collapsed onto a shared
+ * session-based <domain>-logic function. MONOTONIC-DECREASE ONLY — remove
+ * an entry when the domain's overrides all pass the per-key seam check.
+ * do not add.
+ */
+const PENDING_SHARED_LOGIC_EXTRACTION = new Set<string>([
+  'transcripts.ts',
+  'panels.ts',
+  'annotations.ts',
+  'variants.ts',
+  'cohort.ts',
+  'export.ts'
+])
+
 const EXPECTED_ROUTE_OVERRIDE_MODULES = new Set([
   'analysis-groups.ts',
   'annotations.ts',
@@ -200,6 +215,21 @@ describe('handler-seam gate', () => {
     }
 
     expect(offenders, offenders.join('\n')).toEqual([])
+  })
+
+  test('PENDING_SHARED_LOGIC_EXTRACTION only shrinks (max 6, all known)', () => {
+    const known = new Set([
+      'transcripts.ts',
+      'panels.ts',
+      'annotations.ts',
+      'variants.ts',
+      'cohort.ts',
+      'export.ts'
+    ])
+    expect(PENDING_SHARED_LOGIC_EXTRACTION.size).toBeLessThanOrEqual(6)
+    for (const entry of PENDING_SHARED_LOGIC_EXTRACTION) {
+      expect(known.has(entry), `unknown pending domain: ${entry}`).toBe(true)
+    }
   })
 })
 

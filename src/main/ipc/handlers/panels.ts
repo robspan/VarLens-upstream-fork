@@ -26,6 +26,7 @@ import { writeFile } from 'fs/promises'
 import {
   listPanels,
   getPanel,
+  getPanelWithGenes,
   createPanel,
   updatePanel,
   deletePanel,
@@ -79,17 +80,7 @@ export function registerPanelHandlers({ ipcMain, getDb, getDbManager }: HandlerD
         mainLogger.error(`Invalid panels:get id: ${validated.error.message}`, 'panels')
         throw new Error('Invalid panel ID')
       }
-      const session = getDbManager().getCurrentSession()
-      if (session.capabilities.backend === 'postgres') {
-        const panel = await session
-          .getReadExecutor()
-          .execute({ type: 'panels:get', params: [validated.data] })
-        const genes = await session
-          .getReadExecutor()
-          .execute({ type: 'panels:getGenes', params: [validated.data] })
-        return panel === null ? null : { ...(panel as object), genes }
-      }
-      return getPanel(validated.data, getDb)
+      return getPanelWithGenes(validated.data, () => getDbManager().getCurrentSession())
     })
   })
 

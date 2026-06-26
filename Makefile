@@ -75,7 +75,7 @@ endif
 
 web-dev: ## Start local Postgres-backed web mode at http://localhost:$(WEB_DEV_PORT)/
 	@if [ ! -f .env.postgres.local ]; then echo "Missing .env.postgres.local. Copy .env.postgres.example first."; exit 1; fi
-	@set -a; . ./.env.postgres.local; if [ -f "$(WEB_DEV_ENV_FILE)" ]; then . "$(WEB_DEV_ENV_FILE)"; fi; set +a; \
+	@set -a; . ./.env.postgres.local; if [ -f "$(WEB_DEV_ENV_FILE)" ]; then . "./$(WEB_DEV_ENV_FILE)"; fi; set +a; \
 		node -e "const { Client } = require('pg'); const client = new Client({ connectionString: process.env.VARLENS_PG_URL }); client.connect().then(() => client.end()).then(() => process.exit(0)).catch(() => process.exit(1));" \
 		&& echo "Postgres reachable at $$(node -e 'const url = new URL(process.env.VARLENS_PG_URL); console.log(url.host)') - skipping pg-up." \
 		|| $(MAKE) pg-up
@@ -87,11 +87,11 @@ web-dev: ## Start local Postgres-backed web mode at http://localhost:$(WEB_DEV_P
 	@echo "  Postgres: .env.postgres.local"
 	@if [ -f "$(WEB_DEV_ENV_FILE)" ]; then echo "  Web env:  $(WEB_DEV_ENV_FILE)"; else echo "  Web env:  $(WEB_DEV_ENV_FILE) (not present; using defaults)"; fi
 	@echo "  Schema:   $(WEB_DEV_SCHEMA)"
-	@set -a; . ./.env.postgres.local; if [ -f "$(WEB_DEV_ENV_FILE)" ]; then . "$(WEB_DEV_ENV_FILE)"; fi; set +a; echo "  Secrets:  $${VARLENS_RECOVERY_KEY_DIR:-$(WEB_DEV_RECOVERY_KEY_DIR)}"
-	@set -a; . ./.env.postgres.local; if [ -f "$(WEB_DEV_ENV_FILE)" ]; then . "$(WEB_DEV_ENV_FILE)"; fi; set +a; echo "  API delay: $${VARLENS_WEB_API_LATENCY_MS:-$(WEB_DEV_API_LATENCY_MS)}ms"
+	@set -a; . ./.env.postgres.local; if [ -f "$(WEB_DEV_ENV_FILE)" ]; then . "./$(WEB_DEV_ENV_FILE)"; fi; set +a; echo "  Secrets:  $${VARLENS_RECOVERY_KEY_DIR:-$(WEB_DEV_RECOVERY_KEY_DIR)}"
+	@set -a; . ./.env.postgres.local; if [ -f "$(WEB_DEV_ENV_FILE)" ]; then . "./$(WEB_DEV_ENV_FILE)"; fi; set +a; echo "  API delay: $${VARLENS_WEB_API_LATENCY_MS:-$(WEB_DEV_API_LATENCY_MS)}ms"
 	@echo "  Dev admin bootstrap: set VARLENS_ADMIN_PASSWORD_HASH for first run"
 	@echo ""
-	@set -a; . ./.env.postgres.local; if [ -f "$(WEB_DEV_ENV_FILE)" ]; then . "$(WEB_DEV_ENV_FILE)"; fi; set +a; \
+	@set -a; . ./.env.postgres.local; if [ -f "$(WEB_DEV_ENV_FILE)" ]; then . "./$(WEB_DEV_ENV_FILE)"; fi; set +a; \
 		NODE_ENV=development \
 		APP_PATH_PREFIX="$${APP_PATH_PREFIX:-/}" \
 		VARLENS_WEB_HOST="$${VARLENS_WEB_HOST:-127.0.0.1}" \
@@ -250,7 +250,12 @@ web-data-verify: web-data-prepare ## Verify generated parity fixtures and source
 # CI / Full Checks
 #---------------------------------------------------------------------------
 
-ci: lint-check format-check typecheck rebuild-node test ## Run all CI checks (lint, format, typecheck, rebuild, test). Set VARLENS_WEB=1 to include web-gate.
+ci: ## Run all CI checks (lint, format, typecheck, rebuild, test). Set VARLENS_WEB=1 to include web-gate.
+	$(MAKE) lint-check
+	$(MAKE) format-check
+	$(MAKE) typecheck
+	$(MAKE) rebuild-node
+	$(MAKE) test
 
 ci-checks: ## Run the GitHub Actions "Checks (Ubuntu)" job under Node $(CI_NODE_VERSION)
 	@echo "=== Checks (Ubuntu) using Node $(CI_NODE_VERSION) ==="

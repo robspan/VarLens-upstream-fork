@@ -6,6 +6,7 @@ import { toTaskDomain } from './task-types'
 
 const DEFAULT_BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
 const documentedApiPaths = buildDocumentedDispatcherPathSet()
+const NON_DISPATCHER_API_PATHS = new Set<string>(['/api/import/upload'])
 
 type LabelValue = string | number
 type Labels = Record<string, LabelValue>
@@ -40,6 +41,37 @@ function labelText(labels: Labels): string {
 function metricLine(name: string, labels: Labels, value: number): string {
   const text = labelText(labels)
   return `${name}${text === '' ? '' : `{${text}}`} ${value}`
+}
+
+function pushSeries(
+  lines: string[],
+  name: string,
+  metrics: IterableIterator<{ labels: Labels; value: number }>
+): void {
+  for (const metric of metrics) {
+    lines.push(metricLine(name, metric.labels, metric.value))
+  }
+}
+
+function pushHistogram(
+  lines: string[],
+  name: string,
+  metrics: IterableIterator<{ labels: Labels; state: HistogramState }>
+): void {
+  for (const metric of metrics) {
+    for (const bucket of DEFAULT_BUCKETS) {
+      lines.push(
+        metricLine(
+          `${name}_bucket`,
+          { ...metric.labels, le: bucket },
+          metric.state.buckets.get(bucket) ?? 0
+        )
+      )
+    }
+    lines.push(metricLine(`${name}_bucket`, { ...metric.labels, le: '+Inf' }, metric.state.count))
+    lines.push(metricLine(`${name}_sum`, metric.labels, metric.state.sum))
+    lines.push(metricLine(`${name}_count`, metric.labels, metric.state.count))
+  }
 }
 
 function pathName(url: string): string {
@@ -93,6 +125,7 @@ export function resolveMetricsIpc(method: string, url: string): string | undefin
   const pathname = pathName(url)
   const match = /^\/api\/([^/]+)\/([^/]+)$/.exec(pathname)
   if (match === null) return undefined
+  if (NON_DISPATCHER_API_PATHS.has(pathname)) return undefined
   if (!documentedApiPaths.has(pathname)) return 'unknown'
 
   const [, domain, ipcMethod] = match
@@ -212,40 +245,15 @@ export class AppMetrics {
     const lines: string[] = []
     lines.push('# HELP http_requests_total Total HTTP requests.')
     lines.push('# TYPE http_requests_total counter')
-    for (const metric of this.requests.values()) {
-      lines.push(metricLine('http_requests_total', metric.labels, metric.value))
-    }
+    pushSeries(lines, 'http_requests_total', this.requests.values())
 
     lines.push('# HELP http_request_duration_seconds HTTP request duration.')
     lines.push('# TYPE http_request_duration_seconds histogram')
-    for (const metric of this.durations.values()) {
-      for (const bucket of DEFAULT_BUCKETS) {
-        lines.push(
-          metricLine(
-            'http_request_duration_seconds_bucket',
-            { ...metric.labels, le: bucket },
-            metric.state.buckets.get(bucket) ?? 0
-          )
-        )
-      }
-      lines.push(
-        metricLine(
-          'http_request_duration_seconds_bucket',
-          { ...metric.labels, le: '+Inf' },
-          metric.state.count
-        )
-      )
-      lines.push(metricLine('http_request_duration_seconds_sum', metric.labels, metric.state.sum))
-      lines.push(
-        metricLine('http_request_duration_seconds_count', metric.labels, metric.state.count)
-      )
-    }
+    pushHistogram(lines, 'http_request_duration_seconds', this.durations.values())
 
     lines.push('# HELP http_requests_in_flight Current in-flight HTTP requests.')
     lines.push('# TYPE http_requests_in_flight gauge')
-    for (const metric of this.inFlight.values()) {
-      lines.push(metricLine('http_requests_in_flight', metric.labels, metric.value))
-    }
+    pushSeries(lines, 'http_requests_in_flight', this.inFlight.values())
 
     lines.push('# HELP varlens_database_healthy Database health from the latest health check.')
     lines.push('# TYPE varlens_database_healthy gauge')
@@ -253,50 +261,21 @@ export class AppMetrics {
 
     lines.push('# HELP varlens_ipc_requests_total Total VarLens web IPC calls.')
     lines.push('# TYPE varlens_ipc_requests_total counter')
-    for (const metric of this.ipcRequests.values()) {
-      lines.push(metricLine('varlens_ipc_requests_total', metric.labels, metric.value))
-    }
+    pushSeries(lines, 'varlens_ipc_requests_total', this.ipcRequests.values())
 
     lines.push('# HELP varlens_ipc_duration_seconds VarLens web IPC call duration.')
     lines.push('# TYPE varlens_ipc_duration_seconds histogram')
-    for (const metric of this.ipcDurations.values()) {
-      for (const bucket of DEFAULT_BUCKETS) {
-        lines.push(
-          metricLine(
-            'varlens_ipc_duration_seconds_bucket',
-            { ...metric.labels, le: bucket },
-            metric.state.buckets.get(bucket) ?? 0
-          )
-        )
-      }
-      lines.push(
-        metricLine(
-          'varlens_ipc_duration_seconds_bucket',
-          { ...metric.labels, le: '+Inf' },
-          metric.state.count
-        )
-      )
-      lines.push(metricLine('varlens_ipc_duration_seconds_sum', metric.labels, metric.state.sum))
-      lines.push(
-        metricLine('varlens_ipc_duration_seconds_count', metric.labels, metric.state.count)
-      )
-    }
+    pushHistogram(lines, 'varlens_ipc_duration_seconds', this.ipcDurations.values())
 
     lines.push('# HELP varlens_ipc_in_flight Current in-flight VarLens web IPC calls.')
     lines.push('# TYPE varlens_ipc_in_flight gauge')
-    for (const metric of this.ipcInFlight.values()) {
-      lines.push(metricLine('varlens_ipc_in_flight', metric.labels, metric.value))
-    }
+    pushSeries(lines, 'varlens_ipc_in_flight', this.ipcInFlight.values())
 
     lines.push(
       '# HELP varlens_ipc_last_success_timestamp_seconds Last successful VarLens web IPC call timestamp.'
     )
     lines.push('# TYPE varlens_ipc_last_success_timestamp_seconds gauge')
-    for (const metric of this.ipcLastSuccess.values()) {
-      lines.push(
-        metricLine('varlens_ipc_last_success_timestamp_seconds', metric.labels, metric.value)
-      )
-    }
+    pushSeries(lines, 'varlens_ipc_last_success_timestamp_seconds', this.ipcLastSuccess.values())
 
     lines.push('# HELP process_start_time_seconds Start time of the Node.js process.')
     lines.push('# TYPE process_start_time_seconds gauge')

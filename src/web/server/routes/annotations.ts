@@ -4,20 +4,12 @@ import {
   PerCaseAnnotationUpdatesSchema,
   VariantCoordsSchema
 } from '../../../shared/api/schemas/annotations'
-import type { AnnotationChangeEvent } from '../../../shared/types/api'
+import {
+  upsertGlobalAnnotationViaSession,
+  upsertPerCaseAnnotationWithEvent
+} from '../../../main/ipc/handlers/annotations-logic'
 import { WEB_EVENT_VARIANTS_ANNOTATION_CHANGED } from '../web-event-types'
 import type { OverrideHandler } from './types'
-
-function detectAnnotationChangeKind(updates: {
-  starred?: unknown
-  acmg_classification?: unknown
-  acmg_evidence?: unknown
-}): AnnotationChangeEvent['kind'] {
-  if (updates.starred !== undefined) return 'star'
-  if (updates.acmg_classification !== undefined) return 'acmg'
-  if (updates.acmg_evidence !== undefined) return 'evidence'
-  return 'comment'
-}
 
 export function buildAnnotationOverrides(): Record<string, OverrideHandler> {
   return {
@@ -45,12 +37,11 @@ export function buildAnnotationOverrides(): Record<string, OverrideHandler> {
           reply.code(400)
           return { error: 'invalid-annotation-upsert' }
         }
-        const coords = validatedCoords.data
-        const annotationUpdates = validatedUpdates.data
-        return await session.getWriteExecutor().execute({
-          type: 'annotations:upsertGlobalWithAudit',
-          params: [coords, annotationUpdates]
-        })
+        return await upsertGlobalAnnotationViaSession(
+          validatedCoords.data,
+          validatedUpdates.data,
+          () => session
+        )
       }
     },
 
@@ -63,20 +54,18 @@ export function buildAnnotationOverrides(): Record<string, OverrideHandler> {
           reply.code(400)
           return { error: 'invalid-per-case-annotation-upsert' }
         }
-        const annotationUpdates = validatedUpdates.data
-        const result = await session.getWriteExecutor().execute({
-          type: 'annotations:upsertPerCaseWithAudit',
-          params: [validatedIds.data.caseId, validatedIds.data.variantId, annotationUpdates]
-        })
-        const userId = request.session?.user?.id
-        if (userId !== undefined) {
-          events.publish(userId, WEB_EVENT_VARIANTS_ANNOTATION_CHANGED, {
-            caseId: validatedIds.data.caseId,
-            variantId: validatedIds.data.variantId,
-            kind: detectAnnotationChangeKind(annotationUpdates)
-          } satisfies AnnotationChangeEvent)
-        }
-        return result
+        return await upsertPerCaseAnnotationWithEvent(
+          validatedIds.data.caseId,
+          validatedIds.data.variantId,
+          validatedUpdates.data,
+          () => session,
+          (e) => {
+            const userId = request.session?.user?.id
+            if (userId !== undefined) {
+              events.publish(userId, WEB_EVENT_VARIANTS_ANNOTATION_CHANGED, e)
+            }
+          }
+        )
       }
     },
 

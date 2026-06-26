@@ -280,6 +280,31 @@ describe('PostgresWebAuthService — production hash bootstrap', () => {
     expect(insert?.values).not.toContain(`hashed::${FIXTURE_ARGON2ID_HASH}`)
   })
 
+  it('defaults to must_change_password=TRUE (forced rotation) when the flag is omitted', async () => {
+    const pool = new FakePool()
+    const svc = newSvc(pool)
+    enqueueCreateFirstUserHappyPath(pool)
+
+    await svc.createFirstUserFromHash('alice', 'Alice', FIXTURE_ARGON2ID_HASH)
+
+    const insert = pool.queries.find((q) => /INSERT INTO[\s\S]+users/i.test(q.text))
+    // must_change_password is the 5th INSERT parameter, parameterised not inlined.
+    expect(insert?.text).toMatch(/VALUES \(\$1, \$2, \$3, \$4, \$5, now\(\)\)/)
+    expect(insert?.values?.[4], 'forced rotation is the secure default').toBe(true)
+  })
+
+  it('honours mustChangePassword=false (dev opt-out) as a parameterised value', async () => {
+    const pool = new FakePool()
+    const svc = newSvc(pool)
+    enqueueCreateFirstUserHappyPath(pool)
+
+    await svc.createFirstUserFromHash('alice', 'Alice', FIXTURE_ARGON2ID_HASH, false)
+
+    const insert = pool.queries.find((q) => /INSERT INTO[\s\S]+users/i.test(q.text))
+    expect(insert?.text).toMatch(/VALUES \(\$1, \$2, \$3, \$4, \$5, now\(\)\)/)
+    expect(insert?.values?.[4], 'opt-out flag flows through to the INSERT').toBe(false)
+  })
+
   it('rejects non-Argon2id bootstrap values before any database write', async () => {
     const pool = new FakePool()
     const svc = newSvc(pool)

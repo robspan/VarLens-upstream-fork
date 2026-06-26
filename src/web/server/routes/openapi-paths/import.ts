@@ -47,6 +47,7 @@ export function buildImportOpenApiPaths(): Record<string, OpenApiPathItem> {
             }
           },
           400: { description: 'Invalid upload' },
+          413: { description: 'Upload exceeds configured byte limit' },
           401: { description: 'Authentication required' },
           403: { description: 'Forbidden' }
         }

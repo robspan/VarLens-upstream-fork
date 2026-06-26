@@ -1,7 +1,5 @@
-const SERVER_PATH_IMPORT_ENV = 'VARLENS_WEB_ALLOW_SERVER_PATH_IMPORT'
-
 export function serverPathImportDisabled(): boolean {
-  return process.env.NODE_ENV !== 'test' && process.env[SERVER_PATH_IMPORT_ENV] !== '1'
+  return true
 }
 
 export function serverPathImportDisabledResponse(): {
@@ -10,7 +8,6 @@ export function serverPathImportDisabledResponse(): {
 } {
   return {
     error: 'server-path-import-disabled',
-    message:
-      'Server-path import is disabled. Browser upload support must use a dedicated upload route.'
+    message: 'Server-path import is disabled in web mode. Use browser upload refs instead.'
   }
 }

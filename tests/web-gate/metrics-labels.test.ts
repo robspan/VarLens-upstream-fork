@@ -33,6 +33,11 @@ describe('web metrics route labels', () => {
     expect(resolveMetricsIpc('POST', '/api/cases/list/extra')).toBeUndefined()
   })
 
+  test('does not classify raw upload staging as dispatcher IPC', () => {
+    expect(resolveMetricsRoute('POST', '/api/import/upload')).toBe('/api/import/upload')
+    expect(resolveMetricsIpc('POST', '/api/import/upload')).toBeUndefined()
+  })
+
   test('renders Prometheus text with app and environment labels', () => {
     const metrics = new AppMetrics({ app: 'varlens', environment: 'test' })
     metrics.beginRequest('POST', '/api/auth/login')

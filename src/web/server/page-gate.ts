@@ -33,8 +33,23 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 
 const ALWAYS_PUBLIC_PATHS = new Set<string>(['/livez', '/readyz', '/healthz', '/login', '/login/'])
 
+/**
+ * Root-level brand/icon assets that must load for an unauthenticated browser
+ * (the login tab's favicon, PWA manifest + icons). They are non-sensitive —
+ * the public logo — so they bypass the login wall like `/healthz`.
+ */
+const PUBLIC_ROOT_ASSETS = new Set<string>([
+  '/favicon.ico',
+  '/favicon.svg',
+  '/apple-touch-icon.png',
+  '/manifest.webmanifest',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/icon-maskable-512.png'
+])
+
 function isPublicPath(path: string): boolean {
-  return ALWAYS_PUBLIC_PATHS.has(path)
+  return ALWAYS_PUBLIC_PATHS.has(path) || PUBLIC_ROOT_ASSETS.has(path)
 }
 
 /**

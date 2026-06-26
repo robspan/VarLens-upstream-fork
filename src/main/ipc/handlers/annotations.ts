@@ -13,10 +13,10 @@ import { mainLogger } from '../../services/MainLogger'
 import type { AnnotationChangeEvent } from '../../../shared/types/api'
 import {
   getGlobalAnnotation,
-  upsertGlobalAnnotation,
+  upsertGlobalAnnotationViaSession,
   deleteGlobalAnnotation,
   getPerCaseAnnotation,
-  upsertPerCaseAnnotation,
+  upsertPerCaseAnnotationWithEvent,
   deletePerCaseAnnotation,
   getAnnotationsForVariant,
   batchGetAnnotations
@@ -36,22 +36,6 @@ function broadcastAnnotationChanged(ev: AnnotationChangeEvent): void {
       win.webContents.send('variants:annotationChanged', ev)
     }
   }
-}
-
-/**
- * Map the validated per-case annotation update shape to the broadcast
- * event `kind`. Priority order: star → acmg → evidence → comment.
- * Called only after Zod validation has succeeded so the fields are typed.
- */
-function detectAnnotationChangeKind(updates: {
-  starred?: unknown
-  acmg_classification?: unknown
-  acmg_evidence?: unknown
-}): AnnotationChangeEvent['kind'] {
-  if (updates.starred !== undefined) return 'star'
-  if (updates.acmg_classification !== undefined) return 'acmg'
-  if (updates.acmg_evidence !== undefined) return 'evidence'
-  return 'comment'
 }
 
 /**
@@ -120,14 +104,11 @@ export function registerAnnotationHandlers({
           throw new Error('Invalid annotation updates')
         }
 
-        const session = getDbManager().getCurrentSession()
-        if (session.capabilities.backend === 'postgres') {
-          return await session.getWriteExecutor().execute({
-            type: 'annotations:upsertGlobalWithAudit',
-            params: [validatedCoords.data, validatedUpdates.data]
-          })
-        }
-        return upsertGlobalAnnotation(validatedCoords.data, validatedUpdates.data, getDb)
+        return await upsertGlobalAnnotationViaSession(
+          validatedCoords.data,
+          validatedUpdates.data,
+          () => getDbManager().getCurrentSession()
+        )
       })
     }
   )
@@ -215,32 +196,16 @@ export function registerAnnotationHandlers({
           throw new Error('Invalid annotation updates')
         }
 
-        const session = getDbManager().getCurrentSession()
-        let result: unknown
-        if (session.capabilities.backend === 'postgres') {
-          result = await session.getWriteExecutor().execute({
-            type: 'annotations:upsertPerCaseWithAudit',
-            params: [validatedIds.data.caseId, validatedIds.data.variantId, validatedUpdates.data]
-          })
-        } else {
-          result = upsertPerCaseAnnotation(
-            validatedIds.data.caseId,
-            validatedIds.data.variantId,
-            validatedUpdates.data,
-            getDb
-          )
-        }
-
-        // Broadcast AFTER the logic-layer write succeeds. If the call above
-        // throws, `wrapHandler` catches it and this line never runs — the
+        // Broadcast AFTER the logic-layer write succeeds. If the execute call
+        // throws, `wrapHandler` catches it and the callback never runs — the
         // error path must not emit the event (Wave 1.E spec §6).
-        broadcastAnnotationChanged({
-          caseId: validatedIds.data.caseId,
-          variantId: validatedIds.data.variantId,
-          kind: detectAnnotationChangeKind(validatedUpdates.data)
-        })
-
-        return result
+        return await upsertPerCaseAnnotationWithEvent(
+          validatedIds.data.caseId,
+          validatedIds.data.variantId,
+          validatedUpdates.data,
+          () => getDbManager().getCurrentSession(),
+          broadcastAnnotationChanged
+        )
       })
     }
   )

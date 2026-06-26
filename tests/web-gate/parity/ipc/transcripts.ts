@@ -16,6 +16,8 @@ export const transcriptsScenario: IpcScenario = {
         is_selected: 1
       }
     ]),
-    await ctx.call('transcripts', 'list', [ctx.primaryVariant.id])
+    await ctx.call('transcripts', 'switch', [ctx.primaryVariant.id, 'ENST_PARITY_000001']),
+    await ctx.call('transcripts', 'list', [ctx.primaryVariant.id]),
+    await ctx.call('variants', 'query', [ctx.primaryCaseId, { consequences: ['HIGH'] }, 0, 25])
   ]
 }

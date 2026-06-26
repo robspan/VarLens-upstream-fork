@@ -12,6 +12,8 @@ import type {
   CaseVariantAnnotation,
   AcmgClassification
 } from '../../database/types'
+import type { AnnotationChangeEvent } from '../../../shared/types/api'
+import type { StorageSession } from '../../storage/session'
 
 /** Validated variant coordinates. */
 export interface VariantCoords {
@@ -316,4 +318,60 @@ export async function batchGetAnnotations(
   }
   const db = getDb()
   return db.annotations.getBatch(caseId, variantKeys)
+}
+
+// ---------------------------------------------------------------------------
+// Session-based helpers (transport-agnostic, shared by web and desktop)
+// ---------------------------------------------------------------------------
+
+/**
+ * Map per-case annotation update fields to the broadcast/SSE event `kind`.
+ * Priority order: star → acmg → evidence → comment.
+ * Exported so it is the single source of truth — web route and desktop
+ * handler both import from here rather than duplicating the logic.
+ */
+export function detectAnnotationChangeKind(updates: {
+  starred?: unknown
+  acmg_classification?: unknown
+  acmg_evidence?: unknown
+}): AnnotationChangeEvent['kind'] {
+  if (updates.starred !== undefined) return 'star'
+  if (updates.acmg_classification !== undefined) return 'acmg'
+  if (updates.acmg_evidence !== undefined) return 'evidence'
+  return 'comment'
+}
+
+/**
+ * Upsert a global annotation via a StorageSession write executor.
+ * Delegates to the composite `annotations:upsertGlobalWithAudit` task so that
+ * audit-trail creation is handled by the backend (Postgres) or executor.
+ */
+export async function upsertGlobalAnnotationViaSession(
+  coords: VariantCoords,
+  updates: GlobalAnnotationUpdates,
+  getSession: () => StorageSession
+): Promise<unknown> {
+  return getSession()
+    .getWriteExecutor()
+    .execute({ type: 'annotations:upsertGlobalWithAudit', params: [coords, updates] })
+}
+
+/**
+ * Upsert a per-case annotation via a StorageSession write executor, then
+ * invoke the caller-supplied `onChange` callback with the change event.
+ * The callback is called only after a successful write; a thrown error
+ * propagates before `onChange` is reached.
+ */
+export async function upsertPerCaseAnnotationWithEvent(
+  caseId: number,
+  variantId: number,
+  updates: PerCaseAnnotationUpdates,
+  getSession: () => StorageSession,
+  onChange: (e: AnnotationChangeEvent) => void
+): Promise<unknown> {
+  const result = await getSession()
+    .getWriteExecutor()
+    .execute({ type: 'annotations:upsertPerCaseWithAudit', params: [caseId, variantId, updates] })
+  onChange({ caseId, variantId, kind: detectAnnotationChangeKind(updates) })
+  return result
 }

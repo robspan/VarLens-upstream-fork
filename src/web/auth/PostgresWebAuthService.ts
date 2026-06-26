@@ -270,7 +270,8 @@ export class PostgresWebAuthService {
   async createFirstUserFromHash(
     username: string,
     displayName: string,
-    passwordHash: string
+    passwordHash: string,
+    mustChangePassword: boolean = true
   ): Promise<{ id: number; username: string; role: UserRole }> {
     if (!isLikelyArgon2idHash(passwordHash)) {
       throw new Error(
@@ -279,7 +280,7 @@ export class PostgresWebAuthService {
       )
     }
     assertArgon2idHashMatchesProviderPolicy(passwordHash)
-    return await this.insertFirstUser(username, displayName, passwordHash)
+    return await this.insertFirstUser(username, displayName, passwordHash, mustChangePassword)
   }
 
   /**
@@ -299,7 +300,8 @@ export class PostgresWebAuthService {
   private async insertFirstUser(
     username: string,
     displayName: string,
-    passwordHash: string
+    passwordHash: string,
+    mustChangePassword: boolean = true
   ): Promise<{ id: number; username: string; role: UserRole }> {
     const sch = this.schemaQuoted
     // Race-safety: the SELECT-outside-transaction pattern in earlier
@@ -310,12 +312,13 @@ export class PostgresWebAuthService {
     // (SQLSTATE 23505) and we translate it into the same friendly error a
     // serial caller would see.
     //
-    // The bootstrapped admin is created with must_change_password=TRUE
-    // so the first login forces a rotation before any session-bearing
-    // request can reach the application surface. The dispatcher's
-    // pre-rotation gate enforces this server-side; the operator never
-    // sees an exposure window where the bootstrap credential could
-    // call /api/* freely.
+    // The bootstrapped admin defaults to must_change_password=TRUE so the
+    // first login forces a rotation before any session-bearing request can
+    // reach the application surface. The dispatcher's pre-rotation gate
+    // enforces this server-side; the operator never sees an exposure window
+    // where the bootstrap credential could call /api/* freely. Callers may
+    // pass mustChangePassword=false (dev only, via
+    // VARLENS_ADMIN_MUST_CHANGE_PASSWORD) to skip the forced rotation.
     const client = await this.pool.connect()
     try {
       await client.query('BEGIN')
@@ -326,9 +329,9 @@ export class PostgresWebAuthService {
       const inserted = await client.query<{ id: string }>(
         `INSERT INTO ${sch}."users"
           (username, display_name, password_hash, role, must_change_password, password_changed_at)
-         VALUES ($1, $2, $3, $4, TRUE, now())
+         VALUES ($1, $2, $3, $4, $5, now())
          RETURNING id`,
-        [username, displayName, passwordHash, ROLE_ADMIN]
+        [username, displayName, passwordHash, ROLE_ADMIN, mustChangePassword]
       )
       await client.query('COMMIT')
       return {

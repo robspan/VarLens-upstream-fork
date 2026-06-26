@@ -7,7 +7,7 @@
 <h1 align="center">VarLens</h1>
 
 <p align="center">
-  <strong>Offline genetic variant analysis, right on your desktop.</strong>
+  <strong>Genetic variant analysis — on your desktop or self-hosted.</strong>
 </p>
 
 <p align="center">

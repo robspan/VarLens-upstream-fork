@@ -80,7 +80,7 @@ The **Makefile is the source of truth**. GitHub Actions workflows mirror it targ
 | `make dev`                                                          | Rebuild for Electron, start hot-reload dev server                                             |
 | `make lint` / `make lint-check`                                     | ESLint with / without auto-fix                                                                |
 | `make format` / `make format-check`                                 | Prettier with / without write                                                                 |
-| `make typecheck`                                                    | `vue-tsc` (renderer) + `tsc` (node) in parallel                                               |
+| `make typecheck`                                                    | `vue-tsc` (renderer), then `tsc` (node), serialized to bound peak memory                      |
 | `make test`                                                         | Vitest once (run `make rebuild-node` first)                                                   |
 | `make test-watch` / `make test-coverage`                            | Vitest watch / with coverage                                                                  |
 | `make agent-check`                                                  | Check LLM-sustainable source size and context guardrails                                      |
@@ -92,7 +92,7 @@ The **Makefile is the source of truth**. GitHub Actions workflows mirror it targ
 | `make docs-dev` / `make docs`                                       | VitePress user docs                                                                           |
 | `VARLENS_WEB=1 make ...`                                            | Mode toggle: extends `dev` / `test` / `ci` to include the web layer (see "Mode toggle" below) |
 
-**Before claiming work is done, run `make ci` at minimum.** If you have run local packaging first, clean `release/` before `make ci` because ESLint still traverses generated release artifacts. For anything touching Electron lifecycle, IPC, workers, or packaging, run `make ci-full`.
+**Before claiming work is done, run `make ci` at minimum.** This target intentionally serializes the heavyweight gates to keep local peak memory bounded. For anything touching Electron lifecycle, IPC, workers, or packaging, run `make ci-full`.
 
 ### Mode toggle: desktop (default) / web (opt-in)
 

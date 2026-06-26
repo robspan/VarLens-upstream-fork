@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
     <title>VarLens — Sign in</title>
+    <link rel="icon" href="__APP_PATH_PREFIX__/favicon.ico" sizes="32x32" />
+    <link rel="icon" type="image/svg+xml" href="__APP_PATH_PREFIX__/favicon.svg" />
+    <link rel="apple-touch-icon" href="__APP_PATH_PREFIX__/apple-touch-icon.png" />
     <style>
       /* "Clinical Slate" — same palette as src/renderer/src/plugins/vuetify.ts.
        Inlined so the login wall ships zero JS/CSS bundles to anonymous users. */
@@ -88,22 +91,16 @@
 
       .brand {
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 10px;
-        margin-bottom: 4px;
+        gap: 12px;
+        margin-bottom: 6px;
       }
-      .brand-mark {
-        width: 28px;
-        height: 28px;
-        border-radius: 6px;
-        background: var(--primary);
-        display: grid;
-        place-items: center;
-        color: var(--on-primary);
-        font-weight: 700;
-        font-size: 14px;
-        letter-spacing: 0.02em;
+      .brand-logo {
+        display: block;
+        width: 60px;
+        height: 60px;
       }
       h1 {
         margin: 0;
@@ -242,7 +239,13 @@
     <main class="page">
       <section class="card" aria-labelledby="title">
         <div class="brand">
-          <div class="brand-mark" aria-hidden="true">V</div>
+          <img
+            class="brand-logo"
+            src="__APP_PATH_PREFIX__/favicon.svg"
+            alt=""
+            width="60"
+            height="60"
+          />
           <h1 id="title">VarLens</h1>
         </div>
         <p class="subtitle">Sign in to continue</p>
@@ -314,7 +317,7 @@
           </button>
         </form>
 
-        <div class="footer">VarLens · offline genetic variant analysis</div>
+        <div class="footer">VarLens · genetic variant analysis</div>
       </section>
     </main>
 

@@ -42,6 +42,7 @@ import { registerPageGate } from './server/page-gate'
 import { PlatformIdentityService, registerPlatformIdentityRoutes } from './server/platform-identity'
 import { readPlatformIdentityConfig } from './server/platform-identity-config'
 import { registerWebRateLimit } from './server/rate-limit'
+import { serializeRequestForTechnicalLog } from './server/request-logging'
 import { registerImportUploadRoutes } from './server/routes/upload-staging'
 import { registerOpenApi } from './server/routes/openapi'
 import { registerStatic } from './server/static'
@@ -122,7 +123,10 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     requestIdHeader: 'x-request-id',
     requestIdLogLabel: 'request_id',
     logger: {
-      level: process.env.VARLENS_LOG_LEVEL ?? 'info'
+      level: process.env.VARLENS_LOG_LEVEL ?? 'info',
+      serializers: {
+        req: serializeRequestForTechnicalLog
+      }
     }
   })
   const metrics = options.metrics ?? createAppMetricsFromEnv()

@@ -45,14 +45,13 @@ interface PostgresStorageSessionOptions {
   pool: Pool
   migrationResult?: PostgresMigrationResult
   createCaseListRepository?: (pool: Pool, schema: string) => PostgresCaseListRepository
-  publicAnnotations?: PostgresPublicAnnotationRepository
 }
 
 export const POSTGRES_CAPABILITIES: StorageCapabilities = {
   backend: 'postgres',
   workspace: {
     localFileLifecycle: false,
-    hostedConnectionLifecycle: true,
+    hostedConnectionLifecycle: false,
     encryptionAtRest: false,
     migrations: true,
     healthDiagnostics: true
@@ -167,6 +166,10 @@ export class PostgresStorageSession implements StorageSession {
     const audit = new PostgresAuditLogRepository(options.pool, options.config.schema)
     const transcripts = new PostgresTranscriptsRepository(options.pool, options.config.schema)
     const variants = new PostgresVariantReadRepository(options.pool, options.config.schema)
+    const publicAnnotations = new PostgresPublicAnnotationRepository(
+      options.pool,
+      options.config.schema
+    )
     const shortlist = new PostgresShortlistService({
       pool: options.pool,
       schema: options.config.schema,
@@ -190,9 +193,7 @@ export class PostgresStorageSession implements StorageSession {
       transcripts,
       caseMetadata,
       variants,
-      ...(options.publicAnnotations !== undefined
-        ? { publicAnnotations: options.publicAnnotations }
-        : {})
+      publicAnnotations
     })
     this.writeExecutor = new PostgresWriteExecutor(
       caseMetadata,

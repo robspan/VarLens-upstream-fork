@@ -73,6 +73,11 @@ const MIGRATION_FILES: readonly MigrationFile[] = [
     version: '0014',
     name: 'hosted_user_private_db',
     fileName: '0014_hosted_user_private_db.sql'
+  },
+  {
+    version: '0015',
+    name: 'single_db_runtime',
+    fileName: '0015_single_db_runtime.sql'
   }
 ]
 

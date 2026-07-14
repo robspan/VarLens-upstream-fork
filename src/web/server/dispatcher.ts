@@ -77,17 +77,12 @@ import type { AppMetrics, OperationMetricName } from './metrics'
  */
 const PRE_ROTATION_ALLOWED = new Set<string>(['auth:changePassword', 'auth:logout'])
 const DEV_API_LATENCY_ENV = 'VARLENS_WEB_API_LATENCY_MS'
-const CONTROL_DB_METHODS = new Set<string>([
-  'auth:login',
-  'auth:logout',
-  'auth:currentUser',
-  'auth:isAccountsEnabled',
-  'auth:changePassword',
-  'auth:listUsers',
-  'auth:deactivateUser',
-  'auth:resetPassword',
-  'database:capabilities'
-])
+const OPERATION_METRIC_KEYS: Record<string, OperationMetricName> = {
+  'import:start': 'import',
+  'import:startMultiFile': 'import',
+  'import:startAnnotationBundle': 'import',
+  'batch-import:start': 'batch-import'
+}
 
 function toSerializableWebError(error: unknown): SerializableError {
   if (isIpcError(error)) return error
@@ -146,9 +141,7 @@ async function applyDevApiLatency(): Promise<void> {
 }
 
 function operationMetricForKey(key: string): OperationMetricName | undefined {
-  if (key.startsWith('batch-import:')) return 'batch-import'
-  if (key.startsWith('import:')) return 'import'
-  return undefined
+  return OPERATION_METRIC_KEYS[key]
 }
 
 function recordDispatcherOperationMetrics(params: {
@@ -171,7 +164,6 @@ function resultLooksLikeFailure(result: unknown): boolean {
   if (result === null || typeof result !== 'object') return false
   const body = result as Record<string, unknown>
   if (typeof body.error === 'string' && body.error.trim() !== '') return true
-  if (Array.isArray(body.errors) && body.errors.length > 0) return true
   return typeof body.code === 'string' && body.code.trim() !== ''
 }
 
@@ -264,20 +256,6 @@ export function buildDispatcher(_deps: DispatcherDeps): {
   return { overrides, publicMethods: publicOverrideKeys(overrides) }
 }
 
-async function resolveDepsForMethod(
-  deps: DispatcherDeps,
-  key: string,
-  request: Parameters<OverrideHandler['handle']>[1]
-): Promise<DispatcherDeps> {
-  if (deps.resolveSession === undefined || CONTROL_DB_METHODS.has(key)) {
-    return deps
-  }
-  return {
-    ...deps,
-    session: await deps.resolveSession(request)
-  }
-}
-
 /**
  * Register the single dispatcher route. All `POST /api/<domain>/<method>`
  * traffic from the browser lands here.
@@ -346,24 +324,23 @@ export function registerDispatcher(
       }
 
       if (override !== undefined) {
-        const requestDeps = await resolveDepsForMethod(deps, key, request)
         const result = await invokeAsIpcResult(reply, () =>
-          override.handle(args, request, reply, requestDeps)
+          override.handle(args, request, reply, deps)
         )
         recordDispatcherOperationMetrics({
-          metrics: requestDeps.metrics,
+          metrics: deps.metrics,
           key,
           statusCode: reply.statusCode,
           result
         })
         if (reply.statusCode < 400 && (isWriteTaskType(key) || shouldAuditOverrideWrite(key))) {
           const auditResult = await invokeAsIpcResult(reply, () =>
-            recordApiWriteAudit(requestDeps, { key, username: request.session?.user?.username })
+            recordApiWriteAudit(deps, { key, username: request.session?.user?.username })
           )
           if (reply.statusCode >= 400) return auditResult
         } else if (reply.statusCode < 400 && shouldAuditApiRead(key)) {
           const auditResult = await invokeAsIpcResult(reply, () =>
-            recordApiReadAudit(requestDeps, { key, username: request.session?.user?.username })
+            recordApiReadAudit(deps, { key, username: request.session?.user?.username })
           )
           if (reply.statusCode >= 400) return auditResult
         }
@@ -371,20 +348,19 @@ export function registerDispatcher(
       }
 
       if (isReadTaskType(key)) {
-        const requestDeps = await resolveDepsForMethod(deps, key, request)
         const task = { type: key, params: args } as StorageReadTask
         const result = await invokeAsIpcResult(reply, () =>
-          requestDeps.session.getReadExecutor().execute(task)
+          deps.session.getReadExecutor().execute(task)
         )
         recordDispatcherOperationMetrics({
-          metrics: requestDeps.metrics,
+          metrics: deps.metrics,
           key,
           statusCode: reply.statusCode,
           result
         })
         if (reply.statusCode < 400 && shouldAuditApiRead(key)) {
           const auditResult = await invokeAsIpcResult(reply, () =>
-            recordApiReadAudit(requestDeps, { key, username: request.session?.user?.username })
+            recordApiReadAudit(deps, { key, username: request.session?.user?.username })
           )
           if (reply.statusCode >= 400) return auditResult
         }
@@ -392,20 +368,19 @@ export function registerDispatcher(
       }
 
       if (isWriteTaskType(key)) {
-        const requestDeps = await resolveDepsForMethod(deps, key, request)
         const task = { type: key, params: args } as StorageWriteTask
         const result = await invokeAsIpcResult(reply, () =>
-          requestDeps.session.getWriteExecutor().execute(task)
+          deps.session.getWriteExecutor().execute(task)
         )
         recordDispatcherOperationMetrics({
-          metrics: requestDeps.metrics,
+          metrics: deps.metrics,
           key,
           statusCode: reply.statusCode,
           result
         })
         if (reply.statusCode < 400) {
           const auditResult = await invokeAsIpcResult(reply, () =>
-            recordApiWriteAudit(requestDeps, { key, username: request.session?.user?.username })
+            recordApiWriteAudit(deps, { key, username: request.session?.user?.username })
           )
           if (reply.statusCode >= 400) return auditResult
         }

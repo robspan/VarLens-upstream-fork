@@ -136,12 +136,9 @@ function pgUserRow(overrides: Partial<CannedRow> = {}): CannedRow {
 
 const SCHEMA = 'auth_test'
 type SvcOpts = ConstructorParameters<typeof PostgresWebAuthService>[0]
-function newSvc(pool: FakePool, readPool?: FakePool): PostgresWebAuthService {
+function newSvc(pool: FakePool): PostgresWebAuthService {
   return new PostgresWebAuthService({
     pool: pool as unknown as SvcOpts['pool'],
-    ...(readPool !== undefined
-      ? { readPool: readPool as unknown as NonNullable<SvcOpts['readPool']> }
-      : {}),
     schema: SCHEMA,
     passwordProvider: fakePasswordProvider
   })
@@ -387,113 +384,6 @@ describe('PostgresWebAuthService — provisioned user creation', () => {
   })
 })
 
-describe('PostgresWebAuthService — platform identity users', () => {
-  it('adopts a same-workspace non-admin local user as the platform subject', async () => {
-    const pool = new FakePool()
-    const svc = newSvc(pool)
-    pool.enqueueResponse({ rows: [], rowCount: 0 }) // BEGIN
-    pool.enqueueResponse({ rows: [], rowCount: 0 }) // no existing platform subject
-    pool.enqueueResponse({
-      rows: [{ id: '9', username: 'alice', role: ROLE_USER }],
-      rowCount: 1
-    })
-    pool.enqueueResponse({
-      rows: [
-        {
-          id: '9',
-          username: 'keycloak-subject-1',
-          role: ROLE_USER,
-          private_db_status: 'active'
-        }
-      ],
-      rowCount: 1
-    })
-    pool.enqueueResponse({ rows: [], rowCount: 0 }) // COMMIT
-
-    const result = await svc.upsertPlatformUser({
-      username: 'keycloak-subject-1',
-      displayName: 'Alice',
-      role: ROLE_USER,
-      privateDbSecretRef: 'alice.pgurl'
-    })
-
-    expect(result).toEqual({
-      id: 9,
-      username: 'keycloak-subject-1',
-      role: ROLE_USER,
-      private_db_status: 'active'
-    })
-    const update = pool.queries.find((q) => /SET username = \$1/.test(q.text))
-    expect(update?.values).toEqual([
-      'keycloak-subject-1',
-      'Alice',
-      'platform-identity-disabled-local-password',
-      ROLE_USER,
-      'active',
-      null,
-      '9'
-    ])
-    expect(pool.queries.every((q) => q.viaClient)).toBe(true)
-    expect(pool.queries.some((q) => /^COMMIT$/i.test(q.text))).toBe(true)
-  })
-
-  it('refuses to adopt an admin workspace row', async () => {
-    const pool = new FakePool()
-    const svc = newSvc(pool)
-    pool.enqueueResponse({ rows: [], rowCount: 0 }) // BEGIN
-    pool.enqueueResponse({ rows: [], rowCount: 0 }) // no existing platform subject
-    pool.enqueueResponse({
-      rows: [{ id: '1', username: 'admin', role: ROLE_ADMIN }],
-      rowCount: 1
-    })
-    pool.enqueueResponse({ rows: [], rowCount: 0 }) // ROLLBACK
-
-    await expect(
-      svc.upsertPlatformUser({
-        username: 'keycloak-subject-1',
-        displayName: 'Admin',
-        role: ROLE_USER,
-        privateDbSecretRef: 'admin.pgurl'
-      })
-    ).rejects.toThrow(/admin user workspace/i)
-    expect(pool.queries.some((q) => /^ROLLBACK$/i.test(q.text))).toBe(true)
-  })
-
-  it('maps revoked platform resource status to the hosted disabled DB status', async () => {
-    const pool = new FakePool()
-    const svc = newSvc(pool)
-    pool.enqueueResponse({ rows: [], rowCount: 0 }) // BEGIN
-    pool.enqueueResponse({
-      rows: [{ password_hash: 'platform-identity-disabled-local-password' }],
-      rowCount: 1
-    })
-    pool.enqueueResponse({
-      rows: [
-        {
-          id: '9',
-          username: 'keycloak-subject-1',
-          role: ROLE_USER,
-          private_db_status: 'disabled'
-        }
-      ],
-      rowCount: 1
-    })
-    pool.enqueueResponse({ rows: [], rowCount: 0 }) // COMMIT
-
-    const result = await svc.upsertPlatformUser({
-      username: 'keycloak-subject-1',
-      displayName: 'Alice',
-      role: ROLE_USER,
-      privateDbSecretRef: 'alice.pgurl',
-      privateDbStatus: 'revoked'
-    })
-
-    expect(result.private_db_status).toBe('disabled')
-    const upsert = pool.queries.find((q) => /ON CONFLICT \(username\)/.test(q.text))
-    expect(upsert?.values[5]).toBe('disabled')
-  })
-})
-
 const RUN_POSTGRES_AUTH_E2E = process.env.VARLENS_RUN_POSTGRES_E2E === '1'
 const PG_URL =
   process.env.VARLENS_PG_URL ??
@@ -689,13 +579,12 @@ describe('PostgresWebAuthService — createUser', () => {
 })
 
 describe('PostgresWebAuthService — getUser / listUsers / isAccountsEnabled', () => {
-  it('uses the read pool for read-only control lookups', async () => {
-    const statePool = new FakePool()
-    const readPool = new FakePool()
-    const svc = newSvc(statePool, readPool)
-    readPool.enqueueResponse({ rows: [pgUserRow()], rowCount: 1 })
-    readPool.enqueueResponse({ rows: [pgUserRow({ id: '2', username: 'bob' })], rowCount: 1 })
-    readPool.enqueueResponse({ rows: [{ value: 'true' }], rowCount: 1 })
+  it('uses the instance pool for all read-only lookups', async () => {
+    const pool = new FakePool()
+    const svc = newSvc(pool)
+    pool.enqueueResponse({ rows: [pgUserRow()], rowCount: 1 })
+    pool.enqueueResponse({ rows: [pgUserRow({ id: '2', username: 'bob' })], rowCount: 1 })
+    pool.enqueueResponse({ rows: [{ value: 'true' }], rowCount: 1 })
 
     await expect(svc.getUser('alice')).resolves.toEqual(
       expect.objectContaining({ username: 'alice' })
@@ -703,8 +592,7 @@ describe('PostgresWebAuthService — getUser / listUsers / isAccountsEnabled', (
     await expect(svc.listUsers()).resolves.toHaveLength(1)
     await expect(svc.isAccountsEnabled()).resolves.toBe(true)
 
-    expect(readPool.queries).toHaveLength(3)
-    expect(statePool.queries).toHaveLength(0)
+    expect(pool.queries).toHaveLength(3)
   })
 
   it('getUser returns undefined when missing', async () => {
@@ -742,22 +630,20 @@ describe('PostgresWebAuthService — getUser / listUsers / isAccountsEnabled', (
 })
 
 describe('PostgresWebAuthService — deactivateUser / resetPassword / changePassword', () => {
-  it('keeps auth mutations on the state pool after read-pool lookups', async () => {
-    const statePool = new FakePool()
-    const readPool = new FakePool()
-    const svc = newSvc(statePool, readPool)
-    readPool.enqueueResponse({
+  it('keeps auth reads and mutations on the one instance pool', async () => {
+    const pool = new FakePool()
+    const svc = newSvc(pool)
+    pool.enqueueResponse({
       rows: [pgUserRow({ password_hash: `hashed::${FIXTURE_PW}` })],
       rowCount: 1
     })
-    statePool.enqueueResponse({ rows: [], rowCount: 1 })
+    pool.enqueueResponse({ rows: [], rowCount: 1 })
 
     await expect(svc.changePassword('alice', FIXTURE_PW, FIXTURE_NEW_PW)).resolves.toBe(true)
 
-    expect(readPool.queries).toHaveLength(1)
-    expect(readPool.queries[0].text).toMatch(/SELECT \* FROM[\s\S]+"users"/i)
-    expect(statePool.queries).toHaveLength(1)
-    expect(statePool.queries[0].text).toMatch(/UPDATE[\s\S]+"users"/i)
+    expect(pool.queries).toHaveLength(2)
+    expect(pool.queries[0].text).toMatch(/SELECT \* FROM[\s\S]+"users"/i)
+    expect(pool.queries[1].text).toMatch(/UPDATE[\s\S]+"users"/i)
   })
 
   it('deactivateUser throws when user not found', async () => {

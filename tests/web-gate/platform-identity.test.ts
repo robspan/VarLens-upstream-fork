@@ -8,9 +8,9 @@ import {
   assertPlatformMfaClaims,
   PlatformMfaClaimError,
   PlatformIdentityService,
-  registerPlatformIdentityRoutes,
   verifyPlatformJwt
 } from '../../src/web/server/platform-identity'
+import { registerPlatformIdentityRoutes } from '../../src/web/server/platform-identity-routes'
 import { registerSessions } from '../../src/web/server/auth'
 import { registerWebRateLimit } from '../../src/web/server/rate-limit'
 
@@ -65,13 +65,14 @@ function signRotatedJwt(payload: Record<string, unknown>): string {
   return `${encodedHeader}.${encodedPayload}.${signature}`
 }
 
-function basePayload(audience = AUDIENCE): Record<string, unknown> {
+function basePayload(audience: string | string[] = AUDIENCE): Record<string, unknown> {
   return {
     iss: ISSUER,
     sub: 'platform-subject-1',
     aud: audience,
     exp: 2_000_000_000,
     iat: 1_900_000_000,
+    auth_time: 1_949_999_940,
     nonce: 'nonce-1',
     acr: REQUIRED_ACR,
     amr: REQUIRED_AMR
@@ -100,7 +101,8 @@ describe('platform identity JWT validation', () => {
       payload: verified.payload,
       requiredAcr: REQUIRED_ACR,
       requiredAmr: REQUIRED_AMR,
-      expectedNonce: 'nonce-1'
+      expectedNonce: 'nonce-1',
+      nowSeconds: 1_950_000_000
     })
   })
 
@@ -133,9 +135,44 @@ describe('platform identity JWT validation', () => {
         payload: verified.payload,
         requiredAcr: REQUIRED_ACR,
         requiredAmr: REQUIRED_AMR,
-        expectedNonce: 'nonce-1'
+        expectedNonce: 'nonce-1',
+        nowSeconds: 1_950_000_000
       })
     ).toThrow(/otp/)
+  })
+
+  test('requires iat and matching azp for a multi-audience token', () => {
+    expect(() =>
+      verifyPlatformJwt({
+        token: signJwt({ ...basePayload(CLIENT_ID), iat: undefined }),
+        issuer: ISSUER,
+        audience: CLIENT_ID,
+        jwks: [publicJwk],
+        nowSeconds: 1_950_000_000
+      })
+    ).toThrow(/iat claim is required/)
+
+    expect(() =>
+      verifyPlatformJwt({
+        token: signJwt({ ...basePayload([CLIENT_ID, 'other']), azp: 'other' }),
+        issuer: ISSUER,
+        audience: CLIENT_ID,
+        jwks: [publicJwk],
+        nowSeconds: 1_950_000_000
+      })
+    ).toThrow(/azp/)
+  })
+
+  test('requires a fresh server-verifiable authentication time', () => {
+    expect(() =>
+      assertPlatformMfaClaims({
+        payload: { ...basePayload(CLIENT_ID), auth_time: 1_949_000_000 },
+        requiredAcr: REQUIRED_ACR,
+        requiredAmr: REQUIRED_AMR,
+        expectedNonce: 'nonce-1',
+        nowSeconds: 1_950_000_000
+      })
+    ).toThrow(/not fresh/)
   })
 
   test('rejects tokens without the active JWKS kid', () => {
@@ -168,8 +205,7 @@ describe('platform identity entitlement validation', () => {
             app: 'varlens',
             environment: 'dev',
             role: 'admin',
-            status: 'active',
-            resourceStatus: 'active'
+            status: 'active'
           }
         }),
         { status: 200, headers: { 'content-type': 'application/json' } }
@@ -186,12 +222,12 @@ describe('platform identity entitlement validation', () => {
       requiredAmr: REQUIRED_AMR,
       entitlementsUrl: 'http://ops.internal/api/identity/entitlements/varlens/dev',
       entitlementsToken: 'introspection-token',
-      requireHostedResource: false
+      verifyAccessToken: false
     })
 
     const result = await service.resolveSessionUser(
       {
-        getUser: vi.fn(async () => ({
+        getPlatformUser: vi.fn(async () => ({
           id: 42,
           username: 'platform-subject-1',
           role: 'user',
@@ -217,8 +253,7 @@ describe('platform identity entitlement validation', () => {
           entitlement: {
             active: true,
             role: 'user',
-            status: 'active',
-            resourceStatus: 'active'
+            status: 'active'
           }
         }),
         { status: 200, headers: { 'content-type': 'application/json' } }
@@ -234,10 +269,10 @@ describe('platform identity entitlement validation', () => {
       requiredAcr: REQUIRED_ACR,
       requiredAmr: REQUIRED_AMR,
       entitlementsUrl: 'http://ops.internal/api/identity/entitlements/varlens/dev',
-      requireHostedResource: false
+      verifyAccessToken: false
     })
     const authService = {
-      getUser: vi.fn(async () => ({
+      getPlatformUser: vi.fn(async () => ({
         id: 42,
         username: 'platform-subject-1',
         role: 'user',
@@ -250,6 +285,67 @@ describe('platform identity entitlement validation', () => {
     await service.resolveSessionUser(authService, 'platform-subject-1')
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  test('denies an entitled subject that is not bound in this VarLens instance', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ entitlement: { active: true, role: 'user', status: 'active' } }),
+            { status: 200, headers: { 'content-type': 'application/json' } }
+          )
+      )
+    )
+    const service = new PlatformIdentityService({
+      mode: 'platform',
+      issuerUrl: ISSUER,
+      clientId: CLIENT_ID,
+      audience: AUDIENCE,
+      callbackPath: '/auth/platform/callback',
+      requiredAcr: REQUIRED_ACR,
+      requiredAmr: REQUIRED_AMR,
+      entitlementsUrl: 'http://ops.internal/api/identity/entitlements/varlens/dev',
+      verifyAccessToken: false
+    })
+
+    await expect(
+      service.resolveSessionUser(
+        { getPlatformUser: vi.fn(async () => undefined) } as never,
+        'other-user'
+      )
+    ).rejects.toThrow(/not provisioned or active/i)
+  })
+
+  test('denies a local-password row even when its username equals the OIDC subject', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ entitlement: { active: true, role: 'user', status: 'active' } }),
+            { status: 200, headers: { 'content-type': 'application/json' } }
+          )
+      )
+    )
+    const service = new PlatformIdentityService({
+      mode: 'platform',
+      issuerUrl: ISSUER,
+      clientId: CLIENT_ID,
+      audience: AUDIENCE,
+      callbackPath: '/auth/platform/callback',
+      requiredAcr: REQUIRED_ACR,
+      requiredAmr: REQUIRED_AMR,
+      entitlementsUrl: 'http://ops.internal/api/identity/entitlements/varlens/dev',
+      verifyAccessToken: false
+    })
+    const getPlatformUser = vi.fn(async () => undefined)
+
+    await expect(
+      service.resolveSessionUser({ getPlatformUser } as never, 'platform-subject-1')
+    ).rejects.toThrow(/not provisioned or active/i)
+    expect(getPlatformUser).toHaveBeenCalledWith('platform-subject-1')
   })
 })
 
@@ -278,7 +374,7 @@ describe('platform identity OIDC start', () => {
       requiredAcr: REQUIRED_ACR,
       requiredAmr: REQUIRED_AMR,
       entitlementsUrl: 'http://ops.internal/api/identity/entitlements/varlens/dev',
-      requireHostedResource: false
+      verifyAccessToken: false
     })
 
     const result = await service.createAuthorizationUrl({
@@ -319,7 +415,7 @@ describe('platform identity OIDC start', () => {
       requiredAcr: REQUIRED_ACR,
       requiredAmr: REQUIRED_AMR,
       entitlementsUrl: 'http://ops.internal/api/identity/entitlements/varlens/dev',
-      requireHostedResource: false
+      verifyAccessToken: false
     })
 
     const result = await service.createAuthorizationUrl({
@@ -363,7 +459,7 @@ describe('platform identity OIDC start', () => {
       requiredAcr: REQUIRED_ACR,
       requiredAmr: REQUIRED_AMR,
       entitlementsUrl: 'http://ops.internal/api/identity/entitlements/varlens/dev',
-      requireHostedResource: false
+      verifyAccessToken: false
     })
     const request = {
       protocol: 'https',
@@ -384,7 +480,8 @@ describe('platform identity OIDC start', () => {
     const token = signRotatedJwt({
       ...basePayload(CLIENT_ID),
       exp: nowSeconds + 600,
-      iat: nowSeconds - 60
+      iat: nowSeconds - 60,
+      auth_time: nowSeconds - 60
     })
     const accessToken = signRotatedJwt({
       ...basePayload(AUDIENCE),
@@ -435,7 +532,7 @@ describe('platform identity OIDC start', () => {
       requiredAcr: REQUIRED_ACR,
       requiredAmr: REQUIRED_AMR,
       entitlementsUrl: 'http://ops.internal/api/identity/entitlements/varlens/dev',
-      requireHostedResource: false
+      verifyAccessToken: false
     })
 
     const result = await service.completeCallback({
@@ -454,15 +551,42 @@ describe('platform identity OIDC start', () => {
   })
 })
 
-describe('platform identity provisioning route', () => {
-  test('creates a platform user only with the provisioning bearer token', async () => {
-    const app = fastify()
-    const upsertPlatformUser = vi.fn(async () => ({
-      id: 3,
-      username: 'keycloak-subject',
-      role: 'user',
-      private_db_status: 'active'
-    }))
+describe('platform identity opaque access tokens', () => {
+  test('accepts an opaque access token when only the ID token is configured for JWT verification', async () => {
+    const nowSeconds = Math.floor(Date.now() / 1000)
+    const idToken = signJwt({
+      ...basePayload(CLIENT_ID),
+      exp: nowSeconds + 600,
+      iat: nowSeconds - 60,
+      auth_time: nowSeconds - 60
+    })
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith('/.well-known/openid-configuration')) {
+        return new Response(
+          JSON.stringify({
+            issuer: ISSUER,
+            authorization_endpoint: `${ISSUER}/protocol/openid-connect/auth`,
+            token_endpoint: `${ISSUER}/protocol/openid-connect/token`,
+            jwks_uri: `${ISSUER}/protocol/openid-connect/certs`
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      }
+      if (url.endsWith('/token')) {
+        return new Response(
+          JSON.stringify({ id_token: idToken, access_token: 'opaque-reference-token' }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      }
+      if (url.endsWith('/certs')) {
+        return new Response(JSON.stringify({ keys: [publicJwk] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        })
+      }
+      throw new Error(`unexpected URL ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
     const service = new PlatformIdentityService({
       mode: 'platform',
       issuerUrl: ISSUER,
@@ -472,44 +596,21 @@ describe('platform identity provisioning route', () => {
       requiredAcr: REQUIRED_ACR,
       requiredAmr: REQUIRED_AMR,
       entitlementsUrl: 'http://ops.internal/api/identity/entitlements/varlens/dev',
-      provisioningToken: 'provision-token',
-      requireHostedResource: false
-    })
-    registerPlatformIdentityRoutes(app, {
-      identity: service,
-      authService: { upsertPlatformUser } as never,
-      appPathPrefix: ''
+      verifyAccessToken: false
     })
 
-    const denied = await app.inject({
-      method: 'POST',
-      url: '/platform/provisioning/users',
-      payload: { subject: 'keycloak-subject', role: 'user' }
-    })
-    expect(denied.statusCode).toBe(403)
-
-    const accepted = await app.inject({
-      method: 'POST',
-      url: '/platform/provisioning/users',
-      headers: { authorization: 'Bearer provision-token' },
-      payload: {
-        subject: 'keycloak-subject',
-        displayName: 'Keycloak User',
-        role: 'user',
-        privateDbSecretRef: 'keycloak-subject.pgurl',
-        privateDbStatus: 'active'
-      }
-    })
-
-    expect(accepted.statusCode).toBe(200)
-    expect(upsertPlatformUser).toHaveBeenCalledWith({
-      username: 'keycloak-subject',
-      displayName: 'Keycloak User',
-      role: 'user',
-      privateDbSecretRef: 'keycloak-subject.pgurl',
-      privateDbStatus: 'active'
-    })
-    await app.close()
+    await expect(
+      service.completeCallback({
+        request: {
+          protocol: 'https',
+          headers: { host: 'varlens-dev.example.test' }
+        } as never,
+        appPathPrefix: '',
+        code: 'code-1',
+        expectedNonce: 'nonce-1',
+        codeVerifier: 'verifier-1'
+      })
+    ).resolves.toEqual({ subject: 'platform-subject-1' })
   })
 })
 
@@ -585,7 +686,7 @@ describe('platform identity callback session state', () => {
     await app.close()
   })
 
-  test('restarts login once when first TOTP enrollment callback lacks the OTP amr claim', async () => {
+  test('fails closed when a TOTP callback lacks the OTP amr claim', async () => {
     process.env.NODE_ENV = 'test'
     process.env.VARLENS_SESSION_SECRET_HEX = '11'.repeat(32)
 
@@ -626,12 +727,13 @@ describe('platform identity callback session state', () => {
       headers: { cookie }
     })
 
-    expect(callback.statusCode).toBe(302)
-    expect(callback.headers.location).toBe('/auth/platform/start?next=%2Fcases&mfaRetry=1')
+    expect(callback.statusCode).toBe(401)
+    expect(callback.body).toContain('Anmeldung konnte nicht abgeschlossen werden')
+    expect(callback.body).toContain('/auth/platform/start?next=%2Fcases')
     await app.close()
   })
 
-  test('denies the callback when the forced MFA retry still lacks the OTP amr claim', async () => {
+  test('does not let a client query parameter disable fresh authentication', async () => {
     process.env.NODE_ENV = 'test'
     process.env.VARLENS_SESSION_SECRET_HEX = '11'.repeat(32)
 
@@ -676,7 +778,7 @@ describe('platform identity callback session state', () => {
     })
 
     expect(createAuthorizationUrl).toHaveBeenCalledWith(
-      expect.objectContaining({ forceFreshLogin: false })
+      expect.objectContaining({ forceFreshLogin: true })
     )
     expect(callback.statusCode).toBe(401)
     expect(callback.headers['content-type']).toContain('text/html')

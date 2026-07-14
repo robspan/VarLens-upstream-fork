@@ -12,7 +12,7 @@ repository and consume the image as an immutable artifact.
 | --- | --- |
 | Image | `ghcr.io/<owner>/varlens-web:<tag>` or a pinned digest |
 | Process | `node out/web/server.cjs` via `tini` |
-| Operator command | `node out/web/provision-user.cjs` for one-shot app-semantic user creation from a precomputed Argon2id hash |
+| Operator command | `node out/web/provision-platform-user.cjs` for one-shot app-local OIDC subject binding |
 | User | uid/gid `1001` (`varlens`) |
 | Internal port | `8080` |
 | Health endpoint | `GET /healthz` |
@@ -21,13 +21,33 @@ repository and consume the image as an immutable artifact.
 Operators may remap the external port and route traffic through any reverse
 proxy. The container's internal port and healthcheck remain fixed at `8080`.
 The operator command is for deployment/IAC Jobs only; it is not an HTTP API and
-must not be reachable from request-serving runtime.
+must not be reachable from request-serving runtime. It mutates only the
+app-local user row in the already-provisioned instance database. It does not
+create databases, roles, Secrets, Services, routes, or application instances.
+Invoke it as:
+
+```bash
+VARLENS_PG_URL='postgresql://...' \
+  node out/web/provision-platform-user.cjs \
+  --subject '<OIDC sub>' \
+  --display-name '<display name>' \
+  --role user
+```
+
+`--subject` and `--display-name` are required; `--role` is optional and accepts
+only `user` (the default) or `admin`. `VARLENS_PG_SCHEMA` is optional and has
+the same default as the server. Success writes one JSON object with
+`ok: true`, `subject`, and `role` to stdout and exits `0`. Invalid arguments,
+a missing database URL, a local-password username collision, or an attempt to
+bind a second platform subject writes `ok: false` plus a non-secret error to
+stderr and exits non-zero. Re-running the command for the same subject is an
+idempotent update and reactivates that binding.
 
 ## Required Runtime Environment
 
-Current web mode uses a single PostgreSQL URL. Web 11 is planned to add a
-hosted topology switch; see `../backlog/web11-hosted-db-foundation-contract.md`.
-Until that work lands, the variables below remain the current boot contract.
+Web mode uses exactly one PostgreSQL URL. The former Web 11 control/workspace
+topology is superseded by `../../specs/2026-07-14-single-db-web-runtime.md` and
+is not a compatibility mode.
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
@@ -36,12 +56,18 @@ Until that work lands, the variables below remain the current boot contract.
 | `VARLENS_RECOVERY_KEY_DIR` | recommended | Absolute directory for session-secret material. Defaults to `/data`. |
 | `VARLENS_SESSION_SECRET_HEX` | no | Optional 32-byte hex session secret. If absent, the server seals one in the recovery directory. |
 | `VARLENS_WEB_UPLOAD_DIR` | no | Absolute directory for browser-upload staging. Defaults to `${VARLENS_RECOVERY_KEY_DIR}/uploads` (`/data/uploads` in the chart). |
-| `VARLENS_WEB_MAX_UPLOAD_BYTES` | no | Maximum accepted browser upload size in bytes. Defaults to `1073741824` (1 GiB). |
+| `VARLENS_WEB_MAX_UPLOAD_BYTES` | no | Maximum accepted browser upload size in bytes. The app default is `1073741824` (1 GiB); LB-MAP currently overrides it to `357564416` (341 MiB) until its performance benchmark is accepted. |
 | `VARLENS_WEB_UPLOAD_TTL_MS` | no | Staged upload lifetime before lazy cleanup. Defaults to `86400000` (24 hours). |
 | `VARLENS_ADMIN_USERNAME` | first boot only | Optional one-shot admin bootstrap username. |
 | `VARLENS_ADMIN_PASSWORD_HASH` | first boot only | Optional one-shot Argon2id admin bootstrap hash. Plaintext bootstrap is refused. |
 | `VARLENS_ADMIN_DISPLAY_NAME` | first boot only | Optional display name for the bootstrap admin. |
 | `VARLENS_LOG_LEVEL` | no | Pino log level. Defaults to `info`. |
+
+When platform OIDC is enabled, the existing `VARLENS_PLATFORM_*` identity and
+entitlement settings apply. The ID token is always verified. Set
+`VARLENS_PLATFORM_VERIFY_ACCESS_TOKEN=true` only when the provider is known to
+issue RS256 JWT access tokens for `VARLENS_PLATFORM_AUDIENCE`; opaque access
+tokens are otherwise accepted after the ID-token flow succeeds.
 
 Bootstrap variables are intentionally one-shot. After an admin exists, the
 server logs that env-based rotation is ignored; password changes happen through

@@ -1,6 +1,13 @@
 # Public/Private Annotation Database Boundary - ADR and Planning Spec
 
-**Status:** Draft 2026-06-22
+> **Superseded 2026-07-10.** The control DB, request-time multi-DB router,
+> separate public-annotation DB, and annotation-sync target described below are
+> historical. The active contract is
+> `2026-07-14-single-db-web-runtime.md`: one externally provisioned VarLens
+> instance and one database per user, with optional reference data copied into
+> that same database.
+
+**Status:** Superseded 2026-07-10
 **Scope:** Planning only; no implementation in this document.
 **Motivation:** VarLens hosted/web work for high-sensitivity genomics data, annotation-bundle import, and public annotation snapshot reuse.
 

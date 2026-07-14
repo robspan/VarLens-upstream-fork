@@ -4,7 +4,7 @@ import { POSTGRES_MIGRATIONS } from '../../../src/main/storage/postgres/migratio
 
 describe('Postgres migration definitions', () => {
   it('loads the PostgreSQL migrations with SQL and sha256 checksums', () => {
-    expect(POSTGRES_MIGRATIONS).toHaveLength(14)
+    expect(POSTGRES_MIGRATIONS).toHaveLength(15)
     expect(POSTGRES_MIGRATIONS.map((migration) => migration.version)).toEqual([
       '0001',
       '0002',
@@ -19,7 +19,8 @@ describe('Postgres migration definitions', () => {
       '0011',
       '0012',
       '0013',
-      '0014'
+      '0014',
+      '0015'
     ])
     expect(POSTGRES_MIGRATIONS.map((migration) => migration.name)).toEqual([
       'create_cases',
@@ -35,7 +36,8 @@ describe('Postgres migration definitions', () => {
       'projects_registry',
       'extend_audit_contract',
       'central_audit_schema',
-      'hosted_user_private_db'
+      'hosted_user_private_db',
+      'single_db_runtime'
     ])
 
     for (const migration of POSTGRES_MIGRATIONS) {
@@ -84,5 +86,12 @@ describe('Postgres migration definitions', () => {
     expect(centralAuditMigration?.sql).toContain('BEFORE TRUNCATE ON varlens_audit."audit_log"')
     expect(centralAuditMigration?.sql).toContain(`to_regclass('"__schema__"."audit_log"')`)
     expect(centralAuditMigration?.sql).toContain('DROP TABLE "__schema__"."audit_log"')
+
+    const singleDbMigration = POSTGRES_MIGRATIONS.find((migration) => migration.version === '0015')
+    expect(singleDbMigration?.name).toBe('single_db_runtime')
+    expect(singleDbMigration?.sql).toContain('DROP COLUMN IF EXISTS private_db_secret_ref')
+    expect(singleDbMigration?.sql).toContain(
+      'CREATE TABLE IF NOT EXISTS "__schema__"."public_annotation_variant_records"'
+    )
   })
 })

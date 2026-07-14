@@ -6,6 +6,10 @@ function webCapabilities(base: StorageCapabilities): StorageCapabilities {
   if (webParityFixturesEnabled()) return base
   return {
     ...base,
+    workspace: {
+      ...base.workspace,
+      hostedConnectionLifecycle: false
+    },
     export: {
       variants: false,
       cohort: false,

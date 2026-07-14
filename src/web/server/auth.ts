@@ -51,7 +51,6 @@ declare module '@fastify/secure-session' {
         codeVerifier: string
         next: string
         createdAt: number
-        mfaRetry?: boolean
       }
     >
     /**

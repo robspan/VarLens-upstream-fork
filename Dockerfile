@@ -52,8 +52,8 @@ RUN node -e "(async () => { \
     require('./out/web/server.cjs'); \
     require('node:fs').accessSync('./out/web/postgres-import-worker.cjs'); \
     require('./out/web/postgres-import-worker.cjs'); \
-    require('node:fs').accessSync('./out/web/provision-user.cjs'); \
-    require('./out/web/provision-user.cjs'); \
+    require('node:fs').accessSync('./out/web/provision-platform-user.cjs'); \
+    require('./out/web/provision-platform-user.cjs'); \
     require('node:fs').accessSync('./out/web/migrate-db.cjs'); \
     require('./out/web/migrate-db.cjs'); \
     const Database = require('better-sqlite3-multiple-ciphers'); \
@@ -71,8 +71,8 @@ ENV NODE_ENV=production \
     VARLENS_METRICS_PORT=9090 \
     VARLENS_LOG_LEVEL=info
 
-# Web mode is Postgres-only. Single-DB runtime provides VARLENS_PG_URL; hosted
-# runtime provides the explicit Web11 control/workspace/public DB topology env.
+# Web mode is Postgres-only. Every instance receives exactly one VARLENS_PG_URL;
+# database and instance lifecycle remain external platform responsibilities.
 # /data remains the default writable runtime directory for session-secret
 # material and any future operator-mounted app state.
 

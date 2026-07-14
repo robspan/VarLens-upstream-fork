@@ -6,6 +6,7 @@ import type {
   PublicAnnotationSnapshotSummary,
   PublicAnnotationVariantRecord
 } from '../../../shared/types/api'
+import { quoteIdentifier } from './identifiers'
 import { runNamed } from './named-query'
 
 type QueryablePool = Pick<Pool, 'query'>
@@ -90,7 +91,14 @@ export class PostgresPublicAnnotationRepository {
   private snapshotCache: { value: PublicAnnotationSnapshotSummary[]; expiresAt: number } | null =
     null
 
-  constructor(private readonly pool: QueryablePool) {}
+  private readonly schemaQuoted: string
+
+  constructor(
+    private readonly pool: QueryablePool,
+    private readonly schema = 'public'
+  ) {
+    this.schemaQuoted = quoteIdentifier(schema)
+  }
 
   async getReferencesForVariant(key: VariantKey): Promise<PublicAnnotationReferences> {
     const batch = await this.getBatchReferences([key])
@@ -144,7 +152,7 @@ export class PostgresPublicAnnotationRepository {
               ORDER BY r.snapshot_id DESC, r.source_id NULLS LAST, r.field_name ASC
             ) AS rn
           FROM input_keys k
-          INNER JOIN public.public_annotation_variant_records r
+          INNER JOIN ${this.schemaQuoted}.public_annotation_variant_records r
             ON r.chr = k.chr
            AND r.pos = k.pos
            AND r.ref = k.ref
@@ -212,8 +220,8 @@ export class PostgresPublicAnnotationRepository {
           COUNT(f.path)::int AS public_file_count,
           s.private_case_data,
           s.ingested_at::text AS ingested_at
-        FROM public.public_annotation_snapshots s
-        LEFT JOIN public.public_annotation_files f
+        FROM ${this.schemaQuoted}.public_annotation_snapshots s
+        LEFT JOIN ${this.schemaQuoted}.public_annotation_files f
           ON f.snapshot_id = s.snapshot_id
         GROUP BY
           s.snapshot_id,
@@ -243,8 +251,8 @@ export class PostgresPublicAnnotationRepository {
     const result = await runNamed<{ exists: boolean }>(this.pool as Pool, {
       name: 'public_annotations:table_exists:v1',
       text: 'SELECT to_regclass($1) IS NOT NULL AS exists',
-      values: [`public.${tableName}`],
-      schema: 'public'
+      values: [`${this.schemaQuoted}.${quoteIdentifier(tableName)}`],
+      schema: this.schema
     })
     const value = toBoolean(result.rows[0]?.exists)
     this.tableExistsCache.set(tableName, { value, expiresAt: now + METADATA_CACHE_TTL_MS })
@@ -262,11 +270,11 @@ export class PostgresPublicAnnotationRepository {
       `
         SELECT column_name
         FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = $1
-          AND column_name = ANY($2::text[])
+        WHERE table_schema = $1
+          AND table_name = $2
+          AND column_name = ANY($3::text[])
       `,
-      [tableName, [...columns]]
+      [this.schema, tableName, [...columns]]
     )
     const present = new Set(result.rows.map((row) => String(row.column_name)))
     const value = columns.every((column) => present.has(column))

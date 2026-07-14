@@ -13,9 +13,9 @@ function poolWithRows(rows: Array<{ rows: Record<string, unknown>[] }>) {
 }
 
 describe('PostgresPublicAnnotationRepository', () => {
-  it('returns empty references when the public snapshot tables are not synced yet', async () => {
+  it('returns empty references when the instance annotation tables have no copied data', async () => {
     const pool = poolWithRows([{ rows: [{ exists: false }] }])
-    const repository = new PostgresPublicAnnotationRepository(pool as never)
+    const repository = new PostgresPublicAnnotationRepository(pool as never, 'instance_alice')
 
     await expect(
       repository.getReferencesForVariant({ chr: '1', pos: 12345, ref: 'A', alt: 'G' })
@@ -24,12 +24,12 @@ describe('PostgresPublicAnnotationRepository', () => {
     expect(pool.query).toHaveBeenCalledWith(
       expect.objectContaining({
         text: 'SELECT to_regclass($1) IS NOT NULL AS exists',
-        values: ['public.public_annotation_snapshots']
+        values: ['"instance_alice"."public_annotation_snapshots"']
       })
     )
   })
 
-  it('returns public snapshot summaries from the IAC sync tables', async () => {
+  it('returns copied reference snapshot summaries from the instance schema', async () => {
     const pool = poolWithRows([
       { rows: [{ exists: true }] },
       { rows: [{ exists: true }] },

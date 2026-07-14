@@ -1,8 +1,7 @@
 /**
  * VarLens web server entrypoint — Postgres-only.
  *
- * Single-DB web mode requires VARLENS_PG_URL and refuses to boot without it.
- * Hosted web mode uses the explicit control/workspace/public DB topology env.
+ * Web mode requires exactly one VARLENS_PG_URL and refuses to boot without it.
  * Desktop SQLite stays untouched in src/main/.
  *
  *   - Fastify app with Pino JSON logging
@@ -12,7 +11,7 @@
  *     PostgresWebAuthService (auth)
  *   - Session-secret material lives under VARLENS_RECOVERY_KEY_DIR
  *     (default `/data`)
- *   - Fail-loud boot: missing required DB topology env aborts before any port
+ *   - Fail-loud boot: missing required DB env aborts before any port
  *     is bound; missing VARLENS_RECOVERY_KEY_DIR (when admin bootstrap is
  *     requested) likewise.
  *
@@ -21,32 +20,30 @@
  *   - production runs `node out/web/server.cjs` via main()
  */
 
+import { randomUUID } from 'node:crypto'
 import { isAbsolute } from 'path'
 
 import Fastify, { type FastifyInstance } from 'fastify'
-import { Pool } from 'pg'
 
-import { buildPostgresPoolConfig, getPostgresStorageConfig } from '../main/storage/config'
+import { getPostgresStorageConfig } from '../main/storage/config'
 import { createPostgresStorageSession } from '../main/storage/postgres/createPostgresStorageSession'
-import { PostgresPublicAnnotationRepository } from '../main/storage/postgres/PostgresPublicAnnotationRepository'
 import type { PostgresStorageSession } from '../main/storage/postgres/PostgresStorageSession'
 import type { StorageSession } from '../main/storage/session'
 import { AdminAlreadyExistsError, PostgresWebAuthService } from './auth/PostgresWebAuthService'
-import { HostedUserDbRouter } from './hosted-user-db-router'
 import { recordAuthAudit } from './server/audit'
 import { buildDispatcher, registerDispatcher } from './server/dispatcher'
 import { registerSessions } from './server/auth'
 import { registerEventStream, WebEventHub } from './server/events'
 import { registerLoginRoute, resolveAppPathPrefix } from './server/login-route'
 import { registerPageGate } from './server/page-gate'
-import { PlatformIdentityService, registerPlatformIdentityRoutes } from './server/platform-identity'
+import { PlatformIdentityService } from './server/platform-identity'
+import { registerPlatformIdentityRoutes } from './server/platform-identity-routes'
 import { readPlatformIdentityConfig } from './server/platform-identity-config'
 import { registerWebRateLimit } from './server/rate-limit'
 import { serializeRequestForTechnicalLog } from './server/request-logging'
 import { registerImportUploadRoutes } from './server/routes/upload-staging'
 import { registerOpenApi } from './server/routes/openapi'
 import { registerStatic } from './server/static'
-import { readWebDbTopology } from './topology'
 import {
   type AppMetrics,
   createAppMetricsFromEnv,
@@ -80,7 +77,7 @@ export interface AdminBootstrapOptions {
 
 /**
  * Empty-object options is intentional: every parameter the web server
- * needs comes from the env (DB topology, VARLENS_RECOVERY_KEY_DIR,
+ * needs comes from the env (database, VARLENS_RECOVERY_KEY_DIR,
  * VARLENS_ADMIN_*).
  * Tests can still pass `admin` to override the env-driven path.
  */
@@ -90,7 +87,6 @@ export interface BuildAppOptions {
 }
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
-  const topology = readWebDbTopology(process.env)
   const appPathPrefix = resolveAppPathPrefix()
   const platformIdentityConfig = readPlatformIdentityConfig(process.env)
   const platformIdentity =
@@ -101,26 +97,16 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   // Validate Postgres config BEFORE building the app; any later
   // failure path means we'd hold a partially-spun Fastify instance,
   // which the SIGTERM tests can't cleanly tear down.
-  const pgConfig =
-    topology.mode === 'hosted'
-      ? getPostgresStorageConfig({
-          ...process.env,
-          VARLENS_PG_URL: topology.controlStateUrl,
-          VARLENS_PG_POOL_MAX: String(topology.pools.controlPoolMax),
-          VARLENS_PG_APPLICATION_NAME: 'varlens-web-control'
-        })
-      : getPostgresStorageConfig(process.env)
+  const pgConfig = getPostgresStorageConfig(process.env)
   if (pgConfig === null) {
     throw new Error(
-      topology.mode === 'hosted'
-        ? 'VARLENS_CONTROL_STATE_PG_URL must be set when VARLENS_WEB_DB_TOPOLOGY=hosted.'
-        : 'VARLENS_PG_URL must be set. The web server is Postgres-only; ' +
-            'set it to the Postgres connection URL before starting the server.'
+      'VARLENS_PG_URL must be set. The web server is Postgres-only; ' +
+        'set it to the instance Postgres connection URL before starting the server.'
     )
   }
 
   const app = Fastify({
-    requestIdHeader: 'x-request-id',
+    genReqId: () => randomUUID(),
     requestIdLogLabel: 'request_id',
     logger: {
       level: process.env.VARLENS_LOG_LEVEL ?? 'info',
@@ -137,50 +123,13 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await registerWebRateLimit(app)
 
   const session: PostgresStorageSession = await createPostgresStorageSession(pgConfig)
-  // Share the storage session's pool with the auth service so we open
-  // exactly one state-capable control connection pool per process. The public getPool()
-  // accessor (added in the QA round on Step 4) makes this contract
-  // type-checked rather than a structural cast.
+  // App data, app users, audit, and optional reference-annotation reads all
+  // share this instance database and this process-wide pool.
   const pool = session.getPool()
-  const controlReadPool =
-    topology.mode === 'hosted'
-      ? new Pool(
-          buildPostgresPoolConfig({
-            ...pgConfig,
-            url: topology.controlReadUrl,
-            applicationName: 'varlens-web-control-read',
-            poolMax: topology.pools.controlPoolMax
-          })
-        )
-      : null
   const authService = new PostgresWebAuthService({
     pool,
-    ...(controlReadPool !== null ? { readPool: controlReadPool } : {}),
     schema: pgConfig.schema
   })
-  const publicAnnotationPool =
-    topology.mode === 'hosted' && topology.publicAnnotationUrl !== undefined
-      ? new Pool(
-          buildPostgresPoolConfig({
-            ...pgConfig,
-            url: topology.publicAnnotationUrl,
-            applicationName: 'varlens-web-public-annotations',
-            poolMax: topology.pools.publicAnnotationPoolMax
-          })
-        )
-      : null
-  const publicAnnotations =
-    publicAnnotationPool === null
-      ? undefined
-      : new PostgresPublicAnnotationRepository(publicAnnotationPool)
-  const hostedRouter =
-    topology.mode === 'hosted'
-      ? new HostedUserDbRouter({
-          topology,
-          authService,
-          ...(publicAnnotations !== undefined ? { publicAnnotations } : {})
-        })
-      : null
 
   if (options.admin !== undefined) {
     await maybeBootstrapAdmin(authService, options.admin, app.log)
@@ -235,13 +184,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     session: session as StorageSession,
     authService,
     events,
-    metrics,
-    ...(hostedRouter !== null
-      ? {
-          resolveSession: (request: Parameters<HostedUserDbRouter['resolveSession']>[0]) =>
-            hostedRouter.resolveSession(request)
-        }
-      : {})
+    metrics
   }
   const { overrides } = buildDispatcher(dispatcherDeps)
   registerImportUploadRoutes(app, dispatcherDeps)
@@ -254,26 +197,19 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
   const readinessHandler = async (_request: unknown, reply: import('fastify').FastifyReply) => {
     const open = await isPostgresHealthy(pool)
-    const controlReadOpen =
-      controlReadPool === null ? true : await isPostgresHealthy(controlReadPool)
-    const publicAnnotationOpen =
-      publicAnnotationPool === null ? true : await isPostgresHealthy(publicAnnotationPool)
-    const allOpen = open && controlReadOpen && publicAnnotationOpen
-    metrics.setDatabaseHealthy(allOpen)
-    if (!allOpen) {
+    metrics.setDatabaseHealthy(open)
+    if (!open) {
       reply.code(503)
       return {
         status: 'unhealthy',
         version: pkg.version,
-        db: { open: allOpen },
-        publicAnnotationDb: { open: publicAnnotationOpen }
+        db: { open: false }
       }
     }
     return {
       status: 'ok',
       version: pkg.version,
-      db: { open: true },
-      publicAnnotationDb: { open: publicAnnotationOpen }
+      db: { open: true }
     }
   }
 
@@ -284,9 +220,6 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
   app.addHook('onClose', async () => {
     try {
-      await hostedRouter?.close()
-      await controlReadPool?.end()
-      await publicAnnotationPool?.end()
       await session.close()
     } catch {
       // ignore close errors during shutdown

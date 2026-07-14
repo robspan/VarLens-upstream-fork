@@ -1,27 +1,17 @@
-import {
-  createHash,
-  createPublicKey,
-  createVerify,
-  randomBytes,
-  timingSafeEqual
-} from 'node:crypto'
+import { createHash, createPublicKey, createVerify, randomBytes } from 'node:crypto'
 
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import type { FastifyRequest } from 'fastify'
 
 import type { UserRole } from '../../shared/auth/auth-constants'
-import type { User } from '../../shared/auth/types'
 import type { PostgresWebAuthService } from '../auth/PostgresWebAuthService'
-import { sanitizeNextParam } from './login-route'
 import type { PlatformIdentityConfig } from './platform-identity-config'
 
-const OIDC_STATE_TTL_MS = 10 * 60 * 1000
 const JWT_CLOCK_SKEW_SECONDS = 60
 const JWKS_CACHE_TTL_MS = 5 * 60 * 1000
 const ENTITLEMENT_CACHE_TTL_MS = 30 * 1000
 const ENTITLEMENT_CACHE_MAX_ENTRIES = 500
 const OUTBOUND_FETCH_TIMEOUT_MS = 10_000
 const SUPPORTED_JWT_ALG = 'RS256'
-const MAX_PENDING_OIDC_STATES = 5
 
 interface OidcDiscovery {
   issuer: string
@@ -51,21 +41,12 @@ interface EntitlementResponse {
   allowed?: boolean
   role?: string
   status?: string
-  resourceStatus?: string
   reason?: string
 }
 
 interface VerifiedJwt {
   header: Record<string, unknown>
   payload: Record<string, unknown>
-}
-
-interface PendingOidcState {
-  nonce: string
-  codeVerifier: string
-  next: string
-  createdAt: number
-  mfaRetry?: boolean
 }
 
 export interface PlatformSessionUser {
@@ -115,19 +96,6 @@ function claimStringArray(value: unknown): string[] {
   return []
 }
 
-function bearerToken(request: FastifyRequest): string {
-  const authorization = request.headers.authorization
-  const value = Array.isArray(authorization) ? authorization[0] : authorization
-  if (typeof value !== 'string' || !value.startsWith('Bearer ')) return ''
-  return value.slice('Bearer '.length)
-}
-
-function tokenMatches(candidate: string, expected: string): boolean {
-  const left = Buffer.from(candidate)
-  const right = Buffer.from(expected)
-  return left.length === right.length && timingSafeEqual(left, right)
-}
-
 async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), OUTBOUND_FETCH_TIMEOUT_MS)
@@ -161,7 +129,10 @@ function assertTemporalClaims(payload: Record<string, unknown>, nowSeconds: numb
   }
 
   const iat = payload.iat
-  if (typeof iat === 'number' && iat - JWT_CLOCK_SKEW_SECONDS > nowSeconds) {
+  if (typeof iat !== 'number' || !Number.isFinite(iat)) {
+    throw new Error('JWT iat claim is required')
+  }
+  if (iat - JWT_CLOCK_SKEW_SECONDS > nowSeconds) {
     throw new Error('JWT iat is in the future')
   }
 }
@@ -214,6 +185,9 @@ export function verifyPlatformJwt(params: {
   if (!claimIncludes(payload.aud, params.audience)) {
     throw new Error('JWT audience does not match platform audience')
   }
+  if (Array.isArray(payload.aud) && payload.aud.length > 1 && payload.azp !== params.audience) {
+    throw new Error('JWT azp does not match platform audience')
+  }
   assertTemporalClaims(payload, params.nowSeconds ?? Math.floor(Date.now() / 1000))
 
   return { header, payload }
@@ -235,6 +209,7 @@ export function assertPlatformMfaClaims(params: {
   requiredAcr: string
   requiredAmr: string[]
   expectedNonce: string
+  nowSeconds?: number
 }): void {
   if (params.payload.nonce !== params.expectedNonce) {
     throw new PlatformMfaClaimError('OIDC nonce does not match', 'nonce')
@@ -247,6 +222,17 @@ export function assertPlatformMfaClaims(params: {
     if (!amr.includes(required)) {
       throw new PlatformMfaClaimError(`required MFA amr is missing: ${required}`, 'amr', required)
     }
+  }
+  const nowSeconds = params.nowSeconds ?? Math.floor(Date.now() / 1000)
+  const authTime = params.payload.auth_time
+  if (typeof authTime !== 'number' || !Number.isFinite(authTime)) {
+    throw new PlatformMfaClaimError('OIDC auth_time claim is required', 'acr')
+  }
+  if (
+    authTime - JWT_CLOCK_SKEW_SECONDS > nowSeconds ||
+    nowSeconds - authTime > 10 * 60 + JWT_CLOCK_SKEW_SECONDS
+  ) {
+    throw new PlatformMfaClaimError('OIDC authentication is not fresh', 'acr')
   }
 }
 
@@ -282,137 +268,6 @@ function callbackRedirectUri(
   return `${requestOrigin(request)}${appPathPrefix}${callbackPath}`
 }
 
-function redirectWithNoStore(reply: FastifyReply, location: string): FastifyReply {
-  reply.header('cache-control', 'no-store')
-  reply.code(302)
-  reply.header('location', location)
-  return reply
-}
-
-function appendQueryParam(location: string, name: string, value: string): string {
-  const separator = location.includes('?') ? '&' : '?'
-  return `${location}${separator}${encodeURIComponent(name)}=${encodeURIComponent(value)}`
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
-}
-
-function platformLoginErrorHtml(params: { retryLocation: string }): string {
-  const retryLocation = escapeHtml(params.retryLocation)
-  return `<!doctype html>
-<html lang="de">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Anmeldung fehlgeschlagen</title>
-  <style>
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      background: #f6f2ed;
-      color: #151515;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-    main {
-      width: min(520px, calc(100vw - 32px));
-      padding: 40px;
-      border-top: 4px solid #b49a62;
-      background: #fff;
-      box-shadow: 0 18px 60px rgba(0, 0, 0, 0.16);
-    }
-    h1 {
-      margin: 0 0 14px;
-      font-size: 1.6rem;
-      line-height: 1.2;
-    }
-    p {
-      margin: 0 0 24px;
-      line-height: 1.5;
-    }
-    a {
-      display: inline-block;
-      padding: 12px 18px;
-      border-radius: 4px;
-      background: #6f6755;
-      color: #fff;
-      font-weight: 700;
-      text-decoration: none;
-    }
-  </style>
-</head>
-<body>
-  <main>
-    <h1>Anmeldung konnte nicht abgeschlossen werden</h1>
-    <p>Bitte starten Sie die Anmeldung erneut. Falls das Problem weiter besteht, wenden Sie sich an den LB-MAP-Support.</p>
-    <a href="${retryLocation}">Erneut anmelden</a>
-  </main>
-</body>
-</html>`
-}
-
-function sendPlatformLoginError(reply: FastifyReply, retryLocation: string): FastifyReply {
-  reply.header('cache-control', 'no-store')
-  reply.type('text/html; charset=utf-8')
-  reply.code(401)
-  return reply.send(platformLoginErrorHtml({ retryLocation }))
-}
-
-function activePendingOidcStates(
-  states: Record<string, PendingOidcState> | undefined,
-  now: number
-): Record<string, PendingOidcState> {
-  if (states === undefined) return {}
-  return Object.fromEntries(
-    Object.entries(states).filter(([, pending]) => now - pending.createdAt <= OIDC_STATE_TTL_MS)
-  )
-}
-
-function rememberPendingOidcState(params: {
-  request: FastifyRequest
-  state: string
-  pending: PendingOidcState
-  now?: number
-}): void {
-  const now = params.now ?? Date.now()
-  const pendingStates = activePendingOidcStates(params.request.session.platformOidc, now)
-  pendingStates[params.state] = params.pending
-  const bounded = Object.fromEntries(
-    Object.entries(pendingStates)
-      .sort(([, left], [, right]) => right.createdAt - left.createdAt)
-      .slice(0, MAX_PENDING_OIDC_STATES)
-  )
-  params.request.session.platformOidc = bounded
-}
-
-function consumePendingOidcState(params: {
-  request: FastifyRequest
-  state: string
-  now?: number
-}): PendingOidcState | undefined {
-  const now = params.now ?? Date.now()
-  const pendingStates = { ...(params.request.session.platformOidc ?? {}) }
-  const pending = pendingStates[params.state]
-  delete pendingStates[params.state]
-  const activeStates = activePendingOidcStates(pendingStates, now)
-  params.request.session.platformOidc =
-    Object.keys(activeStates).length > 0 ? activeStates : undefined
-  return pending
-}
-
-function clearAuthenticatedSession(request: FastifyRequest): void {
-  delete request.session.user
-  delete request.session.authMode
-  request.session.mustChangePassword = false
-}
-
 export class PlatformIdentityService {
   private discoveryCache: Promise<OidcDiscovery> | null = null
   private jwksCache: { expiresAt: number; keys: Jwk[] } | null = null
@@ -430,12 +285,9 @@ export class PlatformIdentityService {
     subject: string
   ): Promise<PlatformSessionUser> {
     const entitlement = await this.requireActiveEntitlement(subject)
-    const liveUser = await authService.getUser(subject)
+    const liveUser = await authService.getPlatformUser(subject)
     if (liveUser === undefined || liveUser.is_active !== 1) {
       throw new Error('platform user is not provisioned or active in VarLens')
-    }
-    if (this.config.requireHostedResource) {
-      this.assertHostedResourceActive(liveUser)
     }
     return {
       id: liveUser.id,
@@ -502,12 +354,14 @@ export class PlatformIdentityService {
       requiredAmr: this.config.requiredAmr,
       expectedNonce: params.expectedNonce
     })
-    await this.verifyJwtWithJwks({
-      token: tokenResponse.access_token,
-      issuer: this.config.issuerUrl,
-      audience: this.config.audience,
-      discovery
-    })
+    if (this.config.verifyAccessToken) {
+      await this.verifyJwtWithJwks({
+        token: tokenResponse.access_token,
+        issuer: this.config.issuerUrl,
+        audience: this.config.audience,
+        discovery
+      })
+    }
     return { subject: requireStringClaim(idToken.payload, 'sub') }
   }
 
@@ -540,8 +394,8 @@ export class PlatformIdentityService {
     if (entitlement.active !== true && entitlement.allowed !== true) {
       throw new Error(`platform entitlement denied: ${entitlement.reason ?? 'not-allowed'}`)
     }
-    if (entitlement.status !== 'active' || entitlement.resourceStatus !== 'active') {
-      throw new Error('platform entitlement or resource is not active')
+    if (entitlement.status !== 'active') {
+      throw new Error('platform entitlement is not active')
     }
     if (typeof entitlement.role !== 'string' || !isUserRole(entitlement.role)) {
       throw new Error('platform entitlement role is not valid for VarLens')
@@ -558,15 +412,6 @@ export class PlatformIdentityService {
       expiresAt: Date.now() + ENTITLEMENT_CACHE_TTL_MS
     })
     return result
-  }
-
-  private assertHostedResourceActive(user: User): void {
-    if (user.private_db_status !== 'active') {
-      throw new Error('hosted VarLens private database is not active for platform user')
-    }
-    if (typeof user.private_db_secret_ref !== 'string' || user.private_db_secret_ref === '') {
-      throw new Error('hosted VarLens private database secret is missing for platform user')
-    }
   }
 
   private async exchangeCode(params: {
@@ -680,193 +525,4 @@ export class PlatformIdentityService {
       return verifyPlatformJwt({ ...params, jwks: refreshedKeys })
     }
   }
-}
-
-function callbackQuery(request: FastifyRequest): { code?: string; state?: string; error?: string } {
-  const query = (request.query ?? {}) as Record<string, unknown>
-  return {
-    code: typeof query.code === 'string' ? query.code : undefined,
-    state: typeof query.state === 'string' ? query.state : undefined,
-    error: typeof query.error === 'string' ? query.error : undefined
-  }
-}
-
-export function registerPlatformIdentityRoutes(
-  app: FastifyInstance,
-  options: {
-    identity: PlatformIdentityService
-    authService: PostgresWebAuthService
-    appPathPrefix: string
-    audit?: (input: PlatformIdentityAuditInput) => Promise<void>
-  }
-): void {
-  const auditBestEffort = async (input: PlatformIdentityAuditInput): Promise<void> => {
-    try {
-      await options.audit?.(input)
-    } catch (error) {
-      app.log.warn({ err: error, action: input.action }, 'platform identity audit failed')
-    }
-  }
-
-  app.post('/platform/provisioning/users', { schema: { hide: true } }, async (request, reply) => {
-    const expectedToken = options.identity.config.provisioningToken
-    if (expectedToken === undefined || !tokenMatches(bearerToken(request), expectedToken)) {
-      reply.code(403)
-      return { error: 'forbidden' }
-    }
-
-    const body = (request.body ?? {}) as Record<string, unknown>
-    const subject = typeof body.subject === 'string' ? body.subject.trim() : ''
-    const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : subject
-    const role = typeof body.role === 'string' ? body.role.trim() : 'user'
-    const privateDbSecretRef =
-      typeof body.privateDbSecretRef === 'string' && body.privateDbSecretRef.trim() !== ''
-        ? body.privateDbSecretRef.trim()
-        : undefined
-    const privateDbStatus =
-      typeof body.privateDbStatus === 'string' ? body.privateDbStatus.trim() : undefined
-    const publicAnnotationSnapshotId =
-      typeof body.publicAnnotationSnapshotId === 'string' &&
-      body.publicAnnotationSnapshotId.trim() !== ''
-        ? body.publicAnnotationSnapshotId.trim()
-        : undefined
-
-    if (subject === '' || !isUserRole(role)) {
-      reply.code(400)
-      return { error: 'invalid-platform-user' }
-    }
-    if (
-      privateDbStatus !== undefined &&
-      privateDbStatus !== 'pending' &&
-      privateDbStatus !== 'active' &&
-      privateDbStatus !== 'failed' &&
-      privateDbStatus !== 'revoked'
-    ) {
-      reply.code(400)
-      return { error: 'invalid-private-db-status' }
-    }
-
-    const user = await options.authService.upsertPlatformUser({
-      username: subject,
-      displayName,
-      role,
-      ...(privateDbSecretRef !== undefined ? { privateDbSecretRef } : {}),
-      ...(privateDbStatus !== undefined
-        ? { privateDbStatus: privateDbStatus as 'pending' | 'active' | 'failed' | 'revoked' }
-        : {}),
-      ...(publicAnnotationSnapshotId !== undefined ? { publicAnnotationSnapshotId } : {})
-    })
-    return { user }
-  })
-
-  app.get('/auth/platform/start', { schema: { hide: true } }, async (request, reply) => {
-    const query = (request.query ?? {}) as Record<string, unknown>
-    const next = sanitizeNextParam(query.next, options.appPathPrefix)
-    const mfaRetry = query.mfaRetry === '1'
-    clearAuthenticatedSession(request)
-    const authorization = await options.identity.createAuthorizationUrl({
-      request,
-      appPathPrefix: options.appPathPrefix,
-      next,
-      forceFreshLogin: !mfaRetry
-    })
-    rememberPendingOidcState({
-      request,
-      state: authorization.state,
-      pending: {
-        nonce: authorization.nonce,
-        codeVerifier: authorization.codeVerifier,
-        next,
-        createdAt: Date.now(),
-        ...(mfaRetry ? { mfaRetry: true } : {})
-      }
-    })
-    return redirectWithNoStore(reply, authorization.authorizationUrl).send()
-  })
-
-  app.get(
-    options.identity.config.callbackPath,
-    { schema: { hide: true } },
-    async (request, reply) => {
-      const query = callbackQuery(request)
-      if (query.error !== undefined) {
-        await auditBestEffort({ action: 'auth_login_failure', reason: 'oidc-error' })
-        request.session.delete()
-        return sendPlatformLoginError(
-          reply,
-          options.identity.buildStartLocation(options.appPathPrefix, '')
-        )
-      }
-      if (query.code === undefined || query.state === undefined) {
-        await auditBestEffort({ action: 'auth_login_failure', reason: 'invalid-callback' })
-        request.session.delete()
-        return redirectWithNoStore(
-          reply,
-          options.identity.buildStartLocation(options.appPathPrefix, '')
-        ).send()
-      }
-      const pending = consumePendingOidcState({ request, state: query.state })
-      if (pending === undefined) {
-        await auditBestEffort({ action: 'auth_login_failure', reason: 'invalid-state' })
-        if (request.session.user !== undefined) {
-          return redirectWithNoStore(reply, options.appPathPrefix || '/').send()
-        }
-        request.session.delete()
-        return redirectWithNoStore(
-          reply,
-          options.identity.buildStartLocation(options.appPathPrefix, '')
-        ).send()
-      }
-      if (Date.now() - pending.createdAt > OIDC_STATE_TTL_MS) {
-        await auditBestEffort({ action: 'auth_login_failure', reason: 'expired-state' })
-        request.session.delete()
-        return redirectWithNoStore(
-          reply,
-          options.identity.buildStartLocation(options.appPathPrefix, '')
-        ).send()
-      }
-
-      try {
-        const { subject } = await options.identity.completeCallback({
-          request,
-          appPathPrefix: options.appPathPrefix,
-          code: query.code,
-          expectedNonce: pending.nonce,
-          codeVerifier: pending.codeVerifier
-        })
-        const sessionUser = await options.identity.resolveSessionUser(options.authService, subject)
-        request.session.user = sessionUser
-        request.session.authMode = 'platform'
-        request.session.mustChangePassword = false
-        await auditBestEffort({
-          action: 'auth_login_success',
-          subject,
-          role: sessionUser.role
-        })
-        return redirectWithNoStore(reply, pending.next).send()
-      } catch (error) {
-        request.session.delete()
-        if (
-          error instanceof PlatformMfaClaimError &&
-          error.kind === 'amr' &&
-          error.missingAmr === 'otp' &&
-          pending.mfaRetry !== true
-        ) {
-          await auditBestEffort({ action: 'auth_login_failure', reason: 'missing-otp-amr-retry' })
-          const retryLocation = appendQueryParam(
-            options.identity.buildStartLocation(options.appPathPrefix, pending.next),
-            'mfaRetry',
-            '1'
-          )
-          return redirectWithNoStore(reply, retryLocation).send()
-        }
-        request.log.warn({ err: error }, 'platform identity callback denied')
-        await auditBestEffort({ action: 'auth_login_failure', reason: 'platform-denied' })
-        return sendPlatformLoginError(
-          reply,
-          options.identity.buildStartLocation(options.appPathPrefix, pending.next)
-        )
-      }
-    }
-  )
 }

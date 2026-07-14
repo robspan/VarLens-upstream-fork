@@ -10,8 +10,7 @@ export interface PlatformIdentityConfig {
   requiredAmr: string[]
   entitlementsUrl: string
   entitlementsToken?: string
-  provisioningToken?: string
-  requireHostedResource: boolean
+  verifyAccessToken: boolean
 }
 
 function hasValue(value: string | undefined): value is string {
@@ -64,6 +63,17 @@ function requirePath(name: string, raw: string): string {
   return raw.length > 1 && raw.endsWith('/') ? raw.slice(0, -1) : raw
 }
 
+function assertStrongPlatformToken(name: string, value: string): void {
+  const looksHex = /^[0-9a-fA-F]+$/.test(value)
+  const decodedBytes = looksHex && value.length % 2 === 0 ? value.length / 2 : null
+  const strongEnough = value.length >= 32 && (decodedBytes === null || decodedBytes >= 32)
+  if (!strongEnough) {
+    throw new Error(
+      `${name} must be at least 32 characters (or, if hex-encoded, decode to at least 32 bytes)`
+    )
+  }
+}
+
 function parseRequiredAmr(raw: string): string[] {
   const values = raw
     .split(',')
@@ -101,7 +111,9 @@ export function readPlatformIdentityConfig(
       : '/auth/platform/callback'
   )
   const entitlementsToken = env.VARLENS_PLATFORM_ENTITLEMENTS_TOKEN?.trim()
-  const provisioningToken = env.VARLENS_PLATFORM_PROVISIONING_TOKEN?.trim()
+  if (entitlementsToken !== undefined && entitlementsToken !== '') {
+    assertStrongPlatformToken('VARLENS_PLATFORM_ENTITLEMENTS_TOKEN', entitlementsToken)
+  }
 
   return {
     mode: 'platform',
@@ -113,8 +125,7 @@ export function readPlatformIdentityConfig(
     requiredAmr,
     entitlementsUrl: entitlementsUrl.replace(/\/$/, ''),
     ...(entitlementsToken !== undefined && entitlementsToken !== '' ? { entitlementsToken } : {}),
-    ...(provisioningToken !== undefined && provisioningToken !== '' ? { provisioningToken } : {}),
-    requireHostedResource: env.VARLENS_WEB_DB_TOPOLOGY === 'hosted'
+    verifyAccessToken: env.VARLENS_PLATFORM_VERIFY_ACCESS_TOKEN === 'true'
   }
 }
 

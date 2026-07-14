@@ -1,6 +1,9 @@
 # Web 11 / Web 12 — hosted DB foundation and annotation integration
 
-Status: implementation started on fork main; local public sync proof complete
+> **Superseded 2026-07-10.** Retained as implementation history only. The active
+> contract is `../../specs/2026-07-14-single-db-web-runtime.md`.
+
+Status: superseded 2026-07-10
 Created: 2026-06-22
 
 ## Implementation Status

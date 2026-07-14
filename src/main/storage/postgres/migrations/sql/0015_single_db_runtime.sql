@@ -12,6 +12,39 @@ ALTER TABLE "__schema__"."users"
   DROP COLUMN IF EXISTS private_db_status,
   DROP COLUMN IF EXISTS public_annotation_snapshot_id;
 
+-- Platform login is an explicit, operator-created binding.  The marker keeps
+-- an unrelated local-password account with the same username from satisfying
+-- the OIDC subject check.  Existing sentinel rows from pre-0015 deployments
+-- are classified before the singleton index is installed.
+ALTER TABLE "__schema__"."users"
+  ADD COLUMN IF NOT EXISTS auth_source TEXT NOT NULL DEFAULT 'local';
+
+UPDATE "__schema__"."users"
+SET auth_source = 'platform'
+WHERE password_hash = 'platform-identity-disabled-local-password';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'users_auth_source_check'
+      AND conrelid = '"__schema__"."users"'::regclass
+  ) THEN
+    ALTER TABLE "__schema__"."users"
+      ADD CONSTRAINT users_auth_source_check
+      CHECK (auth_source IN ('local', 'platform'));
+  END IF;
+END
+$$;
+
+-- A database is one VarLens instance for one platform subject.  Keep this
+-- invariant in PostgreSQL so concurrent operator jobs cannot bind a second
+-- subject and expose the instance's unscoped application data.
+CREATE UNIQUE INDEX IF NOT EXISTS users_single_platform_identity
+  ON "__schema__"."users" (auth_source)
+  WHERE auth_source = 'platform';
+
 -- Reference annotation data is optional and, when supplied, is copied into
 -- this instance schema by an external operator workflow. VarLens only reads it.
 CREATE TABLE IF NOT EXISTS "__schema__"."public_annotation_snapshots" (

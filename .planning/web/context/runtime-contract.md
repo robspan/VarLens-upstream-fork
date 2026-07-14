@@ -24,6 +24,24 @@ The operator command is for deployment/IAC Jobs only; it is not an HTTP API and
 must not be reachable from request-serving runtime. It mutates only the
 app-local user row in the already-provisioned instance database. It does not
 create databases, roles, Secrets, Services, routes, or application instances.
+Invoke it as:
+
+```bash
+VARLENS_PG_URL='postgresql://...' \
+  node out/web/provision-platform-user.cjs \
+  --subject '<OIDC sub>' \
+  --display-name '<display name>' \
+  --role user
+```
+
+`--subject` and `--display-name` are required; `--role` is optional and accepts
+only `user` (the default) or `admin`. `VARLENS_PG_SCHEMA` is optional and has
+the same default as the server. Success writes one JSON object with
+`ok: true`, `subject`, and `role` to stdout and exits `0`. Invalid arguments,
+a missing database URL, a local-password username collision, or an attempt to
+bind a second platform subject writes `ok: false` plus a non-secret error to
+stderr and exits non-zero. Re-running the command for the same subject is an
+idempotent update and reactivates that binding.
 
 ## Required Runtime Environment
 

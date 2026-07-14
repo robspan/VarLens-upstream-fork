@@ -16,7 +16,6 @@ interface PendingOidcState {
   codeVerifier: string
   next: string
   createdAt: number
-  mfaRetry?: boolean
 }
 
 function redirectWithNoStore(reply: FastifyReply, location: string): FastifyReply {
@@ -24,11 +23,6 @@ function redirectWithNoStore(reply: FastifyReply, location: string): FastifyRepl
   reply.code(302)
   reply.header('location', location)
   return reply
-}
-
-function appendQueryParam(location: string, name: string, value: string): string {
-  const separator = location.includes('?') ? '&' : '?'
-  return `${location}${separator}${encodeURIComponent(name)}=${encodeURIComponent(value)}`
 }
 
 function escapeHtml(value: string): string {
@@ -173,13 +167,12 @@ export function registerPlatformIdentityRoutes(
   app.get('/auth/platform/start', { schema: { hide: true } }, async (request, reply) => {
     const query = (request.query ?? {}) as Record<string, unknown>
     const next = sanitizeNextParam(query.next, options.appPathPrefix)
-    const mfaRetry = query.mfaRetry === '1'
     clearAuthenticatedSession(request)
     const authorization = await options.identity.createAuthorizationUrl({
       request,
       appPathPrefix: options.appPathPrefix,
       next,
-      forceFreshLogin: !mfaRetry
+      forceFreshLogin: true
     })
     rememberPendingOidcState({
       request,
@@ -188,8 +181,7 @@ export function registerPlatformIdentityRoutes(
         nonce: authorization.nonce,
         codeVerifier: authorization.codeVerifier,
         next,
-        createdAt: Date.now(),
-        ...(mfaRetry ? { mfaRetry: true } : {})
+        createdAt: Date.now()
       }
     })
     return redirectWithNoStore(reply, authorization.authorizationUrl).send()
@@ -257,22 +249,12 @@ export function registerPlatformIdentityRoutes(
         return redirectWithNoStore(reply, pending.next).send()
       } catch (error) {
         request.session.delete()
-        if (
-          error instanceof PlatformMfaClaimError &&
-          error.kind === 'amr' &&
-          error.missingAmr === 'otp' &&
-          pending.mfaRetry !== true
-        ) {
-          await auditBestEffort({ action: 'auth_login_failure', reason: 'missing-otp-amr-retry' })
-          const retryLocation = appendQueryParam(
-            options.identity.buildStartLocation(options.appPathPrefix, pending.next),
-            'mfaRetry',
-            '1'
-          )
-          return redirectWithNoStore(reply, retryLocation).send()
-        }
+        const reason =
+          error instanceof PlatformMfaClaimError && error.kind === 'amr'
+            ? 'missing-required-amr'
+            : 'platform-denied'
         request.log.warn({ err: error }, 'platform identity callback denied')
-        await auditBestEffort({ action: 'auth_login_failure', reason: 'platform-denied' })
+        await auditBestEffort({ action: 'auth_login_failure', reason })
         return sendPlatformLoginError(
           reply,
           options.identity.buildStartLocation(options.appPathPrefix, pending.next)

@@ -129,7 +129,10 @@ function assertTemporalClaims(payload: Record<string, unknown>, nowSeconds: numb
   }
 
   const iat = payload.iat
-  if (typeof iat === 'number' && iat - JWT_CLOCK_SKEW_SECONDS > nowSeconds) {
+  if (typeof iat !== 'number' || !Number.isFinite(iat)) {
+    throw new Error('JWT iat claim is required')
+  }
+  if (iat - JWT_CLOCK_SKEW_SECONDS > nowSeconds) {
     throw new Error('JWT iat is in the future')
   }
 }
@@ -182,6 +185,9 @@ export function verifyPlatformJwt(params: {
   if (!claimIncludes(payload.aud, params.audience)) {
     throw new Error('JWT audience does not match platform audience')
   }
+  if (Array.isArray(payload.aud) && payload.aud.length > 1 && payload.azp !== params.audience) {
+    throw new Error('JWT azp does not match platform audience')
+  }
   assertTemporalClaims(payload, params.nowSeconds ?? Math.floor(Date.now() / 1000))
 
   return { header, payload }
@@ -203,6 +209,7 @@ export function assertPlatformMfaClaims(params: {
   requiredAcr: string
   requiredAmr: string[]
   expectedNonce: string
+  nowSeconds?: number
 }): void {
   if (params.payload.nonce !== params.expectedNonce) {
     throw new PlatformMfaClaimError('OIDC nonce does not match', 'nonce')
@@ -215,6 +222,17 @@ export function assertPlatformMfaClaims(params: {
     if (!amr.includes(required)) {
       throw new PlatformMfaClaimError(`required MFA amr is missing: ${required}`, 'amr', required)
     }
+  }
+  const nowSeconds = params.nowSeconds ?? Math.floor(Date.now() / 1000)
+  const authTime = params.payload.auth_time
+  if (typeof authTime !== 'number' || !Number.isFinite(authTime)) {
+    throw new PlatformMfaClaimError('OIDC auth_time claim is required', 'acr')
+  }
+  if (
+    authTime - JWT_CLOCK_SKEW_SECONDS > nowSeconds ||
+    nowSeconds - authTime > 10 * 60 + JWT_CLOCK_SKEW_SECONDS
+  ) {
+    throw new PlatformMfaClaimError('OIDC authentication is not fresh', 'acr')
   }
 }
 
@@ -267,7 +285,7 @@ export class PlatformIdentityService {
     subject: string
   ): Promise<PlatformSessionUser> {
     const entitlement = await this.requireActiveEntitlement(subject)
-    const liveUser = await authService.getUser(subject)
+    const liveUser = await authService.getPlatformUser(subject)
     if (liveUser === undefined || liveUser.is_active !== 1) {
       throw new Error('platform user is not provisioned or active in VarLens')
     }

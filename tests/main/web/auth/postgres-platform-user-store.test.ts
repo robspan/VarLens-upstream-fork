@@ -11,10 +11,11 @@ interface QueryResponse {
 class FakePool {
   queries: Array<{ text: string; values: unknown[] }> = []
 
-  constructor(private readonly response: QueryResponse) {}
+  constructor(private readonly response: QueryResponse | Error) {}
 
   async query(text: string, values: unknown[]): Promise<QueryResponse> {
     this.queries.push({ text, values })
+    if (this.response instanceof Error) throw this.response
     return this.response
   }
 }
@@ -38,6 +39,7 @@ describe('PostgresPlatformUserStore', () => {
       'platform-identity-disabled-local-password'
     ])
     expect(pool.queries[0].text).toContain('"instance_alice"."users"')
+    expect(pool.queries[0].text).toContain("auth_source = 'platform'")
     expect(pool.queries[0].text).not.toMatch(/private_db|workspace|secret/i)
   })
 
@@ -63,5 +65,17 @@ describe('PostgresPlatformUserStore', () => {
       users.upsert({ subject: 'oidc-subject-1', displayName: 'Alice', role: ROLE_ADMIN })
     ).resolves.toMatchObject({ role: ROLE_ADMIN })
     expect(pool.queries[0].text).toMatch(/ON CONFLICT \(username\)/)
+  })
+
+  it('rejects a second platform subject at the database singleton boundary', async () => {
+    const conflict = Object.assign(new Error('duplicate key'), {
+      code: '23505',
+      constraint: 'users_single_platform_identity'
+    })
+    const users = new PostgresPlatformUserStore(new FakePool(conflict) as never, 'public')
+
+    await expect(
+      users.upsert({ subject: 'second-subject', displayName: 'Mallory', role: ROLE_USER })
+    ).rejects.toThrow(/already bound to another platform subject/i)
   })
 })

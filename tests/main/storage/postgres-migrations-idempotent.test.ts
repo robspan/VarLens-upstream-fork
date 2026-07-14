@@ -121,6 +121,12 @@ describe.skipIf(!RUN)('Postgres migrations: real-instance idempotency', () => {
         (action_type, entity_type, entity_key, new_value, user_name)
        VALUES ('star', 'variant_annotation', '1:100:A:G', '{"starred":1}', 'legacy-user')`
     )
+    await probeClient.query(
+      `INSERT INTO "${schema}".users
+        (username, display_name, password_hash, role, must_change_password)
+       VALUES ('legacy-platform-subject', 'Legacy platform user',
+         'platform-identity-disabled-local-password', 'user', FALSE)`
+    )
 
     const result = await new PostgresMigrationRunner(pool, schema, POSTGRES_MIGRATIONS).migrate()
     expect(result.applied.length).toBeGreaterThan(0)
@@ -180,9 +186,24 @@ describe.skipIf(!RUN)('Postgres migrations: real-instance idempotency', () => {
     expectColType('created_at', 'timestamptz', 'NO', true)
     expectColType('created_by', 'int8', 'YES', false)
     expectColType('updated_at', 'timestamptz', 'YES', false)
+    expectColType('auth_source', 'text', 'NO', true)
     expect(cols.has('private_db_secret_ref')).toBe(false)
     expect(cols.has('private_db_status')).toBe(false)
     expect(cols.has('public_annotation_snapshot_id')).toBe(false)
+
+    await expect(
+      probeClient.query(
+        `SELECT auth_source FROM "${schema}".users WHERE username = 'legacy-platform-subject'`
+      )
+    ).resolves.toMatchObject({ rows: [{ auth_source: 'platform' }] })
+    await expect(
+      probeClient.query(
+        `INSERT INTO "${schema}".users
+          (username, display_name, password_hash, role, auth_source)
+         VALUES ('second-platform-subject', 'Second platform user',
+           'platform-identity-disabled-local-password', 'user', 'platform')`
+      )
+    ).rejects.toThrow()
 
     expect(tableNames).toEqual(
       expect.arrayContaining([

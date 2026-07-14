@@ -11,7 +11,7 @@ interface PublicAnnotationBatchResult {
 describe('VarLens public annotation lookup smoke', () => {
   beforeEachAuthenticatedSmoke()
 
-  it('serves synced public annotation records to the hosted app user', () => {
+  it('serves reference annotation records copied into the instance database', () => {
     cy.varlensApi('auth', 'currentUser').then((response) => {
       expect(response.status, 'current user HTTP status').to.eq(200)
       const user = response.body as { role?: string }

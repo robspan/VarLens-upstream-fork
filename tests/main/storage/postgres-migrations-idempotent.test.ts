@@ -21,6 +21,7 @@ import { randomBytes } from 'node:crypto'
 
 import { POSTGRES_MIGRATIONS } from '../../../src/main/storage/postgres/migrations/definitions'
 import { PostgresMigrationRunner } from '../../../src/main/storage/postgres/migrations/PostgresMigrationRunner'
+import { PostgresPublicAnnotationRepository } from '../../../src/main/storage/postgres/PostgresPublicAnnotationRepository'
 import { Pool } from 'pg'
 
 const RUN = process.env.VARLENS_RUN_POSTGRES_E2E === '1'
@@ -179,6 +180,57 @@ describe.skipIf(!RUN)('Postgres migrations: real-instance idempotency', () => {
     expectColType('created_at', 'timestamptz', 'NO', true)
     expectColType('created_by', 'int8', 'YES', false)
     expectColType('updated_at', 'timestamptz', 'YES', false)
+    expect(cols.has('private_db_secret_ref')).toBe(false)
+    expect(cols.has('private_db_status')).toBe(false)
+    expect(cols.has('public_annotation_snapshot_id')).toBe(false)
+
+    expect(tableNames).toEqual(
+      expect.arrayContaining([
+        'public_annotation_snapshots',
+        'public_annotation_files',
+        'public_annotation_variant_records'
+      ])
+    )
+
+    await probeClient.query(
+      `INSERT INTO "${schema}".public_annotation_snapshots
+        (snapshot_id, schema_version, mapping_version, content_hash, manifest_checksum,
+         license_matrix_checksum, source_manifest_checksum, stored_manifest_json)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, '{}'::jsonb)`,
+      [
+        'copied-snapshot',
+        'varlens.public-annotation-snapshot.v1',
+        'copy-v1',
+        `sha256:${'a'.repeat(64)}`,
+        `sha256:${'b'.repeat(64)}`,
+        `sha256:${'c'.repeat(64)}`,
+        `sha256:${'d'.repeat(64)}`
+      ]
+    )
+    await probeClient.query(
+      `INSERT INTO "${schema}".public_annotation_files (snapshot_id, role, path)
+       VALUES ('copied-snapshot', 'reference_json', 'copied/reference.json')`
+    )
+    await probeClient.query(
+      `INSERT INTO "${schema}".public_annotation_variant_records
+        (snapshot_id, chr, pos, ref, alt, source_id, field_name, field_value,
+         evidence_json, provenance_json)
+       VALUES ('copied-snapshot', '1', 12345, 'A', 'G', 'varvis',
+         'clinical_significance', '"pathogenic"'::jsonb, '{}'::jsonb, '{}'::jsonb)`
+    )
+    const copiedAnnotations = new PostgresPublicAnnotationRepository(pool, schema)
+    await expect(
+      copiedAnnotations.getReferencesForVariant({ chr: '1', pos: 12345, ref: 'A', alt: 'G' })
+    ).resolves.toMatchObject({
+      snapshots: [expect.objectContaining({ snapshotId: 'copied-snapshot' })],
+      variantRecords: [
+        expect.objectContaining({
+          sourceId: 'varvis',
+          fieldName: 'clinical_significance',
+          fieldValue: 'pathogenic'
+        })
+      ]
+    })
 
     // Role CHECK must enumerate exactly admin + user, the same enum as SQLite
     // migrations.ts v12. The shared constants module is the cross-backend

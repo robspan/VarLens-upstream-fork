@@ -190,6 +190,7 @@ describe('web dispatcher adapters: read seams', () => {
     expect(reply.code).not.toHaveBeenCalled()
     expect(result).toMatchObject({
       backend: 'postgres',
+      workspace: { hostedConnectionLifecycle: false },
       export: { variants: false, cohort: false, streaming: false }
     })
   })

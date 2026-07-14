@@ -16,8 +16,7 @@ function baseEnv(): NodeJS.ProcessEnv {
     VARLENS_PLATFORM_REQUIRED_AMR: 'pwd,otp',
     VARLENS_PLATFORM_ENTITLEMENTS_URL:
       'http://lb-map-operations.lb-map-operations-dev.svc.cluster.local/api/identity/entitlements/varlens/dev',
-    VARLENS_PLATFORM_ENTITLEMENTS_TOKEN: 'opaque-token',
-    VARLENS_PLATFORM_PROVISIONING_TOKEN: 'provisioning-token'
+    VARLENS_PLATFORM_ENTITLEMENTS_TOKEN: `opaque-${'x'.repeat(40)}`
   }
 }
 
@@ -38,8 +37,8 @@ describe('platform identity config', () => {
       callbackPath: '/auth/platform/callback',
       requiredAcr: 'urn:lb-map:acr:password-plus-totp',
       requiredAmr: ['pwd', 'otp'],
-      entitlementsToken: 'opaque-token',
-      provisioningToken: 'provisioning-token'
+      entitlementsToken: `opaque-${'x'.repeat(40)}`,
+      verifyAccessToken: false
     })
   })
 
@@ -56,5 +55,23 @@ describe('platform identity config', () => {
         VARLENS_PLATFORM_CALLBACK_PATH: 'https://evil.example/callback'
       })
     ).toThrow(/CALLBACK_PATH/)
+  })
+
+  test('rejects a weak entitlements bearer token', () => {
+    expect(() =>
+      readPlatformIdentityConfig({
+        ...baseEnv(),
+        VARLENS_PLATFORM_ENTITLEMENTS_TOKEN: 'short-token'
+      })
+    ).toThrow(/at least 32 characters/i)
+  })
+
+  test('enables access-token JWT verification only when explicitly requested', () => {
+    expect(
+      readPlatformIdentityConfig({
+        ...baseEnv(),
+        VARLENS_PLATFORM_VERIFY_ACCESS_TOKEN: 'true'
+      })
+    ).toMatchObject({ verifyAccessToken: true })
   })
 })

@@ -56,7 +56,7 @@ is not a compatibility mode.
 | `VARLENS_RECOVERY_KEY_DIR` | recommended | Absolute directory for session-secret material. Defaults to `/data`. |
 | `VARLENS_SESSION_SECRET_HEX` | no | Optional 32-byte hex session secret. If absent, the server seals one in the recovery directory. |
 | `VARLENS_WEB_UPLOAD_DIR` | no | Absolute directory for browser-upload staging. Defaults to `${VARLENS_RECOVERY_KEY_DIR}/uploads` (`/data/uploads` in the chart). |
-| `VARLENS_WEB_MAX_UPLOAD_BYTES` | no | Maximum accepted browser upload size in bytes. Defaults to `1073741824` (1 GiB). |
+| `VARLENS_WEB_MAX_UPLOAD_BYTES` | no | Maximum accepted browser upload size in bytes. The app default is `1073741824` (1 GiB); LB-MAP currently overrides it to `357564416` (341 MiB) until its performance benchmark is accepted. |
 | `VARLENS_WEB_UPLOAD_TTL_MS` | no | Staged upload lifetime before lazy cleanup. Defaults to `86400000` (24 hours). |
 | `VARLENS_ADMIN_USERNAME` | first boot only | Optional one-shot admin bootstrap username. |
 | `VARLENS_ADMIN_PASSWORD_HASH` | first boot only | Optional one-shot Argon2id admin bootstrap hash. Plaintext bootstrap is refused. |

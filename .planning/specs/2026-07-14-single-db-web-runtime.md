@@ -76,8 +76,9 @@ LB-MAP Operations, IAC, and the Helm chart own:
 - No shared annotation database or annotation-workflow integration.
 - No new VARVIS JSON importer in this change; importer completeness remains an
   app-owner decision.
-- No choice between Keycloak, Lab Genius, Entra, or another OIDC provider. The
-  app contract stays provider-compatible.
+- LB-MAP selects Keycloak as its platform identity provider. VarLens remains
+  provider-neutral at the OIDC protocol boundary and adds no Keycloak-specific
+  administration or lifecycle APIs.
 - No final decision on platform entitlement ownership or MFA claim vocabulary;
   the current fail-closed contract remains until those stakeholders decide.
   Provider and claim decisions are tracked in

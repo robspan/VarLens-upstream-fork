@@ -16,6 +16,7 @@ interface PendingOidcState {
   codeVerifier: string
   next: string
   createdAt: number
+  mfaRetry?: boolean
 }
 
 function redirectWithNoStore(reply: FastifyReply, location: string): FastifyReply {
@@ -248,6 +249,32 @@ export function registerPlatformIdentityRoutes(
         })
         return redirectWithNoStore(reply, pending.next).send()
       } catch (error) {
+        if (
+          error instanceof PlatformMfaClaimError &&
+          error.kind === 'amr' &&
+          error.missingAmr === 'otp' &&
+          pending.mfaRetry !== true
+        ) {
+          const authorization = await options.identity.createAuthorizationUrl({
+            request,
+            appPathPrefix: options.appPathPrefix,
+            next: pending.next,
+            forceFreshLogin: false
+          })
+          rememberPendingOidcState({
+            request,
+            state: authorization.state,
+            pending: {
+              nonce: authorization.nonce,
+              codeVerifier: authorization.codeVerifier,
+              next: pending.next,
+              createdAt: Date.now(),
+              mfaRetry: true
+            }
+          })
+          await auditBestEffort({ action: 'auth_login_failure', reason: 'missing-otp-amr-retry' })
+          return redirectWithNoStore(reply, authorization.authorizationUrl).send()
+        }
         request.session.delete()
         const reason =
           error instanceof PlatformMfaClaimError && error.kind === 'amr'

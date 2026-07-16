@@ -686,7 +686,7 @@ describe('platform identity callback session state', () => {
     await app.close()
   })
 
-  test('fails closed when a TOTP callback lacks the OTP amr claim', async () => {
+  test('retries the identity flow once when TOTP enrollment lacks the OTP amr claim', async () => {
     process.env.NODE_ENV = 'test'
     process.env.VARLENS_SESSION_SECRET_HEX = '11'.repeat(32)
 
@@ -698,12 +698,20 @@ describe('platform identity callback session state', () => {
       config: { callbackPath: '/auth/platform/callback' },
       buildStartLocation: (appPathPrefix: string, next: string) =>
         `${appPathPrefix}/auth/platform/start?next=${encodeURIComponent(next)}`,
-      createAuthorizationUrl: vi.fn().mockResolvedValue({
-        authorizationUrl: 'https://identity.example.test/auth?state=state-1',
-        state: 'state-1',
-        nonce: 'nonce-1',
-        codeVerifier: 'verifier-1'
-      }),
+      createAuthorizationUrl: vi
+        .fn()
+        .mockResolvedValueOnce({
+          authorizationUrl: 'https://identity.example.test/auth?state=state-1',
+          state: 'state-1',
+          nonce: 'nonce-1',
+          codeVerifier: 'verifier-1'
+        })
+        .mockResolvedValueOnce({
+          authorizationUrl: 'https://identity.example.test/auth?state=state-2',
+          state: 'state-2',
+          nonce: 'nonce-2',
+          codeVerifier: 'verifier-2'
+        }),
       completeCallback,
       resolveSessionUser: vi.fn()
     } as unknown as PlatformIdentityService
@@ -727,9 +735,16 @@ describe('platform identity callback session state', () => {
       headers: { cookie }
     })
 
-    expect(callback.statusCode).toBe(401)
-    expect(callback.body).toContain('Anmeldung konnte nicht abgeschlossen werden')
-    expect(callback.body).toContain('/auth/platform/start?next=%2Fcases')
+    expect(callback.statusCode).toBe(302)
+    expect(callback.headers.location).toBe('https://identity.example.test/auth?state=state-2')
+    const retryCookie = extractCookie(callback)
+    const rejectedRetry = await app.inject({
+      method: 'GET',
+      url: '/auth/platform/callback?state=state-2&code=code-2',
+      headers: { cookie: retryCookie }
+    })
+    expect(rejectedRetry.statusCode).toBe(401)
+    expect(rejectedRetry.body).toContain('Anmeldung konnte nicht abgeschlossen werden')
     await app.close()
   })
 
@@ -780,10 +795,11 @@ describe('platform identity callback session state', () => {
     expect(createAuthorizationUrl).toHaveBeenCalledWith(
       expect.objectContaining({ forceFreshLogin: true })
     )
-    expect(callback.statusCode).toBe(401)
-    expect(callback.headers['content-type']).toContain('text/html')
-    expect(callback.body).toContain('Anmeldung konnte nicht abgeschlossen werden')
-    expect(callback.body).toContain('Erneut anmelden')
+    expect(createAuthorizationUrl).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ forceFreshLogin: false })
+    )
+    expect(callback.statusCode).toBe(302)
     await app.close()
   })
 

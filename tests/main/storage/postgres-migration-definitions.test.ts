@@ -4,7 +4,7 @@ import { POSTGRES_MIGRATIONS } from '../../../src/main/storage/postgres/migratio
 
 describe('Postgres migration definitions', () => {
   it('loads the PostgreSQL migrations with SQL and sha256 checksums', () => {
-    expect(POSTGRES_MIGRATIONS).toHaveLength(15)
+    expect(POSTGRES_MIGRATIONS).toHaveLength(16)
     expect(POSTGRES_MIGRATIONS.map((migration) => migration.version)).toEqual([
       '0001',
       '0002',
@@ -20,7 +20,8 @@ describe('Postgres migration definitions', () => {
       '0012',
       '0013',
       '0014',
-      '0015'
+      '0015',
+      '0016'
     ])
     expect(POSTGRES_MIGRATIONS.map((migration) => migration.name)).toEqual([
       'create_cases',
@@ -36,7 +37,8 @@ describe('Postgres migration definitions', () => {
       'projects_registry',
       'extend_audit_contract',
       'central_audit_schema',
-      'hosted_user_private_db',
+      'variant_transcripts_func',
+      'import_visibility',
       'single_db_runtime'
     ])
 
@@ -87,7 +89,20 @@ describe('Postgres migration definitions', () => {
     expect(centralAuditMigration?.sql).toContain(`to_regclass('"__schema__"."audit_log"')`)
     expect(centralAuditMigration?.sql).toContain('DROP TABLE "__schema__"."audit_log"')
 
-    const singleDbMigration = POSTGRES_MIGRATIONS.find((migration) => migration.version === '0015')
+    const transcriptFuncMigration = POSTGRES_MIGRATIONS.find(
+      (migration) => migration.version === '0014'
+    )
+    expect(transcriptFuncMigration?.name).toBe('variant_transcripts_func')
+    expect(transcriptFuncMigration?.sql).toContain('ALTER TABLE "__schema__"."variant_transcripts"')
+    expect(transcriptFuncMigration?.sql).toContain('ADD COLUMN IF NOT EXISTS func TEXT')
+    expect(transcriptFuncMigration?.sql).toContain('SET func = v.func')
+    expect(transcriptFuncMigration?.sql).toContain('v.func IS NOT NULL')
+    expect(transcriptFuncMigration?.sql).toContain(
+      'vt.is_selected = 1 AND v.transcript = vt.transcript_id'
+    )
+    expect(transcriptFuncMigration?.sql).toContain('FROM "__schema__"."variants" AS v')
+
+    const singleDbMigration = POSTGRES_MIGRATIONS.find((migration) => migration.version === '0016')
     expect(singleDbMigration?.name).toBe('single_db_runtime')
     expect(singleDbMigration?.sql).toContain('DROP COLUMN IF EXISTS private_db_secret_ref')
     expect(singleDbMigration?.sql).toContain(

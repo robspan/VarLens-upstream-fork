@@ -11,6 +11,7 @@ import { test, expect, _electron as electron, ElectronApplication, Page } from '
 import * as path from 'path'
 import * as fs from 'fs'
 import * as zlib from 'zlib'
+import * as os from 'os'
 
 const SCREENSHOT_DIR = path.resolve(__dirname, '../../docs/public/screenshots')
 const DEMO_DATA_PATH = path.resolve(__dirname, 'test-data/demo-case.json')
@@ -19,6 +20,7 @@ const VIEWPORT = { width: 1280, height: 800 }
 let app: ElectronApplication
 let window: Page
 let tempGzipPath: string
+let tempDatabaseDir: string
 
 function expectSuccessfulIpcResult<T>(result: T): T {
   expect(result).not.toEqual(
@@ -195,6 +197,7 @@ test.describe('Documentation Screenshots', () => {
     const compressed = zlib.gzipSync(demoData)
     tempGzipPath = path.resolve(__dirname, 'test-data/demo-case.json.gz')
     fs.writeFileSync(tempGzipPath, compressed)
+    tempDatabaseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'varlens-screenshots-db-'))
 
     // Launch the compiled Electron app
     app = await electron.launch({
@@ -231,6 +234,44 @@ test.describe('Documentation Screenshots', () => {
     await window.reload()
     await window.waitForSelector('.v-application', { timeout: 30000 })
     await dismissDisclaimer(window)
+
+    const databasePath = path.join(tempDatabaseDir, 'screenshots.varlens.db')
+    await app.evaluate(async ({ dialog }, filePath) => {
+      dialog.showSaveDialog = async () => ({
+        canceled: false,
+        filePath
+      })
+    }, databasePath)
+    const databaseCreateResult = await window.evaluate(async (expectedPath) => {
+      const api = (
+        window as unknown as {
+          api: {
+            database: {
+              selectSaveLocation: (defaultName: string) => Promise<string | null>
+              create: (
+                path: string,
+                password?: string,
+                setupPassphrase?: string
+              ) => Promise<unknown>
+            }
+          }
+        }
+      ).api
+      const selectedPath = await api.database.selectSaveLocation('screenshots.varlens.db')
+      if (selectedPath !== expectedPath) {
+        return {
+          code: 'SCREENSHOT_DATABASE_SELECTION_FAILED',
+          message: `Expected database path ${expectedPath}, got ${selectedPath ?? 'null'}`,
+          userMessage: 'Screenshot database selection failed.'
+        }
+      }
+      const result = await api.database.create(selectedPath, 'screenshot-database-passphrase')
+      return JSON.parse(JSON.stringify(result))
+    }, databasePath)
+    const databasePayload = expectSuccessfulIpcResult(
+      databaseCreateResult as { success?: boolean; needsPassphraseSetup?: boolean }
+    )
+    expect(databasePayload.success).toBe(true)
   })
 
   test.afterAll(async () => {
@@ -238,6 +279,9 @@ test.describe('Documentation Screenshots', () => {
     // Clean up temp gzip file
     if (tempGzipPath && fs.existsSync(tempGzipPath)) {
       fs.unlinkSync(tempGzipPath)
+    }
+    if (tempDatabaseDir && fs.existsSync(tempDatabaseDir)) {
+      fs.rmSync(tempDatabaseDir, { recursive: true, force: true })
     }
   })
 
@@ -274,14 +318,35 @@ test.describe('Documentation Screenshots', () => {
   })
 
   test('03 - import demo case', async () => {
-    // Import via the preload IPC API (window.api.import.start)
+    await app.evaluate(async ({ dialog }, filePath) => {
+      dialog.showOpenDialog = async () => ({
+        canceled: false,
+        filePaths: [filePath]
+      })
+    }, tempGzipPath)
+
     const importResult = await window.evaluate(async (filePath) => {
       const api = (
         window as unknown as {
-          api: { import: { start: (p: string, n: string) => Promise<unknown> } }
+          api: {
+            cases: { deleteAll: () => Promise<number> }
+            import: {
+              selectFile: () => Promise<string | null>
+              start: (p: string, n: string) => Promise<unknown>
+            }
+          }
         }
       ).api
-      const result = await api.import.start(filePath, 'DemoCase')
+      await api.cases.deleteAll()
+      const selectedPath = await api.import.selectFile()
+      if (selectedPath !== filePath) {
+        return {
+          code: 'SCREENSHOT_SELECTION_FAILED',
+          message: `Expected selected path ${filePath}, got ${selectedPath ?? 'null'}`,
+          userMessage: 'Screenshot fixture selection failed.'
+        }
+      }
+      const result = await api.import.start(selectedPath, 'DemoCase')
       return JSON.parse(JSON.stringify(result))
     }, tempGzipPath)
 

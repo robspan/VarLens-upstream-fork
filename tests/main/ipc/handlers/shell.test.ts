@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ErrorCode, isIpcError } from '../../../../src/shared/types/errors'
 
 vi.mock('electron', () => ({
+  app: {
+    getPath: vi.fn(() => '/nonexistent-electron-app-path')
+  },
   shell: {
     openExternal: vi.fn(),
     showItemInFolder: vi.fn()
@@ -29,8 +32,7 @@ function getHandler(
   channel: string
 ): HandlerCallback {
   const call = ipcMain.handle.mock.calls.find(([c]) => c === channel) as
-    | [string, HandlerCallback]
-    | undefined
+    [string, HandlerCallback] | undefined
   if (!call) throw new Error(`Handler for ${channel} not registered`)
   return call[1]
 }
@@ -61,5 +63,12 @@ describe('shell IPC handlers', () => {
       expect(result.code).toBe(ErrorCode.UNKNOWN)
     }
     expect(setUserDomains).not.toHaveBeenCalled()
+  })
+
+  it('does not expose a generic file-reveal channel', () => {
+    const ipcMain = makeIpcMain()
+    registerShellHandlers({ ipcMain } as never)
+
+    expect(ipcMain.handle).not.toHaveBeenCalledWith('shell:showItemInFolder', expect.any(Function))
   })
 })

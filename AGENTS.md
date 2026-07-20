@@ -192,7 +192,7 @@ Test data lives at `tests/test-data/vcf/` (GIAB Chinese Trio, chr22:29M–30.5M,
 - **All plans, specs, design docs, code reviews, and research notes go in `.planning/`.** Never put them in `docs/`.
 - `.planning/specs/` for specifications, `.planning/plans/` for execution plans, `.planning/code-review/` for reviews, `.planning/artifacts/` for machine-generated artifacts (perf runs, inventories), `.planning/docs/` for long-form research notes that inform decisions.
 - `docs/` is VitePress — **user-facing documentation only**. What ships on the website.
-- When implementation completes or supersedes `.planning/` work, the same PR must update the owning active spec or plan to the verified current state and remove obsolete future-tense implementation claims. Keep historical plans clearly labeled as superseded; for LB-MAP cross-repository work, also coordinate the exact Fahrplan row and active app planning in `app-platform-iac` instead of leaving completed work marked ready.
+- When implementation completes or supersedes `.planning/` work, the same PR must update the owning active spec or plan to the verified current state and remove obsolete future-tense implementation claims. Keep historical plans clearly labeled as superseded; for LB-MAP cross-repository work, also coordinate the exact Fahrplan row, active app planning, and post-merge Confluence synchronization in `app-platform-iac` instead of leaving completed work marked ready.
 
 ## Commit & PR Conventions
 

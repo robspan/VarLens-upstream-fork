@@ -1,8 +1,10 @@
 # Single-DB Web Runtime Contract
 
-**Status:** Accepted implementation scope from the 2026-07-10 platform meeting  
+**Status:** Implemented on `main` and accepted against the 2026-07-10 platform decision
 **Scope:** VarLens web runtime and app-owned database schema  
 **Supersedes:** the active topology in `2026-06-22-public-private-annotation-db-boundary.md` and the Web 11/13 control, workspace-router, shared-annotation-DB, and annotation-sync plans
+
+**Implementation evidence:** [PR #7](https://github.com/robspan/VarLens-upstream-fork/pull/7) restored the single-database runtime and removed the superseded Web 11/13 topology, [commit `14a13a72`](https://github.com/robspan/VarLens-upstream-fork/commit/14a13a723b64391c0c0a482bbba6661dfb5ce29d) supplies Web 12 operations telemetry, [PR #8](https://github.com/robspan/VarLens-upstream-fork/pull/8) completed the platform-login path, and [PR #9](https://github.com/robspan/VarLens-upstream-fork/pull/9) preserved the green state through the upstream v0.70.1 sync.
 
 ## Context
 

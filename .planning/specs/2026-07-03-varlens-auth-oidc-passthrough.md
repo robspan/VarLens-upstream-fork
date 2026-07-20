@@ -1,17 +1,19 @@
 # VarLens Authentication: OIDC compatibility + upstream passthrough
 
-**Status:** Draft 2026-07-03
+**Status:** Superseded 2026-07-14
 **Scope:** Hosted web app (thin client) and desktop. Single database. VarLens stays the user store.
 **Not:** multi-tenant orchestration (control DB, per-customer DB routing). That is a separate repo on top.
+
+> This draft is historical and is not the active authentication contract. The implemented LB-MAP contract is defined by [the single-DB web runtime spec](./2026-07-14-single-db-web-runtime.md) and [the current runtime contract](../web/context/runtime-contract.md): OIDC subjects are bound by an operator-only command, platform entitlement is required, and request-serving code does not auto-provision users or trust proxy identity headers.
 
 ## Goal
 
 A user already authenticated by an upstream service reaches the VarLens hosted web app **without a second login**, while VarLens's own single database remains the source of truth for users.
 
-## What exists today (main)
+## What existed when drafted
 
 Local user management in VarLens's own DB: admin bootstrap, argon2 password login with lockout, user CRUD, roles (admin/user), password change/reset, sessions, audit, rate limiting.
-**Missing:** OIDC verification and any passthrough. That is the gap this spec fills.
+At the time of this draft, OIDC verification and passthrough were missing. The later implementation followed the superseding contracts above instead of this proposal.
 
 ## Design
 

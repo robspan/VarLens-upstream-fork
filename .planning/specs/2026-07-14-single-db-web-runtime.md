@@ -21,6 +21,14 @@ into the same instance database; VarLens does not connect to a shared or
 separate annotation database and does not run the former annotation-bundle sync
 pipeline.
 
+The separate parser/manifest decision was resolved as **Drop** on 2026-07-22:
+the historical `varlens-annotation-workflows` repository still emits bundles on
+`origin/main`, but that workflow is excluded from accepted ADR15 delivery and
+there is no accepted producer-consumer path or in-app caller. The bundle and
+public-snapshot manifest schemas, web route, and metric mapping were therefore
+removed. The caller inventory, acceptance criteria, and non-goals are recorded in
+[Drop Annotation-Bundle Import](./2026-07-22-drop-annotation-bundle-import.md).
+
 ## Acceptance Criteria
 
 1. The web server has one database contract: `VARLENS_PG_URL` plus the existing
@@ -34,9 +42,9 @@ pipeline.
    from the VarLens `users` table and define the optional reference-annotation
    read tables in the instance database. These tables have data class
    `public_reference_annotations`; case data and audit retention are unchanged.
-5. The former annotation-bundle-to-public-DB sync command is not built or
-   shipped. Annotation-manifest validation utilities remain available until the
-   separate parser/manifest decision is resolved.
+5. The former annotation-bundle-to-public-DB sync command, annotation-bundle and
+   public-snapshot manifest schemas, and `import:startAnnotationBundle` route are
+   not built or shipped. The runtime boundary gate prevents their return.
 6. Platform OIDC remains supported. The ID token is always verified for
    signature, issuer, audience, time, nonce, and configured MFA claims. Access
    token JWT verification is opt-in because valid providers may issue opaque
@@ -53,6 +61,8 @@ pipeline.
    request IDs, correct import-operation accounting, mandatory upload audit,
    structured logs, metrics, and health endpoints remain covered by tests.
 10. Desktop SQLite behavior and the normal JSON/VCF import paths do not change.
+    Acceptance against a representative VARVIS JSON shape and fixture remains
+    open and is not implied by preserving the generic JSON path.
 
 ## Repository Ownership
 
@@ -89,7 +99,10 @@ LB-MAP Operations, IAC, and the Helm chart own:
 
 ## Validation
 
-- Static/type tests prove hosted topology symbols and build entries are gone.
+- Static/type tests prove hosted topology symbols and build entries are gone,
+  both rejected manifest modules and the annotation-bundle channel cannot
+  return, and the normal `import:start` and `import:startMultiFile` paths remain
+  active.
 - Migration tests prove obsolete routing fields are removed and same-database
   reference tables are present.
 - Auth tests prove local subject binding, entitlement role mapping, denial, MFA,

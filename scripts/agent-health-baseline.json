@@ -37,13 +37,6 @@
       "reason": "existing large storage/import module; grew for Sprint A PR-3 C3 — the cohort-summary incrementalAdd/recompute/refreshColumnMetas update MUST run inside the worker's existing post-loop transaction (the worker is the real txn owner, Pass-2 #5), wrapped in a SAVEPOINT and wired into all three commit sites; the logic is already extracted into the named updateCohortSummaryAfterImport helper, so further splitting the worker is a separate responsibility-split task"
     },
     {
-      "path": "src/shared/annotations/public-snapshot.ts",
-      "lines": 618,
-      "threshold": 600,
-      "category": "source",
-      "reason": "Web 11/Web 12 public annotation snapshot contract module; the file groups the Zod manifest schema, fail-closed public/private semantic validation, and redacted error formatting so public-snapshot acceptance tests exercise one boundary. It is intentionally close to the threshold after Prettier formatting; splitting schema fragments before the manifest contract stabilizes would make the safety rules harder to audit."
-    },
-    {
       "path": "src/renderer/src/components/CaseList.vue",
       "lines": 635,
       "threshold": 600,

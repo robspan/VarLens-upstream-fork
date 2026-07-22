@@ -80,7 +80,6 @@ const DEV_API_LATENCY_ENV = 'VARLENS_WEB_API_LATENCY_MS'
 const OPERATION_METRIC_KEYS: Record<string, OperationMetricName> = {
   'import:start': 'import',
   'import:startMultiFile': 'import',
-  'import:startAnnotationBundle': 'import',
   'batch-import:start': 'batch-import'
 }
 

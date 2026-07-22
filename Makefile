@@ -203,6 +203,7 @@ web-gate-postgres: build-web ## Run fail-loud Postgres-backed web integration te
 	npx vitest run --project web-gate tests/web-gate/integration
 	VARLENS_RUN_POSTGRES_E2E=1 npx vitest run --project main \
 		tests/main/storage/postgres-migrations-idempotent.test.ts \
+		tests/main/storage/postgres-cases-query-repository.e2e.test.ts \
 		tests/main/web/auth/provision-platform-user-postgres.test.ts
 
 web-gate-parity: web-data-verify ## Run Layer 3 parity scenarios (opt-in; boots Electron, switches native ABI)

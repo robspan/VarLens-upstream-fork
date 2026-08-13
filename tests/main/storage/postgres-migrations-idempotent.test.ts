@@ -128,8 +128,12 @@ describe.skipIf(!RUN)('Postgres migrations: real-instance idempotency', () => {
          'platform-identity-disabled-local-password', 'user', FALSE)`
     )
 
-    const throughCentral = POSTGRES_MIGRATIONS.filter((m) => m.version < '0014')
-    const centralResult = await new PostgresMigrationRunner(pool, schema, throughCentral).migrate()
+    const throughHostedRuntime = POSTGRES_MIGRATIONS.filter((m) => m.version < '0016')
+    const centralResult = await new PostgresMigrationRunner(
+      pool,
+      schema,
+      throughHostedRuntime
+    ).migrate()
     expect(centralResult.applied).toContain('0013')
 
     const caseResult = await probeClient.query<{ id: string }>(
@@ -153,7 +157,7 @@ describe.skipIf(!RUN)('Postgres migrations: real-instance idempotency', () => {
     )
 
     const result = await new PostgresMigrationRunner(pool, schema, POSTGRES_MIGRATIONS).migrate()
-    expect(result.applied).toEqual(['0014', '0015', '0016'])
+    expect(result.applied).toEqual(['0016', '0017'])
 
     const migratedTranscript = await probeClient.query<{ consequence: string; func: string }>(
       `SELECT consequence, func

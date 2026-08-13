@@ -38,7 +38,7 @@
 
 **Files:**
 - Modify: `src/main/database/migrations.ts`
-- Modify: `src/main/storage/postgres/migrations/sql/0014_variant_transcripts_func.sql`
+- Modify: `src/main/storage/postgres/migrations/sql/0016_variant_transcripts_func.sql`
 - Modify: `src/main/database/TranscriptRepository.ts`
 - Modify: `src/main/storage/postgres/PostgresTranscriptsRepository.ts`
 - Test: `tests/main/database/migrations.test.ts`

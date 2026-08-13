@@ -71,18 +71,23 @@ const MIGRATION_FILES: readonly MigrationFile[] = [
   },
   {
     version: '0014',
-    name: 'variant_transcripts_func',
-    fileName: '0014_variant_transcripts_func.sql'
+    name: 'hosted_user_private_db',
+    fileName: '0014_hosted_user_private_db.sql'
   },
   {
     version: '0015',
-    name: 'import_visibility',
-    fileName: '0015_import_visibility.sql'
+    name: 'single_db_runtime',
+    fileName: '0015_single_db_runtime.sql'
   },
   {
     version: '0016',
-    name: 'single_db_runtime',
-    fileName: '0016_single_db_runtime.sql'
+    name: 'variant_transcripts_func',
+    fileName: '0016_variant_transcripts_func.sql'
+  },
+  {
+    version: '0017',
+    name: 'import_visibility',
+    fileName: '0017_import_visibility.sql'
   }
 ]
 

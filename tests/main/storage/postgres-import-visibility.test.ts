@@ -1,5 +1,5 @@
 /**
- * Real-PostgreSQL coverage for migration 0014's provisional import boundary.
+ * Real-PostgreSQL coverage for migration 0017's provisional import boundary.
  *
  * Gated by VARLENS_RUN_POSTGRES_E2E=1. Requires a reachable VARLENS_PG_URL.
  */

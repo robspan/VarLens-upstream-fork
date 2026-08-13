@@ -4,7 +4,7 @@ import { POSTGRES_MIGRATIONS } from '../../../src/main/storage/postgres/migratio
 
 describe('Postgres migration definitions', () => {
   it('loads the PostgreSQL migrations with SQL and sha256 checksums', () => {
-    expect(POSTGRES_MIGRATIONS).toHaveLength(16)
+    expect(POSTGRES_MIGRATIONS).toHaveLength(17)
     expect(POSTGRES_MIGRATIONS.map((migration) => migration.version)).toEqual([
       '0001',
       '0002',
@@ -21,7 +21,8 @@ describe('Postgres migration definitions', () => {
       '0013',
       '0014',
       '0015',
-      '0016'
+      '0016',
+      '0017'
     ])
     expect(POSTGRES_MIGRATIONS.map((migration) => migration.name)).toEqual([
       'create_cases',
@@ -37,9 +38,10 @@ describe('Postgres migration definitions', () => {
       'projects_registry',
       'extend_audit_contract',
       'central_audit_schema',
+      'hosted_user_private_db',
+      'single_db_runtime',
       'variant_transcripts_func',
-      'import_visibility',
-      'single_db_runtime'
+      'import_visibility'
     ])
 
     for (const migration of POSTGRES_MIGRATIONS) {
@@ -90,7 +92,7 @@ describe('Postgres migration definitions', () => {
     expect(centralAuditMigration?.sql).toContain('DROP TABLE "__schema__"."audit_log"')
 
     const transcriptFuncMigration = POSTGRES_MIGRATIONS.find(
-      (migration) => migration.version === '0014'
+      (migration) => migration.version === '0016'
     )
     expect(transcriptFuncMigration?.name).toBe('variant_transcripts_func')
     expect(transcriptFuncMigration?.sql).toContain('ALTER TABLE "__schema__"."variant_transcripts"')
@@ -102,11 +104,40 @@ describe('Postgres migration definitions', () => {
     )
     expect(transcriptFuncMigration?.sql).toContain('FROM "__schema__"."variants" AS v')
 
-    const singleDbMigration = POSTGRES_MIGRATIONS.find((migration) => migration.version === '0016')
+    const singleDbMigration = POSTGRES_MIGRATIONS.find((migration) => migration.version === '0015')
     expect(singleDbMigration?.name).toBe('single_db_runtime')
     expect(singleDbMigration?.sql).toContain('DROP COLUMN IF EXISTS private_db_secret_ref')
     expect(singleDbMigration?.sql).toContain(
       'CREATE TABLE IF NOT EXISTS "__schema__"."public_annotation_variant_records"'
     )
+  })
+
+  it('keeps the deployed and release-bound hosted-runtime ledger immutable', () => {
+    expect(
+      POSTGRES_MIGRATIONS.filter((migration) =>
+        ['0014', '0015', '0016', '0017'].includes(migration.version)
+      ).map(({ version, name, checksum }) => ({ version, name, checksum }))
+    ).toEqual([
+      {
+        version: '0014',
+        name: 'hosted_user_private_db',
+        checksum: '89a95c7ea525f889f207b6949e84ccfaddaa623f61b464b53c047c0206c8d68a'
+      },
+      {
+        version: '0015',
+        name: 'single_db_runtime',
+        checksum: '7273663ff403bceaa492d319ad7414c88e79ff0c16212b94935c2a7fd9aa3f8e'
+      },
+      {
+        version: '0016',
+        name: 'variant_transcripts_func',
+        checksum: 'f721b9d1c481a037ae8093bc24785fbc1bbd874a9b0e9844d56f793929b6ffd8'
+      },
+      {
+        version: '0017',
+        name: 'import_visibility',
+        checksum: '349c06690ab1d70cea59e949ba95467274ccabc634ca617698f62e6b85c778d2'
+      }
+    ])
   })
 })
